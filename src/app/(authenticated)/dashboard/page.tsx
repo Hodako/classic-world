@@ -312,17 +312,16 @@ function KPICard({
         {isPrivacyProtected && !isRevealed ? (
           <div className="flex items-center gap-1.5 select-none py-0.5 animate-in fade-in duration-200">
             <span className="font-mono tracking-widest text-foreground/80 font-black text-sm sm:text-base">••••••</span>
-            <span className="text-[10px] px-2 py-0.5 rounded-full bg-primary/10 text-primary font-bold flex items-center gap-1 border border-primary/25 shadow-2xs">
-              <Eye className="size-3 text-primary animate-pulse" />
-              <span>{lang === "bn" ? "ট্যাপ করে দেখুন" : "Tap to view"}</span>
+            <span className="p-1 rounded-full bg-primary/10 text-primary flex items-center justify-center border border-primary/25 shadow-2xs">
+              <Eye className="size-3.5 text-primary animate-pulse" />
             </span>
           </div>
         ) : (
           <div className={`${valSize} font-bold tracking-tight text-foreground flex items-center gap-1.5 animate-in fade-in zoom-in-95 duration-200`} title={value}>
             <span>{value}</span>
             {isPrivacyProtected && (
-              <span className="inline-flex items-center p-0.5 rounded bg-muted/60 text-muted-foreground/80 text-[10px]" title={lang === "bn" ? "উন্মোচিত" : "Revealed"}>
-                <Eye className="size-3 text-emerald-600 dark:text-emerald-400" />
+              <span className="inline-flex items-center p-1 rounded-full bg-muted/60 text-muted-foreground/80">
+                <Eye className="size-3.5 text-emerald-600 dark:text-emerald-400" />
               </span>
             )}
           </div>
@@ -1259,7 +1258,7 @@ export default function Dashboard() {
               <KPICard
                 label={t("profit")}
                 value={fmtMoney(profitToday)}
-                sub={!revealedKpis.profit ? (lang === "bn" ? "ট্যাপ করে দেখুন" : "Tap to reveal") : (dateRangeLabel + (lang === "bn" ? " • বিস্তারিত দেখতে ট্যাপ করুন" : " • Tap to open"))}
+                sub={dateRangeLabel}
                 imageUrl="/icons/profit_icon.png"
                 icon={TrendingUp}
                 color="bg-emerald-500"
@@ -1368,7 +1367,7 @@ export default function Dashboard() {
               <KPICard
                 label={lang === "bn" ? "সমিতি (Samity)" : "Samity"}
                 value={fmtMoney(somitiTotal)}
-                sub={!revealedKpis.somiti ? (lang === "bn" ? "ট্যাপ করে দেখুন" : "Tap to reveal") : (dateRangeLabel + (lang === "bn" ? " • বিস্তারিত দেখতে ট্যাপ করুন" : " • Tap to open"))}
+                sub={dateRangeLabel}
                 imageUrl="/icons/samity_icon.png"
                 icon={PiggyBank}
                 color="bg-purple-600"

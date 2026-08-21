@@ -323,31 +323,31 @@ export default function AuthPage() {
         }
       ` }} />
 
-      {/* Left panel: Minimalist natural fashion illustration with soft linen backdrop */}
+      {/* Left panel: Bright luxury fashion boutique showroom backdrop */}
       <div 
-        className="hidden md:flex md:col-span-6 lg:col-span-7 relative flex-col justify-between p-12 text-white select-none overflow-hidden bg-cover bg-center"
-        style={{ backgroundImage: `linear-gradient(rgba(9, 9, 11, 0.7), rgba(9, 9, 11, 0.75)), url('/login_illustration.jpg')` }}
+        className="hidden md:flex md:col-span-6 lg:col-span-7 relative flex-col justify-between p-12 text-zinc-900 select-none overflow-hidden bg-cover bg-center border-r border-zinc-200/80"
+        style={{ backgroundImage: `linear-gradient(135deg, rgba(255, 255, 255, 0.88), rgba(248, 250, 252, 0.92)), url('/login_illustration.jpg')` }}
       >
-        <div className="absolute top-0 right-0 w-80 h-80 bg-emerald-500/10 rounded-full blur-3xl" />
-        <div className="absolute bottom-0 left-0 w-80 h-80 bg-primary/10 rounded-full blur-3xl" />
+        <div className="absolute top-0 right-0 w-80 h-80 bg-emerald-500/15 rounded-full blur-3xl" />
+        <div className="absolute bottom-0 left-0 w-80 h-80 bg-primary/15 rounded-full blur-3xl" />
 
         {/* Top brand header */}
         <div className="flex items-center gap-3 relative z-10">
           <AppLogo size="md" alt="Classic World" />
-          <span className="font-serif text-2xl font-bold tracking-tight bg-gradient-to-r from-emerald-400 to-indigo-300 bg-clip-text text-transparent">Classic World</span>
+          <span className="font-serif text-2xl font-black tracking-tight text-zinc-900">Classic World</span>
         </div>
 
         {/* Middle minimalist description */}
         <div className="space-y-6 relative z-10 max-w-lg my-auto">
-          <span className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs px-3 py-1 rounded-full font-semibold uppercase tracking-wider">
+          <span className="bg-primary/10 border border-primary/20 text-primary text-xs px-3.5 py-1.5 rounded-full font-bold uppercase tracking-wider shadow-xs">
             {lang === "bn" ? "পোশাক ব্যবসায়ীদের আস্থার প্রতীক" : "Designed for Fashion Retailers"}
           </span>
-          <h2 className="text-4xl lg:text-5xl font-bold font-serif leading-tight">
+          <h2 className="text-4xl lg:text-5xl font-black font-serif leading-tight text-zinc-950 tracking-tight">
             {lang === "bn" 
               ? `"Classic World" ইনভেন্টরি ম্যানেজমেন্ট এবং প্রোডাক্টস সলিউশন`
               : `"Classic World" inventory management and products solutions`}
           </h2>
-          <p className="text-sm text-zinc-300 leading-relaxed max-w-md">
+          <p className="text-base text-zinc-700 font-medium leading-relaxed max-w-md">
             {lang === "bn" 
               ? "স্টক মূল্যায়ন, ক্যাশ ফ্লো, কাস্টম ইনভয়েস এবং বিক্রয় ট্র্যাকিং সহজতর করার এক নির্ভরযোগ্য মাধ্যম।" 
               : "Modern stock valuation, cashbox ledger, custom invoices, and sales profit margin tracking in one simple workspace."}
@@ -355,7 +355,7 @@ export default function AuthPage() {
         </div>
 
         {/* Bottom copyright placeholder */}
-        <div className="text-xs text-zinc-400 relative z-10">
+        <div className="text-xs text-zinc-500 font-medium relative z-10">
           © {new Date().getFullYear()} Classic World. Powered by Classic World.
         </div>
       </div>

@@ -42,14 +42,6 @@ export default function RootLayout({
           rel="stylesheet"
         />
         <link href="https://banglawebfonts.pages.dev/css/siyam-rupali.css" rel="stylesheet" />
-        {/* PWA meta — mobile-web-app-capable is the modern standard (replaces deprecated apple- version) */}
-        <meta name="mobile-web-app-capable" content="yes" />
-        {/* Keep apple- variant for iOS Safari compatibility */}
-        <meta name="apple-mobile-web-app-capable" content="yes" />
-        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-        <meta name="apple-mobile-web-app-title" content="Classic World" />
-        <link rel="apple-touch-icon" href="/logo.svg" />
-        <link rel="manifest" href="/manifest.json" />
         <script
           dangerouslySetInnerHTML={{
             __html: `
@@ -80,7 +72,6 @@ export default function RootLayout({
                   doc.style.setProperty('--sidebar-primary', val);
                 } catch (e) {}
 
-                // Register PWA Service Worker for phone browsers & standalone mode
                 if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
                   window.addEventListener('load', function() {
                     navigator.serviceWorker.register('/sw.js').catch(function() {});

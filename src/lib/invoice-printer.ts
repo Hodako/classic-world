@@ -252,38 +252,58 @@ export function printPwaInvoice(data: PrintInvoiceParams) {
 </body>
 </html>`;
 
-  const blob = new Blob([html], { type: "text/html; charset=utf-8" });
-  const blobUrl = URL.createObjectURL(blob);
-
   const iframe = document.createElement("iframe");
   iframe.style.position = "fixed";
   iframe.style.right = "0";
   iframe.style.bottom = "0";
-  iframe.style.width = "0";
-  iframe.style.height = "0";
+  iframe.style.width = "1px";
+  iframe.style.height = "1px";
   iframe.style.border = "none";
+  iframe.style.opacity = "0.01";
+  iframe.style.pointerEvents = "none";
   iframe.style.zIndex = "-9999";
   document.body.appendChild(iframe);
 
-  iframe.src = blobUrl;
+  try {
+    const doc = iframe.contentWindow?.document || iframe.contentDocument;
+    if (doc) {
+      doc.open();
+      doc.write(html);
+      doc.close();
 
-  iframe.onload = () => {
-    setTimeout(() => {
-      try {
-        iframe.contentWindow?.focus();
-        iframe.contentWindow?.print();
-      } catch (e) {
-        window.print();
-      } finally {
-        setTimeout(() => {
-          try {
-            document.body.removeChild(iframe);
-            URL.revokeObjectURL(blobUrl);
-          } catch (_) {}
-        }, 1000);
+      const triggerPrint = () => {
+        try {
+          iframe.contentWindow?.focus();
+          iframe.contentWindow?.print();
+        } catch (e) {
+          window.print();
+        } finally {
+          setTimeout(() => {
+            try {
+              if (document.body.contains(iframe)) {
+                document.body.removeChild(iframe);
+              }
+            } catch (_) {}
+          }, 1500);
+        }
+      };
+
+      if (iframe.contentWindow) {
+        if (iframe.contentWindow.document.readyState === "complete") {
+          setTimeout(triggerPrint, 150);
+        } else {
+          iframe.contentWindow.onload = () => setTimeout(triggerPrint, 150);
+        }
+      } else {
+        setTimeout(triggerPrint, 250);
       }
-    }, 300);
-  };
+    } else {
+      window.print();
+    }
+  } catch (err) {
+    console.warn("Direct iframe print failed, falling back to window.print():", err);
+    window.print();
+  }
 }
 
 /**

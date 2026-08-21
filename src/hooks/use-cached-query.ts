@@ -31,10 +31,12 @@ export function useCachedQuery<T>(
     initialData: cached,
     initialDataUpdatedAt: cached ? Date.now() - 1000 : undefined,
     placeholderData: keepPreviousData,
-    staleTime: 30 * 1000,
+    staleTime: 0,
     gcTime: 60 * 60 * 1000,
     refetchOnWindowFocus: true,
-    refetchOnMount: true,
+    refetchOnMount: "always",
+    refetchInterval: 3000, // 3-second live heartbeat for real-time KPI & financial syncing
+    refetchIntervalInBackground: false,
     ...options,
   });
 }

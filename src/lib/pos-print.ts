@@ -17,7 +17,7 @@ export const DEFAULT_POS_CONFIG: PosPaperSettings = {
 export function getPosPaperConfig(): PosPaperSettings {
   if (typeof window === "undefined") return DEFAULT_POS_CONFIG;
   try {
-    const saved = localStorage.getItem("classicworld_pos_paper_config");
+    const saved = localStorage.getItem("dreamfashion_pos_paper_config");
     if (saved) {
       const parsed = JSON.parse(saved);
       return {
@@ -38,7 +38,7 @@ export function savePosPaperConfig(config: Partial<PosPaperSettings>): PosPaperS
     ...config,
   };
   if (typeof window !== "undefined") {
-    localStorage.setItem("classicworld_pos_paper_config", JSON.stringify(updated));
+    localStorage.setItem("dreamfashion_pos_paper_config", JSON.stringify(updated));
     window.dispatchEvent(new Event("hz-pos-config-updated"));
   }
   return updated;
@@ -81,10 +81,14 @@ export function printPwaPosReceipt(data: {
     .join("");
 
   const html = `<!DOCTYPE html>
-<html lang="en" style="color-scheme: light !important;">
+<html lang="bn" style="color-scheme: light !important;">
 <head>
   <meta charset="utf-8">
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;500;600;700;800&family=Noto+Sans+Bengali:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <title>POS Invoice ${data.invoiceNo}</title>
   <style>
     @page {
@@ -95,6 +99,7 @@ export function printPwaPosReceipt(data: {
       box-sizing: border-box !important;
       margin: 0;
       padding: 0;
+      font-family: 'Hind Siliguri', 'Noto Sans Bengali', 'SolaimanLipi', 'Kalpurush', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
       -webkit-print-color-adjust: exact !important;
       print-color-adjust: exact !important;
       color-scheme: light !important;
@@ -106,7 +111,7 @@ export function printPwaPosReceipt(data: {
       padding: 6px ${margin}mm !important;
       background: #ffffff !important;
       color: #000000 !important;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Courier New", monospace !important;
+      font-family: 'Hind Siliguri', 'Noto Sans Bengali', 'SolaimanLipi', 'Kalpurush', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
       font-size: 10px !important;
       line-height: 1.3 !important;
     }
@@ -191,7 +196,7 @@ export function printPwaPosReceipt(data: {
     </tr>
     <tr>
       <td style="padding: 2px 0; text-align: left; color: #059669; font-weight: 600;">Paid Amount:</td>
-      <td style="padding: 2px 0; text-align: right; font-family: monospace; color: #059669; font-weight: 700;">৳${data.paid.toLocaleString()}</td>
+      <td style="padding: 2px 0; text-align: right; font-family: monospace; color: #059669; font-weight: 700;">৳${data.paid}</td>
     </tr>
     ${
       data.due > 0
@@ -208,10 +213,12 @@ export function printPwaPosReceipt(data: {
   <!-- Footer -->
   <div style="text-align: center; margin-top: 6px; font-size: 9px; color: #4b5563;">
     <div style="font-weight: 700; color: #000000;">Thank you for your business!</div>
-    <div style="font-size: 8px; margin-top: 2px; color: #6b7280;">Software by Classic World POS</div>
   </div>
 </body>
 </html>`;
+
+  const blob = new Blob([html], { type: "text/html; charset=utf-8" });
+  const blobUrl = URL.createObjectURL(blob);
 
   const iframe = document.createElement("iframe");
   iframe.style.position = "fixed";
@@ -223,26 +230,23 @@ export function printPwaPosReceipt(data: {
   iframe.style.zIndex = "-9999";
   document.body.appendChild(iframe);
 
-  const doc = iframe.contentWindow?.document;
-  if (doc) {
-    doc.open();
-    doc.write(html);
-    doc.close();
+  iframe.src = blobUrl;
 
+  iframe.onload = () => {
     setTimeout(() => {
       try {
         iframe.contentWindow?.focus();
         iframe.contentWindow?.print();
       } catch (e) {
         window.print();
+      } finally {
+        setTimeout(() => {
+          try {
+            document.body.removeChild(iframe);
+            URL.revokeObjectURL(blobUrl);
+          } catch (_) {}
+        }, 1000);
       }
-      setTimeout(() => {
-        try {
-          document.body.removeChild(iframe);
-        } catch (_) {}
-      }, 1000);
-    }, 250);
-  } else {
-    window.print();
-  }
+    }, 300);
+  };
 }

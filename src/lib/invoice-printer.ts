@@ -95,15 +95,38 @@ export function printPwaInvoice(data: PrintInvoiceParams) {
     .join("");
 
   const html = `<!DOCTYPE html>
-<html lang="en" style="color-scheme: light !important;">
+<html lang="bn" style="color-scheme: light !important;">
 <head>
   <meta charset="utf-8">
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;500;600;700;800&family=Noto+Sans+Bengali:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <title>Receipt</title>
   <style>
     @page { size: ${pageSizeRule}; margin: 0 !important; }
-    *, *:before, *:after { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color-scheme: light !important; }
-    html, body { background: #ffffff !important; color: #000000 !important; width: 100% !important; margin: 0 !important; padding: 0 !important; font-size: ${baseSize} !important; line-height: 1.25; word-break: normal; overflow-wrap: break-word; }
+    *, *:before, *:after { 
+      box-sizing: border-box; 
+      margin: 0; 
+      padding: 0; 
+      font-family: 'Hind Siliguri', 'Noto Sans Bengali', 'SolaimanLipi', 'Kalpurush', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important; 
+      -webkit-print-color-adjust: exact !important; 
+      print-color-adjust: exact !important; 
+      color-scheme: light !important; 
+    }
+    html, body { 
+      background: #ffffff !important; 
+      color: #000000 !important; 
+      width: 100% !important; 
+      margin: 0 !important; 
+      padding: 0 !important; 
+      font-size: ${baseSize} !important; 
+      line-height: 1.25; 
+      word-break: normal; 
+      overflow-wrap: break-word; 
+      font-family: 'Hind Siliguri', 'Noto Sans Bengali', 'SolaimanLipi', 'Kalpurush', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important; 
+    }
     .receipt-wrap { position: relative !important; overflow: hidden !important; width: 100% !important; max-width: 100% !important; margin: 0 !important; padding: 3mm 2mm 18mm 2mm; box-sizing: border-box !important; background: #ffffff; }
     .watermark { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(-25deg); font-size: 18px; font-weight: 900; color: rgba(0, 0, 0, 0.07); border: 1.5px solid rgba(0, 0, 0, 0.07); padding: 2px 8px; border-radius: 6px; text-transform: uppercase; letter-spacing: 1px; white-space: nowrap; pointer-events: none; z-index: 0; }
     .receipt-content { position: relative; z-index: 1; }
@@ -223,6 +246,9 @@ export function printPwaInvoice(data: PrintInvoiceParams) {
 </body>
 </html>`;
 
+  const blob = new Blob([html], { type: "text/html; charset=utf-8" });
+  const blobUrl = URL.createObjectURL(blob);
+
   const iframe = document.createElement("iframe");
   iframe.style.position = "fixed";
   iframe.style.right = "0";
@@ -233,28 +259,25 @@ export function printPwaInvoice(data: PrintInvoiceParams) {
   iframe.style.zIndex = "-9999";
   document.body.appendChild(iframe);
 
-  const doc = iframe.contentWindow?.document;
-  if (doc) {
-    doc.open();
-    doc.write(html);
-    doc.close();
+  iframe.src = blobUrl;
 
+  iframe.onload = () => {
     setTimeout(() => {
       try {
         iframe.contentWindow?.focus();
         iframe.contentWindow?.print();
       } catch (e) {
         window.print();
+      } finally {
+        setTimeout(() => {
+          try {
+            document.body.removeChild(iframe);
+            URL.revokeObjectURL(blobUrl);
+          } catch (_) {}
+        }, 1000);
       }
-      setTimeout(() => {
-        try {
-          document.body.removeChild(iframe);
-        } catch (_) {}
-      }, 1000);
-    }, 250);
-  } else {
-    window.print();
-  }
+    }, 300);
+  };
 }
 
 /**
@@ -316,7 +339,7 @@ export async function downloadPwaInvoicePdf(data: PrintInvoiceParams, openInNewT
     pdf.setFont("helvetica", "bold");
     pdf.setFontSize(isThermal58 ? 12 : 14);
     pdf.setTextColor(0, 0, 0);
-    pdf.text((data.businessName || "Classic World").toUpperCase(), pageWidth / 2, currentY, { align: "center" });
+    pdf.text((data.businessName || "DREAM FASHION").toUpperCase(), pageWidth / 2, currentY, { align: "center" });
     currentY += 4.5;
 
     pdf.setFont("helvetica", "normal");
@@ -441,7 +464,7 @@ export async function downloadPwaInvoicePdf(data: PrintInvoiceParams, openInNewT
     pdf.setFont("helvetica", "bold");
     pdf.setFontSize(18);
     pdf.setTextColor(15, 23, 42);
-    pdf.text((data.businessName || "Classic World").toUpperCase(), margin, currentY + 4);
+    pdf.text((data.businessName || "DREAM FASHION").toUpperCase(), margin, currentY + 4);
 
     pdf.setFont("helvetica", "normal");
     pdf.setFontSize(8.5);

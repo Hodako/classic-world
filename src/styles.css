@@ -52,7 +52,7 @@
 
 :root {
   --loader-color: #059669;
-  --background: #d1e2ea;
+  --background: #f8fafc;
   --foreground: #201C16;
   --card: #FFFFFF;
   --card-foreground: #201C16;
@@ -78,7 +78,7 @@
   --chart-3: #4B4B4E;
   --chart-4: #8C8C90;
   --chart-5: #34D399;
-  --sidebar: #d1e2ea;
+  --sidebar: #ffffff;
   --sidebar-foreground: #201C16;
   --sidebar-primary: #059669;
   --sidebar-primary-foreground: #FFFFFF;

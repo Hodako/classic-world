@@ -416,8 +416,9 @@ export async function fsGetSomiti() {
 
 export async function fsCreateSomiti(data: any) {
   const amount = Number(data.amount) || 0;
+  const kind = data.kind || "deposit";
   const docRef = await addDoc(collection(db, "somiti"), {
-    kind: data.kind || "deposit",
+    kind,
     amount,
     note: data.note || null,
     created_at: Timestamp.now(),
@@ -425,10 +426,13 @@ export async function fsCreateSomiti(data: any) {
 
   if (amount > 0) {
     try {
+      // Depositing into Samity reduces cash from cashbox (withdraw); withdrawing from Samity returns cash to cashbox (deposit)
+      // Samity is savings/DPS and is NOT deducted from business net profit
+      const cashboxKind = kind === "withdraw" ? "deposit" : "withdraw";
       await addDoc(collection(db, "cashbox_logs"), {
-        kind: data.kind === "deposit" ? "deposit" : "withdraw",
+        kind: cashboxKind,
         amount,
-        note: `Samity ${data.kind}: ${data.note || ""}`,
+        note: `Samity ${kind}: ${data.note || ""}`,
         ref_id: docRef.id,
         created_at: Timestamp.now(),
       });
@@ -442,10 +446,31 @@ export async function fsCreateSomiti(data: any) {
 
 export async function fsUpdateSomiti(id: string, data: any) {
   await updateDoc(doc(db, "somiti", id), data);
+  if (data.amount !== undefined || data.kind !== undefined) {
+    try {
+      const q = query(collection(db, "cashbox_logs"), where("ref_id", "==", id));
+      const snap = await getDocs(q);
+      const cashboxKind = data.kind === "withdraw" ? "deposit" : "withdraw";
+      for (const logDoc of snap.docs) {
+        await updateDoc(doc(db, "cashbox_logs", logDoc.id), {
+          kind: cashboxKind,
+          amount: Number(data.amount) || 0,
+          note: `Samity ${data.kind || "deposit"}: ${data.note || ""}`,
+        });
+      }
+    } catch (_) {}
+  }
   return { success: true, id };
 }
 
 export async function fsDeleteSomiti(id: string) {
+  try {
+    const q = query(collection(db, "cashbox_logs"), where("ref_id", "==", id));
+    const snap = await getDocs(q);
+    for (const logDoc of snap.docs) {
+      await deleteDoc(doc(db, "cashbox_logs", logDoc.id));
+    }
+  } catch (_) {}
   await deleteDoc(doc(db, "somiti", id));
   return { success: true, id };
 }

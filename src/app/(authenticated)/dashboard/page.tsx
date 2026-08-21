@@ -8,7 +8,7 @@ import {
   Package, PlusCircle, ArrowUpRight, ArrowDownRight, CreditCard, PiggyBank,
   DollarSign, Banknote, Users, Search, ChevronDown, ChevronUp, ArrowUpDown,
   Trash2, Plus, Calendar, BarChart3, LineChart as LineChartIcon, AreaChart as AreaChartIcon, CheckSquare, Square,
-  Palette, Sparkles, LayoutGrid, SlidersHorizontal, Layers
+  Palette, Sparkles, LayoutGrid, SlidersHorizontal, Layers, Eye, EyeOff
 } from "lucide-react";
 import { useT } from "@/lib/i18n";
 import { getExpenses, getSales, getWithdrawals, getProducts, getParties, getReminders, getAllPayments, getAllPartyReceivables, getAllPartyPayables, getAllPayableSettlements, getPurchases, getSomiti } from "@/lib/queries";
@@ -95,6 +95,7 @@ function groupAllDataByDay(sales: any[], expenses: any[], days: number) {
 function KPICard({
   label, value, sub, icon: Icon, imageUrl, trend, trendUp, color, onClick, className, imageClassName,
   align = "left", size = "small", variant = "glass", shadowStyle = "glow", borderStyle = "subtle", curve = "none", isBentoHero = false, isDesktop = false, hotkey,
+  isPrivacyProtected = false, isRevealed = true,
 }: {
   label: string; value: string; sub?: string;
   icon?: React.ElementType; imageUrl?: string; trend?: string; trendUp?: boolean; color: string;
@@ -108,6 +109,8 @@ function KPICard({
   isBentoHero?: boolean;
   isDesktop?: boolean;
   hotkey?: string | number;
+  isPrivacyProtected?: boolean;
+  isRevealed?: boolean;
 }) {
   const alignClass = align === "center" ? "text-center items-center" : align === "right" ? "text-right items-end" : "text-left items-start";
   
@@ -305,7 +308,22 @@ function KPICard({
       </div>
 
       <div className={`flex flex-col w-full ${align === "center" ? "items-center" : align === "right" ? "items-end" : "items-start"} mt-1 min-w-0 z-10`}>
-        <div className={`${valSize} font-bold tracking-tight text-foreground`} title={value}>{value}</div>
+        {isPrivacyProtected && !isRevealed ? (
+          <div className="flex items-center gap-1.5 select-none py-0.5">
+            <span className="font-mono tracking-widest text-muted-foreground/80 font-black text-sm sm:text-base">••••••</span>
+            <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-muted/90 text-muted-foreground font-bold flex items-center gap-1 border border-border/60">
+              <Eye className="size-3 text-primary" />
+              <span>দেখুন</span>
+            </span>
+          </div>
+        ) : (
+          <div className={`${valSize} font-bold tracking-tight text-foreground flex items-center gap-1.5`} title={value}>
+            <span>{value}</span>
+            {isPrivacyProtected && (
+              <EyeOff className="size-3 text-muted-foreground/70 shrink-0 inline-block" />
+            )}
+          </div>
+        )}
         {sub && <div className={`${subSize} text-muted-foreground mt-0.5 truncate w-full`} title={sub}>{sub}</div>}
       </div>
 
@@ -374,6 +392,29 @@ export default function Dashboard() {
 
   const [dateFilter, setDateFilter] = useState<{ from: string; to: string }>({ from: '', to: '' });
   const [showFilter, setShowFilter] = useState(false);
+
+  // Fintech-Style Privacy Mask for Sensitive Balance & Profit KPIs
+  const [revealedKpis, setRevealedKpis] = useState<{ profit: boolean; somiti: boolean }>({
+    profit: false,
+    somiti: false,
+  });
+
+  const handlePrivacyKpiClick = (e: React.MouseEvent, key: "profit" | "somiti", path: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    playTapSound();
+
+    if (!revealedKpis[key]) {
+      setRevealedKpis(prev => ({ ...prev, [key]: true }));
+      toast.info(
+        lang === "bn"
+          ? (key === "profit" ? "লাভের পরিমাণ দেখানো হচ্ছে (পুনরায় ট্যাপ করলে বিস্তারিত পেজে যাবে)" : "সমিতি জমার পরিমাণ দেখানো হচ্ছে (পুনরায় ট্যাপ করলে বিস্তারিত পেজে যাবে)")
+          : "Amount revealed (tap again to open details page)"
+      );
+    } else {
+      router.push(path);
+    }
+  };
 
   const dateRangeLabel = useMemo(() => {
     if (!dateFilter.from && !dateFilter.to) {
@@ -947,7 +988,7 @@ export default function Dashboard() {
               const firstAlert = activeRemindersList[0];
               new Notification(lang === "bn" ? "রিমাইন্ডার সতর্কতা" : "Reminder Alert", {
                 body: firstAlert.title,
-                icon: "/logo.svg",
+                icon: "/logo.png",
               });
             }
           });
@@ -1207,11 +1248,15 @@ export default function Dashboard() {
             </Link>
           ) : <div key="purchases" className="hidden" />,
           profit: (
-            <Link href="/profits" className={`block ${isHeroCard("profit") ? "sm:col-span-2" : ""}`} key="profit" onClick={() => playTapSound()}>
+            <div
+              className={`block cursor-pointer ${isHeroCard("profit") ? "sm:col-span-2" : ""}`}
+              key="profit"
+              onClick={(e) => handlePrivacyKpiClick(e, "profit", "/profits")}
+            >
               <KPICard
                 label={t("profit")}
                 value={fmtMoney(profitToday)}
-                sub={dateRangeLabel}
+                sub={!revealedKpis.profit ? (lang === "bn" ? "ট্যাপ করে দেখুন" : "Tap to reveal") : (dateRangeLabel + (lang === "bn" ? " • বিস্তারিত দেখতে ট্যাপ করুন" : " • Tap to open"))}
                 imageUrl="/icons/profit_icon.png"
                 icon={TrendingUp}
                 color="bg-emerald-500"
@@ -1223,8 +1268,10 @@ export default function Dashboard() {
                 borderStyle={(kpiConfig.borderStyle || "subtle") as any}
                 curve={(kpiConfig.curve || "none") as any}
                 isBentoHero={isHeroCard("profit")}
+                isPrivacyProtected={true}
+                isRevealed={revealedKpis.profit}
               />
-            </Link>
+            </div>
           ),
           loss: (
             <Link href="/losses" className={`block ${isHeroCard("loss") ? "sm:col-span-2" : ""}`} key="loss" onClick={() => playTapSound()}>
@@ -1310,11 +1357,15 @@ export default function Dashboard() {
             </Link>
           ) : <div key="cashbox" className="hidden" />,
           somiti: allowSomiti ? (
-            <Link href="/somiti" className="block w-full" key="somiti" onClick={() => playTapSound()}>
+            <div
+              className="block w-full cursor-pointer"
+              key="somiti"
+              onClick={(e) => handlePrivacyKpiClick(e, "somiti", "/somiti")}
+            >
               <KPICard
                 label={lang === "bn" ? "সমিতি (Samity)" : "Samity"}
                 value={fmtMoney(somitiTotal)}
-                sub={dateRangeLabel}
+                sub={!revealedKpis.somiti ? (lang === "bn" ? "ট্যাপ করে দেখুন" : "Tap to reveal") : (dateRangeLabel + (lang === "bn" ? " • বিস্তারিত দেখতে ট্যাপ করুন" : " • Tap to open"))}
                 imageUrl="/icons/samity_icon.png"
                 icon={PiggyBank}
                 color="bg-purple-600"
@@ -1328,8 +1379,10 @@ export default function Dashboard() {
                 borderStyle={(kpiConfig.borderStyle || "subtle") as any}
                 curve={(kpiConfig.curve || "none") as any}
                 isBentoHero={false}
+                isPrivacyProtected={true}
+                isRevealed={revealedKpis.somiti}
               />
-            </Link>
+            </div>
           ) : <div key="somiti" className="hidden" />,
         };
 
@@ -1730,11 +1783,15 @@ export default function Dashboard() {
               ) : <div key="purchases" className="hidden" />;
             case "profit":
               return (
-                <Link href="/profits" className="block" key="profit" onClick={() => playTapSound()}>
+                <div
+                  className="block cursor-pointer"
+                  key="profit"
+                  onClick={(e) => handlePrivacyKpiClick(e, "profit", "/profits")}
+                >
                   <KPICard
                     label={t("profit")}
                     value={fmtMoney(profitToday)}
-                    sub={dateRangeLabel}
+                    sub={!revealedKpis.profit ? (lang === "bn" ? "ট্যাপ করে দেখুন" : "Tap to reveal") : (dateRangeLabel + (lang === "bn" ? " • বিস্তারিত দেখতে ট্যাপ করুন" : " • Tap to open"))}
                     icon={TrendingUp}
                     color="bg-emerald-500"
                     isDesktop={true}
@@ -1742,8 +1799,10 @@ export default function Dashboard() {
                     className="h-full"
                     align={kpiConfig.align as any}
                     size={kpiConfig.size as any}
+                    isPrivacyProtected={true}
+                    isRevealed={revealedKpis.profit}
                   />
-                </Link>
+                </div>
               );
             case "loss":
               return (
@@ -1818,11 +1877,15 @@ export default function Dashboard() {
               ) : <div key="cashbox" className="hidden" />;
             case "somiti":
               return canAccess(perms, "expenses") ? (
-                <Link href="/somiti" className="block" key="somiti" onClick={() => playTapSound()}>
+                <div
+                  className="block cursor-pointer"
+                  key="somiti"
+                  onClick={(e) => handlePrivacyKpiClick(e, "somiti", "/somiti")}
+                >
                   <KPICard
                     label={lang === "bn" ? "সমিতি (Samity)" : "Samity"}
                     value={fmtMoney(somitiTotal)}
-                    sub={dateRangeLabel}
+                    sub={!revealedKpis.somiti ? (lang === "bn" ? "ট্যাপ করে দেখুন" : "Tap to reveal") : (dateRangeLabel + (lang === "bn" ? " • বিস্তারিত দেখতে ট্যাপ করুন" : " • Tap to open"))}
                     icon={PiggyBank}
                     color="bg-purple-600"
                     isDesktop={true}
@@ -1832,8 +1895,10 @@ export default function Dashboard() {
                     className="h-full justify-between"
                     align={kpiConfig.align as any}
                     size={kpiConfig.size as any}
+                    isPrivacyProtected={true}
+                    isRevealed={revealedKpis.somiti}
                   />
-                </Link>
+                </div>
               ) : <div key="somiti" className="hidden" />;
             default:
               return null;

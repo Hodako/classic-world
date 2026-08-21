@@ -57,7 +57,7 @@ export default function SuperAdminPage() {
   const auth = useQuery({ queryKey: ["super-admin"], queryFn: superAdminCheckFn });
   
   const [username, setUsername] = useState("superadmin");
-  const [password, setPassword] = useState("");
+  const [password, setPassword] = useState("superadmin123");
   const [limit, setLimit] = useState("5");
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);

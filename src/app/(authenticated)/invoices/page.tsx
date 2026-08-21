@@ -421,7 +421,7 @@ export default function InvoicePage() {
     return `INV-${Date.now().toString().slice(-6)}`;
   }, [invoiceItems.length === 0]);
 
-  const businessName = user?.business_name || "Classic World";
+  const businessName = user?.business_name || "HakimQzz";
   const userEmail = user?.email || "";
   const tagline = t("tagline") || "Quality Products & Service";
   const invoiceDate = fmtDateTime(new Date().toISOString());
@@ -462,7 +462,7 @@ export default function InvoicePage() {
     }
 
     try {
-      await downloadPwaInvoicePdf({
+      printPwaInvoice({
         businessName,
         userEmail: biz?.emails || user?.business_emails || userEmail,
         shopAddress: biz?.address || user?.business_address || "",
@@ -470,9 +470,9 @@ export default function InvoicePage() {
         pageSize: biz?.invoice_page_size || user?.invoice_page_size || "80mm",
         pageWidth: biz?.invoice_page_width || user?.invoice_page_width || "",
         pageHeight: biz?.invoice_page_height || user?.invoice_page_height || "",
-        invoiceFontSize: biz?.invoice_font_size || user?.invoice_font_size || "22px",
+        invoiceFontSize: biz?.invoice_font_size || user?.invoice_font_size || "16px",
         invoiceScale: biz?.invoice_scale || user?.invoice_scale || "100%",
-        invoiceLineSpacing: biz?.invoice_line_spacing || user?.invoice_line_spacing || "6px",
+        invoiceLineSpacing: biz?.invoice_line_spacing || user?.invoice_line_spacing || "3px",
         tagline,
         invoiceNo,
         invoiceDate,
@@ -488,10 +488,10 @@ export default function InvoicePage() {
         paymentStatus,
         colorTheme,
         terms: biz?.invoice_terms || "",
-      }, true);
-      toast.success(lang === "bn" ? "ইনভয়েস পিডিএফ ভিউ প্রস্তুত হচ্ছে!" : "Opening invoice PDF!");
+      });
+      toast.success(lang === "bn" ? "ইনভয়েস প্রিন্ট প্রস্তুত হচ্ছে!" : "Opening invoice print view!");
     } catch (err: any) {
-      toast.error(lang === "bn" ? "পিডিএফ প্রস্তুত সমস্যা: " + (err?.message || "") : "Failed to generate PDF: " + (err?.message || ""));
+      toast.error(lang === "bn" ? "প্রিন্ট সমস্যা: " + (err?.message || "") : "Failed to open print: " + (err?.message || ""));
     }
   }
 

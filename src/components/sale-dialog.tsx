@@ -324,7 +324,7 @@ export function SaleDialog({
         const paymentModeStr = type === "bkash" ? "BKASH" : type === "credit" ? "CREDIT" : type === "online" ? "BANK" : "CASH";
 
         const invoiceParams = {
-          businessName: user.business_name || user.full_name || "Classic World POS",
+          businessName: user.business_name || user.full_name || "Dream Fashion POS",
           userEmail: user.business_emails || user.email || "",
           shopAddress: user.business_address || "",
           shopPhoneNumbers: user.business_phone_numbers || "",
@@ -355,7 +355,7 @@ export function SaleDialog({
           terms: user.invoice_terms || "",
         };
 
-        await downloadPwaInvoicePdf(invoiceParams, true);
+        printPwaInvoice(invoiceParams);
         toast.success(lang === "bn" ? "ইনভয়েস প্রিন্ট প্রস্তুত হচ্ছে!" : "Opening invoice print view!");
       }
 

@@ -112,25 +112,25 @@ function InvoiceDocumentView({
         </span>
       </div>
 
-      <div className="space-y-3 relative z-10">
+      <div className="space-y-2 relative z-10">
         {/* Header - Centered */}
         <div className="text-center space-y-0.5">
-          <h1 className="text-lg font-black uppercase tracking-wide text-black">
+          <h1 className="text-base sm:text-lg font-black uppercase tracking-wide text-black">
             {businessName}
           </h1>
-          {tagline && <p className="text-[11px] font-medium text-black">{tagline}</p>}
+          {tagline && <p className="text-[11px] font-bold text-zinc-700">{tagline}</p>}
           {biz?.address && (
-            <p className="text-[11px] text-black leading-tight">
+            <p className="text-[10.5px] text-zinc-600 leading-tight">
               {biz.address}
             </p>
           )}
           {biz?.phone_numbers && (
-            <p className="text-[11px] font-mono font-semibold text-black">
-              Phone: {biz.phone_numbers}
+            <p className="text-[11px] font-mono font-bold text-black">
+              মোবাইল: {biz.phone_numbers}
             </p>
           )}
           {(biz?.emails || userEmail) && (
-            <p className="text-[10px] text-zinc-700">{biz?.emails || userEmail}</p>
+            <p className="text-[10px] text-zinc-600">{biz?.emails || userEmail}</p>
           )}
         </div>
 
@@ -139,13 +139,14 @@ function InvoiceDocumentView({
 
         {/* Invoice Meta Section */}
         <div className="text-[11px] leading-snug space-y-0.5 text-black">
-          <div className="flex justify-end">
-            <span className="font-mono text-[10.5px]">{invoiceDate}</span>
+          <div className="flex justify-between items-center font-mono">
+            <span className="font-bold">ইনভয়েস: {invoiceNo || "#INV-928174"}</span>
+            <span className="text-[10.5px]">{invoiceDate}</span>
           </div>
           {customerName && (
             <div className="flex justify-between items-baseline gap-1.5 whitespace-nowrap overflow-hidden pt-0.5">
-              <span className="truncate whitespace-nowrap">Customer: <strong>{customerName}</strong></span>
-              <span className="font-mono shrink-0 whitespace-nowrap">{customerPhone}</span>
+              <span className="truncate whitespace-nowrap">ক্রেতা: <strong>{customerName}</strong></span>
+              <span className="font-mono shrink-0 whitespace-nowrap font-semibold">{customerPhone}</span>
             </div>
           )}
         </div>
@@ -157,22 +158,22 @@ function InvoiceDocumentView({
         <table className="w-full text-left border-collapse text-[11px]">
           <thead>
             <tr className="border-b border-dashed border-black">
-              <th className="py-1 text-left font-bold uppercase text-[10px]">Item</th>
-              <th className="py-1 text-center font-bold uppercase text-[10px] w-8">Qty</th>
-              <th className="py-1 text-right font-bold uppercase text-[10px] w-16">Price</th>
+              <th className="py-1 text-left font-bold text-[10.5px]">বিবরণ (Item)</th>
+              <th className="py-1 text-center font-bold text-[10.5px] w-12">পরিমাণ</th>
+              <th className="py-1 text-right font-bold text-[10.5px] w-16">মূল্য</th>
             </tr>
           </thead>
           <tbody>
             {items.length === 0 ? (
               <tr>
                 <td colSpan={3} className="py-6 text-center text-zinc-500 italic text-[11px]">
-                  No items added yet.
+                  কোন পণ্য যুক্ত করা হয়নি।
                 </td>
               </tr>
             ) : (
               items.map((item, index) => (
                 <tr key={`${item.product.id}-${index}`} className="border-b border-dotted border-zinc-300">
-                  <td className="py-1.5 pr-1 font-semibold text-black break-words leading-tight" style={{ wordBreak: "normal", overflowWrap: "break-word" }}>
+                  <td className="py-1.5 pr-1 font-bold text-black break-words leading-tight" style={{ wordBreak: "normal", overflowWrap: "break-word" }}>
                     {item.product.name}
                   </td>
                   <td className="py-1.5 px-1 text-center font-mono font-medium text-black">
@@ -191,54 +192,63 @@ function InvoiceDocumentView({
         <div className="border-t border-dashed border-black my-1.5" />
 
         {/* Totals Section */}
-        <div className="space-y-1 text-[11px] text-black">
+        <div className="space-y-1 text-[11.5px] text-black">
           <div className="flex justify-between font-bold">
-            <span>Subtotal</span>
+            <span>মোট মূল্য (Subtotal):</span>
             <span className="font-mono">৳{subtotal.toLocaleString()}</span>
           </div>
 
           {discountAmount > 0 && (
-            <div className="flex justify-between text-black">
-              <span>Discount</span>
+            <div className="flex justify-between font-bold text-red-600">
+              <span>বিশেষ ছাড় (Discount):</span>
               <span className="font-mono">-৳{discountAmount.toLocaleString()}</span>
             </div>
           )}
 
-          <div className="flex justify-between font-medium pt-1">
-            <span>Cash Received</span>
-            <span className="font-mono font-semibold">৳{paidAmount.toLocaleString()}</span>
+          {/* Boxed Total Payable */}
+          <div className="border-y-2 border-black py-1 my-1 flex justify-between font-black text-xs sm:text-[13px]">
+            <span>সর্বমোট (Total Payable):</span>
+            <span className="font-mono">৳{total.toLocaleString()}</span>
           </div>
 
-          {due > 0 && (
-            <div className="flex justify-between font-bold">
-              <span>Due Amount</span>
-              <span className="font-mono">৳{due.toLocaleString()}</span>
-            </div>
-          )}
+          <div className="flex justify-between font-bold text-emerald-600">
+            <span>পরিশোধ (Cash Paid):</span>
+            <span className="font-mono">৳{paidAmount.toLocaleString()}</span>
+          </div>
+
+          <div className={`flex justify-between font-bold ${due > 0 ? "text-red-600" : "text-black"}`}>
+            <span>বকেয়া (Due):</span>
+            <span className="font-mono">৳{due.toLocaleString()}</span>
+          </div>
 
           {changeAmount > 0 && (
-            <div className="flex justify-between">
-              <span>Change Return</span>
-              <span className="font-mono font-semibold">৳{changeAmount.toLocaleString()}</span>
+            <div className="flex justify-between font-semibold text-zinc-700">
+              <span>ফেরত (Change Return):</span>
+              <span className="font-mono">৳{changeAmount.toLocaleString()}</span>
             </div>
           )}
 
-          <div className="flex justify-between text-[10px] pt-1">
-            <span>Paid By:</span>
-            <span className="font-bold uppercase">{paymentStatus === "DUE" ? "Credit" : "Cash"}</span>
+          <div className="flex justify-between text-[10.5px] pt-1 text-zinc-600">
+            <span>পেমেন্ট মাধ্যম:</span>
+            <span className="font-bold uppercase text-black">{paymentStatus === "DUE" ? "CREDIT (বাকী)" : "CASH (নগদ)"}</span>
           </div>
         </div>
       </div>
 
       {/* Footer */}
-      <div className="pt-2.5 border-t border-dashed border-black text-center text-black space-y-1 mt-3 relative z-10">
+      <div className="pt-2 border-t border-dashed border-black text-center text-black space-y-1 mt-2.5 relative z-10">
         {biz?.invoice_terms ? (
           <p className="text-xs font-bold whitespace-pre-line leading-snug text-black">
             {biz.invoice_terms}
           </p>
         ) : (
-          <div>
-            <p className="font-black text-xs uppercase tracking-wider">Thank You!</p>
+          <div className="space-y-0.5">
+            <p className="text-[11px] font-black text-black">
+              আমাদের সাথে কেনাকাটা করার জন্য ধন্যবাদ!
+            </p>
+            <p className="text-[9.5px] text-zinc-600 font-medium">
+              * ৭ দিনের মধ্যে ইনভয়েস সহ পণ্য পরিবর্তন প্রযোজ্য *
+            </p>
           </div>
         )}
       </div>

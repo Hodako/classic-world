@@ -320,8 +320,7 @@ export function SaleDialog({
 
       if (action === "print") {
         const cust = customers.find(c => c.id === partyId);
-        const discTotal = cart.reduce((acc, item) => acc + (Number(item.discount) || 0) * (Number(item.qty) || 1), 0);
-        const paymentModeStr = type === "bkash" ? "BKASH" : type === "credit" ? "CREDIT" : type === "online" ? "BANK" : "CASH";
+        const paymentModeStr = type === "bkash" ? "BKASH (বিকাশ)" : type === "bank" ? "BANK (ব্যাংক)" : type === "credit" ? "CREDIT (বাকী)" : "CASH (নগদ)";
 
         const invoiceParams = {
           businessName: user.business_name || user.full_name || "Dream Fashion POS",
@@ -436,9 +435,9 @@ export function SaleDialog({
 
                     <button
                       type="button"
-                      onClick={() => setType("online")}
+                      onClick={() => setType("bank")}
                       className={`flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-xl border text-xs font-semibold transition-all cursor-pointer ${
-                        type === "online"
+                        type === "bank"
                           ? "bg-sky-500/15 border-sky-500 text-sky-700 dark:text-sky-300 shadow-xs ring-1 ring-sky-500/30"
                           : "border-border bg-card text-muted-foreground hover:bg-muted/50 hover:text-foreground"
                       }`}

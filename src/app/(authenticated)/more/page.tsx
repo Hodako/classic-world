@@ -8,7 +8,7 @@ import {
   Banknote, BarChart3, Settings, FileText, Users,
   LogOut, TrendingUp, TrendingDown, GripVertical, Palette,
   Layout, Type, Image as ImageIcon, Sparkles, LayoutGrid, AlignLeft, AlignCenter, AlignRight,
-  Bot, Send, Loader2, HelpCircle, RefreshCw
+  Bot, Send, Loader2, HelpCircle, RefreshCw, Landmark
 } from "lucide-react";
 import { useT } from "@/lib/i18n";
 import { useAuth } from "@/hooks/use-auth";
@@ -42,6 +42,7 @@ const businessLinks = [
 ] as const;
 
 const financeLinks = [
+  { to: "/bank",           labelKey: "bank_management", desc: "Bank accounts, loans & installment repayments", icon: Landmark, imageUrl: "https://img.icons8.com/color/48/bank-building.png", perm: "expenses" as const },
   { to: "/expenses",       labelKey: "expenses",        desc: "Record overhead expenses", icon: Receipt, imageUrl: "https://img.icons8.com/color/48/tax.png", perm: "expenses"   as const },
   { to: "/somiti",         labelKey: "somiti",          desc: "Manage Somiti accounts", icon: PiggyBank, imageUrl: "/icons/samity_icon.png",    perm: "expenses"   as const },
   { to: "/cash-management",labelKey: "cash_management", desc: "Cashbox ledger & cashflow", icon: Banknote, imageUrl: "/icons/cashbox_icon.png",     perm: "cashbox"   as const },
@@ -414,7 +415,7 @@ export default function MorePage() {
               </div>
               <div className="space-y-1">
                 <h4 className="font-bold text-xs text-foreground">
-                  {lang === "bn" ? "হাকিম কিউজেডজেড অডিট এজেন্টের সাথে চ্যাট করুন" : "Chat with Classic World Audit Agent"}
+                  {lang === "bn" ? "হাকিম কিউজেডজেড অডিট এজেন্টের সাথে চ্যাট করুন" : "Chat with HakimQzz Audit Agent"}
                 </h4>
                 <p className="text-[10px] text-muted-foreground leading-normal max-w-[240px] mx-auto">
                   {lang === "bn"
@@ -929,7 +930,7 @@ export default function MorePage() {
         window.location.origin.startsWith("capacitor:") ||
         window.location.origin.startsWith("file:")
       );
-      const uploadUrl = isCap ? "https://classicworld-pos.web.app/api/upload" : "/api/upload";
+      const uploadUrl = isCap ? "https://hakim.qzz.io/api/upload" : "/api/upload";
 
       const headers: Record<string, string> = {};
       if (isCap) {
@@ -991,7 +992,7 @@ export default function MorePage() {
           </h3>
           <div className="grid grid-cols-2 gap-3">
             {visibleBiz.map(({ to, labelKey, desc, icon: Icon }) => (
-              <Link key={`${to}-${labelKey}`} href={to} className="block group">
+              <Link key={to} href={to} className="block group">
                 <Card className="p-3.5 h-full flex flex-col justify-between gap-3 hover:border-primary/30 transition-all active:scale-[0.98] beveled-card bg-card/60 backdrop-blur-sm">
                   <div className="size-9 rounded-xl bg-gradient-to-br from-primary/20 to-primary/5 text-primary grid place-items-center shrink-0 border border-primary/10 shadow-sm">
                     <Icon className="size-4.5" />
@@ -1015,7 +1016,7 @@ export default function MorePage() {
           </h3>
           <div className="grid grid-cols-2 gap-3">
             {visibleFin.map(({ to, labelKey, desc, icon: Icon, imageUrl }: any) => (
-              <Link key={`${to}-${labelKey}`} href={to} className="block group">
+              <Link key={to} href={to} className="block group">
                 <Card className="p-3.5 h-full flex flex-col justify-between gap-3 hover:border-indigo-500/30 transition-all active:scale-[0.98] beveled-card bg-card/60 backdrop-blur-sm">
                   <div className="size-9 rounded-xl bg-gradient-to-br from-indigo-500/20 to-indigo-500/5 text-indigo-600 dark:text-indigo-400 grid place-items-center shrink-0 border border-indigo-500/10 shadow-sm overflow-hidden">
                     {imageUrl ? (
@@ -1048,7 +1049,7 @@ export default function MorePage() {
           <Card className="overflow-hidden border border-white/20 dark:border-white/5 bg-white/60 dark:bg-zinc-900/60 backdrop-blur-md rounded-2xl shadow-sm">
             <div className="divide-y divide-zinc-200/50 dark:divide-zinc-800/40">
               {visibleBiz.map(({ to, labelKey, desc, icon: Icon }) => (
-                <Link key={`${to}-${labelKey}`} href={to} className="flex items-center justify-between p-3.5 hover:bg-muted/10 active:bg-muted/20 transition-all">
+                <Link key={to} href={to} className="flex items-center justify-between p-3.5 hover:bg-muted/10 active:bg-muted/20 transition-all">
                   <div className="flex items-center gap-3">
                     <div className="size-8.5 rounded-xl bg-primary/10 text-primary grid place-items-center border border-primary/15 shadow-sm">
                       <Icon className="size-4" />
@@ -1075,7 +1076,7 @@ export default function MorePage() {
           <Card className="overflow-hidden border border-white/20 dark:border-white/5 bg-white/60 dark:bg-zinc-900/60 backdrop-blur-md rounded-2xl shadow-sm">
             <div className="divide-y divide-zinc-200/50 dark:divide-zinc-800/40">
               {visibleFin.map(({ to, labelKey, desc, icon: Icon, imageUrl }: any) => (
-                <Link key={`${to}-${labelKey}`} href={to} className="flex items-center justify-between p-3.5 hover:bg-muted/10 active:bg-muted/20 transition-all">
+                <Link key={to} href={to} className="flex items-center justify-between p-3.5 hover:bg-muted/10 active:bg-muted/20 transition-all">
                   <div className="flex items-center gap-3">
                     <div className="size-8.5 rounded-xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 grid place-items-center border border-indigo-500/15 shadow-sm overflow-hidden">
                       {imageUrl ? (
@@ -2304,7 +2305,7 @@ export default function MorePage() {
             <p className="text-xs text-muted-foreground truncate mt-0.5">{user?.email}</p>
             <div className="flex items-center justify-between gap-2 mt-1">
               <div className="text-[10px] text-zinc-500 dark:text-zinc-400 font-medium uppercase tracking-wider">
-                {user?.business_name || "Classic World"}
+                {user?.business_name || "Dream Fashion"}
               </div>
               <PWAInstallButton variant="outline" className="h-7 text-[11px] px-2.5" />
             </div>

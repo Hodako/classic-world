@@ -1,6 +1,6 @@
 "use client";
 
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { useState, useMemo } from "react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import Link from "next/link";
@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { getSales, type Sale } from "@/lib/queries";
+import { getSales, getProducts, type Sale, type Product } from "@/lib/queries";
 import { useCachedQuery } from "@/hooks/use-cached-query";
 import { PaginationBar, paginate } from "@/components/ui/pagination-bar";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -18,14 +18,36 @@ import { fmtMoney, fmtDateTime } from "@/lib/format";
 import { FAB } from "@/components/ui/fab";
 import { SaleDialog } from "@/components/sale-dialog";
 import { EditSaleDialog } from "@/components/edit-sale-dialog";
-import { RotateCcw, Search, Trash2, Pencil, ChevronDown, ChevronUp, Printer, FileDown } from "lucide-react";
+import {
+  RotateCcw,
+  Search,
+  Trash2,
+  Pencil,
+  ChevronDown,
+  ChevronUp,
+  Printer,
+  FileDown,
+  FileSpreadsheet,
+  Calendar,
+  Filter,
+  CreditCard,
+  Banknote,
+  DollarSign,
+  Tag,
+  Plus,
+} from "lucide-react";
 import { toast } from "sonner";
 import { createReturnFn, deleteSaleFn } from "@/lib/rpc";
 import { ConfirmDeleteDialog } from "@/components/confirm-delete-dialog";
 import { printPwaInvoice, downloadPwaInvoicePdf } from "@/lib/invoice-printer";
 import { useAuth } from "@/hooks/use-auth";
-import { useQuery } from "@tanstack/react-query";
 import { getBusinessSettingsFn } from "@/lib/rpc-admin";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 interface GroupedSale {
   id: string;
@@ -37,7 +59,7 @@ interface GroupedSale {
   profit: number;
   due_amount: number;
   paid_amount: number;
-  type: "cash" | "bkash" | "credit" | "online";
+  type: "cash" | "bkash" | "bank" | "credit" | "online" | string;
   created_at: string;
   parties?: { name: string } | null;
   items: Sale[];
@@ -64,24 +86,24 @@ function groupSales(sales: Sale[]): GroupedSale[] {
         profit: s.profit,
         due_amount: s.due_amount,
         paid_amount: s.paid_amount,
-        type: s.type,
+        type: s.type || "cash",
         created_at: s.created_at,
         parties: s.parties,
-        items: [s]
+        items: [s],
       });
     }
   });
 
   Object.entries(cartGroups).forEach(([cartId, items]) => {
     items.sort((a, b) => a.product_name.localeCompare(b.product_name));
-    
+
     const firstItem = items[0];
     const totalQty = items.reduce((sum, x) => sum + x.qty, 0);
     const totalSellPrice = items.reduce((sum, x) => sum + Number(x.sell_price) * x.qty, 0);
     const totalProfit = items.reduce((sum, x) => sum + x.profit, 0);
     const totalDue = items.reduce((sum, x) => sum + x.due_amount, 0);
     const totalPaid = items.reduce((sum, x) => sum + x.paid_amount, 0);
-    
+
     const names = items.map(x => `${x.product_name} (×${x.qty})`).join(", ");
 
     grouped.push({
@@ -94,10 +116,10 @@ function groupSales(sales: Sale[]): GroupedSale[] {
       profit: totalProfit,
       due_amount: totalDue,
       paid_amount: totalPaid,
-      type: firstItem.type,
+      type: firstItem.type || "cash",
       created_at: firstItem.created_at,
       parties: firstItem.parties,
-      items: items
+      items: items,
     });
   });
 
@@ -108,81 +130,422 @@ function groupSales(sales: Sale[]): GroupedSale[] {
 export default function SalesPage() {
   const { lang, t } = useT();
   const isMobile = useIsMobile();
-  const { data } = useCachedQuery(["sales"], getSales);
+  const { data: rawSales = [] } = useCachedQuery(["sales"], getSales);
+  const { data: products = [] } = useCachedQuery(["products"], getProducts);
+
   const [open, setOpen] = useState(false);
   const [editSale, setEditSale] = useState<Sale | null>(null);
   const [returnSale, setReturnSale] = useState<Sale | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [search, setSearch] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState("all");
+  const [activeTab, setActiveTab] = useState("all");
+  const [dateRange, setDateRange] = useState<"today" | "yesterday" | "week" | "month" | "all" | "custom">("today");
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo, setCustomTo] = useState("");
   const [page, setPage] = useState(1);
   const pageSize = isMobile ? 12 : 20;
 
+  // Build product to category lookup
+  const productCategoryMap = useMemo(() => {
+    const map = new Map<string, string>();
+    products.forEach(p => {
+      if (p.id && p.category) map.set(p.id, p.category.trim());
+      if (p.name && p.category) map.set(p.name.toLowerCase().trim(), p.category.trim());
+    });
+    return map;
+  }, [products]);
+
+  // Unique categories list
+  const availableCategories = useMemo(() => {
+    const cats = new Set<string>();
+    products.forEach(p => {
+      if (p.category && p.category.trim()) cats.add(p.category.trim());
+    });
+    return Array.from(cats).sort();
+  }, [products]);
+
   const allSalesGrouped = useMemo(() => {
-    return groupSales(data ?? []);
-  }, [data]);
+    return groupSales(rawSales);
+  }, [rawSales]);
 
-  const q = search.trim().toLowerCase();
-  const filter = (items: GroupedSale[]) =>
-    items.filter(s =>
-      !q ||
-      s.product_name.toLowerCase().includes(q) ||
-      (s.parties?.name ?? "").toLowerCase().includes(q),
-    );
+  // Date Filtering Logic
+  const inDateRange = (dateStr: string) => {
+    if (!dateStr) return false;
+    const d = new Date(dateStr);
+    const now = new Date();
 
-  const cash = filter(allSalesGrouped.filter(s => s.type === "cash"));
-  const bkash = filter(allSalesGrouped.filter(s => s.type === "bkash"));
-  const credit = filter(allSalesGrouped.filter(s => s.type === "credit"));
-  const online = filter(allSalesGrouped.filter(s => s.type === "online"));
+    if (dateRange === "today") {
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      return d >= today;
+    }
+    if (dateRange === "yesterday") {
+      const yesterdayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+      const yesterdayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      return d >= yesterdayStart && d < yesterdayEnd;
+    }
+    if (dateRange === "week") {
+      const weekStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6);
+      return d >= weekStart;
+    }
+    if (dateRange === "month") {
+      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+      return d >= monthStart;
+    }
+    if (dateRange === "custom") {
+      if (customFrom && d < new Date(customFrom)) return false;
+      if (customTo) {
+        const toDate = new Date(customTo);
+        toDate.setHours(23, 59, 59, 999);
+        if (d > toDate) return false;
+      }
+      return true;
+    }
+    return true; // "all"
+  };
+
+  // Master Filter: Search + Date + Category + Payment Method Tab
+  const filteredSales = useMemo(() => {
+    const q = search.trim().toLowerCase();
+
+    return allSalesGrouped.filter(s => {
+      // 1. Date filter
+      if (!inDateRange(s.created_at)) return false;
+
+      // 2. Tab / Payment Method Filter
+      if (activeTab !== "all") {
+        if (activeTab === "cash" && s.type !== "cash") return false;
+        if (activeTab === "bkash" && s.type !== "bkash") return false;
+        if (activeTab === "bank" && s.type !== "bank") return false;
+        if (activeTab === "credit" && s.type !== "credit") return false;
+        if (activeTab === "online" && s.type !== "online") return false;
+      }
+
+      // 3. Category Filter
+      if (selectedCategory !== "all") {
+        const matchesCategory = s.items.some(it => {
+          const cat = (it.product_id ? productCategoryMap.get(it.product_id) : null) ||
+                      productCategoryMap.get(it.product_name.toLowerCase().trim());
+          return cat === selectedCategory;
+        });
+        if (!matchesCategory) return false;
+      }
+
+      // 4. Search Query
+      if (q) {
+        const matchName = s.product_name.toLowerCase().includes(q);
+        const matchCustomer = (s.parties?.name ?? "").toLowerCase().includes(q);
+        const matchNote = s.items.some(it => (it.note || "").toLowerCase().includes(q));
+        if (!matchName && !matchCustomer && !matchNote) return false;
+      }
+
+      return true;
+    });
+  }, [allSalesGrouped, dateRange, customFrom, customTo, activeTab, selectedCategory, search, productCategoryMap]);
+
+  // Financial KPIs for filtered set
+  const filteredTotalSales = useMemo(() => {
+    return filteredSales.reduce((acc, s) => acc + s.sell_price, 0);
+  }, [filteredSales]);
+
+  const filteredTotalProfit = useMemo(() => {
+    return filteredSales.reduce((acc, s) => acc + s.profit, 0);
+  }, [filteredSales]);
+
+  const filteredTotalDue = useMemo(() => {
+    return filteredSales.reduce((acc, s) => acc + s.due_amount, 0);
+  }, [filteredSales]);
+
+  // CSV Exporter
+  const exportSalesCsv = (langCode: "en" | "bn") => {
+    const isBn = langCode === "bn";
+    const headers = isBn
+      ? ["তারিখ ও সময়", "ইনভয়েস / পণ্য বিবরণ", "ক্যাটাগরি", "পরিমাণ", "বিক্রয় মূল্য (টাকা)", "লাভ (টাকা)", "পেমেন্ট মাধ্যম", "কাস্টমার", "পরিশোধ (টাকা)", "বকেয়া (টাকা)"]
+      : ["Date & Time", "Invoice / Products", "Category", "Qty", "Total Sell (BDT)", "Profit (BDT)", "Payment Method", "Customer", "Paid (BDT)", "Due (BDT)"];
+
+    const rows = filteredSales.map(s => {
+      const methodStr =
+        s.type === "bkash" ? (isBn ? "বিকাশ" : "bKash") :
+        s.type === "bank" ? (isBn ? "ব্যাংক" : "Bank") :
+        s.type === "credit" ? (isBn ? "বাকী" : "Credit") :
+        s.type === "online" ? (isBn ? "অনলাইন" : "Online") :
+        (isBn ? "নগদ" : "Cash");
+
+      const custName = s.parties?.name || (isBn ? "সাধারণ কাস্টমার" : "Walk-in Customer");
+      const cats = Array.from(new Set(s.items.map(it => {
+        return (it.product_id ? productCategoryMap.get(it.product_id) : null) ||
+               productCategoryMap.get(it.product_name.toLowerCase().trim()) ||
+               (isBn ? "সাধারণ" : "General");
+      }))).join("; ");
+
+      return [
+        `"${fmtDateTime(s.created_at)}"`,
+        `"${s.product_name.replace(/"/g, '""')}"`,
+        `"${cats}"`,
+        s.qty,
+        s.sell_price,
+        s.profit,
+        `"${methodStr}"`,
+        `"${custName.replace(/"/g, '""')}"`,
+        s.paid_amount,
+        s.due_amount,
+      ];
+    });
+
+    const csvContent = "\uFEFF" + [headers.join(","), ...rows.map(r => r.join(","))].join("\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `Sales_Report_${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    toast.success(isBn ? "বিক্রয় স্প্রেডশিট ডাউনলোড সম্পন্ন হয়েছে" : "Sales CSV exported successfully");
+  };
 
   return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between gap-2">
-        <h1 className="text-xl font-bold font-serif">{t("sales")}</h1>
-        <Button
-          type="button"
-          variant="outline"
-          size="icon"
-          className="size-8 shrink-0"
-          onClick={() => setSearchOpen(v => !v)}
-          aria-label={t("search")}
-        >
-          <Search className="icon-sm" />
-        </Button>
+    <div className="space-y-3 pb-12">
+      {/* Top Header Toolbar */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 bg-card p-3 rounded-2xl border border-border/80 shadow-xs">
+        <div className="flex items-center justify-between gap-2">
+          <h1 className="text-lg sm:text-xl font-bold font-serif flex items-center gap-2">
+            <span>{t("sales")}</span>
+            <span className="text-xs font-normal text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
+              {filteredSales.length} {lang === "bn" ? "টি বিক্রয়" : "sales"}
+            </span>
+          </h1>
+
+          {/* Quick Action Button for Phone View */}
+          <Button
+            onClick={() => setOpen(true)}
+            size="sm"
+            className="sm:hidden h-8 px-2.5 text-xs font-bold rounded-lg bg-primary text-primary-foreground gap-1"
+          >
+            <Plus className="size-3.5 stroke-[2.5]" />
+            <span>{lang === "bn" ? "নতুন বিক্রি" : "New Sale"}</span>
+          </Button>
+        </div>
+
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Search Bar Input */}
+          <div className="relative flex-1 sm:w-56">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground pointer-events-none" />
+            <Input
+              className="pl-8 h-8.5 text-xs rounded-xl"
+              placeholder={lang === "bn" ? "পণ্য বা কাস্টমার খুঁজুন..." : "Search sales..."}
+              value={search}
+              onChange={e => { setSearch(e.target.value); setPage(1); }}
+            />
+          </div>
+
+          {/* CSV Export Dropdown */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8.5 text-xs font-semibold rounded-xl beveled-button gap-1.5 cursor-pointer"
+              >
+                <FileSpreadsheet className="size-4 text-emerald-600 dark:text-emerald-400" />
+                <span>{isMobile ? "CSV" : (lang === "bn" ? "এক্সেল / CSV" : "Export CSV")}</span>
+                <ChevronDown className="size-3 opacity-60 ml-0.5" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => exportSalesCsv("bn")}>
+                Bangla (বাংলা স্প্রেডশিট)
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => exportSalesCsv("en")}>
+                English (ইংরেজি Spreadsheet)
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          {/* New Sale Button for Desktop */}
+          <Button
+            onClick={() => setOpen(true)}
+            size="sm"
+            className="hidden sm:flex h-8.5 px-3 text-xs font-bold rounded-xl bg-primary text-primary-foreground shadow-xs gap-1.5"
+          >
+            <Plus className="size-4 stroke-[2.5]" />
+            <span>{lang === "bn" ? "নতুন বিক্রি" : "New Sale"}</span>
+          </Button>
+        </div>
       </div>
 
-      {(searchOpen || search) && (
-        <div className="relative">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground z-10 pointer-events-none" />
-          <Input
-            style={{ paddingLeft: "2.5rem" }}
-            className="pl-10 h-9 text-sm"
-            placeholder={t("search_sales")}
-            value={search}
-            onChange={e => { setSearch(e.target.value); setPage(1); }}
-            autoFocus={searchOpen}
+      {/* Date & Category Filters Section */}
+      <Card className="p-3 rounded-2xl border border-border/80 bg-card/60 backdrop-blur-sm space-y-2.5">
+        {/* Date Filter Bar */}
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <div className="flex items-center gap-1.5 text-xs font-bold text-foreground">
+            <Calendar className="size-4 text-primary" />
+            <span>{lang === "bn" ? "তারিখ ফিল্টার:" : "Date Filter:"}</span>
+          </div>
+
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <button
+              type="button"
+              onClick={() => { setDateRange("today"); setPage(1); }}
+              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+                dateRange === "today" ? "bg-primary text-primary-foreground shadow-xs" : "bg-muted hover:bg-muted/80 text-muted-foreground"
+              }`}
+            >
+              {lang === "bn" ? "আজ" : "Today"}
+            </button>
+            <button
+              type="button"
+              onClick={() => { setDateRange("yesterday"); setPage(1); }}
+              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+                dateRange === "yesterday" ? "bg-primary text-primary-foreground shadow-xs" : "bg-muted hover:bg-muted/80 text-muted-foreground"
+              }`}
+            >
+              {lang === "bn" ? "গতকাল" : "Yesterday"}
+            </button>
+            <button
+              type="button"
+              onClick={() => { setDateRange("week"); setPage(1); }}
+              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+                dateRange === "week" ? "bg-primary text-primary-foreground shadow-xs" : "bg-muted hover:bg-muted/80 text-muted-foreground"
+              }`}
+            >
+              {lang === "bn" ? "গত ৭ দিন" : "Last 7 Days"}
+            </button>
+            <button
+              type="button"
+              onClick={() => { setDateRange("month"); setPage(1); }}
+              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+                dateRange === "month" ? "bg-primary text-primary-foreground shadow-xs" : "bg-muted hover:bg-muted/80 text-muted-foreground"
+              }`}
+            >
+              {lang === "bn" ? "চলতি মাস" : "This Month"}
+            </button>
+            <button
+              type="button"
+              onClick={() => { setDateRange("all"); setPage(1); }}
+              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+                dateRange === "all" ? "bg-primary text-primary-foreground shadow-xs" : "bg-muted hover:bg-muted/80 text-muted-foreground"
+              }`}
+            >
+              {lang === "bn" ? "সকল সময়" : "All Time"}
+            </button>
+
+            {/* Custom Date Filter Icon Button Beside 'All Time' */}
+            <button
+              type="button"
+              onClick={() => {
+                setDateRange(dateRange === "custom" ? "today" : "custom");
+                setPage(1);
+              }}
+              title={lang === "bn" ? "কাস্টম তারিখ নির্বাচন" : "Custom Date Picker"}
+              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 border ${
+                dateRange === "custom"
+                  ? "bg-primary text-primary-foreground border-primary shadow-xs"
+                  : "bg-muted hover:bg-muted/80 text-muted-foreground border-border/70"
+              }`}
+            >
+              <Calendar className="size-3.5" />
+              <span>{lang === "bn" ? "কাস্টম তারিখ" : "Custom"}</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Custom Date Pickers */}
+        {dateRange === "custom" && (
+          <div className="grid grid-cols-2 gap-2 pt-1.5 border-t border-border/50">
+            <div className="space-y-1">
+              <Label className="text-[11px] text-muted-foreground font-semibold">{lang === "bn" ? "হতে" : "From"}</Label>
+              <Input
+                type="date"
+                value={customFrom}
+                onChange={e => { setCustomFrom(e.target.value); setPage(1); }}
+                className="h-8 text-xs rounded-xl"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-[11px] text-muted-foreground font-semibold">{lang === "bn" ? "পর্যন্ত" : "To"}</Label>
+              <Input
+                type="date"
+                value={customTo}
+                onChange={e => { setCustomTo(e.target.value); setPage(1); }}
+                className="h-8 text-xs rounded-xl"
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Product Category Filter Dropdown */}
+        <div className="flex items-center justify-between gap-2 pt-1 border-t border-border/50">
+          <div className="flex items-center gap-1.5 text-xs font-bold text-foreground">
+            <Tag className="size-3.5 text-primary" />
+            <span>{lang === "bn" ? "ক্যাটাগরি ফিল্টার:" : "Category Filter:"}</span>
+          </div>
+
+          <select
+            value={selectedCategory}
+            onChange={e => { setSelectedCategory(e.target.value); setPage(1); }}
+            className="h-8 rounded-lg border border-input bg-card px-2.5 text-xs font-semibold text-foreground shadow-xs cursor-pointer focus:ring-1 focus:ring-primary"
+          >
+            <option value="all">{lang === "bn" ? "সকল ক্যাটাগরি" : "All Categories"}</option>
+            {availableCategories.map(cat => (
+              <option key={cat} value={cat}>
+                {cat}
+              </option>
+            ))}
+          </select>
+        </div>
+      </Card>
+
+      {/* Summary KPI Strip */}
+      <div className="grid grid-cols-3 gap-2 text-center">
+        <Card className="p-2.5 rounded-xl border border-border/80 bg-card shadow-xs">
+          <span className="text-[10.5px] text-muted-foreground font-semibold">{lang === "bn" ? "মোট বিক্রি" : "Total Sales"}</span>
+          <p className="text-sm sm:text-base font-bold font-serif text-foreground mt-0.5">{fmtMoney(filteredTotalSales)}</p>
+        </Card>
+        <Card className="p-2.5 rounded-xl border border-emerald-500/20 bg-emerald-500/5 shadow-xs">
+          <span className="text-[10.5px] text-emerald-600 dark:text-emerald-400 font-semibold">{lang === "bn" ? "মোট লাভ" : "Total Profit"}</span>
+          <p className="text-sm sm:text-base font-bold font-serif text-emerald-600 dark:text-emerald-400 mt-0.5">{fmtMoney(filteredTotalProfit)}</p>
+        </Card>
+        <Card className="p-2.5 rounded-xl border border-rose-500/20 bg-rose-500/5 shadow-xs">
+          <span className="text-[10.5px] text-rose-600 dark:text-rose-400 font-semibold">{lang === "bn" ? "মোট বাকী" : "Total Due"}</span>
+          <p className="text-sm sm:text-base font-bold font-serif text-rose-600 dark:text-rose-400 mt-0.5">{fmtMoney(filteredTotalDue)}</p>
+        </Card>
+      </div>
+
+      {/* Payment Method Tabs (All, Cash, bKash, Bank, Credit, Online) */}
+      <Tabs value={activeTab} onValueChange={v => { setActiveTab(v); setPage(1); }}>
+        <TabsList className="grid grid-cols-6 w-full text-xs font-bold p-1 bg-muted/80 rounded-xl">
+          <TabsTrigger value="all" className="rounded-lg text-[11px] sm:text-xs">
+            {lang === "bn" ? "সব" : "All"}
+          </TabsTrigger>
+          <TabsTrigger value="cash" className="rounded-lg text-[11px] sm:text-xs">
+            {lang === "bn" ? "নগদ" : "Cash"}
+          </TabsTrigger>
+          <TabsTrigger value="bkash" className="rounded-lg text-[11px] sm:text-xs">
+            {lang === "bn" ? "বিকাশ" : "bKash"}
+          </TabsTrigger>
+          <TabsTrigger value="bank" className="rounded-lg text-[11px] sm:text-xs">
+            {lang === "bn" ? "ব্যাংক" : "Bank"}
+          </TabsTrigger>
+          <TabsTrigger value="credit" className="rounded-lg text-[11px] sm:text-xs">
+            {lang === "bn" ? "বাকী" : "Credit"}
+          </TabsTrigger>
+          <TabsTrigger value="online" className="rounded-lg text-[11px] sm:text-xs">
+            {lang === "bn" ? "অনলাইন" : "Online"}
+          </TabsTrigger>
+        </TabsList>
+
+        <div className="pt-3 space-y-2">
+          <SalesTab
+            items={filteredSales}
+            page={page}
+            pageSize={pageSize}
+            onPageChange={setPage}
+            onEdit={setEditSale}
+            productCategoryMap={productCategoryMap}
           />
         </div>
-      )}
-
-      <Tabs defaultValue="cash" onValueChange={() => setPage(1)}>
-        <TabsList className="grid grid-cols-4 w-full">
-          <TabsTrigger value="cash">{t("cash_sale")}</TabsTrigger>
-          <TabsTrigger value="bkash">{lang === "bn" ? "বিকাশ" : "bKash"}</TabsTrigger>
-          <TabsTrigger value="credit">{t("credit_sale")}</TabsTrigger>
-          <TabsTrigger value="online">{t("online_sell")}</TabsTrigger>
-        </TabsList>
-        <TabsContent value="cash" className="pt-3 space-y-2">
-          <SalesTab items={cash} page={page} pageSize={pageSize} onPageChange={setPage} onEdit={setEditSale} />
-        </TabsContent>
-        <TabsContent value="bkash" className="pt-3 space-y-2">
-          <SalesTab items={bkash} page={page} pageSize={pageSize} onPageChange={setPage} onEdit={setEditSale} />
-        </TabsContent>
-        <TabsContent value="credit" className="pt-3 space-y-2">
-          <SalesTab items={credit} page={page} pageSize={pageSize} onPageChange={setPage} credit onEdit={setEditSale} />
-        </TabsContent>
-        <TabsContent value="online" className="pt-3 space-y-2">
-          <SalesTab items={online} page={page} pageSize={pageSize} onPageChange={setPage} onEdit={setEditSale} />
-        </TabsContent>
       </Tabs>
 
       <FAB onClick={() => setOpen(true)} />
@@ -198,14 +561,19 @@ export default function SalesPage() {
 }
 
 function SalesTab({
-  items, page, pageSize, onPageChange, credit, onEdit,
+  items,
+  page,
+  pageSize,
+  onPageChange,
+  onEdit,
+  productCategoryMap,
 }: {
   items: GroupedSale[];
   page: number;
   pageSize: number;
   onPageChange: (p: number) => void;
-  credit?: boolean;
   onEdit: (sale: Sale) => void;
+  productCategoryMap: Map<string, string>;
 }) {
   const { lang, t } = useT();
   const qc = useQueryClient();
@@ -224,7 +592,7 @@ function SalesTab({
     setIsDeleting(true);
     try {
       const res = await deleteSaleFn({ data: { id: saleToDelete } });
-      if (res && !res.success && 'error' in res) {
+      if (res && !res.success && "error" in res) {
         throw new Error(res.error as string);
       }
       toast.success(t("delete") || "Deleted successfully");
@@ -253,56 +621,25 @@ function SalesTab({
     const discTotal = s.items.reduce((acc, x) => acc + (Number(x.discount) || 0) * (Number(x.qty) || 1), 0);
     const sub = s.sell_price + discTotal;
 
+    const paymentModeLabel =
+      s.type === "bkash" ? "BKASH (বিকাশ)" :
+      s.type === "bank" ? "BANK (ব্যাংক)" :
+      s.type === "credit" ? "CREDIT (বাকী)" :
+      s.type === "online" ? "ONLINE (অনলাইন)" :
+      "CASH (নগদ)";
+
     try {
-      await downloadPwaInvoicePdf({
-        businessName: user?.business_name || biz?.name || "Classic World POS",
+      printPwaInvoice({
+        businessName: user?.business_name || biz?.name || "Dream Fashion",
         userEmail: biz?.emails || user?.business_emails || user?.email || "",
         shopAddress: biz?.address || user?.business_address || "",
         shopPhoneNumbers: biz?.phone_numbers || user?.business_phone_numbers || "",
-        pageSize: biz?.invoice_page_size || user?.invoice_page_size || "80mm",
-        pageWidth: biz?.invoice_page_width || user?.invoice_page_width || "",
-        pageHeight: biz?.invoice_page_height || user?.invoice_page_height || "",
-        invoiceFontSize: biz?.invoice_font_size || user?.invoice_font_size || "22px",
-        invoiceScale: biz?.invoice_scale || user?.invoice_scale || "100%",
-        invoiceLineSpacing: biz?.invoice_line_spacing || user?.invoice_line_spacing || "6px",
+        pageSize: biz?.invoice_page_size || user?.invoice_page_size || "58mm",
         terms: biz?.invoice_terms || "",
         invoiceNo: invNo,
         invoiceDate: fmtDateTime(s.created_at),
         customerName: custName,
-        items: s.items.map(item => ({
-          product: { id: item.product_id || undefined, name: item.product_name },
-          qty: Number(item.qty) || 1,
-          sellPrice: Number(item.sell_price) || 0,
-        })),
-        subtotal: sub,
-        discountAmount: discTotal,
-        total: s.sell_price,
-        paidAmount: s.paid_amount,
-        due: s.due_amount,
-      }, true);
-      toast.success(lang === "bn" ? "ইনভয়েস পিডিএফ ভিউ প্রস্তুত হচ্ছে!" : "Opening invoice PDF!");
-    } catch (err: any) {
-      toast.error(lang === "bn" ? "পিডিএফ ভিউ সমস্যা: " + (err?.message || "") : "Failed to open PDF: " + (err?.message || ""));
-    }
-  }
-
-  async function handleDownloadSalePdf(s: GroupedSale) {
-    const custName = s.parties?.name || (lang === "bn" ? "সাধারণ কাস্টমার" : "Walk-in Customer");
-    const invNo = s.cart_id ? `INV-${s.cart_id.slice(-6).toUpperCase()}` : `INV-${s.id.slice(-6).toUpperCase()}`;
-    const discTotal = s.items.reduce((acc, x) => acc + (Number(x.discount) || 0) * (Number(x.qty) || 1), 0);
-    const sub = s.sell_price + discTotal;
-
-    try {
-      await downloadPwaInvoicePdf({
-        businessName: user?.business_name || biz?.name || "Classic World POS",
-        userEmail: biz?.emails || user?.business_emails || user?.email || "",
-        shopAddress: biz?.address || user?.business_address || "",
-        shopPhoneNumbers: biz?.phone_numbers || user?.business_phone_numbers || "",
-        pageSize: biz?.invoice_page_size || user?.invoice_page_size || "80mm",
-        terms: biz?.invoice_terms || "",
-        invoiceNo: invNo,
-        invoiceDate: fmtDateTime(s.created_at),
-        customerName: custName,
+        paymentMode: paymentModeLabel,
         items: s.items.map(item => ({
           product: { id: item.product_id || undefined, name: item.product_name },
           qty: Number(item.qty) || 1,
@@ -314,200 +651,238 @@ function SalesTab({
         paidAmount: s.paid_amount,
         due: s.due_amount,
       });
-      toast.success(lang === "bn" ? "ইনভয়েস PDF সফলভাবে ডাউনলোড হয়েছে!" : "Invoice PDF downloaded successfully!");
+      toast.success(lang === "bn" ? "ইনভয়েস প্রিন্ট প্রস্তুত হচ্ছে!" : "Opening invoice print view!");
     } catch (err: any) {
-      toast.error(lang === "bn" ? "PDF ডাউনলোড সমস্যা: " + (err?.message || "") : "Failed to download PDF: " + (err?.message || ""));
+      toast.error(err?.message || "Print failed");
     }
   }
 
   if (items.length === 0) {
-    return <Card className="p-8 text-center text-sm text-muted-foreground">{t("no_sales")}</Card>;
+    return (
+      <Card className="p-8 text-center rounded-2xl border-dashed border-border text-muted-foreground">
+        <p className="text-xs font-medium">
+          {lang === "bn" ? "নির্বাচিত ফিল্টারে কোন বিক্রয় রেকর্ড পাওয়া যায়নি।" : "No sales found for the selected filters."}
+        </p>
+      </Card>
+    );
   }
 
   return (
-    <>
-      <Card className="divide-y divide-border overflow-hidden">
-        {paged.map(s => {
-          const isExpanded = !!expandedGroups[s.id];
-          return (
-            <div
-              key={s.id}
-              className="p-3 flex flex-col gap-2 hover:bg-muted/5 transition-colors cursor-pointer select-none"
-              onDoubleClick={() => handlePrintSale(s)}
-              title={lang === "bn" ? "ডাবল ট্যাপ বা ক্লিক করে ইনভয়েস জেনারেট করুন" : "Double-tap to generate invoice"}
-            >
-              <div className="flex items-center justify-between gap-3">
-                <div className="min-w-0 flex-1">
-                  <div className="font-medium truncate text-sm flex items-center gap-1.5 flex-wrap">
-                    {s.isGroup && (
-                      <span className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-[10px] font-bold px-1.5 py-0.5 rounded border border-emerald-500/20">
-                        {lang === "bn" ? "কার্ট" : "Cart"}
-                      </span>
-                    )}
-                    <span className="text-foreground font-semibold">
-                      {s.product_name}
-                    </span>
-                    {s.items.some(x => x.returned) && <span className="text-xs text-destructive">({t("returned")})</span>}
-                  </div>
-                  <div className="text-xs text-muted-foreground mt-0.5">
-                    {s.parties?.name && s.items?.[0]?.party_id ? (
-                      <>
-                        <Link
-                          href={`/customers/detail?id=${s.items[0].party_id}`}
-                          className="font-medium text-emerald-600 dark:text-emerald-400 hover:underline"
-                        >
-                          {s.parties.name}
-                        </Link>
-                        {" · "}
-                      </>
-                    ) : null}
+    <div className="space-y-2.5">
+      {paged.map(s => {
+        const isGroup = s.isGroup;
+        const expanded = expandedGroups[s.id] || false;
+
+        // Payment Method Badge Color
+        const badgeColor =
+          s.type === "bkash" ? "bg-[#E2136E]/15 text-[#E2136E] border-[#E2136E]/30" :
+          s.type === "bank" ? "bg-sky-500/15 text-sky-700 dark:text-sky-300 border-sky-500/30" :
+          s.type === "credit" ? "bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30" :
+          s.type === "online" ? "bg-purple-500/15 text-purple-700 dark:text-purple-300 border-purple-500/30" :
+          "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30";
+
+        const badgeLabel =
+          s.type === "bkash" ? (lang === "bn" ? "পেইড: বিকাশ" : "Paid by bKash") :
+          s.type === "bank" ? (lang === "bn" ? "পেইড: ব্যাংক" : "Paid by Bank") :
+          s.type === "credit" ? (lang === "bn" ? "বাকী বিক্রি" : "Credit / Due") :
+          s.type === "online" ? (lang === "bn" ? "অনলাইন সেল" : "Online Sale") :
+          (lang === "bn" ? "পেইড: নগদ" : "Paid by Cash");
+
+        return (
+          <Card key={s.id} className="p-3 sm:p-3.5 rounded-xl border border-border/80 bg-card shadow-xs space-y-2">
+            <div className="flex items-start justify-between gap-2">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border uppercase tracking-wider ${badgeColor}`}>
+                    {badgeLabel}
+                  </span>
+                  <span className="text-[11px] text-muted-foreground font-mono">
                     {fmtDateTime(s.created_at)}
-                  </div>
+                  </span>
                 </div>
-                <div className="text-right shrink-0">
-                  <div className="font-bold text-sm text-foreground">{fmtMoney(s.sell_price)}</div>
-                  {credit
-                    ? <div className="text-xs text-warning font-semibold">{t("due")}: {fmtMoney(s.due_amount)}</div>
-                    : <div className="text-xs text-success font-semibold">+{fmtMoney(s.profit)}</div>}
-                </div>
-                <div className="flex items-center gap-1.5 shrink-0" onClick={e => e.stopPropagation()}>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="ghost"
-                    className="h-8 w-8 p-0 cursor-pointer text-sky-600 hover:text-sky-700 hover:bg-sky-50 dark:hover:bg-sky-950/40"
-                    onClick={() => handleDownloadSalePdf(s)}
-                    title={lang === "bn" ? "ইনভয়েস PDF ডাউনলোড করুন" : "Download PDF Invoice"}
-                  >
-                    <FileDown className="size-3.5" />
-                  </Button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="ghost"
-                    className="h-8 w-8 p-0 cursor-pointer text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/40"
-                    onClick={() => handlePrintSale(s)}
-                    title={lang === "bn" ? "ইনভয়েস প্রিন্ট করুন" : "Print Invoice"}
-                  >
-                    <Printer className="size-3.5" />
-                  </Button>
-                  {s.isGroup && (
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="ghost"
-                      className="h-8 w-8 p-0 cursor-pointer"
-                      onClick={() => toggleGroup(s.id)}
-                      title="Toggle Cart Details"
-                    >
-                      {isExpanded ? <ChevronUp className="size-4" /> : <ChevronDown className="size-4" />}
-                    </Button>
-                  )}
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="ghost"
-                    className="h-8 w-8 p-0 cursor-pointer"
-                    onClick={() => onEdit(s.items[0])}
-                    title="Edit Sale"
-                  >
-                    <Pencil className="size-3.5 text-muted-foreground hover:text-foreground" />
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="h-8 w-8 p-0 text-destructive cursor-pointer hover:bg-destructive/10 rounded-full"
-                    onClick={() => handleDeleteClick(s.id)}
-                  >
-                    <Trash2 className="size-3.5" />
-                  </Button>
-                </div>
+
+                <h3 className="font-bold text-sm text-foreground">
+                  {s.product_name}
+                </h3>
+
+                {s.parties?.name && (
+                  <p className="text-xs text-muted-foreground">
+                    {lang === "bn" ? "ক্রেতা:" : "Customer:"} <strong className="text-foreground">{s.parties.name}</strong>
+                  </p>
+                )}
               </div>
 
-              {s.isGroup && isExpanded && (
-                <div className="pl-3 py-2 border-l-2 border-emerald-500/30 space-y-1 bg-emerald-500/5 rounded-r-lg text-xs animate-in slide-in-from-top-1 duration-150">
-                  <div className="text-[10px] uppercase font-bold text-emerald-800 dark:text-emerald-300 tracking-wider">
-                    {lang === "bn" ? "কার্টের পণ্যসমূহ:" : "Cart Items:"}
-                  </div>
-                  {s.items.map((item, idx) => (
-                    <div key={idx} className="flex justify-between items-center pr-2 font-mono text-[11px] text-muted-foreground py-0.5 border-b border-border/10 last:border-b-0">
-                      <span>{item.product_name} <span className="font-semibold text-foreground/90">×{item.qty}</span></span>
-                      <span>{fmtMoney(Number(item.sell_price) * item.qty)}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
+              <div className="text-right shrink-0">
+                <p className="text-sm sm:text-base font-bold font-serif text-foreground">
+                  {fmtMoney(s.sell_price)}
+                </p>
+                <p className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
+                  {lang === "bn" ? "লাভ:" : "Profit:"} {fmtMoney(s.profit)}
+                </p>
+                {s.due_amount > 0 && (
+                  <p className="text-[11px] font-bold text-rose-600">
+                    {lang === "bn" ? "বাকী:" : "Due:"} {fmtMoney(s.due_amount)}
+                  </p>
+                )}
+              </div>
             </div>
-          );
-        })}
-      </Card>
-      <PaginationBar page={safePage} totalPages={totalPages} total={items.length} pageSize={pageSize} onPageChange={onPageChange} />
+
+            {/* Actions Bar */}
+            <div className="flex items-center justify-between gap-2 pt-1 border-t border-border/60">
+              <div className="flex items-center gap-1">
+                <Button
+                  onClick={() => handlePrintSale(s)}
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-xs font-semibold rounded-lg gap-1"
+                >
+                  <Printer className="size-3" />
+                  <span>{lang === "bn" ? "রসিদ প্রিন্ট" : "Print"}</span>
+                </Button>
+
+                {isGroup && (
+                  <Button
+                    onClick={() => toggleGroup(s.id)}
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 text-xs text-muted-foreground gap-1"
+                  >
+                    <span>{s.items.length} {lang === "bn" ? "টি আইটেম" : "items"}</span>
+                    {expanded ? <ChevronUp className="size-3" /> : <ChevronDown className="size-3" />}
+                  </Button>
+                )}
+              </div>
+
+              <div className="flex items-center gap-1">
+                {!isGroup && (
+                  <Button
+                    onClick={() => onEdit(s.items[0])}
+                    variant="ghost"
+                    size="icon"
+                    className="size-7 text-muted-foreground hover:text-foreground"
+                  >
+                    <Pencil className="size-3.5" />
+                  </Button>
+                )}
+                <Button
+                  onClick={() => handleDeleteClick(s.items[0].id)}
+                  variant="ghost"
+                  size="icon"
+                  className="size-7 text-muted-foreground hover:text-destructive"
+                >
+                  <Trash2 className="size-3.5" />
+                </Button>
+              </div>
+            </div>
+
+            {/* Expanded items if group */}
+            {isGroup && expanded && (
+              <div className="pt-2 border-t border-border/40 space-y-1.5 bg-muted/20 p-2 rounded-lg">
+                {s.items.map(item => (
+                  <div key={item.id} className="flex justify-between items-center text-xs">
+                    <div>
+                      <span className="font-semibold text-foreground">{item.product_name}</span>
+                      <span className="text-muted-foreground font-mono ml-1.5">×{item.qty}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono font-bold">{fmtMoney(Number(item.sell_price) * item.qty)}</span>
+                      <Button
+                        onClick={() => onEdit(item)}
+                        variant="ghost"
+                        size="icon"
+                        className="size-6 text-muted-foreground hover:text-foreground"
+                      >
+                        <Pencil className="size-3" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
+        );
+      })}
+
+      <PaginationBar totalPages={totalPages} page={safePage} onPageChange={onPageChange} />
 
       <ConfirmDeleteDialog
-        open={saleToDelete !== null}
-        onOpenChange={(v) => { if (!v) setSaleToDelete(null); }}
-        title={lang === "bn" ? "বিক্রি হিসেব মুছুন" : "Delete Sale"}
-        description={
-          lang === "bn"
-            ? "আপনি কি নিশ্চিত যে এই বিক্রয় রেকর্ডটি মুছে ফেলতে চান? এটি স্থায়ীভাবে মুছে যাবে।"
-            : "Are you sure you want to delete this sale? This action is permanent and cannot be undone."
-        }
+        open={!!saleToDelete}
+        onOpenChange={o => { if (!o) setSaleToDelete(null); }}
         onConfirm={performDelete}
-        busy={isDeleting}
+        loading={isDeleting}
+        title={lang === "bn" ? "বিক্রি রেকর্ড মুছে ফেলবেন?" : "Delete Sale Record?"}
+        description={lang === "bn" ? "এই বিক্রয়টি মুছে ফেললে পণ্যের স্টক এবং ক্যাশবক্স স্বয়ংক্রিয়ভাবে সমন্বয় করা হবে।" : "Deleting this sale will adjust product stock and cashbox ledger."}
       />
-    </>
+    </div>
   );
 }
 
 function ReturnDialog({
-  sale, open, onOpenChange,
+  sale,
+  open,
+  onOpenChange,
 }: {
   sale: Sale;
   open: boolean;
-  onOpenChange: (v: boolean) => void;
+  onOpenChange: (open: boolean) => void;
 }) {
-  const { t } = useT();
+  const { lang, t } = useT();
   const qc = useQueryClient();
-  const [qty, setQty] = useState(String(sale.qty));
-  const [note, setNote] = useState("");
+  const [returnQty, setReturnQty] = useState("1");
   const [busy, setBusy] = useState(false);
 
-  async function submit(e: React.FormEvent) {
+  const handleReturn = async (e: React.FormEvent) => {
     e.preventDefault();
     setBusy(true);
     try {
-      await createReturnFn({ data: { sale_id: sale.id, qty: Number(qty) || 0, note: note || null } });
+      await createReturnFn({
+        data: {
+          sale_id: sale.id,
+          product_id: sale.product_id,
+          qty: Number(returnQty) || 1,
+          refund_amount: (Number(sale.sell_price) || 0) * (Number(returnQty) || 1),
+        },
+      });
+      toast.success(lang === "bn" ? "পণ্য রিটার্ন সফল হয়েছে" : "Return processed successfully");
       qc.invalidateQueries({ queryKey: ["sales"] });
       qc.invalidateQueries({ queryKey: ["products"] });
-      qc.invalidateQueries({ queryKey: ["returns"] });
       qc.invalidateQueries({ queryKey: ["cashbox"] });
-      toast.success(t("return_product"));
       onOpenChange(false);
-    } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : String(err));
+    } catch (err: any) {
+      toast.error(err?.message || "Return failed");
     } finally {
       setBusy(false);
     }
-  }
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>{t("return_product")} — {sale.product_name}</DialogTitle>
+          <DialogTitle className="text-base font-bold flex items-center gap-2">
+            <RotateCcw className="size-5 text-amber-600" />
+            <span>{lang === "bn" ? "পণ্য রিটার্ন / ফেরত" : "Process Product Return"}</span>
+          </DialogTitle>
         </DialogHeader>
-        <form onSubmit={submit} className="space-y-3">
+        <form onSubmit={handleReturn} className="space-y-3 text-xs">
           <div className="space-y-1">
-            <Label className="text-xs text-muted-foreground">{t("qty")} (max {sale.qty})</Label>
-            <Input inputMode="numeric" value={qty} onChange={e => setQty(e.target.value)} max={sale.qty} />
+            <Label>{lang === "bn" ? "পণ্যের নাম:" : "Product:"}</Label>
+            <p className="font-bold text-foreground text-sm">{sale.product_name}</p>
           </div>
           <div className="space-y-1">
-            <Label className="text-xs text-muted-foreground">{t("note")}</Label>
-            <Input value={note} onChange={e => setNote(e.target.value)} />
+            <Label>{lang === "bn" ? "ফেরতের পরিমাণ (সর্বোচ্চ " + sale.qty + "):" : "Return Qty (Max " + sale.qty + "):"}</Label>
+            <Input
+              type="number"
+              min="1"
+              max={sale.qty}
+              value={returnQty}
+              onChange={e => setReturnQty(e.target.value)}
+              required
+            />
           </div>
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>{t("cancel")}</Button>
-            <Button type="submit" disabled={busy}>{busy ? "…" : t("return_product")}</Button>
+          <DialogFooter className="pt-2">
+            <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>{t("cancel")}</Button>
+            <Button type="submit" disabled={busy} className="bg-amber-600 hover:bg-amber-700 text-white font-bold">{lang === "bn" ? "ফেরত নিশ্চিত করুন" : "Confirm Return"}</Button>
           </DialogFooter>
         </form>
       </DialogContent>

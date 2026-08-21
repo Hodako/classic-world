@@ -148,14 +148,16 @@ export async function fsCreateSale(data: any) {
     }
   }
 
-  // 2. Cashbox log if cash or paid amount received
-  const cashReceived = data.type === "cash" ? (paidAmount || (sellPrice * qty - discount)) : paidAmount;
+  // 2. Cashbox log if cash, bkash, bank, or paid amount received
+  const isDirectPayment = data.type === "cash" || data.type === "bkash" || data.type === "bank" || data.type === "nagad" || data.type === "card" || data.type === "pos";
+  const cashReceived = isDirectPayment ? (paidAmount || (sellPrice * qty - discount)) : paidAmount;
   if (cashReceived > 0) {
     try {
+      const methodTag = data.type ? ` [Paid by ${data.type.toUpperCase()}]` : "";
       await addDoc(collection(db, "cashbox_logs"), {
         kind: "sale",
         amount: cashReceived,
-        note: `Sale: ${data.product_name || "Item"} (x${qty})`,
+        note: `Sale${methodTag}: ${data.product_name || "Item"} (x${qty})${data.note ? ` - ${data.note}` : ""}`,
         ref_id: saleId,
         created_at: Timestamp.now(),
       });
@@ -780,5 +782,161 @@ export async function fsGetUserDoc(userUid: string) {
     console.warn("fsGetUserDoc error:", err);
   }
   return null;
+}
+
+// ── Bank & Loans ─────────────────────────────────────────────────────────────
+export async function fsGetBankAccounts() {
+  try {
+    const snap = await getDocs(collection(db, "bank_accounts"));
+    return snap.docs.map(docToData);
+  } catch (err) {
+    return [];
+  }
+}
+
+export async function fsCreateBankAccount(data: any) {
+  const docRef = await addDoc(collection(db, "bank_accounts"), {
+    bank_name: data.bank_name || "",
+    account_name: data.account_name || "",
+    account_number: data.account_number || "",
+    branch: data.branch || null,
+    balance: Number(data.balance) || 0,
+    note: data.note || null,
+    created_at: Timestamp.now(),
+  });
+  return { success: true, id: docRef.id };
+}
+
+export async function fsUpdateBankAccount(id: string, data: any) {
+  await updateDoc(doc(db, "bank_accounts", id), data);
+  return { success: true, id };
+}
+
+export async function fsDeleteBankAccount(id: string) {
+  await deleteDoc(doc(db, "bank_accounts", id));
+  return { success: true, id };
+}
+
+export async function fsCreateBankTransaction(data: any) {
+  const amount = Number(data.amount) || 0;
+  const type = data.type || "deposit";
+  const accRef = doc(db, "bank_accounts", data.account_id);
+  const delta = type === "deposit" ? amount : -amount;
+  await updateDoc(accRef, { balance: increment(delta) });
+
+  const txRef = await addDoc(collection(db, "bank_transactions"), {
+    account_id: data.account_id,
+    type,
+    amount,
+    note: data.note || null,
+    created_at: Timestamp.now(),
+  });
+
+  if (data.sync_cashbox !== false && amount > 0) {
+    const cashboxKind = type === "deposit" ? "withdraw" : "deposit";
+    const noteText = type === "deposit"
+      ? `Bank Deposit: ${data.note || "Transfer to bank"}`
+      : `Bank Withdrawal: ${data.note || "Cash from bank"}`;
+    await addDoc(collection(db, "cashbox_logs"), {
+      kind: cashboxKind,
+      amount,
+      note: noteText,
+      ref_id: txRef.id,
+      created_at: Timestamp.now(),
+    });
+  }
+
+  return { success: true, id: txRef.id };
+}
+
+export async function fsGetBankLoans() {
+  try {
+    const snap = await getDocs(collection(db, "bank_loans"));
+    return snap.docs.map(docToData);
+  } catch (err) {
+    return [];
+  }
+}
+
+export async function fsCreateBankLoan(data: any) {
+  const principal = Number(data.principal_amount) || 0;
+  const repayable = Number(data.total_repayable) || principal;
+  const installments = Number(data.total_installments) || 1;
+  const installmentAmount = Number(data.installment_amount) || (repayable / installments);
+
+  const docRef = await addDoc(collection(db, "bank_loans"), {
+    bank_name: data.bank_name || "",
+    loan_title: data.loan_title || "Business Loan",
+    principal_amount: principal,
+    total_repayable: repayable,
+    total_installments: installments,
+    installment_amount: installmentAmount,
+    paid_amount: 0,
+    paid_installments: 0,
+    status: "active",
+    note: data.note || null,
+    created_at: Timestamp.now(),
+  });
+
+  if (data.receive_to_cashbox && principal > 0) {
+    await addDoc(collection(db, "cashbox_logs"), {
+      kind: "deposit",
+      amount: principal,
+      note: `Bank Loan Disbursement: ${data.bank_name} (${data.loan_title})`,
+      ref_id: docRef.id,
+      created_at: Timestamp.now(),
+    });
+  }
+
+  return { success: true, id: docRef.id };
+}
+
+export async function fsPayBankLoanInstallment(data: any) {
+  const amount = Number(data.amount) || 0;
+  const loanRef = doc(db, "bank_loans", data.loan_id);
+  const loanSnap = await getDoc(loanRef);
+  if (!loanSnap.exists()) throw new Error("Loan not found");
+  const loan = loanSnap.data();
+
+  const newPaidAmount = (Number(loan.paid_amount) || 0) + amount;
+  const newPaidInstallments = (Number(loan.paid_installments) || 0) + 1;
+  const isFullyPaid = newPaidAmount >= Number(loan.total_repayable);
+
+  await updateDoc(loanRef, {
+    paid_amount: newPaidAmount,
+    paid_installments: newPaidInstallments,
+    status: isFullyPaid ? "completed" : "active",
+  });
+
+  const pmtRef = await addDoc(collection(db, "bank_loan_payments"), {
+    loan_id: data.loan_id,
+    amount,
+    payment_method: data.payment_method || "cashbox",
+    note: data.note || null,
+    created_at: Timestamp.now(),
+  });
+
+  // Always cut installment money from CASHBOX
+  await addDoc(collection(db, "cashbox_logs"), {
+    kind: "withdraw",
+    amount,
+    note: `Bank Loan Installment: ${loan.bank_name} (${loan.loan_title}) - ${data.note || `Installment #${newPaidInstallments}`}`,
+    ref_id: pmtRef.id,
+    created_at: Timestamp.now(),
+  });
+
+  return { success: true, id: pmtRef.id, isFullyPaid, remaining: Math.max(Number(loan.total_repayable) - newPaidAmount, 0) };
+}
+
+export async function fsDeleteBankLoan(id: string) {
+  try {
+    const q = query(collection(db, "cashbox_logs"), where("ref_id", "==", id));
+    const snap = await getDocs(q);
+    for (const d of snap.docs) {
+      await deleteDoc(doc(db, "cashbox_logs", d.id));
+    }
+  } catch (_) {}
+  await deleteDoc(doc(db, "bank_loans", id));
+  return { success: true, id };
 }
 

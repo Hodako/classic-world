@@ -112,11 +112,11 @@ export default function ExpensesPage() {
   // Load custom, pinned, and renamed categories from localStorage
   useEffect(() => {
     try {
-      const storedCustom = localStorage.getItem("classicworld_custom_expense_categories");
+      const storedCustom = localStorage.getItem("dreamfashion_custom_expense_categories");
       if (storedCustom) setCustomCategories(JSON.parse(storedCustom));
-      const storedPinned = localStorage.getItem("classicworld_pinned_expense_categories");
+      const storedPinned = localStorage.getItem("dreamfashion_pinned_expense_categories");
       if (storedPinned) setPinnedCategories(JSON.parse(storedPinned));
-      const storedRenamed = localStorage.getItem("classicworld_renamed_expense_categories");
+      const storedRenamed = localStorage.getItem("dreamfashion_renamed_expense_categories");
       if (storedRenamed) setRenamedCategories(JSON.parse(storedRenamed));
     } catch {}
   }, []);
@@ -124,15 +124,15 @@ export default function ExpensesPage() {
   // Save changes
   const saveCustomCats = (cats: ExpenseCategoryItem[]) => {
     setCustomCategories(cats);
-    localStorage.setItem("classicworld_custom_expense_categories", JSON.stringify(cats));
+    localStorage.setItem("dreamfashion_custom_expense_categories", JSON.stringify(cats));
   };
   const savePinnedCats = (pinned: string[]) => {
     setPinnedCategories(pinned);
-    localStorage.setItem("classicworld_pinned_expense_categories", JSON.stringify(pinned));
+    localStorage.setItem("dreamfashion_pinned_expense_categories", JSON.stringify(pinned));
   };
   const saveRenamedCats = (renamed: Record<string, string>) => {
     setRenamedCategories(renamed);
-    localStorage.setItem("classicworld_renamed_expense_categories", JSON.stringify(renamed));
+    localStorage.setItem("dreamfashion_renamed_expense_categories", JSON.stringify(renamed));
   };
 
   // Merge default + custom categories, apply renames, and sort pinned to top
@@ -408,14 +408,14 @@ export default function ExpensesPage() {
             </DropdownMenuContent>
           </DropdownMenu>
 
-          {/* Primary Add Expense Button (Single source of action) */}
+          {/* Compact '+' Icon Button Beside CSV (Single source of action) */}
           <Button
             onClick={() => setOpen(true)}
-            size="sm"
-            className="h-9 px-3.5 gap-1.5 font-bold cursor-pointer beveled-button bg-primary text-primary-foreground shadow-xs"
+            size="icon"
+            className="size-9 font-bold cursor-pointer beveled-button bg-primary text-primary-foreground shadow-xs shrink-0 rounded-xl"
+            title={lang === "bn" ? "খরচ যোগ করুন" : "Add Expense"}
           >
-            <Plus className="size-4 stroke-[2.5]" />
-            <span>{lang === "bn" ? "খরচ যোগ করুন" : "Add Expense"}</span>
+            <Plus className="size-5 stroke-[2.5]" />
           </Button>
         </div>
       </div>
@@ -483,6 +483,24 @@ export default function ExpensesPage() {
               }`}
             >
               {lang === "bn" ? "সকল সময়" : "All Time"}
+            </button>
+
+            {/* Custom Date Filter Icon Button Beside 'All Time' */}
+            <button
+              type="button"
+              onClick={() => {
+                setRange(range === "custom" ? "today" : "custom");
+                setPage(1);
+              }}
+              title={lang === "bn" ? "কাস্টম তারিখ ফিল্টার" : "Custom Date Range Filter"}
+              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 border ${
+                range === "custom"
+                  ? "bg-primary text-primary-foreground border-primary shadow-xs"
+                  : "bg-muted hover:bg-muted/80 text-muted-foreground border-border/70"
+              }`}
+            >
+              <Calendar className="size-3.5" />
+              <span>{lang === "bn" ? "কাস্টম তারিখ" : "Custom"}</span>
             </button>
           </div>
         </div>

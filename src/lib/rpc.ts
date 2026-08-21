@@ -192,6 +192,17 @@ async function executeFirestoreAction(actionName: string, args: any) {
       return all.filter((s: any) => s.party_id === args?.partyId);
     }
 
+    // Bank & Loans
+    case "getBankAccountsFn": return await fs.fsGetBankAccounts();
+    case "createBankAccountFn": return await fs.fsCreateBankAccount(data);
+    case "updateBankAccountFn": return await fs.fsUpdateBankAccount(id, data);
+    case "deleteBankAccountFn": return await fs.fsDeleteBankAccount(id || data?.id);
+    case "createBankTransactionFn": return await fs.fsCreateBankTransaction(data);
+    case "getBankLoansFn": return await fs.fsGetBankLoans();
+    case "createBankLoanFn": return await fs.fsCreateBankLoan(data);
+    case "payBankLoanInstallmentFn": return await fs.fsPayBankLoanInstallment(data);
+    case "deleteBankLoanFn": return await fs.fsDeleteBankLoan(id || data?.id);
+
     default:
       return { success: true };
   }
@@ -293,6 +304,17 @@ export const repairCashboxDbFn = (args?: any) => runWriteAction("repairCashboxDb
 export const createReminderFn = (args?: any) => runWriteAction("createReminderFn", args);
 export const toggleReminderFn = (args?: any) => runWriteAction("toggleReminderFn", args);
 export const deleteReminderFn = (args?: any) => runWriteAction("deleteReminderFn", args);
+
+// ── Bank & Loans ─────────────────────────────────────────────────────────────
+export const getBankAccountsFn = (args?: any) => executeFirestoreAction("getBankAccountsFn", args);
+export const createBankAccountFn = (args?: any) => runWriteAction("createBankAccountFn", args);
+export const updateBankAccountFn = (args?: any) => runWriteAction("updateBankAccountFn", args);
+export const deleteBankAccountFn = (args?: any) => runWriteAction("deleteBankAccountFn", args);
+export const createBankTransactionFn = (args?: any) => runWriteAction("createBankTransactionFn", args);
+export const getBankLoansFn = (args?: any) => executeFirestoreAction("getBankLoansFn", args);
+export const createBankLoanFn = (args?: any) => runWriteAction("createBankLoanFn", args);
+export const payBankLoanInstallmentFn = (args?: any) => runWriteAction("payBankLoanInstallmentFn", args);
+export const deleteBankLoanFn = (args?: any) => runWriteAction("deleteBankLoanFn", args);
 
 // ─── Export Reset Operations ─────────────────────────────────────────────────
 export const emptyCashboxFn = (args?: any) => executeFirestoreAction("emptyCashboxFn", args);

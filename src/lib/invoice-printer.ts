@@ -47,50 +47,25 @@ export function printPwaInvoice(data: PrintInvoiceParams) {
   const now = new Date();
   const dateStr = data.invoiceDate || fmtDateTime(now);
 
-  let pageSizeRule = "80mm auto";
-  let bodyMaxWidth = "100%";
-
-  if (data.pageSize === "58mm") {
-    pageSizeRule = "58mm auto";
-    bodyMaxWidth = "100%";
-  } else if (data.pageSize === "A4") {
-    pageSizeRule = "A4 portrait";
-    bodyMaxWidth = "100%";
-  } else if (data.pageSize === "A5") {
-    pageSizeRule = "A5 portrait";
-    bodyMaxWidth = "100%";
-  } else if (data.pageSize === "custom" && data.pageWidth) {
-    pageSizeRule = `${data.pageWidth} ${data.pageHeight || "auto"}`;
-    bodyMaxWidth = "100%";
-  }
-
-  const rawScale = data.invoiceScale || "100%";
-  const numScale = parseInt(rawScale.replace(/[^0-9]/g, ""), 10) || 100;
-  const scaleRatio = numScale / 100;
-
-  const rawFontSize = data.invoiceFontSize || "16px";
-  const numFontSize = Math.round((parseInt(rawFontSize.replace(/[^0-9]/g, ""), 10) || 16) * scaleRatio);
-  const baseSize = `${numFontSize}px`;
-  const headerSize = `${Math.round(numFontSize * 1.25)}px`;
-  const subSize = `${Math.round(numFontSize * 0.85)}px`;
-  const metaSize = `${Math.round(numFontSize * 0.85)}px`;
-
-  const lineSpacing = data.invoiceLineSpacing || "3px";
+  const is58mm = data.pageSize === "58mm" || !data.pageSize || data.pageSize === "80mm";
+  const targetWidth = is58mm ? "54mm" : "100%";
+  const pageSizeRule = is58mm ? "58mm auto" : `${data.pageSize || "A4"} portrait`;
 
   const itemsRowsHtml = data.items
     .map(
-      (item) => `
-    <tr style="border-bottom: 1px dotted #dddddd;">
-      <td style="padding: ${lineSpacing} 0; text-align: left; vertical-align: top; font-weight: 600; font-size: ${baseSize}; word-break: normal; overflow-wrap: break-word; color: #000000;">
+      (item, idx) => `
+    <tr>
+      <td style="padding: 4px 0; text-align: left; vertical-align: top; font-weight: 700; font-size: 8pt; color: #000000; width: 55%; word-break: break-word; line-height: 1.25;">
         ${item.product.name}
       </td>
-      <td style="padding: ${lineSpacing} 2px; text-align: center; vertical-align: top; font-family: monospace; font-size: ${baseSize}; font-weight: 600; color: #000000; width: 18%;">
+      <td style="padding: 4px 2px; text-align: center; vertical-align: top; font-family: monospace; font-size: 8pt; font-weight: 500; color: #000000; width: 18%;">
         ${item.qty}
       </td>
-      <td style="padding: ${lineSpacing} 0; text-align: right; vertical-align: top; font-family: monospace; font-weight: 700; font-size: ${baseSize}; color: #000000; width: 28%;">
+      <td style="padding: 4px 0; text-align: right; vertical-align: top; font-family: monospace; font-weight: 700; font-size: 8pt; color: #000000; width: 27%;">
         ৳${(item.qty * item.sellPrice).toLocaleString()}
       </td>
-    </tr>`
+    </tr>
+    ${idx < data.items.length - 1 ? `<tr><td colspan="3" style="border-top: 1px dotted #e4e4e7; height: 1px; padding: 0; margin: 0;"></td></tr>` : ""}`
     )
     .join("");
 
@@ -103,14 +78,17 @@ export function printPwaInvoice(data: PrintInvoiceParams) {
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;500;600;700;800&family=Noto+Sans+Bengali:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <title>Receipt</title>
+  <title>Invoice ${data.invoiceNo}</title>
   <style>
-    @page { size: ${pageSizeRule}; margin: 0 !important; }
+    @page { 
+      size: ${pageSizeRule}; 
+      margin: 0 !important; 
+    }
     *, *:before, *:after { 
-      box-sizing: border-box; 
+      box-sizing: border-box !important; 
       margin: 0; 
       padding: 0; 
-      font-family: 'Hind Siliguri', 'Noto Sans Bengali', 'SolaimanLipi', 'Kalpurush', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important; 
+      font-family: 'Hind Siliguri', 'Noto Sans Bengali', 'SolaimanLipi', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important; 
       -webkit-print-color-adjust: exact !important; 
       print-color-adjust: exact !important; 
       color-scheme: light !important; 
@@ -119,127 +97,155 @@ export function printPwaInvoice(data: PrintInvoiceParams) {
       background: #ffffff !important; 
       color: #000000 !important; 
       width: 100% !important; 
-      margin: 0 !important; 
+      margin: 0 auto !important; 
       padding: 0 !important; 
-      font-size: ${baseSize} !important; 
-      line-height: 1.25; 
-      word-break: normal; 
-      overflow-wrap: break-word; 
-      font-family: 'Hind Siliguri', 'Noto Sans Bengali', 'SolaimanLipi', 'Kalpurush', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important; 
+      font-size: 8pt; 
+      line-height: 1.3; 
     }
-    .receipt-wrap { position: relative !important; overflow: hidden !important; width: 100% !important; max-width: 100% !important; margin: 0 !important; padding: 3mm 2mm 18mm 2mm; box-sizing: border-box !important; background: #ffffff; }
-    .watermark { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(-25deg); font-size: 18px; font-weight: 900; color: rgba(0, 0, 0, 0.07); border: 1.5px solid rgba(0, 0, 0, 0.07); padding: 2px 8px; border-radius: 6px; text-transform: uppercase; letter-spacing: 1px; white-space: nowrap; pointer-events: none; z-index: 0; }
-    .receipt-content { position: relative; z-index: 1; }
-    .dashed-line { border-top: 1px dashed #000000; margin: 3px 0; height: 0; }
-    .solid-line { border-top: 1px solid #000000; margin: 3px 0; height: 0; }
-    table { width: 100% !important; border-collapse: collapse; margin: 2px 0; }
-    th { text-transform: uppercase; font-size: ${subSize}; font-weight: 800; border-bottom: 1px dashed #000000; padding-bottom: 2px; color: #000000; }
+    .receipt-wrap { 
+      width: 100% !important; 
+      max-width: ${targetWidth} !important; 
+      margin: 0 auto !important; 
+      padding: 3mm 2.5mm 12mm 2.5mm !important; 
+      box-sizing: border-box !important; 
+      background: #ffffff; 
+      position: relative;
+    }
+    .dashed-line { 
+      border-top: 1px dashed #000000 !important; 
+      margin: 4px 0 !important; 
+      height: 0; 
+    }
+    .solid-line { 
+      border-top: 1px solid #000000 !important; 
+      margin: 4px 0 !important; 
+      height: 0; 
+    }
+    table { 
+      width: 100% !important; 
+      border-collapse: collapse !important; 
+      margin: 2px 0 !important; 
+    }
+    th { 
+      font-size: 7.5pt !important; 
+      font-weight: 800 !important; 
+      padding-bottom: 3px !important; 
+      color: #000000 !important; 
+    }
   </style>
 </head>
 <body>
   <div class="receipt-wrap">
-    <div class="watermark">${data.paymentMode === "CREDIT" || data.due > 0 ? "PAID BY: CREDIT" : "PAID BY: CASH"}</div>
-    <div class="receipt-content">
-      <!-- Header -->
-      <div style="text-align: center; margin-bottom: 3px;">
-        <div style="font-size: ${headerSize}; font-weight: 900; text-transform: uppercase; letter-spacing: 0.5px; color: #000000;">
-          ${data.businessName}
-        </div>
-        ${data.tagline ? `<div style="font-size: ${subSize}; font-weight: 500; margin-top: 0.5px; color: #000000;">${data.tagline}</div>` : ""}
-        ${data.shopAddress ? `<div style="font-size: ${subSize}; margin-top: 1px; color: #000000;">${data.shopAddress}</div>` : ""}
-        ${data.shopPhoneNumbers ? `<div style="font-size: ${subSize}; font-family: monospace; font-weight: 600; margin-top: 1px; color: #000000;">${data.shopPhoneNumbers}</div>` : ""}
-        ${data.userEmail ? `<div style="font-size: ${subSize}; margin-top: 0.5px; color: #000000;">${data.userEmail}</div>` : ""}
+    <!-- Header -->
+    <div style="text-align: center; margin-bottom: 4px;">
+      <div style="font-size: 12pt; font-weight: 900; text-transform: uppercase; letter-spacing: 0.5px; color: #000000; line-height: 1.2;">
+        ${data.businessName}
+      </div>
+      ${data.tagline ? `<div style="font-size: 8pt; font-weight: 600; color: #3f3f46; margin-top: 1.5px;">${data.tagline}</div>` : ""}
+      ${data.shopAddress ? `<div style="font-size: 7.5pt; color: #52525b; margin-top: 1.5px;">${data.shopAddress}</div>` : ""}
+      ${data.shopPhoneNumbers ? `<div style="font-size: 8pt; font-family: monospace; font-weight: 700; color: #000000; margin-top: 1.5px;">মোবাইল: ${data.shopPhoneNumbers}</div>` : ""}
+      ${data.userEmail ? `<div style="font-size: 7pt; color: #52525b; margin-top: 1px;">${data.userEmail}</div>` : ""}
+    </div>
+
+    <div class="dashed-line"></div>
+
+    <!-- Meta info -->
+    <div style="font-size: 7.5pt; line-height: 1.35; color: #000000;">
+      <div style="display: flex; justify-content: space-between; align-items: center; font-family: monospace;">
+        <span style="font-weight: 700;">ইনভয়েস: ${data.invoiceNo}</span>
+        <span style="font-weight: 500;">${dateStr}</span>
+      </div>
+      ${
+        data.customerName
+          ? `<div style="display: flex; justify-content: space-between; align-items: baseline; gap: 4px; margin-top: 2px;">
+              <span>ক্রেতা: <strong>${data.customerName}</strong></span>
+              <span style="font-family: monospace; font-weight: 600; shrink-0;">${data.customerPhone || ""}</span>
+            </div>`
+          : ""
+      }
+    </div>
+
+    <div class="dashed-line"></div>
+
+    <!-- Items table -->
+    <table>
+      <thead>
+        <tr style="border-bottom: 1px dashed #000000;">
+          <th style="text-align: left;">বিবরণ (Item)</th>
+          <th style="text-align: center; width: 18%;">পরিমাণ</th>
+          <th style="text-align: right; width: 27%;">মূল্য</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${itemsRowsHtml}
+      </tbody>
+    </table>
+
+    <div class="dashed-line"></div>
+
+    <!-- Financial Totals -->
+    <div style="font-size: 8pt; line-height: 1.45; color: #000000;">
+      <div style="display: flex; justify-content: space-between; font-weight: 700;">
+        <span>মোট মূল্য (Subtotal):</span>
+        <span style="font-family: monospace;">৳${data.subtotal.toLocaleString()}</span>
       </div>
 
-      <div class="dashed-line"></div>
+      ${
+        data.discountAmount > 0
+          ? `<div style="display: flex; justify-content: space-between; font-weight: 700; color: #dc2626;">
+              <span>বিশেষ ছাড় (Discount):</span>
+              <span style="font-family: monospace;">-৳${data.discountAmount.toLocaleString()}</span>
+            </div>`
+          : ""
+      }
 
-      <!-- Metadata Section -->
-      <div style="font-size: ${metaSize}; line-height: 1.25; color: #000000;">
-        <div style="display: flex; justify-content: flex-end; font-family: monospace;">
-          <span>${dateStr}</span>
-        </div>
-        ${
-          data.customerName
-            ? `<div style="display: flex; justify-content: space-between; align-items: baseline; gap: 4px; white-space: nowrap; overflow: hidden; margin-top: 1px;">
-                <span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Customer: <strong>${data.customerName}</strong></span>
-                <span style="font-family: monospace; white-space: nowrap; shrink-0;">${data.customerPhone || ""}</span>
-              </div>`
-            : ""
-        }
+      <!-- Boxed Total Payable -->
+      <div style="border-top: 1.5px solid #000000; border-bottom: 1.5px solid #000000; padding: 3px 0; margin: 3px 0; display: flex; justify-content: space-between; font-size: 9.5pt; font-weight: 900;">
+        <span>সর্বমোট (Total Payable):</span>
+        <span style="font-family: monospace;">৳${data.total.toLocaleString()}</span>
       </div>
 
-      <div class="dashed-line"></div>
-
-      <!-- Items Table -->
-      <table>
-        <thead>
-          <tr>
-            <th style="text-align: left;">Item</th>
-            <th style="text-align: center; width: 30px;">Qty</th>
-            <th style="text-align: right; width: 60px;">Price</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${itemsRowsHtml}
-        </tbody>
-      </table>
-
-      <div class="dashed-line"></div>
-
-      <!-- Financial Totals Section -->
-      <div style="font-size: ${baseSize};">
-        <div style="display: flex; justify-content: space-between; margin-bottom: 2px; font-weight: 700;">
-          <span>Subtotal</span>
-          <span style="font-family: monospace;">৳${data.subtotal.toLocaleString()}</span>
-        </div>
-
-        ${
-          data.discountAmount > 0
-            ? `<div style="display: flex; justify-content: space-between; margin-bottom: 2px;">
-                <span>Discount</span>
-                <span style="font-family: monospace;">-৳${data.discountAmount.toLocaleString()}</span>
-              </div>`
-            : ""
-        }
-
-        <div style="display: flex; justify-content: space-between; margin-bottom: 2px; margin-top: 2px;">
-          <span>Cash Received</span>
-          <span style="font-family: monospace; font-weight: 600;">৳${data.paidAmount.toLocaleString()}</span>
-        </div>
-
-        ${
-          data.due > 0
-            ? `<div style="display: flex; justify-content: space-between; margin-bottom: 2px; font-weight: 700;">
-                <span>Due Amount</span>
-                <span style="font-family: monospace;">৳${data.due.toLocaleString()}</span>
-              </div>`
-            : ""
-        }
-
-        ${
-          (data.changeAmount || 0) > 0
-            ? `<div style="display: flex; justify-content: space-between; margin-bottom: 2px;">
-                <span>Change Return</span>
-                <span style="font-family: monospace;">৳${data.changeAmount?.toLocaleString()}</span>
-              </div>`
-            : ""
-        }
-
-        <div style="display: flex; justify-content: space-between; margin-top: 2px; font-size: ${subSize};">
-          <span>Paid By:</span>
-          <span style="font-weight: 800; text-transform: uppercase;">${data.paymentMode || (data.due > 0 ? "Credit" : "Cash")}</span>
-        </div>
+      <div style="display: flex; justify-content: space-between; font-weight: 700; color: #059669;">
+        <span>পরিশোধ (Cash Paid):</span>
+        <span style="font-family: monospace;">৳${data.paidAmount.toLocaleString()}</span>
       </div>
 
-      <div class="dashed-line"></div>
+      ${
+        data.due > 0
+          ? `<div style="display: flex; justify-content: space-between; font-weight: 700; color: #dc2626;">
+              <span>বকেয়া (Due):</span>
+              <span style="font-family: monospace;">৳${data.due.toLocaleString()}</span>
+            </div>`
+          : `<div style="display: flex; justify-content: space-between; font-weight: 700;">
+              <span>বকেয়া (Due):</span>
+              <span style="font-family: monospace;">৳0</span>
+            </div>`
+      }
 
-      <!-- Footer -->
-      <div style="text-align: center; margin-top: 5px; margin-bottom: 8mm; width: 100%;">
-        ${
-          data.terms
-            ? `<div style="font-size: ${subSize}; font-weight: 700; margin-top: 2px; white-space: pre-line; color: #000000;">${data.terms}</div>`
-            : `<div style="font-size: ${baseSize}; font-weight: 900; text-transform: uppercase; letter-spacing: 0.5px;">Thank You!</div>`
-        }
+      ${
+        (data.changeAmount || 0) > 0
+          ? `<div style="display: flex; justify-content: space-between; font-weight: 600;">
+              <span>ফেরত (Change Return):</span>
+              <span style="font-family: monospace;">৳${data.changeAmount?.toLocaleString()}</span>
+            </div>`
+          : ""
+      }
+
+      <div style="display: flex; justify-content: space-between; font-size: 7.5pt; color: #52525b; margin-top: 2px;">
+        <span>পেমেন্ট মাধ্যম:</span>
+        <span style="font-weight: 800; color: #000000; text-transform: uppercase;">${data.paymentMode || (data.due > 0 ? "CREDIT (বাকী)" : "CASH (নগদ)")}</span>
+      </div>
+    </div>
+
+    <div class="dashed-line"></div>
+
+    <!-- Footer -->
+    <div style="text-align: center; margin-top: 5px; margin-bottom: 4mm;">
+      <div style="font-size: 8.5pt; font-weight: 800; color: #000000;">
+        ${data.terms ? data.terms.split("\n")[0] : "আমাদের সাথে কেনাকাটা করার জন্য ধন্যবাদ!"}
+      </div>
+      <div style="font-size: 7pt; color: #71717a; margin-top: 2px;">
+        * ৭ দিনের মধ্যে ইনভয়েস সহ পণ্য পরিবর্তন প্রযোজ্য *
       </div>
     </div>
   </div>

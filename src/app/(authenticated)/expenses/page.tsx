@@ -335,28 +335,28 @@ export default function ExpensesPage() {
 
   return (
     <div className="space-y-4 pb-6 font-['Hind_Siliguri',sans-serif]">
-      {/* Top Header Toolbar - Fitted in One Single Line */}
-      <div className="flex items-center justify-between gap-2 flex-nowrap bg-card/60 p-2.5 sm:p-3 rounded-2xl border border-border/80 shadow-xs">
-        <div className="min-w-0 pr-1">
-          <h1 className="text-lg sm:text-2xl font-bold tracking-tight font-serif text-foreground truncate">{t("expenses")}</h1>
+      {/* Top Header Toolbar - Fitted in One Single Line on Phone and Desktop */}
+      <div className="flex items-center justify-between gap-1.5 sm:gap-2.5 flex-nowrap bg-card/60 p-2 sm:p-3 rounded-2xl border border-border/80 shadow-xs">
+        <div className="min-w-0 flex-1 pr-1">
+          <h1 className="text-base sm:text-2xl font-bold tracking-tight font-serif text-foreground truncate">{t("expenses")}</h1>
           <p className="text-[11px] text-muted-foreground hidden sm:block">
             {lang === "bn" ? "ক্যাটাগরি ও তারিখ ভিত্তিক দোকান খরচ ব্যবস্থাপনা" : "Category & Date-wise Shop Expense Management"}
           </p>
         </div>
 
-        {/* Action Controls in a SINGLE horizontal non-wrapping line */}
-        <div className="flex items-center gap-1.5 shrink-0 flex-nowrap">
+        {/* Action Controls in a SINGLE horizontal non-wrapping line: [Search] [CSV] [+] */}
+        <div className="flex items-center gap-1 sm:gap-1.5 shrink-0 flex-nowrap">
           {/* Search Toggle Icon */}
           <div className="relative flex items-center">
             {searchOpen ? (
               <div className="flex items-center gap-1 bg-background border border-border rounded-xl p-0.5 shadow-xs transition-all animate-in fade-in duration-200">
-                <Search className="size-3.5 text-muted-foreground ml-2 shrink-0 pointer-events-none" />
+                <Search className="size-3.5 text-muted-foreground ml-1.5 shrink-0 pointer-events-none" />
                 <Input
                   ref={searchInputRef}
                   value={search}
                   onChange={e => { setSearch(e.target.value); setPage(1); }}
                   placeholder={lang === "bn" ? "খরচ খুঁজুন…" : "Search…"}
-                  className="h-8 w-28 sm:w-44 text-xs border-0 bg-transparent focus-visible:ring-0 p-1"
+                  className="h-7.5 w-24 sm:w-44 text-xs border-0 bg-transparent focus-visible:ring-0 p-1"
                   autoFocus
                 />
                 <Button
@@ -375,7 +375,7 @@ export default function ExpensesPage() {
               <Button
                 variant="outline"
                 size="icon"
-                className="size-8.5 sm:size-9 rounded-xl cursor-pointer beveled-button shrink-0"
+                className="size-8 sm:size-9 rounded-xl cursor-pointer beveled-button shrink-0"
                 onClick={() => {
                   setSearchOpen(true);
                   setTimeout(() => searchInputRef.current?.focus(), 50);
@@ -387,17 +387,17 @@ export default function ExpensesPage() {
             )}
           </div>
 
-          {/* CSV Export Dropdown */}
+          {/* CSV Export Dropdown with clear CSV text */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
                 variant="outline"
                 size="sm"
-                className="h-8.5 sm:h-9 px-2 sm:px-3 text-xs font-semibold rounded-xl beveled-button gap-1 cursor-pointer shrink-0"
+                className="h-8 sm:h-9 px-2 sm:px-2.5 text-xs font-bold rounded-xl beveled-button gap-1 cursor-pointer shrink-0"
               >
                 <FileSpreadsheet className="size-3.5 sm:size-4 text-emerald-600 dark:text-emerald-400" />
-                <span>{isMobile ? "CSV" : (lang === "bn" ? "এক্সেল / CSV" : "Download CSV")}</span>
-                <ChevronDown className="size-3 opacity-60 ml-0.5" />
+                <span>CSV</span>
+                <ChevronDown className="size-3 opacity-60" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
@@ -410,14 +410,14 @@ export default function ExpensesPage() {
             </DropdownMenuContent>
           </DropdownMenu>
 
-          {/* Compact '+' Icon Button Beside CSV */}
+          {/* '+' Icon Button directly beside CSV */}
           <Button
             onClick={() => setOpen(true)}
             size="icon"
-            className="size-8.5 sm:size-9 font-bold cursor-pointer beveled-button bg-primary text-primary-foreground shadow-xs shrink-0 rounded-xl"
+            className="size-8 sm:size-9 font-bold cursor-pointer beveled-button bg-primary text-primary-foreground shadow-xs shrink-0 rounded-xl"
             title={lang === "bn" ? "খরচ যোগ করুন" : "Add Expense"}
           >
-            <Plus className="size-5 stroke-[2.5]" />
+            <Plus className="size-4.5 sm:size-5 stroke-[2.5]" />
           </Button>
         </div>
       </div>

@@ -309,18 +309,20 @@ function KPICard({
 
       <div className={`flex flex-col w-full ${align === "center" ? "items-center" : align === "right" ? "items-end" : "items-start"} mt-1 min-w-0 z-10`}>
         {isPrivacyProtected && !isRevealed ? (
-          <div className="flex items-center gap-1.5 select-none py-0.5">
-            <span className="font-mono tracking-widest text-muted-foreground/80 font-black text-sm sm:text-base">••••••</span>
-            <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-muted/90 text-muted-foreground font-bold flex items-center gap-1 border border-border/60">
-              <Eye className="size-3 text-primary" />
-              <span>দেখুন</span>
+          <div className="flex items-center gap-1.5 select-none py-0.5 animate-in fade-in duration-200">
+            <span className="font-mono tracking-widest text-foreground/80 font-black text-sm sm:text-base">••••••</span>
+            <span className="text-[10px] px-2 py-0.5 rounded-full bg-primary/10 text-primary font-bold flex items-center gap-1 border border-primary/25 shadow-2xs">
+              <Eye className="size-3 text-primary animate-pulse" />
+              <span>{lang === "bn" ? "ট্যাপ করে দেখুন" : "Tap to view"}</span>
             </span>
           </div>
         ) : (
-          <div className={`${valSize} font-bold tracking-tight text-foreground flex items-center gap-1.5`} title={value}>
+          <div className={`${valSize} font-bold tracking-tight text-foreground flex items-center gap-1.5 animate-in fade-in zoom-in-95 duration-200`} title={value}>
             <span>{value}</span>
             {isPrivacyProtected && (
-              <EyeOff className="size-3 text-muted-foreground/70 shrink-0 inline-block" />
+              <span className="inline-flex items-center p-0.5 rounded bg-muted/60 text-muted-foreground/80 text-[10px]" title={lang === "bn" ? "উন্মোচিত" : "Revealed"}>
+                <Eye className="size-3 text-emerald-600 dark:text-emerald-400" />
+              </span>
             )}
           </div>
         )}

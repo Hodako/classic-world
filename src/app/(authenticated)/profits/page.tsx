@@ -21,22 +21,56 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
-type Range = "today" | "week" | "month" | "all";
-
-function startOfRange(range: Range) {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  if (range === "week") d.setDate(d.getDate() - 7);
-  if (range === "month") d.setDate(d.getDate() - 30);
-  if (range === "all") return new Date(0);
-  return d;
-}
+type Range = "today" | "yesterday" | "week" | "this_month" | "last_month" | "month" | "all";
 
 function inRange(dateStr: string, range: Range, from?: string, to?: string) {
+  if (!dateStr) return false;
   const d = new Date(dateStr);
-  if (from && d < new Date(from)) return false;
-  if (to && d > new Date(to + "T23:59:59")) return false;
-  return d >= startOfRange(range);
+  if (isNaN(d.getTime())) return false;
+
+  if (from) {
+    const fromBoundary = new Date(`${from}T00:00:00`);
+    if (d < fromBoundary) return false;
+  }
+  if (to) {
+    const toBoundary = new Date(`${to}T23:59:59.999`);
+    if (d > toBoundary) return false;
+  }
+  if (from || to) return true;
+
+  const now = new Date();
+  if (range === "today") {
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+    const tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 0);
+    return d >= today && d < tomorrow;
+  }
+  if (range === "yesterday") {
+    const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 0, 0, 0);
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+    return d >= yesterday && d < today;
+  }
+  if (range === "week") {
+    const startOfWeek = new Date(now);
+    startOfWeek.setDate(now.getDate() - 7);
+    startOfWeek.setHours(0, 0, 0, 0);
+    return d >= startOfWeek;
+  }
+  if (range === "this_month") {
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0);
+    return d >= startOfMonth;
+  }
+  if (range === "last_month") {
+    const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1, 0, 0, 0);
+    const endOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999);
+    return d >= startOfLastMonth && d <= endOfLastMonth;
+  }
+  if (range === "month") {
+    const startOf30Days = new Date(now);
+    startOf30Days.setDate(now.getDate() - 30);
+    startOf30Days.setHours(0, 0, 0, 0);
+    return d >= startOf30Days;
+  }
+  return true;
 }
 
 export default function ProfitPage() {
@@ -231,10 +265,12 @@ export default function ProfitPage() {
       {/* Date Filters & Range Selectors */}
       <div className="bg-card/60 backdrop-blur-sm border rounded-xl p-3 space-y-3 beveled-card">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex bg-muted/60 rounded p-0.5 text-xs">
+          <div className="flex flex-wrap bg-muted/60 rounded-lg p-0.5 text-xs gap-1">
             <button onClick={() => { setRange("today"); setFrom(""); setTo(""); setPage(1); }} className={`px-2.5 py-1 rounded transition-colors ${range === "today" ? "bg-background shadow font-medium" : "text-muted-foreground"}`}>{lang === "bn" ? "আজ" : "Today"}</button>
+            <button onClick={() => { setRange("yesterday"); setFrom(""); setTo(""); setPage(1); }} className={`px-2.5 py-1 rounded transition-colors ${range === "yesterday" ? "bg-background shadow font-medium" : "text-muted-foreground"}`}>{lang === "bn" ? "গতকাল" : "Yesterday"}</button>
             <button onClick={() => { setRange("week"); setFrom(""); setTo(""); setPage(1); }} className={`px-2.5 py-1 rounded transition-colors ${range === "week" ? "bg-background shadow font-medium" : "text-muted-foreground"}`}>{lang === "bn" ? "৭ দিন" : "7 Days"}</button>
-            <button onClick={() => { setRange("month"); setFrom(""); setTo(""); setPage(1); }} className={`px-2.5 py-1 rounded transition-colors ${range === "month" ? "bg-background shadow font-medium" : "text-muted-foreground"}`}>{lang === "bn" ? "৩০ দিন" : "30 Days"}</button>
+            <button onClick={() => { setRange("this_month"); setFrom(""); setTo(""); setPage(1); }} className={`px-2.5 py-1 rounded transition-colors ${range === "this_month" ? "bg-background shadow font-medium" : "text-muted-foreground"}`}>{lang === "bn" ? "এই মাস" : "This Month"}</button>
+            <button onClick={() => { setRange("last_month"); setFrom(""); setTo(""); setPage(1); }} className={`px-2.5 py-1 rounded transition-colors ${range === "last_month" ? "bg-background shadow font-medium" : "text-muted-foreground"}`}>{lang === "bn" ? "গত মাস" : "Last Month"}</button>
             <button onClick={() => { setRange("all"); setFrom(""); setTo(""); setPage(1); }} className={`px-2.5 py-1 rounded transition-colors ${range === "all" ? "bg-background shadow font-medium" : "text-muted-foreground"}`}>{lang === "bn" ? "সব সময়" : "All Time"}</button>
           </div>
 

@@ -112,6 +112,7 @@ function KPICard({
   isPrivacyProtected?: boolean;
   isRevealed?: boolean;
 }) {
+  const { lang } = useT();
   const alignClass = align === "center" ? "text-center items-center" : align === "right" ? "text-right items-end" : "text-left items-start";
   
   const sizePadding =

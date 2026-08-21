@@ -1,0 +1,605 @@
+@import "tailwindcss" source(none);
+@import "tw-animate-css";
+
+@source "../src";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-ring-offset-background: var(--background);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+  --font-serif: var(--font-serif);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+:root {
+  --loader-color: #059669;
+  --background: #d1e2ea;
+  --foreground: #201C16;
+  --card: #FFFFFF;
+  --card-foreground: #201C16;
+  --popover: #FFFFFF;
+  --popover-foreground: #201C16;
+  --primary: #059669;
+  --primary-foreground: #FFFFFF;
+  --secondary: #E6F4EA;
+  --secondary-foreground: #047857;
+  --muted: #EFECE6;
+  --muted-foreground: #8B857A;
+  --accent: #E6F4EA;
+  --accent-foreground: #059669;
+  --destructive: #7A2635;
+  --destructive-foreground: #FFFFFF;
+  --success: #10B981;
+  --warning: #F59E0B;
+  --border: #E5E2D9;
+  --input: #FFFFFF;
+  --ring: #059669;
+  --chart-1: #059669;
+  --chart-2: #7A2635;
+  --chart-3: #4B4B4E;
+  --chart-4: #8C8C90;
+  --chart-5: #34D399;
+  --sidebar: #d1e2ea;
+  --sidebar-foreground: #201C16;
+  --sidebar-primary: #059669;
+  --sidebar-primary-foreground: #FFFFFF;
+  --sidebar-accent: #E6F4EA;
+  --sidebar-accent-foreground: #059669;
+  --sidebar-border: #E5E2D9;
+  --sidebar-ring: #059669;
+  --font-sans: 'Siyam Rupali', Roboto, "Hind Siliguri", sans-serif;
+  --font-serif: Lora, serif;
+  --font-mono: "Fira Code", monospace;
+  --radius: 0.5rem;
+
+  /* bKash Fintech Design System Tokens */
+  --bkash-primary: #059669;
+  --bkash-primary-dark: #047857;
+  --bkash-primary-light: #ECFDF5;
+  --bkash-secondary: #34D399;
+  --bkash-bg: #F5F6F8;
+  --bkash-card: #FFFFFF;
+  --bkash-card-secondary: #FAFAFB;
+  --bkash-border: #ECEDEF;
+  --bkash-text: #202124;
+  --bkash-text-sec: #5F6368;
+  --bkash-radius-card: 16px;
+  --bkash-radius-btn: 14px;
+  --bkash-radius-modal: 18px;
+  --bkash-radius-input: 12px;
+  --bkash-shadow-sm: 0 2px 8px rgba(0,0,0,0.04);
+  --bkash-shadow-md: 0 8px 24px rgba(0,0,0,0.06);
+  --bkash-shadow-lg: 0 18px 45px rgba(0,0,0,0.10);
+  --bkash-balance-shadow: 0px 18px 40px rgba(5, 150, 105, 0.28);
+}
+
+.dark {
+  --loader-color: #10B981;
+  --background: #121316;
+  --foreground: #F5F6F8;
+  --card: #1E1F24;
+  --card-foreground: #F5F6F8;
+  --popover: #1E1F24;
+  --popover-foreground: #F5F6F8;
+  --primary: #10B981;
+  --primary-foreground: #FFFFFF;
+  --secondary: #1F3A2E;
+  --secondary-foreground: #6EE7B7;
+  --muted: #22242B;
+  --muted-foreground: #9AA0A6;
+  --accent: #1F3A2E;
+  --accent-foreground: #10B981;
+  --border: #2A2C32;
+  --input: #1E1F24;
+  --ring: #10B981;
+
+  .text-black, 
+  .text-zinc-950, .text-zinc-900, .text-zinc-800, .text-zinc-700,
+  .text-slate-950, .text-slate-900, .text-slate-800, .text-slate-700,
+  .text-neutral-950, .text-neutral-900, .text-neutral-800, .text-neutral-700,
+  .text-gray-950, .text-gray-900, .text-gray-800, .text-gray-700 {
+    color: #F5F6F8 !important;
+  }
+
+  .text-zinc-500, .text-slate-500, .text-gray-500, .text-neutral-500 {
+    color: #9AA0A6 !important;
+  }
+
+  .text-muted-foreground {
+    color: #9AA0A6 !important;
+  }
+
+  .bg-white {
+    background-color: #1E1F24 !important;
+  }
+  .bg-gray-50, .bg-zinc-50, .bg-slate-50, .bg-neutral-50 {
+    background-color: #16171B !important;
+  }
+  .bg-gray-100, .bg-zinc-100, .bg-slate-100, .bg-neutral-100 {
+    background-color: #22242B !important;
+  }
+
+  .border-gray-200, .border-zinc-200, .border-slate-200, .border-neutral-200 {
+    border-color: #2A2C32 !important;
+  }
+
+  select, input[type="text"], input[type="number"], input[type="email"],
+  input[type="password"], input[type="search"], textarea {
+    background-color: #1E1F24 !important;
+    color: #F5F6F8 !important;
+    border-color: #2A2C32 !important;
+  }
+  select option {
+    background-color: #1E1F24;
+    color: #F5F6F8;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-touch-callout: none;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: 'Siyam Rupali', sans-serif;
+    font-weight: 400;
+    font-style: normal;
+    background-color: var(--background);
+    user-select: text;
+    -webkit-user-select: text;
+    touch-action: manipulation;
+  }
+
+  input, textarea, [contenteditable="true"] {
+    user-select: text !important;
+    -webkit-user-select: text !important;
+  }
+
+  html[lang="bn"] body {
+    font-family: 'Siyam Rupali', sans-serif;
+  }
+
+  h1, h2, h3 {
+    font-family: var(--font-serif);
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+}
+
+/* ── Smooth, Premium UI Transitions & Motion Standard ───────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *, ::before, ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ── bKash Fintech Card & Component Utilities ────────────────────────────── */
+.bkash-card, .fintech-card {
+  background: var(--card);
+  border-radius: var(--bkash-radius-card) !important;
+  border: 1px solid var(--border) !important;
+  box-shadow: 0px 1px 3px rgba(0,0,0,0.05), 0px 8px 24px rgba(0,0,0,0.04) !important;
+  transition: transform 180ms cubic-bezier(.16,1,.3,1), box-shadow 180ms cubic-bezier(.16,1,.3,1), border-color 180ms cubic-bezier(.16,1,.3,1) !important;
+}
+
+.bkash-card:hover, .fintech-card:hover {
+  transform: translateY(-1px);
+  box-shadow: 0px 6px 20px rgba(0,0,0,0.06) !important;
+}
+
+.bkash-card:active, .fintech-card:active {
+  transform: scale(0.995);
+}
+
+.bkash-balance-card {
+  background: linear-gradient(135deg, #E2136E, #C10D5B) !important;
+  color: #FFFFFF !important;
+  border-radius: 24px !important;
+  box-shadow: 0px 18px 40px rgba(226, 19, 110, 0.28) !important;
+}
+
+.bkash-btn-primary {
+  background: #E2136E !important;
+  color: #FFFFFF !important;
+  border-radius: 16px !important;
+  transition: background-color 180ms cubic-bezier(.16,1,.3,1), opacity 180ms cubic-bezier(.16,1,.3,1) !important;
+}
+
+.bkash-btn-primary:hover, .bkash-btn-primary:active {
+  background: #C10D5B !important;
+  opacity: 0.95;
+}
+
+.bkash-input, .fintech-input {
+  background: var(--card) !important;
+  border-radius: 18px !important;
+  border: 1px solid var(--border) !important;
+  box-shadow: 0px 2px 10px rgba(0,0,0,0.04) !important;
+}
+
+.bkash-icon-container {
+  width: 52px;
+  height: 52px;
+  border-radius: 18px;
+  background: #FFF5F8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.bkash-icon-pink { background: #FCE5EF; }
+.bkash-icon-blue { background: #E8F3FF; }
+.bkash-icon-green { background: #ECFFF1; }
+.bkash-icon-yellow { background: #FFF8DF; }
+.bkash-icon-purple { background: #F3E9FF; }
+
+.bkash-bottom-nav {
+  background: var(--card) !important;
+  border-top: 1px solid var(--border) !important;
+  border-radius: 28px 28px 0 0 !important;
+  box-shadow: 0 -8px 24px rgba(0,0,0,0.05) !important;
+}
+
+.glass-card {
+  @apply bg-card backdrop-blur-xl border border-border shadow-sm;
+  border-radius: var(--bkash-radius-card);
+}
+
+.beveled-button {
+  box-shadow: 
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.35),
+    inset 0 -1px 0 0 rgba(0, 0, 0, 0.25),
+    0 2px 5px -1px rgba(0, 0, 0, 0.12) !important;
+  border-radius: 14px !important;
+  transition: all 160ms cubic-bezier(.16,1,.3,1) !important;
+}
+
+.beveled-button:active {
+  transform: translateY(1px) scale(0.985) !important;
+  box-shadow: 
+    inset 0 2px 4px 0 rgba(0, 0, 0, 0.3),
+    0 1px 2px 0 rgba(0, 0, 0, 0.05) !important;
+}
+
+/* ── Crisp & Sharp Bevel Effect for KPI Cards (Zero Roundness) ────────────────── */
+.beveled-card, .beveled-kpi, .kpi-card {
+  border: 1px solid rgba(0, 0, 0, 0.12) !important;
+  border-top: 1.5px solid rgba(255, 255, 255, 0.9) !important;
+  border-left: 1px solid rgba(255, 255, 255, 0.6) !important;
+  border-bottom: 1.5px solid rgba(0, 0, 0, 0.2) !important;
+  border-right: 1px solid rgba(0, 0, 0, 0.15) !important;
+  border-radius: 0px !important; /* Sharp crisp edges */
+  background-color: var(--card) !important;
+  transition: transform 180ms cubic-bezier(.16,1,.3,1), box-shadow 180ms cubic-bezier(.16,1,.3,1), border-color 180ms cubic-bezier(.16,1,.3,1) !important;
+  box-shadow: 
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.85),
+    inset 0 -1px 0 0 rgba(0, 0, 0, 0.08),
+    0 2px 6px -1px rgba(0, 0, 0, 0.06) !important;
+}
+
+.beveled-card:hover, .beveled-kpi:hover, .kpi-card:hover {
+  transform: translateY(-1px);
+  box-shadow: 
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.95),
+    inset 0 -1px 0 0 rgba(0, 0, 0, 0.1),
+    0 6px 16px -3px rgba(0, 0, 0, 0.1) !important;
+  border-color: var(--primary) !important;
+}
+
+.dark .beveled-card, .dark .beveled-kpi, .dark .kpi-card {
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  border-top: 1.5px solid rgba(255, 255, 255, 0.25) !important;
+  border-left: 1px solid rgba(255, 255, 255, 0.18) !important;
+  border-bottom: 1.5px solid rgba(0, 0, 0, 0.5) !important;
+  border-right: 1px solid rgba(0, 0, 0, 0.4) !important;
+  border-radius: 0px !important; /* Sharp crisp edges */
+  box-shadow: 
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.18),
+    inset 0 -1px 0 0 rgba(0, 0, 0, 0.45),
+    0 4px 12px -2px rgba(0, 0, 0, 0.45) !important;
+}
+
+.dark .beveled-card:hover, .dark .beveled-kpi:hover, .dark .kpi-card:hover {
+  box-shadow: 
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.28),
+    inset 0 -1px 0 0 rgba(0, 0, 0, 0.55),
+    0 8px 20px -3px rgba(0, 0, 0, 0.6) !important;
+}
+
+.safe-area-pb {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+:root {
+  --mobile-tab-bar-height: 3.5rem;
+  --mobile-scroll-extra: 1rem;
+  --mobile-footer-clearance: calc(
+    var(--mobile-tab-bar-height) + var(--mobile-scroll-extra) + env(safe-area-inset-bottom, 0px)
+  );
+}
+
+.mobile-content-pad {
+  padding-bottom: var(--mobile-footer-clearance);
+}
+
+.mobile-bottom-spacer {
+  height: calc(var(--mobile-scroll-extra) + env(safe-area-inset-bottom, 0px));
+  flex-shrink: 0;
+  pointer-events: none;
+}
+
+.mobile-fab-bottom {
+  bottom: calc(var(--mobile-tab-bar-height) + env(safe-area-inset-bottom, 0px) + 0.75rem);
+}
+
+.mobile-buy-sell-bottom {
+  bottom: calc(var(--mobile-tab-bar-height) + env(safe-area-inset-bottom, 0px) + 0.5rem);
+}
+
+.app-shell {
+  -webkit-tap-highlight-color: transparent;
+  height: 100vh;
+  max-height: 100vh;
+  overflow: hidden;
+}
+
+.mobile-tab-bar {
+  background-color: var(--card) !important;
+  border-top: 1px solid var(--border) !important;
+  border-radius: 28px 28px 0 0 !important;
+  box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.05) !important;
+}
+
+@media (max-width: 767px) {
+  .app-shell main {
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .app-shell button,
+  .app-shell a {
+    touch-action: manipulation;
+  }
+}
+
+.icon-sm {
+  width: clamp(0.875rem, 3.5vw, 1rem);
+  height: clamp(0.875rem, 3.5vw, 1rem);
+}
+
+.speed-loader-screen,
+.speed-loader-inline {
+  position: relative;
+  overflow: hidden;
+  --loader-color: var(--primary);
+}
+
+.speed-loader-screen {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--background);
+}
+
+/* ── Printable Invoice & Single Page A4 Print Rules (PWA & Web Safe) ── */
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 8mm 10mm;
+  }
+
+  html, body {
+    background: #ffffff !important;
+    color: #000000 !important;
+    color-scheme: light !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Force light theme colors on all text inside printable invoice */
+  .dark .invoice-print-container,
+  .dark .invoice-print-page,
+  .invoice-print-container,
+  .invoice-print-page {
+    background-color: #ffffff !important;
+    color: #000000 !important;
+  }
+
+  .dark .invoice-print-container *,
+  .dark .invoice-print-page * {
+    color: inherit;
+  }
+
+  /* Hide PWA app shell navigation, bars, dialog overlays and controls */
+  .no-print,
+  nav,
+  header,
+  aside,
+  footer,
+  .mobile-tab-bar,
+  .bkash-bottom-nav,
+  .app-shell > header,
+  .app-shell > nav,
+  .app-shell > footer,
+  div[role="dialog"] > button:last-child {
+    display: none !important;
+  }
+
+  .invoice-print-container {
+    display: block !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+    border: none !important;
+    background: #ffffff !important;
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  .invoice-print-page {
+    display: block !important;
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+}
+
+/* ============================================================
+   CLASSIC WORLD BACKGROUND — Image Background & Clean Styling
+   ============================================================ */
+.site-bg {
+  position: relative;
+  min-height: 100vh;
+  background-color: var(--background);
+  background-image: url("/background.avif");
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-attachment: fixed;
+  overflow-x: hidden;
+  isolation: isolate;
+}
+
+.site-bg::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-color: rgba(255, 255, 255, 0.35);
+}
+
+.dark .site-bg::before {
+  background-color: rgba(15, 23, 42, 0.75);
+}
+
+/* ============================================================
+   MOBILE PHONE SMOOTH PERFORMANCE & TAB BAR OPTIMIZATIONS
+   ============================================================ */
+@media (max-width: 768px) {
+  /* Fast touch interactions without 300ms delay */
+  button, a, input, select, textarea, [role="button"] {
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* CRITICAL iOS SAFEGUARD: Prevent iOS Safari auto-zoom on input focus when font-size < 16px */
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]), select, textarea {
+    font-size: 16px !important;
+  }
+
+  /* Smooth touch scrolling */
+  html, body, .site-bg {
+    -webkit-overflow-scrolling: touch;
+    overflow-x: hidden !important;
+  }
+
+  /* Mobile bottom tab bar permanent fixed positioning and safe-area inset */
+  .mobile-tab-bar {
+    z-index: 99999 !important;
+    position: fixed !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    transform: translateZ(0) !important;
+    -webkit-transform: translateZ(0) !important;
+    box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.15) !important;
+    padding-bottom: max(env(safe-area-inset-bottom, 0px), 8px) !important;
+    background-color: var(--card) !important;
+  }
+
+  .mobile-bottom-spacer {
+    height: 4.5rem !important;
+    min-height: 4.5rem !important;
+  }
+
+  /* Disable heavy background SVG rotation animations on mobile GPUs for lightweight performance */
+  .site-bg::after, .gear-ghost {
+    animation: none !important;
+    display: none !important;
+  }
+
+  /* Optimize backdrop-blur filters for low-end mobile GPUs */
+  .backdrop-blur-lg, .backdrop-blur-xl, .backdrop-blur-2xl, .backdrop-blur-3xl {
+    backdrop-filter: blur(4px) !important;
+    -webkit-backdrop-filter: blur(4px) !important;
+  }
+
+  /* GPU Hardware acceleration for lightweight mobile scrolling */
+  body, main, .glass-card, header {
+    transform: translateZ(0);
+    -webkit-transform: translateZ(0);
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+  }
+}
+
+/* Clean Print Engine Rules — Borderless & Exact Paper Fit */
+@media print {
+  @page {
+    margin: 0;
+  }
+  html, body {
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+    box-shadow: none !important;
+  }
+  .card, .invoice-print-container {
+    border: none !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+  }
+}
+
+

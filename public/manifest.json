@@ -1,0 +1,77 @@
+{
+  "name": "Classic World — Smart POS & Accounting",
+  "short_name": "Classic World",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "description": "Smart Inventory, Sales & Accounting POS for Classic World",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone", "minimal-ui"],
+  "background_color": "#ffffff",
+  "theme_color": "#059669",
+  "prefer_related_applications": false,
+  "orientation": "any",
+  "categories": ["business", "finance", "productivity", "utilities"],
+  "icons": [
+    {
+      "src": "/classic-world.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/logo.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Point of Sale",
+      "short_name": "POS",
+      "description": "Open Sales & Invoicing",
+      "url": "/sales",
+      "icons": [{ "src": "/icons/sales_icon.png", "sizes": "96x96" }]
+    },
+    {
+      "name": "Products & Stock",
+      "short_name": "Stock",
+      "description": "View inventory & products",
+      "url": "/products",
+      "icons": [{ "src": "/icons/products_icon.png", "sizes": "96x96" }]
+    },
+    {
+      "name": "Financial Reports",
+      "short_name": "Reports",
+      "description": "Generate Official Reports",
+      "url": "/reports",
+      "icons": [{ "src": "/icons/reports_icon.png", "sizes": "96x96" }]
+    },
+    {
+      "name": "Expenses",
+      "short_name": "Expenses",
+      "description": "Track Shop Overhead",
+      "url": "/expenses",
+      "icons": [{ "src": "/icons/expense_icon.png", "sizes": "96x96" }]
+    }
+  ]
+}

@@ -4,9 +4,9 @@ export type ThemeMode = "light" | "dark" | "system";
 export type AccentColor = "mechanix" | "indigo" | "emerald" | "violet" | "blue" | "rose";
 export type BgStyle = "default" | "warm" | "cool" | "clean" | "glass";
 
-const STORAGE_KEY = "hz-theme";
-const ACCENT_KEY = "hz-accent";
-const BG_STYLE_KEY = "hz-bg-style";
+const STORAGE_KEY = "cw-theme";
+const ACCENT_KEY = "cw-accent";
+const BG_STYLE_KEY = "cw-bg-style";
 
 const ACCENTS = {
   mechanix: { hue: 85, light: "#B8902E", dark: "#DFBB63" },

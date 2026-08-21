@@ -1,8 +1,8 @@
 /** Lightweight localStorage cache for instant UI hydration. */
 
 const AUTH_KEY = "classicworld_auth_profile";
-const LEGACY_AUTH_KEY = "hz-auth-profile";
-const BRAND_KEY = "hz-brand";
+const LEGACY_AUTH_KEY = "cw-auth-profile";
+const BRAND_KEY = "cw-brand";
 
 export interface AuthProfileCache {
   id: string;

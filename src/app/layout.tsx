@@ -55,8 +55,8 @@ export default function RootLayout({
             __html: `
               (function() {
                 try {
-                  var mode = localStorage.getItem('hz-theme') || 'light';
-                  var accent = localStorage.getItem('hz-accent') || 'mechanix';
+                  var mode = localStorage.getItem('cw-theme') || 'light';
+                  var accent = localStorage.getItem('cw-accent') || 'mechanix';
                   var doc = document.documentElement;
                   if (mode === 'dark' || (mode === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
                     doc.classList.add('dark');

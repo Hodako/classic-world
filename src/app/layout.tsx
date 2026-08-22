@@ -4,16 +4,16 @@ import { PwaInstallPrompt } from "@/components/pwa-install-prompt";
 import "../styles.css";
 
 export const metadata: Metadata = {
-  title: "Classic World — Smart POS & Accounting",
-  description: "Smart Inventory, Sales, POS & Accounting Management System for Classic World.",
-  authors: [{ name: "Classic World" }],
+  title: "Dream Fashion — Smart POS & Accounting",
+  description: "Smart Inventory, Sales, POS & Accounting Management System.",
+  authors: [{ name: "Dream Fashion" }],
   icons: {
-    icon: "/logo.svg",
-    apple: "/logo.svg",
+    icon: "/logo.png",
+    apple: "/apple-touch-icon.png",
   },
   manifest: "/manifest.json",
   appleWebApp: {
-    title: "Classic World",
+    title: "Dream Fashion",
     statusBarStyle: "black-translucent",
   },
 };
@@ -42,13 +42,24 @@ export default function RootLayout({
           rel="stylesheet"
         />
         <link href="https://banglawebfonts.pages.dev/css/siyam-rupali.css" rel="stylesheet" />
+        <link href="https://banglawebfonts.pages.dev/css/baloo-da-2.css" rel="stylesheet" />
+        <link href="https://banglawebfonts.pages.dev/css/charukola.css" rel="stylesheet" />
+        <link href="https://banglawebfonts.pages.dev/css/bensen-handwriting.css" rel="stylesheet" />
+        {/* PWA meta — mobile-web-app-capable is the modern standard (replaces deprecated apple- version) */}
+        <meta name="mobile-web-app-capable" content="yes" />
+        {/* Keep apple- variant for iOS Safari compatibility */}
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+        <meta name="apple-mobile-web-app-title" content="Dream Fashion" />
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+        <link rel="manifest" href="/manifest.json" />
         <script
           dangerouslySetInnerHTML={{
             __html: `
               (function() {
                 try {
-                  var mode = localStorage.getItem('cw-theme') || 'light';
-                  var accent = localStorage.getItem('cw-accent') || 'mechanix';
+                  var mode = localStorage.getItem('hz-theme') || 'light';
+                  var accent = localStorage.getItem('hz-accent') || 'mechanix';
                   var doc = document.documentElement;
                   if (mode === 'dark' || (mode === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
                     doc.classList.add('dark');
@@ -72,6 +83,7 @@ export default function RootLayout({
                   doc.style.setProperty('--sidebar-primary', val);
                 } catch (e) {}
 
+                // Register PWA Service Worker for phone browsers & standalone mode
                 if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
                   window.addEventListener('load', function() {
                     navigator.serviceWorker.register('/sw.js').catch(function() {});

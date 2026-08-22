@@ -227,15 +227,15 @@ export default function OnlineSellsPage() {
   return (
     <div className="space-y-4 pb-12">
       {/* Top Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-card p-3.5 rounded-2xl border border-border/80 shadow-xs">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-card p-3.5 rounded-2xl border-[0.5px] border-black/75 dark:border-white/30 shadow-xs">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2.5">
             <div className="size-9 rounded-xl bg-purple-500/10 flex items-center justify-center text-purple-600">
               <Truck className="size-5" />
             </div>
             <div>
-              <h1 className="text-lg sm:text-xl font-bold">{lang === "bn" ? "অনলাইন ও কুরিয়ার ডেলিভারি" : "Online & Courier Sales"}</h1>
-              <p className="text-[11px] text-muted-foreground">
+              <h1 className="text-lg sm:text-xl font-bold font-charukola">{lang === "bn" ? "অনলাইন ও কুরিয়ার ডেলিভারি" : "Online & Courier Sales"}</h1>
+              <p className="text-[11px] text-muted-foreground font-balooda">
                 {lang === "bn" ? "কুরিয়ার ক্যাশ অন ডেলিভারি এবং রেমিট্যান্স ট্র্যাকিং" : "Track pending courier remittances and deliveries"}
               </p>
             </div>
@@ -244,18 +244,18 @@ export default function OnlineSellsPage() {
           <Button
             onClick={() => setOpen(true)}
             size="sm"
-            className="sm:hidden h-8 px-2.5 text-xs font-bold rounded-lg bg-primary text-primary-foreground gap-1"
+            className="sm:hidden h-8 px-2.5 text-xs font-bold font-balooda rounded-lg bg-primary text-primary-foreground gap-1"
           >
             <Plus className="size-3.5 stroke-[2.5]" />
             <span>{lang === "bn" ? "নতুন অর্ডার" : "New"}</span>
           </Button>
         </div>
 
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex items-center gap-2 flex-wrap font-balooda">
           <div className="relative flex-1 sm:w-64">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground pointer-events-none" />
             <Input
-              className="pl-8 h-8.5 text-xs rounded-xl"
+              className="pl-8 h-8.5 text-xs rounded-xl font-balooda"
               placeholder={lang === "bn" ? "কুরিয়ার, ট্র্যাকিং বা কাস্টমার খুঁজুন..." : "Search courier orders..."}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -265,7 +265,7 @@ export default function OnlineSellsPage() {
           <Button
             onClick={() => setOpen(true)}
             size="sm"
-            className="hidden sm:flex h-8.5 px-3 text-xs font-bold rounded-xl bg-primary text-primary-foreground shadow-xs gap-1.5 cursor-pointer"
+            className="hidden sm:flex h-8.5 px-3 text-xs font-bold font-balooda rounded-xl bg-primary text-primary-foreground shadow-xs gap-1.5 cursor-pointer"
           >
             <Plus className="size-4 stroke-[2.5]" />
             <span>{lang === "bn" ? "নতুন কুরিয়ার অর্ডার" : "New Courier Order"}</span>
@@ -275,55 +275,55 @@ export default function OnlineSellsPage() {
 
       {/* KPI Stats Grid */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
-        <Card className="p-3 rounded-xl border border-border/80 bg-card shadow-2xs">
+        <Card className="p-3 rounded-xl border-[0.5px] border-black/75 dark:border-white/30 bg-card shadow-2xs">
           <div className="flex items-center justify-between text-muted-foreground">
-            <span className="text-xs font-semibold">{lang === "bn" ? "মোট অর্ডার" : "Total Orders"}</span>
+            <span className="text-xs font-bold font-balooda">{lang === "bn" ? "মোট অর্ডার" : "Total Orders"}</span>
             <Truck className="size-4 text-purple-600" />
           </div>
           <p className="text-lg font-bold font-serif text-foreground mt-1">{groupedOnlineSales.length}</p>
         </Card>
 
-        <Card className="p-3 rounded-xl border border-amber-500/30 bg-amber-500/5 shadow-2xs">
+        <Card className="p-3 rounded-xl border-[0.5px] border-amber-500/50 bg-amber-500/5 shadow-2xs">
           <div className="flex items-center justify-between text-amber-700 dark:text-amber-300">
-            <span className="text-xs font-semibold">{lang === "bn" ? "কুরিয়ার পেন্ডিং" : "Pending Courier"}</span>
+            <span className="text-xs font-bold font-balooda">{lang === "bn" ? "কুরিয়ার পেন্ডিং" : "Pending Courier"}</span>
             <Clock className="size-4" />
           </div>
           <p className="text-lg font-bold font-serif text-amber-700 dark:text-amber-300 mt-1">{fmtMoney(pendingAmount)}</p>
-          <span className="text-[10px] text-muted-foreground">{lang === "bn" ? "ক্যাশবক্সে এখনো জমা হয়নি" : "Not yet in cashbox"}</span>
+          <span className="text-[10px] text-muted-foreground font-balooda">{lang === "bn" ? "ক্যাশবক্সে এখনো জমা হয়নি" : "Not yet in cashbox"}</span>
         </Card>
 
-        <Card className="p-3 rounded-xl border border-emerald-500/30 bg-emerald-500/5 shadow-2xs">
+        <Card className="p-3 rounded-xl border-[0.5px] border-emerald-500/50 bg-emerald-500/5 shadow-2xs">
           <div className="flex items-center justify-between text-emerald-700 dark:text-emerald-300">
-            <span className="text-xs font-semibold">{lang === "bn" ? "কালেক্টেড (ক্যাশবক্স)" : "Collected in Cashbox"}</span>
+            <span className="text-xs font-bold font-balooda">{lang === "bn" ? "কালেক্টেড (ক্যাশবক্স)" : "Collected in Cashbox"}</span>
             <CheckCircle2 className="size-4" />
           </div>
           <p className="text-lg font-bold font-serif text-emerald-700 dark:text-emerald-300 mt-1">{fmtMoney(collectedAmount)}</p>
-          <span className="text-[10px] text-muted-foreground">{lang === "bn" ? "টাকা ক্যাশবক্সে জমা হয়েছে" : "Deposited in cashbox"}</span>
+          <span className="text-[10px] text-muted-foreground font-balooda">{lang === "bn" ? "টাকা ক্যাশবক্সে জমা হয়েছে" : "Deposited in cashbox"}</span>
         </Card>
 
-        <Card className="p-3 rounded-xl border border-sky-500/30 bg-sky-500/5 shadow-2xs">
+        <Card className="p-3 rounded-xl border-[0.5px] border-sky-500/50 bg-sky-500/5 shadow-2xs">
           <div className="flex items-center justify-between text-sky-700 dark:text-sky-300">
-            <span className="text-xs font-semibold">{lang === "bn" ? "অনলাইন মোট লাভ" : "Online Profit"}</span>
+            <span className="text-xs font-bold font-balooda">{lang === "bn" ? "অনলাইন মোট লাভ" : "Online Profit"}</span>
             <ArrowUpRight className="size-4" />
           </div>
           <p className="text-lg font-bold font-serif text-sky-700 dark:text-sky-300 mt-1">{fmtMoney(onlineProfitTotal)}</p>
-          <span className="text-[10px] text-muted-foreground">{lang === "bn" ? "নিট অর্জিত লাভ" : "Net profit recorded"}</span>
+          <span className="text-[10px] text-muted-foreground font-balooda">{lang === "bn" ? "নিট অর্জিত লাভ" : "Net profit recorded"}</span>
         </Card>
       </div>
 
       {/* Tabs Filter */}
       <Tabs value={tab} onValueChange={setTab}>
-        <TabsList className="grid grid-cols-4 w-full text-xs font-bold p-1 bg-muted/80 rounded-xl gap-1">
-          <TabsTrigger value="all" className="rounded-lg text-[11px] sm:text-xs">
+        <TabsList className="grid grid-cols-4 w-full text-xs font-bold font-balooda p-1 bg-muted/80 rounded-xl gap-1">
+          <TabsTrigger value="all" className="rounded-lg text-[11px] sm:text-xs font-bold">
             {lang === "bn" ? `সব (${groupedOnlineSales.length})` : `All (${groupedOnlineSales.length})`}
           </TabsTrigger>
-          <TabsTrigger value="pending" className="rounded-lg text-[11px] sm:text-xs text-amber-700 dark:text-amber-300">
+          <TabsTrigger value="pending" className="rounded-lg text-[11px] sm:text-xs font-bold text-amber-700 dark:text-amber-300">
             ⏳ {lang === "bn" ? "অপেক্ষমাণ" : "Pending"}
           </TabsTrigger>
-          <TabsTrigger value="collected" className="rounded-lg text-[11px] sm:text-xs text-emerald-700 dark:text-emerald-300">
+          <TabsTrigger value="collected" className="rounded-lg text-[11px] sm:text-xs font-bold text-emerald-700 dark:text-emerald-300">
             ✓ {lang === "bn" ? "কালেক্টেড" : "Collected"}
           </TabsTrigger>
-          <TabsTrigger value="cancelled" className="rounded-lg text-[11px] sm:text-xs text-rose-700 dark:text-rose-300">
+          <TabsTrigger value="cancelled" className="rounded-lg text-[11px] sm:text-xs font-bold text-rose-700 dark:text-rose-300">
             ✕ {lang === "bn" ? "বাতিল" : "Cancelled"}
           </TabsTrigger>
         </TabsList>
@@ -332,7 +332,7 @@ export default function OnlineSellsPage() {
           {filteredList.length === 0 ? (
             <Card className="p-12 text-center rounded-2xl border-dashed border-border text-muted-foreground">
               <Truck className="size-8 mx-auto mb-2 text-muted-foreground/40" />
-              <p className="text-xs font-medium">
+              <p className="text-xs font-medium font-balooda">
                 {lang === "bn" ? "নির্বাচিত ক্যাটাগরিতে কোন অনলাইন অর্ডার পাওয়া যায়নি।" : "No online orders found for the selected view."}
               </p>
             </Card>
@@ -346,10 +346,10 @@ export default function OnlineSellsPage() {
               return (
                 <div
                   key={item.id}
-                  className={`rounded-xl border border-dashed transition-all duration-150 ${
+                  className={`rounded-xl border-[0.5px] transition-all duration-150 ${
                     isExpanded
-                      ? "border-primary/70 bg-primary/[0.02] shadow-xs"
-                      : "border-border hover:border-primary/50 bg-card"
+                      ? "border-black dark:border-white bg-primary/[0.02] shadow-xs"
+                      : "border-black/70 dark:border-white/30 hover:border-black dark:hover:border-white bg-card"
                   }`}
                 >
                   {/* Compact 2-Line Clickable Summary */}
@@ -360,11 +360,11 @@ export default function OnlineSellsPage() {
                     {/* Line 1: Product Name & Count | Total Amount & Courier Status Pill */}
                     <div className="flex items-center justify-between gap-2">
                       <div className="min-w-0 flex-1 flex items-center gap-1.5">
-                        <span className={`font-bold text-xs sm:text-sm text-foreground truncate ${isCancelled ? "line-through text-muted-foreground" : ""}`}>
+                        <span className={`font-bold font-balooda text-xs sm:text-sm text-foreground truncate ${isCancelled ? "line-through text-muted-foreground" : ""}`}>
                           {item.product_name}
                         </span>
                         {item.items.length > 1 && (
-                          <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-muted text-muted-foreground shrink-0">
+                          <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-muted text-muted-foreground shrink-0 font-balooda font-bold">
                             {item.items.length}টি
                           </span>
                         )}
@@ -372,15 +372,15 @@ export default function OnlineSellsPage() {
 
                       <div className="flex items-center gap-1.5 shrink-0">
                         {isPending ? (
-                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded border uppercase tracking-wider bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30 animate-pulse">
+                          <span className="text-[10px] font-bold font-balooda px-1.5 py-0.5 rounded border-[0.5px] border-amber-500/40 uppercase tracking-wider bg-amber-500/15 text-amber-700 dark:text-amber-300 animate-pulse">
                             ⏳ {lang === "bn" ? "পেন্ডিং" : "Pending"}
                           </span>
                         ) : isCollected ? (
-                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded border uppercase tracking-wider bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30">
+                          <span className="text-[10px] font-bold font-balooda px-1.5 py-0.5 rounded border-[0.5px] border-emerald-500/40 uppercase tracking-wider bg-emerald-500/15 text-emerald-700 dark:text-emerald-300">
                             ✓ {lang === "bn" ? "পেইড" : "Paid"}
                           </span>
                         ) : (
-                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded border uppercase tracking-wider bg-rose-500/15 text-rose-700 dark:text-rose-300 border-rose-500/30 line-through">
+                          <span className="text-[10px] font-bold font-balooda px-1.5 py-0.5 rounded border-[0.5px] border-rose-500/40 uppercase tracking-wider bg-rose-500/15 text-rose-700 dark:text-rose-300 line-through">
                             ✕ {lang === "bn" ? "বাতিল" : "Cancelled"}
                           </span>
                         )}
@@ -392,11 +392,11 @@ export default function OnlineSellsPage() {
                     </div>
 
                     {/* Line 2: Customer / Date | Profit & Reveal Trigger */}
-                    <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
+                    <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground font-balooda">
                       <div className="min-w-0 flex-1 truncate flex items-center gap-1">
                         {item.parties?.name ? (
                           <>
-                            <span className="font-semibold text-foreground truncate max-w-[120px] sm:max-w-[200px]">
+                            <span className="font-bold font-charukola text-foreground truncate max-w-[120px] sm:max-w-[200px]">
                               {item.parties.name}
                             </span>
                             <span>·</span>
@@ -408,7 +408,7 @@ export default function OnlineSellsPage() {
                       </div>
 
                       <div className="flex items-center gap-1.5 shrink-0">
-                        <span className="text-[10.5px] font-semibold text-emerald-600 dark:text-emerald-400">
+                        <span className="text-[10.5px] font-bold font-balooda text-emerald-600 dark:text-emerald-400">
                           {lang === "bn" ? "লাভ:" : "Profit:"} {isCancelled ? "৳০" : fmtMoney(item.profit)}
                         </span>
                         <span className="p-0.5 rounded text-muted-foreground/70 hover:text-foreground">
@@ -420,14 +420,14 @@ export default function OnlineSellsPage() {
 
                   {/* Revealable Action & Order Details Drawer */}
                   {isExpanded && (
-                    <div className="px-3 pb-3 pt-1 border-t border-dashed border-border/70 space-y-2.5 bg-muted/10 rounded-b-xl animate-in fade-in-50 duration-150">
+                    <div className="px-3 pb-3 pt-1 border-t-[0.5px] border-black/40 dark:border-white/20 space-y-2.5 bg-muted/10 rounded-b-xl animate-in fade-in-50 duration-150 font-balooda">
                       {/* Courier Information Bar */}
-                      <div className="p-2 rounded-lg bg-purple-500/10 border border-purple-500/20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-xs">
+                      <div className="p-2 rounded-lg bg-purple-500/10 border-[0.5px] border-purple-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-xs">
                         <div className="flex items-center gap-1.5 flex-wrap">
                           <Truck className="size-3.5 text-purple-600 shrink-0" />
                           <span className="font-bold text-purple-900 dark:text-purple-200">{item.courier_name || "Courier Delivery"}</span>
                           {item.tracking_code && (
-                            <span className="font-mono text-[10.5px] bg-background text-foreground px-1.5 py-0.5 rounded border border-border">
+                            <span className="font-mono text-[10.5px] bg-background text-foreground px-1.5 py-0.5 rounded border-[0.5px] border-black/30 dark:border-white/30">
                               ID: {item.tracking_code}
                             </span>
                           )}
@@ -442,14 +442,14 @@ export default function OnlineSellsPage() {
 
                       {/* Multi-Item Breakdown List if Group */}
                       {item.items.length > 1 && (
-                        <div className="space-y-1 bg-background/80 p-2 rounded-lg border border-border/50">
-                          <span className="text-[10px] font-bold uppercase text-muted-foreground tracking-wider block">
+                        <div className="space-y-1 bg-background/80 p-2 rounded-lg border-[0.5px] border-black/20 dark:border-white/20">
+                          <span className="text-[10px] font-bold uppercase text-muted-foreground tracking-wider block font-balooda">
                             {lang === "bn" ? "অর্ডার আইটেম সমূহ" : "Order Items"}
                           </span>
                           {item.items.map((it: any) => (
-                            <div key={it.id} className="flex justify-between items-center text-xs py-0.5 border-b border-border/30 last:border-0">
+                            <div key={it.id} className="flex justify-between items-center text-xs py-0.5 border-b border-border/30 last:border-0 font-balooda">
                               <div className="truncate mr-2">
-                                <span className="font-semibold text-foreground">{it.product_name}</span>
+                                <span className="font-bold text-foreground">{it.product_name}</span>
                                 <span className="text-muted-foreground font-mono ml-1">×{it.qty}</span>
                               </div>
                               <span className="font-mono font-bold text-foreground shrink-0">
@@ -461,12 +461,12 @@ export default function OnlineSellsPage() {
                       )}
 
                       {/* Actions Toolbar */}
-                      <div className="flex items-center justify-between gap-2 pt-1">
+                      <div className="flex items-center justify-between gap-2 pt-1 font-balooda">
                         <Button
                           onClick={(e) => { e.stopPropagation(); handlePrint(item); }}
                           variant="outline"
                           size="sm"
-                          className="h-7 text-xs font-semibold rounded-lg gap-1.5 cursor-pointer bg-background hover:bg-muted"
+                          className="h-7 text-xs font-bold rounded-lg gap-1.5 cursor-pointer bg-background hover:bg-muted border-[0.5px] border-black/50 dark:border-white/30"
                         >
                           <Printer className="size-3.5 text-primary" />
                           <span>{lang === "bn" ? "রসিদ প্রিন্ট" : "Print Invoice"}</span>
@@ -481,7 +481,7 @@ export default function OnlineSellsPage() {
                               className="h-7 px-2.5 text-xs font-bold rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white gap-1 shadow-xs cursor-pointer"
                             >
                               <PackageCheck className="size-3.5" />
-                              <span>{lang === "bn" ? "✓ পেমেন্ট গ্রহণ" : "Accept"}</span>
+                              <span>{lang === "bn" ? "✓ গ্রহণ" : "Accept"}</span>
                             </Button>
 
                             <Button
@@ -489,7 +489,7 @@ export default function OnlineSellsPage() {
                               variant="destructive"
                               onClick={(e) => { e.stopPropagation(); handleCancel(item.id); }}
                               disabled={actionBusyId === item.id}
-                              className="h-7 px-2 text-xs font-semibold rounded-lg gap-1 cursor-pointer"
+                              className="h-7 px-2 text-xs font-bold rounded-lg gap-1 cursor-pointer"
                             >
                               <RotateCcw className="size-3" />
                               <span>{lang === "bn" ? "বাতিল" : "Cancel"}</span>

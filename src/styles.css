@@ -494,32 +494,78 @@
 }
 
 /* ============================================================
-   CLASSIC WORLD BACKGROUND — Image Background & Clean Styling
+   MECHANIX DEFAULT THEME BACKGROUND — Pure CSS Horology Texture
    ============================================================ */
 .site-bg {
   position: relative;
   min-height: 100vh;
   background-color: var(--background);
-  background-image: url("/background.avif");
-  background-size: cover;
-  background-position: center;
-  background-repeat: no-repeat;
-  background-attachment: fixed;
   overflow-x: hidden;
   isolation: isolate;
 }
 
 .site-bg::before {
   content: "";
-  position: fixed;
+  position: absolute;
   inset: 0;
   z-index: 0;
+  opacity: 0.05;
   pointer-events: none;
-  background-color: rgba(255, 255, 255, 0.35);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120' viewBox='0 0 120 120'%3E%3Cg fill='none' stroke='%2320201C' stroke-width='1.4'%3E%3Ccircle cx='30' cy='30' r='16'/%3E%3Ccircle cx='30' cy='30' r='3'/%3E%3Cpath d='M30 8v6M30 46v6M8 30h6M46 30h6M14.9 14.9l4.2 4.2M40.9 40.9l4.2 4.2M14.9 45.1l4.2-4.2M40.9 19.1l4.2-4.2'/%3E%3Ccircle cx='90' cy='90' r='12'/%3E%3Ccircle cx='90' cy='90' r='2.4'/%3E%3Cpath d='M90 72v5M90 103v5M72 90h5M103 90h5M78.5 78.5l3.5 3.5M98 98l3.5 3.5M78.5 101.5l3.5-3.5M98 82l3.5-3.5'/%3E%3C/g%3E%3C/svg%3E");
+  background-size: 120px 120px;
+  background-repeat: repeat;
 }
 
-.dark .site-bg::before {
-  background-color: rgba(15, 23, 42, 0.75);
+.site-bg::after {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  top: -18vmax;
+  right: -18vmax;
+  width: 55vmax;
+  height: 55vmax;
+  opacity: 0.045;
+  pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 200'%3E%3Cg fill='none' stroke='%2320201C' stroke-width='2'%3E%3Cpath d='M100 8l4 14 12-8 0 14 13-3-4 14 14 3-9 11 12 8-13 6 9 12-14 1 4 14-14-4-1 14-11-9-6 13-8-12-11 9-3-14-14 4 1-14-14-1 8-12-13-6 12-8-9-11 14-3-4-14 13 3 0-14 12 8z'/%3E%3Ccircle cx='100' cy='100' r='40'/%3E%3Ccircle cx='100' cy='100' r='8'/%3E%3C/g%3E%3C/svg%3E");
+  background-size: contain;
+  background-repeat: no-repeat;
+  animation: driftSpin 240s linear infinite;
+  will-change: transform;
+}
+
+.gear-ghost {
+  position: absolute;
+  z-index: 0;
+  bottom: -20vmax;
+  left: -16vmax;
+  width: 46vmax;
+  height: 46vmax;
+  opacity: 0.04;
+  pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 200'%3E%3Cg fill='none' stroke='%2320201C' stroke-width='2'%3E%3Cpath d='M100 8l4 14 12-8 0 14 13-3-4 14 14 3-9 11 12 8-13 6 9 12-14 1 4 14-14-4-1 14-11-9-6 13-8-12-11 9-3-14-14 4 1-14-14-1 8-12-13-6 12-8-9-11 14-3-4-14 13 3 0-14 12 8z'/%3E%3Ccircle cx='100' cy='100' r='40'/%3E%3Ccircle cx='100' cy='100' r='8'/%3E%3C/g%3E%3C/svg%3E");
+  background-size: contain;
+  background-repeat: no-repeat;
+  animation: driftSpinRev 300s linear infinite;
+  will-change: transform;
+}
+
+.thread-rule {
+  position: absolute;
+  z-index: 0;
+  top: 8vh;
+  left: 0;
+  width: 100%;
+  height: 1px;
+  pointer-events: none;
+  background-image: repeating-linear-gradient(to right, #7A2635 0, #7A2635 6px, transparent 6px, transparent 14px);
+  opacity: 0.06;
+}
+
+@keyframes driftSpin { to { transform: rotate(360deg); } }
+@keyframes driftSpinRev { to { transform: rotate(-360deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .site-bg::after, .gear-ghost { animation: none; }
 }
 
 /* ============================================================
@@ -601,5 +647,19 @@
     border-radius: 0 !important;
   }
 }
+
+/* Custom Bangla Web Typography Utilities */
+.font-balooda {
+  font-family: 'Baloo Da 2', 'Hind Siliguri', sans-serif !important;
+}
+
+.font-charukola {
+  font-family: 'Charukola', 'Charukola Ultra Light', 'Charukola Unicode', 'Hind Siliguri', sans-serif !important;
+}
+
+.font-bensen {
+  font-family: 'Bensen Handwriting', 'Bensen', 'Hind Siliguri', cursive, sans-serif !important;
+}
+
 
 

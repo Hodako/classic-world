@@ -324,47 +324,44 @@ export default function SalesPage() {
 
   return (
     <div className="space-y-3 pb-12">
-      {/* Top Header Toolbar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 bg-card p-3 rounded-2xl border border-border/80 shadow-xs">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-card p-3 sm:p-3.5 rounded-2xl border-[0.5px] border-black/75 dark:border-white/30 shadow-xs">
         <div className="flex items-center justify-between gap-2">
-          <h1 className="text-lg sm:text-xl font-bold font-serif flex items-center gap-2">
-            <span>{t("sales")}</span>
-            <span className="text-xs font-normal text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
-              {filteredSales.length} {lang === "bn" ? "টি বিক্রয়" : "sales"}
-            </span>
-          </h1>
+          <div className="flex items-center gap-2.5">
+            <div className="size-9 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
+              <ShoppingBag className="size-5" />
+            </div>
+            <div>
+              <h1 className="text-lg sm:text-xl font-bold font-charukola">{lang === "bn" ? "বিক্রয় হিসাব" : "Sales Ledger"}</h1>
+              <p className="text-[11px] text-muted-foreground font-balooda">
+                {lang === "bn" ? "সকল বিক্রয় রেকর্ড, কুরিয়ার পেমেন্ট ও ইনভয়েস ট্র্যাকিং" : "Manage sales transactions, invoice history, and delivery remittances"}
+              </p>
+            </div>
+          </div>
 
-          {/* Quick Action Button for Phone View */}
           <Button
             onClick={() => setOpen(true)}
             size="sm"
-            className="sm:hidden h-8 px-2.5 text-xs font-bold rounded-lg bg-primary text-primary-foreground gap-1"
+            className="sm:hidden h-8 px-2.5 text-xs font-bold font-balooda rounded-lg bg-primary text-primary-foreground gap-1"
           >
             <Plus className="size-3.5 stroke-[2.5]" />
-            <span>{lang === "bn" ? "নতুন বিক্রি" : "New Sale"}</span>
+            <span>{lang === "bn" ? "নতুন বিক্রি" : "New"}</span>
           </Button>
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
-          {/* Search Bar Input */}
-          <div className="relative flex-1 sm:w-56">
+          <div className="relative flex-1 sm:w-64">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground pointer-events-none" />
             <Input
-              className="pl-8 h-8.5 text-xs rounded-xl"
-              placeholder={lang === "bn" ? "পণ্য বা কাস্টমার খুঁজুন..." : "Search sales..."}
+              className="pl-8 h-8.5 text-xs rounded-xl font-balooda"
+              placeholder={lang === "bn" ? "পণ্য বা ক্রেতার নাম দিয়ে খুঁজুন..." : "Search product or customer..."}
               value={search}
               onChange={e => { setSearch(e.target.value); setPage(1); }}
             />
           </div>
 
-          {/* CSV Export Dropdown */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-8.5 text-xs font-semibold rounded-xl beveled-button gap-1.5 cursor-pointer"
-              >
+              <Button variant="outline" size="sm" className="h-8.5 px-2.5 text-xs font-bold font-balooda rounded-xl gap-1.5 cursor-pointer">
                 <FileSpreadsheet className="size-4 text-emerald-600 dark:text-emerald-400" />
                 <span>{isMobile ? "CSV" : (lang === "bn" ? "এক্সেল / CSV" : "Export CSV")}</span>
                 <ChevronDown className="size-3 opacity-60 ml-0.5" />
@@ -380,11 +377,10 @@ export default function SalesPage() {
             </DropdownMenuContent>
           </DropdownMenu>
 
-          {/* New Sale Button for Desktop */}
           <Button
             onClick={() => setOpen(true)}
             size="sm"
-            className="hidden sm:flex h-8.5 px-3 text-xs font-bold rounded-xl bg-primary text-primary-foreground shadow-xs gap-1.5"
+            className="hidden sm:flex h-8.5 px-3 text-xs font-bold font-balooda rounded-xl bg-primary text-primary-foreground shadow-xs gap-1.5"
           >
             <Plus className="size-4 stroke-[2.5]" />
             <span>{lang === "bn" ? "নতুন বিক্রি" : "New Sale"}</span>
@@ -392,16 +388,14 @@ export default function SalesPage() {
         </div>
       </div>
 
-      {/* Date & Category Filters Section */}
-      <Card className="p-3 rounded-2xl border border-border/80 bg-card/60 backdrop-blur-sm space-y-2.5">
-        {/* Date Filter Bar */}
+      <Card className="p-3 rounded-2xl border-[0.5px] border-black/75 dark:border-white/30 bg-card/60 backdrop-blur-sm space-y-2.5">
         <div className="flex items-center justify-between flex-wrap gap-2">
           <div className="flex items-center gap-1.5 text-xs font-bold text-foreground">
             <Calendar className="size-4 text-primary" />
-            <span>{lang === "bn" ? "তারিখ ফিল্টার:" : "Date Filter:"}</span>
+            <span className="font-balooda font-bold text-xs sm:text-sm">{lang === "bn" ? "তারিখ ফিল্টার:" : "Date Filter:"}</span>
           </div>
 
-          <div className="flex items-center gap-1.5 flex-wrap">
+          <div className="flex items-center gap-1.5 flex-wrap font-balooda">
             <button
               type="button"
               onClick={() => { setDateRange("today"); setPage(1); }}
@@ -448,7 +442,6 @@ export default function SalesPage() {
               {lang === "bn" ? "সকল সময়" : "All Time"}
             </button>
 
-            {/* Custom Date Filter Icon Button Beside 'All Time' */}
             <button
               type="button"
               onClick={() => {
@@ -468,9 +461,8 @@ export default function SalesPage() {
           </div>
         </div>
 
-        {/* Custom Date Pickers */}
         {dateRange === "custom" && (
-          <div className="grid grid-cols-2 gap-2 pt-1.5 border-t border-border/50">
+          <div className="grid grid-cols-2 gap-2 pt-1.5 border-t border-border/50 font-balooda">
             <div className="space-y-1">
               <Label className="text-[11px] text-muted-foreground font-semibold">{lang === "bn" ? "হতে" : "From"}</Label>
               <Input
@@ -492,17 +484,16 @@ export default function SalesPage() {
           </div>
         )}
 
-        {/* Product Category Filter Dropdown */}
         <div className="flex items-center justify-between gap-2 pt-1 border-t border-border/50">
           <div className="flex items-center gap-1.5 text-xs font-bold text-foreground">
             <Tag className="size-3.5 text-primary" />
-            <span>{lang === "bn" ? "ক্যাটাগরি ফিল্টার:" : "Category Filter:"}</span>
+            <span className="font-balooda font-bold text-xs sm:text-sm">{lang === "bn" ? "ক্যাটাগরি ফিল্টার:" : "Category Filter:"}</span>
           </div>
 
           <select
             value={selectedCategory}
             onChange={e => { setSelectedCategory(e.target.value); setPage(1); }}
-            className="h-8 rounded-lg border border-input bg-card px-2.5 text-xs font-semibold text-foreground shadow-xs cursor-pointer focus:ring-1 focus:ring-primary"
+            className="h-8 rounded-lg border border-input bg-card px-2.5 text-xs font-bold font-balooda text-foreground shadow-xs cursor-pointer focus:ring-1 focus:ring-primary"
           >
             <option value="all">{lang === "bn" ? "সকল ক্যাটাগরি" : "All Categories"}</option>
             {availableCategories.map(cat => (
@@ -514,13 +505,12 @@ export default function SalesPage() {
         </div>
       </Card>
 
-      {/* Highlighted Summary KPI Strip with #fff3a3 */}
       <div className="grid grid-cols-3 gap-2 text-center">
         <Card
-          className="p-2.5 sm:p-3 rounded-xl border border-[#e6db74] shadow-xs transition-all text-zinc-950"
+          className="p-2.5 sm:p-3 rounded-xl border-[0.5px] border-black/75 shadow-xs transition-all text-zinc-950"
           style={{ backgroundColor: "#fff3a3" }}
         >
-          <span className="text-[11px] font-bold text-zinc-800 uppercase tracking-tight block">
+          <span className="text-[11px] sm:text-xs font-bold font-balooda text-zinc-900 uppercase tracking-tight block">
             {lang === "bn" ? "মোট বিক্রি" : "Total Sales"}
           </span>
           <p className="text-base sm:text-lg font-extrabold font-serif text-zinc-950 mt-0.5">
@@ -529,10 +519,10 @@ export default function SalesPage() {
         </Card>
 
         <Card
-          className="p-2.5 sm:p-3 rounded-xl border border-[#e6db74] shadow-xs transition-all text-emerald-950"
+          className="p-2.5 sm:p-3 rounded-xl border-[0.5px] border-black/75 shadow-xs transition-all text-emerald-950"
           style={{ backgroundColor: "#fff3a3" }}
         >
-          <span className="text-[11px] font-bold text-emerald-900 uppercase tracking-tight block">
+          <span className="text-[11px] sm:text-xs font-bold font-balooda text-emerald-950 uppercase tracking-tight block">
             {lang === "bn" ? "মোট লাভ" : "Total Profit"}
           </span>
           <p className="text-base sm:text-lg font-extrabold font-serif text-emerald-950 mt-0.5">
@@ -541,10 +531,10 @@ export default function SalesPage() {
         </Card>
 
         <Card
-          className="p-2.5 sm:p-3 rounded-xl border border-[#e6db74] shadow-xs transition-all text-rose-950"
+          className="p-2.5 sm:p-3 rounded-xl border-[0.5px] border-black/75 shadow-xs transition-all text-rose-950"
           style={{ backgroundColor: "#fff3a3" }}
         >
-          <span className="text-[11px] font-bold text-rose-900 uppercase tracking-tight block">
+          <span className="text-[11px] sm:text-xs font-bold font-balooda text-rose-950 uppercase tracking-tight block">
             {lang === "bn" ? "মোট বাকী" : "Total Due"}
           </span>
           <p className="text-base sm:text-lg font-extrabold font-serif text-rose-950 mt-0.5">
@@ -553,22 +543,21 @@ export default function SalesPage() {
         </Card>
       </div>
 
-      {/* Payment Method Tabs (All, Cash, bKash, Bank, Credit, Courier Pending, Online All) */}
       <Tabs value={activeTab} onValueChange={v => { setActiveTab(v); setPage(1); }}>
-        <TabsList className="grid grid-cols-3 sm:grid-cols-7 w-full text-xs font-bold p-1 bg-muted/80 rounded-xl gap-1">
-          <TabsTrigger value="all" className="rounded-lg text-[11px] sm:text-xs">
+        <TabsList className="grid grid-cols-3 sm:grid-cols-7 w-full text-xs font-bold font-balooda p-1 bg-muted/80 rounded-xl gap-1">
+          <TabsTrigger value="all" className="rounded-lg text-[11px] sm:text-xs font-bold">
             {lang === "bn" ? "সব বিক্রি" : "All Sales"}
           </TabsTrigger>
-          <TabsTrigger value="cash" className="rounded-lg text-[11px] sm:text-xs">
+          <TabsTrigger value="cash" className="rounded-lg text-[11px] sm:text-xs font-bold">
             {lang === "bn" ? "নগদ" : "Cash"}
           </TabsTrigger>
-          <TabsTrigger value="bkash" className="rounded-lg text-[11px] sm:text-xs">
+          <TabsTrigger value="bkash" className="rounded-lg text-[11px] sm:text-xs font-bold">
             {lang === "bn" ? "বিকাশ" : "bKash"}
           </TabsTrigger>
-          <TabsTrigger value="bank" className="rounded-lg text-[11px] sm:text-xs">
+          <TabsTrigger value="bank" className="rounded-lg text-[11px] sm:text-xs font-bold">
             {lang === "bn" ? "ব্যাংক" : "Bank"}
           </TabsTrigger>
-          <TabsTrigger value="credit" className="rounded-lg text-[11px] sm:text-xs">
+          <TabsTrigger value="credit" className="rounded-lg text-[11px] sm:text-xs font-bold">
             {lang === "bn" ? "বাকী" : "Credit"}
           </TabsTrigger>
           <TabsTrigger value="courier_pending" className="rounded-lg text-[11px] sm:text-xs text-amber-700 dark:text-amber-300">
@@ -772,10 +761,10 @@ function SalesTab({
         return (
           <div
             key={s.id}
-            className={`rounded-xl border border-dashed transition-all duration-150 ${
+            className={`rounded-xl border-[0.5px] transition-all duration-150 ${
               expanded
-                ? "border-primary/70 bg-primary/[0.02] shadow-xs"
-                : "border-border hover:border-primary/50 bg-card"
+                ? "border-black dark:border-white bg-primary/[0.02] shadow-xs"
+                : "border-black/70 dark:border-white/30 hover:border-black dark:hover:border-white bg-card"
             }`}
           >
             {/* Clickable Compact 2-Line Summary Statement */}
@@ -786,18 +775,18 @@ function SalesTab({
               {/* Line 1: Product Name & Count | Total Amount & Payment Badge */}
               <div className="flex items-center justify-between gap-2">
                 <div className="min-w-0 flex-1 flex items-center gap-1.5">
-                  <span className={`font-bold text-xs sm:text-sm text-foreground truncate ${isCancelled ? "line-through text-muted-foreground" : ""}`}>
+                  <span className={`font-bold font-balooda text-xs sm:text-sm text-foreground truncate ${isCancelled ? "line-through text-muted-foreground" : ""}`}>
                     {s.product_name}
                   </span>
                   {isGroup && (
-                    <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-muted text-muted-foreground shrink-0">
+                    <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-muted text-muted-foreground shrink-0 font-balooda font-bold">
                       {s.items.length}টি
                     </span>
                   )}
                 </div>
 
                 <div className="flex items-center gap-1.5 shrink-0">
-                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border uppercase tracking-wider ${badgeColor}`}>
+                  <span className={`text-[10px] font-bold font-balooda px-1.5 py-0.5 rounded border-[0.5px] border-black/30 dark:border-white/30 uppercase tracking-wider ${badgeColor}`}>
                     {badgeLabel}
                   </span>
                   <span className={`text-xs sm:text-sm font-extrabold font-serif text-foreground ${isCancelled ? "line-through text-muted-foreground" : ""}`}>
@@ -807,11 +796,11 @@ function SalesTab({
               </div>
 
               {/* Line 2: Customer / Date | Profit / Due & Reveal Icon */}
-              <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
+              <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground font-balooda">
                 <div className="min-w-0 flex-1 truncate flex items-center gap-1">
                   {s.parties?.name ? (
                     <>
-                      <span className="font-semibold text-foreground truncate max-w-[120px] sm:max-w-[200px]">
+                      <span className="font-bold font-charukola text-foreground truncate max-w-[120px] sm:max-w-[200px]">
                         {s.parties.name}
                       </span>
                       <span>·</span>
@@ -824,11 +813,11 @@ function SalesTab({
 
                 <div className="flex items-center gap-1.5 shrink-0">
                   {s.due_amount > 0 && !isCancelled ? (
-                    <span className="text-[10.5px] font-bold text-rose-600">
+                    <span className="text-[10.5px] font-bold font-balooda text-rose-600">
                       {lang === "bn" ? "বাকী:" : "Due:"} {fmtMoney(s.due_amount)}
                     </span>
                   ) : (
-                    <span className="text-[10.5px] font-semibold text-emerald-600 dark:text-emerald-400">
+                    <span className="text-[10.5px] font-bold font-balooda text-emerald-600 dark:text-emerald-400">
                       +{isCancelled ? "৳০" : fmtMoney(s.profit)}
                     </span>
                   )}
@@ -841,22 +830,22 @@ function SalesTab({
 
             {/* Revealable Action & Details Drawer */}
             {expanded && (
-              <div className="px-3 pb-3 pt-1 border-t border-dashed border-border/70 space-y-2.5 bg-muted/10 rounded-b-xl animate-in fade-in-50 duration-150">
+              <div className="px-3 pb-3 pt-1 border-t-[0.5px] border-black/40 dark:border-white/20 space-y-2.5 bg-muted/10 rounded-b-xl animate-in fade-in-50 duration-150 font-balooda">
                 {/* Note / Remarks if any */}
                 {s.note && (
-                  <p className="text-[11px] text-muted-foreground bg-muted/40 px-2.5 py-1 rounded border border-border/50">
+                  <p className="text-[11px] text-muted-foreground bg-muted/40 px-2.5 py-1 rounded border-[0.5px] border-black/20 dark:border-white/20">
                     <strong className="text-foreground">{lang === "bn" ? "নোট:" : "Note:"}</strong> {s.note}
                   </p>
                 )}
 
                 {/* Inline Courier Delivery Info & Approval Actions if Online Sale */}
                 {s.type === "online" && (
-                  <div className="p-2 rounded-lg bg-purple-500/10 border border-purple-500/20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-xs">
+                  <div className="p-2 rounded-lg bg-purple-500/10 border-[0.5px] border-purple-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-xs">
                     <div className="flex items-center gap-1.5 flex-wrap">
                       <Truck className="size-3.5 text-purple-600 shrink-0" />
                       <span className="font-bold text-purple-900 dark:text-purple-200">{s.courier_name || "Courier Delivery"}</span>
                       {s.tracking_code && (
-                        <span className="font-mono text-[10.5px] bg-background text-foreground px-1.5 py-0.5 rounded border border-border">
+                        <span className="font-mono text-[10.5px] bg-background text-foreground px-1.5 py-0.5 rounded border-[0.5px] border-black/30 dark:border-white/30">
                           ID: {s.tracking_code}
                         </span>
                       )}
@@ -901,14 +890,14 @@ function SalesTab({
 
                 {/* Multi-Item Breakdown List if Group */}
                 {isGroup && (
-                  <div className="space-y-1 bg-background/80 p-2 rounded-lg border border-border/50">
-                    <span className="text-[10px] font-bold uppercase text-muted-foreground tracking-wider block">
+                  <div className="space-y-1 bg-background/80 p-2 rounded-lg border-[0.5px] border-black/20 dark:border-white/20">
+                    <span className="text-[10px] font-bold uppercase text-muted-foreground tracking-wider block font-balooda">
                       {lang === "bn" ? "কার্ট আইটেম তালিকা" : "Cart Items"}
                     </span>
                     {s.items.map((item) => (
-                      <div key={item.id} className="flex justify-between items-center text-xs py-0.5 border-b border-border/30 last:border-0">
+                      <div key={item.id} className="flex justify-between items-center text-xs py-0.5 border-b border-border/30 last:border-0 font-balooda">
                         <div className="truncate mr-2">
-                          <span className="font-semibold text-foreground">{item.product_name}</span>
+                          <span className="font-bold text-foreground">{item.product_name}</span>
                           <span className="text-muted-foreground font-mono ml-1">×{item.qty}</span>
                         </div>
                         <div className="flex items-center gap-2 shrink-0">
@@ -928,12 +917,12 @@ function SalesTab({
                 )}
 
                 {/* Actions Toolbar */}
-                <div className="flex items-center justify-between gap-2 pt-1">
+                <div className="flex items-center justify-between gap-2 pt-1 font-balooda">
                   <Button
                     onClick={(e) => { e.stopPropagation(); handlePrintSale(s); }}
                     variant="outline"
                     size="sm"
-                    className="h-7 text-xs font-semibold rounded-lg gap-1.5 cursor-pointer bg-background hover:bg-muted"
+                    className="h-7 text-xs font-bold rounded-lg gap-1.5 cursor-pointer bg-background hover:bg-muted border-[0.5px] border-black/50 dark:border-white/30"
                   >
                     <Printer className="size-3.5 text-primary" />
                     <span>{lang === "bn" ? "রসিদ প্রিন্ট" : "Print Invoice"}</span>
@@ -945,7 +934,7 @@ function SalesTab({
                         onClick={(e) => { e.stopPropagation(); onEdit(s.items[0]); }}
                         variant="outline"
                         size="sm"
-                        className="h-7 px-2.5 text-xs text-muted-foreground hover:text-foreground gap-1 rounded-lg"
+                        className="h-7 px-2.5 text-xs font-bold text-muted-foreground hover:text-foreground gap-1 rounded-lg border-[0.5px] border-black/30 dark:border-white/30"
                       >
                         <Pencil className="size-3.5" />
                         <span>{lang === "bn" ? "এডিট" : "Edit"}</span>
@@ -955,7 +944,7 @@ function SalesTab({
                       onClick={(e) => { e.stopPropagation(); handleDeleteClick(s.items[0].id); }}
                       variant="outline"
                       size="sm"
-                      className="h-7 px-2.5 text-xs text-rose-600 hover:bg-rose-500/10 hover:text-rose-700 gap-1 rounded-lg"
+                      className="h-7 px-2.5 text-xs font-bold text-rose-600 hover:bg-rose-500/10 hover:text-rose-700 gap-1 rounded-lg border-[0.5px] border-rose-500/30"
                     >
                       <Trash2 className="size-3.5" />
                       <span>{lang === "bn" ? "ডিলিট" : "Delete"}</span>

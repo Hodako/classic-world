@@ -510,7 +510,7 @@ export default function SalesPage() {
       <div className="grid grid-cols-3 gap-2 text-center">
         <Card
           className="p-2.5 sm:p-3 rounded-xl border-[0.5px] border-black/75 shadow-xs transition-all text-zinc-950"
-          style={{ backgroundColor: "#E0B0FF" }}
+          style={{ backgroundColor: "#ADD8E6" }}
         >
           <span className="text-[11px] sm:text-xs font-bold font-balooda text-zinc-900 uppercase tracking-tight block">
             {lang === "bn" ? "মোট বিক্রি" : "Total Sales"}
@@ -522,7 +522,7 @@ export default function SalesPage() {
 
         <Card
           className="p-2.5 sm:p-3 rounded-xl border-[0.5px] border-black/75 shadow-xs transition-all text-zinc-950"
-          style={{ backgroundColor: "#E0B0FF" }}
+          style={{ backgroundColor: "#ADD8E6" }}
         >
           <span className="text-[11px] sm:text-xs font-bold font-balooda text-zinc-900 uppercase tracking-tight block">
             {lang === "bn" ? "মোট লাভ" : "Total Profit"}
@@ -534,7 +534,7 @@ export default function SalesPage() {
 
         <Card
           className="p-2.5 sm:p-3 rounded-xl border-[0.5px] border-black/75 shadow-xs transition-all text-zinc-950"
-          style={{ backgroundColor: "#E0B0FF" }}
+          style={{ backgroundColor: "#ADD8E6" }}
         >
           <span className="text-[11px] sm:text-xs font-bold font-balooda text-zinc-900 uppercase tracking-tight block">
             {lang === "bn" ? "মোট বাকী" : "Total Due"}

@@ -306,23 +306,23 @@ export default function BankPage() {
   };
 
   return (
-    <div className="space-y-4 pb-12 max-w-7xl mx-auto">
+    <div className="space-y-4 pb-12 max-w-7xl mx-auto font-hind">
       {/* Top Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-card p-3.5 sm:p-4 rounded-xl border border-border/80 shadow-xs">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-card p-3.5 sm:p-4 rounded-2xl border-[0.5px] border-black/75 dark:border-white/30 shadow-xs">
         <div className="flex items-center gap-2">
           <Link href="/more">
-            <Button variant="ghost" size="sm" className="h-8 px-2 text-muted-foreground hover:text-foreground">
+            <Button variant="ghost" size="sm" className="h-8 px-2 text-muted-foreground hover:text-foreground font-balooda font-bold">
               <ArrowLeft className="size-4 mr-1" />
               {t("more")}
             </Button>
           </Link>
           <div className="h-4 w-px bg-border hidden sm:block" />
           <div>
-            <h1 className="font-bold text-base sm:text-lg flex items-center gap-2 text-foreground">
+            <h1 className="font-bold font-charukola text-base sm:text-lg flex items-center gap-2 text-foreground">
               <Landmark className="size-5 text-primary" />
               {lang === "bn" ? "ব্যাংক ও ঋণ ব্যবস্থাপনা" : "Bank Accounts & Loans"}
             </h1>
-            <p className="text-[11px] text-muted-foreground hidden sm:block">
+            <p className="text-[11px] text-muted-foreground hidden sm:block font-balooda">
               {lang === "bn"
                 ? "ব্যাংক হিসাব, ঋণ গ্রহণ এবং ক্যাশবক্স থেকে কিস্তি পরিশোধের হিসাব"
                 : "Manage bank accounts, loan borrowing, and cashbox installment repayments"}
@@ -330,7 +330,7 @@ export default function BankPage() {
           </div>
         </div>
 
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex items-center gap-2 flex-wrap font-balooda">
           <Button
             onClick={() => {
               setEditingAccount(null);
@@ -339,7 +339,7 @@ export default function BankPage() {
             }}
             size="sm"
             variant="outline"
-            className="h-8 text-xs font-semibold rounded-lg beveled-button gap-1"
+            className="h-8 text-xs font-bold rounded-lg beveled-button gap-1 border-[0.5px] border-black/50 dark:border-white/30"
           >
             <Plus className="size-3.5" />
             <span>{lang === "bn" ? "নতুন একাউন্ট" : "New Account"}</span>

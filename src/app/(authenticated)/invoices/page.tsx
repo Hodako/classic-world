@@ -583,34 +583,34 @@ export default function InvoicePage() {
   }
 
   return (
-    <div className="space-y-4 pb-8 max-w-7xl mx-auto">
+    <div className="space-y-4 pb-8 max-w-7xl mx-auto font-hind">
       {/* ────────────────────────────────────────────────────────────────────── */}
       {/* Top Header & Actions Toolbar (Non-Printable)                           */}
       {/* ────────────────────────────────────────────────────────────────────── */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 no-print bg-card p-3.5 rounded-xl border border-border/80 shadow-xs">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 no-print bg-card p-3.5 rounded-2xl border-[0.5px] border-black/75 dark:border-white/30 shadow-xs">
         <div className="flex items-center gap-2">
           <Link href="/more">
-            <Button variant="ghost" size="sm" className="h-8 px-2.5 text-muted-foreground hover:text-foreground">
+            <Button variant="ghost" size="sm" className="h-8 px-2.5 text-muted-foreground hover:text-foreground font-balooda font-bold">
               <ArrowLeft className="size-4 mr-1" />
               {t("more")}
             </Button>
           </Link>
           <div className="h-4 w-px bg-border hidden sm:block" />
           <div>
-            <h1 className="font-semibold text-base flex items-center gap-2">
+            <h1 className="font-bold font-charukola text-base sm:text-lg flex items-center gap-2">
               <FileText className="size-4 text-primary" />
               {t("invoice_generator")}
             </h1>
-            <p className="text-[11px] text-muted-foreground hidden sm:block">
-              Create & print clean single-page invoices
+            <p className="text-[11px] text-muted-foreground hidden sm:block font-balooda">
+              {lang === "bn" ? "সহজে তৈরি ও প্রিন্ট করুন সিঙ্গেল-পেজ ইনভয়েস" : "Create & print clean single-page invoices"}
             </p>
           </div>
         </div>
 
         {/* Action Controls & Mobile Tab Switcher */}
-        <div className="flex items-center justify-between sm:justify-end gap-2">
+        <div className="flex items-center justify-between sm:justify-end gap-2 font-balooda">
           {/* Mobile Tab Switcher */}
-          <div className="flex sm:hidden rounded-lg bg-muted p-0.5 border border-border/60">
+          <div className="flex sm:hidden rounded-lg bg-muted p-0.5 border-[0.5px] border-black/30 dark:border-white/30">
             <button
               type="button"
               onClick={() => setMobileTab("editor")}

@@ -15,13 +15,13 @@ import { toast } from "sonner";
 import { getCustomers, getProducts, type Product } from "@/lib/queries";
 import { fmtMoney, fmtDateTime } from "@/lib/format";
 import { createSaleFn, createCustomerFn } from "@/lib/rpc";
-import { Plus, Minus, Trash2, Scan, Printer, History, Banknote, Smartphone, CreditCard, DollarSign, ShoppingCart } from "lucide-react";
+import { Plus, Minus, Trash2, Scan, Printer, History, Banknote, Smartphone, CreditCard, DollarSign, ShoppingCart, Truck, PackageCheck } from "lucide-react";
 import Link from "next/link";
 import { safeUUID } from "@/lib/utils";
 import { printPwaInvoice, downloadPwaInvoicePdf } from "@/lib/invoice-printer";
 
 type CartLine = { productId: string; qty: string; sellPrice: string; discount: string };
-export type SalePaymentType = "cash" | "bkash" | "credit" | "online";
+export type SalePaymentType = "cash" | "bkash" | "bank" | "credit" | "online";
 
 function BkashLogo({ className = "size-4" }: { className?: string }) {
   return (
@@ -63,6 +63,9 @@ export function SaleDialog({
   const [cart, setCart] = useState<CartLine[]>([]);
   const [draft, setDraft] = useState<CartLine>({ productId: "", qty: "1", sellPrice: "", discount: "" });
   const [paid, setPaid] = useState("");
+  const [courierName, setCourierName] = useState("Steadfast Courier");
+  const [trackingCode, setTrackingCode] = useState("");
+  const [customerAddress, setCustomerAddress] = useState("");
   const [busy, setBusy] = useState(false);
 
   const { data: products = [] } = useCachedQuery(["products"], getProducts);
@@ -304,10 +307,14 @@ export function SaleDialog({
             profit: lineProfit,
             type,
             party_id: partyId || null,
-            paid_amount: type === "credit" ? paidPerItem : lineSell,
-            due_amount: type === "credit" ? duePerItem : 0,
+            paid_amount: type === "online" ? 0 : (type === "credit" ? paidPerItem : lineSell),
+            due_amount: type === "online" ? lineSell : (type === "credit" ? duePerItem : 0),
             cart_id: cartId,
             discount: disc,
+            courier_name: type === "online" ? courierName : undefined,
+            tracking_code: type === "online" ? trackingCode : undefined,
+            courier_status: type === "online" ? "pending" : undefined,
+            note: customerAddress ? `Address: ${customerAddress}` : undefined,
           },
         });
       }
@@ -320,7 +327,15 @@ export function SaleDialog({
 
       if (action === "print") {
         const cust = customers.find(c => c.id === partyId);
-        const paymentModeStr = type === "bkash" ? "BKASH (বিকাশ)" : type === "bank" ? "BANK (ব্যাংক)" : type === "credit" ? "CREDIT (বাকী)" : "CASH (নগদ)";
+        const paymentModeStr = type === "online"
+          ? `COURIER [${courierName}]`
+          : type === "bkash"
+          ? "BKASH (বিকাশ)"
+          : type === "bank"
+          ? "BANK (ব্যাংক)"
+          : type === "credit"
+          ? "CREDIT (বাকী)"
+          : "CASH (নগদ)";
 
         const invoiceParams = {
           businessName: user.business_name || user.full_name || "Dream Fashion POS",
@@ -349,8 +364,8 @@ export function SaleDialog({
           subtotal: sellTotal + discTotal,
           discountAmount: discTotal,
           total: sellTotal,
-          paidAmount: type === "credit" ? paidNum : sellTotal,
-          due: type === "credit" ? due : 0,
+          paidAmount: type === "online" ? 0 : (type === "credit" ? paidNum : sellTotal),
+          due: type === "online" ? sellTotal : (type === "credit" ? due : 0),
           terms: user.invoice_terms || "",
         };
 
@@ -371,12 +386,16 @@ export function SaleDialog({
           <DialogHeader className="px-5 pt-4 pb-3 shrink-0 border-b border-border/80 bg-card flex flex-row items-center justify-between">
             <div className="flex items-center gap-2">
               <div className="size-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
-                <ShoppingCart className="size-4" />
+                {presetType === "online" || type === "online" ? <Truck className="size-4" /> : <ShoppingCart className="size-4" />}
               </div>
               <div>
-                <DialogTitle className="text-base font-bold">{t("new_sale")}</DialogTitle>
+                <DialogTitle className="text-base font-bold">
+                  {presetType === "online" || type === "online" ? (lang === "bn" ? "নতুন অনলাইন কুরিয়ার অর্ডার" : "New Online Courier Order") : t("new_sale")}
+                </DialogTitle>
                 <p className="text-[11px] text-muted-foreground hidden sm:block">
-                  {lang === "bn" ? "দ্রুত বিক্রয় ও ইনভয়েস জেনারেশন" : "Fast POS Checkout & Invoice Generation"}
+                  {presetType === "online" || type === "online"
+                    ? (lang === "bn" ? "কুরিয়ার ক্যাশ অন ডেলিভারি সেলস এন্ট্রি" : "Courier Cash on Delivery Order")
+                    : (lang === "bn" ? "দ্রুত বিক্রয় ও ইনভয়েস জেনারেশন" : "Fast POS Checkout & Invoice Generation")}
                 </p>
               </div>
             </div>
@@ -401,65 +420,112 @@ export function SaleDialog({
               className="grid grid-cols-1 md:grid-cols-12 gap-4"
             >
               <div className="md:col-span-7 space-y-3.5">
-                {/* Payment Method Selector with 4 Button Options */}
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold text-muted-foreground">
-                    {lang === "bn" ? "পেমেন্ট মাধ্যম" : "Payment Method"}
-                  </Label>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => setType("cash")}
-                      className={`flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-xl border text-xs font-semibold transition-all cursor-pointer ${
-                        type === "cash"
-                          ? "bg-emerald-500/15 border-emerald-500 text-emerald-700 dark:text-emerald-300 shadow-xs ring-1 ring-emerald-500/30"
-                          : "border-border bg-card text-muted-foreground hover:bg-muted/50 hover:text-foreground"
-                      }`}
-                    >
-                      <Banknote className="size-4 text-emerald-600 dark:text-emerald-400" />
-                      <span>{lang === "bn" ? "নগদ" : "Cash"}</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => setType("bkash")}
-                      className={`flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-xl border text-xs font-semibold transition-all cursor-pointer ${
-                        type === "bkash"
-                          ? "bg-[#E2136E]/15 border-[#E2136E] text-[#E2136E] dark:text-pink-300 shadow-xs ring-1 ring-[#E2136E]/30"
-                          : "border-border bg-card text-muted-foreground hover:bg-muted/50 hover:text-foreground"
-                      }`}
-                    >
-                      <BkashLogo className="size-4 shrink-0" />
-                      <span>{lang === "bn" ? "বিকাশ" : "bKash"}</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => setType("bank")}
-                      className={`flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-xl border text-xs font-semibold transition-all cursor-pointer ${
-                        type === "bank"
-                          ? "bg-sky-500/15 border-sky-500 text-sky-700 dark:text-sky-300 shadow-xs ring-1 ring-sky-500/30"
-                          : "border-border bg-card text-muted-foreground hover:bg-muted/50 hover:text-foreground"
-                      }`}
-                    >
-                      <DollarSign className="size-4 text-sky-600 dark:text-sky-400" />
-                      <span>{lang === "bn" ? "ব্যাংক" : "Bank"}</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => setType("credit")}
-                      className={`flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-xl border text-xs font-semibold transition-all cursor-pointer ${
-                        type === "credit"
-                          ? "bg-amber-500/15 border-amber-500 text-amber-700 dark:text-amber-300 shadow-xs ring-1 ring-amber-500/30"
-                          : "border-border bg-card text-muted-foreground hover:bg-muted/50 hover:text-foreground"
-                      }`}
-                    >
-                      <CreditCard className="size-4 text-amber-600 dark:text-amber-400" />
-                      <span>{lang === "bn" ? "বাকী" : "Credit"}</span>
-                    </button>
+                {/* Payment Method Selector or Courier Delivery Panel */}
+                {presetType === "online" || type === "online" ? (
+                  <div className="p-3 bg-purple-500/10 border border-purple-500/30 rounded-xl space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-purple-700 dark:text-purple-300 flex items-center gap-1.5">
+                        <Truck className="size-4 text-purple-600" />
+                        {lang === "bn" ? "কুরিয়ার পেমেন্ট (Courier Payment)" : "Courier Payment"}
+                      </span>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30">
+                        ⏳ {lang === "bn" ? "পেমেন্ট অপেক্ষমাণ (Pending)" : "Payment: Pending"}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground leading-tight">
+                      {lang === "bn"
+                        ? "কুরিয়ার পেমেন্ট পেন্ডিং থাকবে। কুরিয়ার টাকা রিসিভ করার পর সেলস পেজ থেকে 'পেমেন্ট গ্রহণ' করলে ক্যাশবক্সে জমা হবে।"
+                        : "Online sale profit is recorded immediately. Payment will deposit into Cashbox upon courier collection approval."}
+                    </p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                      <div className="space-y-1">
+                        <Label className="text-[10.5px] font-semibold text-muted-foreground">{lang === "bn" ? "কুরিয়ার সার্ভিস" : "Courier Service"}</Label>
+                        <select
+                          value={courierName}
+                          onChange={(e) => setCourierName(e.target.value)}
+                          className="w-full h-8.5 text-xs rounded-lg border border-input bg-background px-2 font-medium"
+                        >
+                          <option value="Steadfast Courier">Steadfast Courier (স্টেডফাস্ট)</option>
+                          <option value="Pathao Courier">Pathao Courier (পাঠাও)</option>
+                          <option value="RedX Delivery">RedX Delivery (রেডএক্স)</option>
+                          <option value="Sundarban Courier">Sundarban Courier (সুন্দরবন)</option>
+                          <option value="Paperfly">Paperfly (পেপারফ্লাই)</option>
+                          <option value="SA Paribahan">SA Paribahan (এস এ পরিবহন)</option>
+                          <option value="Custom Courier">Other / অন্য কুরিয়ার</option>
+                        </select>
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-[10.5px] font-semibold text-muted-foreground">{lang === "bn" ? "ট্র্যাকিং কোড / ইনভয়েস" : "Tracking / Consignment ID"}</Label>
+                        <Input
+                          value={trackingCode}
+                          onChange={(e) => setTrackingCode(e.target.value)}
+                          placeholder="e.g. ST-93821"
+                          className="h-8.5 text-xs font-mono"
+                        >
+                        </Input>
+                      </div>
+                    </div>
                   </div>
-                </div>
+                ) : (
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold text-muted-foreground">
+                      {lang === "bn" ? "পেমেন্ট মাধ্যম" : "Payment Method"}
+                    </Label>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => setType("cash")}
+                        className={`flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-xl border text-xs font-semibold transition-all cursor-pointer ${
+                          type === "cash"
+                            ? "bg-emerald-500/15 border-emerald-500 text-emerald-700 dark:text-emerald-300 shadow-xs ring-1 ring-emerald-500/30"
+                            : "border-border bg-card text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+                        }`}
+                      >
+                        <Banknote className="size-4 text-emerald-600 dark:text-emerald-400" />
+                        <span>{lang === "bn" ? "নগদ" : "Cash"}</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setType("bkash")}
+                        className={`flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-xl border text-xs font-semibold transition-all cursor-pointer ${
+                          type === "bkash"
+                            ? "bg-[#E2136E]/15 border-[#E2136E] text-[#E2136E] dark:text-pink-300 shadow-xs ring-1 ring-[#E2136E]/30"
+                            : "border-border bg-card text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+                        }`}
+                      >
+                        <BkashLogo className="size-4 shrink-0" />
+                        <span>{lang === "bn" ? "বিকাশ" : "bKash"}</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setType("bank")}
+                        className={`flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-xl border text-xs font-semibold transition-all cursor-pointer ${
+                          type === "bank"
+                            ? "bg-sky-500/15 border-sky-500 text-sky-700 dark:text-sky-300 shadow-xs ring-1 ring-sky-500/30"
+                            : "border-border bg-card text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+                        }`}
+                      >
+                        <DollarSign className="size-4 text-sky-600 dark:text-sky-400" />
+                        <span>{lang === "bn" ? "ব্যাংক" : "Bank"}</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setType("credit")}
+                        className={`flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-xl border text-xs font-semibold transition-all cursor-pointer ${
+                          type === "credit"
+                            ? "bg-amber-500/15 border-amber-500 text-amber-700 dark:text-amber-300 shadow-xs ring-1 ring-amber-500/30"
+                            : "border-border bg-card text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+                        }`}
+                      >
+                        <CreditCard className="size-4 text-amber-600 dark:text-amber-400" />
+                        <span>{lang === "bn" ? "বাকী" : "Credit"}</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
 
                 <div className="space-y-1">
                   <Label className="text-xs font-medium text-muted-foreground">

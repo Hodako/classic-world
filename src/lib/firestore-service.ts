@@ -150,10 +150,11 @@ export async function fsCreateSale(data: any) {
 
   // 2. Cashbox log if cash, bkash, bank, or paid amount received
   const isDirectPayment = data.type === "cash" || data.type === "bkash" || data.type === "bank" || data.type === "nagad" || data.type === "card" || data.type === "pos";
-  const cashReceived = isDirectPayment ? (paidAmount || (sellPrice * qty - discount)) : paidAmount;
+  const isOnline = data.type === "online";
+  const cashReceived = isOnline ? (data.courier_status === "collected" ? (Number(data.sell_price) * qty) : 0) : (isDirectPayment ? (paidAmount || (sellPrice * qty - discount)) : paidAmount);
   if (cashReceived > 0) {
     try {
-      const methodTag = data.type ? ` [Paid by ${data.type.toUpperCase()}]` : "";
+      const methodTag = isOnline ? " [Paid by COURIER]" : data.type ? ` [Paid by ${data.type.toUpperCase()}]` : "";
       await addDoc(collection(db, "cashbox_logs"), {
         kind: "sale",
         amount: cashReceived,
@@ -182,6 +183,63 @@ export async function fsCreateSale(data: any) {
   }
 
   return { success: true, id: saleId };
+}
+
+export async function fsApproveCourierPayment(id: string) {
+  const docRef = doc(db, "sales", id);
+  const snap = await getDoc(docRef);
+  if (!snap.exists()) throw new Error("Sale not found");
+  const s = snap.data();
+  const total = Number(s.sell_price) || (Number(s.qty) * Number(s.buy_price) + Number(s.profit));
+
+  await updateDoc(docRef, {
+    courier_status: "collected",
+    paid_amount: total,
+    due_amount: 0,
+    collected_at: Timestamp.now(),
+  });
+
+  // Credit Cashbox
+  try {
+    await addDoc(collection(db, "cashbox_logs"), {
+      kind: "sale",
+      amount: total,
+      note: `Online Courier Collected [${s.courier_name || "Courier"}]: ${s.product_name || "Item"} (INV-${id.slice(-6).toUpperCase()})`,
+      ref_id: id,
+      created_at: Timestamp.now(),
+    });
+  } catch (err) {
+    console.warn("Cashbox courier log skipped:", err);
+  }
+
+  return { success: true, id };
+}
+
+export async function fsCancelCourierOrder(id: string) {
+  const docRef = doc(db, "sales", id);
+  const snap = await getDoc(docRef);
+  if (!snap.exists()) throw new Error("Sale not found");
+  const s = snap.data();
+
+  // Restore inventory stock
+  if (s.product_id && !s.returned) {
+    try {
+      const productRef = doc(db, "products", s.product_id);
+      await updateDoc(productRef, {
+        stock: increment(Number(s.qty) || 1),
+      });
+    } catch (err) {
+      console.warn("Product restore stock skipped:", err);
+    }
+  }
+
+  await updateDoc(docRef, {
+    courier_status: "cancelled",
+    returned: true,
+    cancelled_at: Timestamp.now(),
+  });
+
+  return { success: true, id };
 }
 
 export async function fsDeleteSale(id: string) {

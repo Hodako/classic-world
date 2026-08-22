@@ -35,9 +35,13 @@ import {
   DollarSign,
   Tag,
   Plus,
+  Truck,
+  PackageCheck,
+  CheckCircle2,
+  XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
-import { createReturnFn, deleteSaleFn } from "@/lib/rpc";
+import { createReturnFn, deleteSaleFn, approveCourierPaymentFn, cancelCourierOrderFn } from "@/lib/rpc";
 import { ConfirmDeleteDialog } from "@/components/confirm-delete-dialog";
 import { printPwaInvoice, downloadPwaInvoicePdf } from "@/lib/invoice-printer";
 import { useAuth } from "@/hooks/use-auth";
@@ -60,6 +64,10 @@ interface GroupedSale {
   due_amount: number;
   paid_amount: number;
   type: "cash" | "bkash" | "bank" | "credit" | "online" | string;
+  courier_status?: string | null;
+  courier_name?: string | null;
+  tracking_code?: string | null;
+  returned?: boolean;
   created_at: string;
   parties?: { name: string } | null;
   items: Sale[];
@@ -87,6 +95,10 @@ function groupSales(sales: Sale[]): GroupedSale[] {
         due_amount: s.due_amount,
         paid_amount: s.paid_amount,
         type: s.type || "cash",
+        courier_status: (s as any).courier_status || (s.type === "online" ? "pending" : null),
+        courier_name: (s as any).courier_name || (s.type === "online" ? "Courier" : null),
+        tracking_code: (s as any).tracking_code || null,
+        returned: (s as any).returned || false,
         created_at: s.created_at,
         parties: s.parties,
         items: [s],
@@ -117,6 +129,10 @@ function groupSales(sales: Sale[]): GroupedSale[] {
       due_amount: totalDue,
       paid_amount: totalPaid,
       type: firstItem.type || "cash",
+      courier_status: (firstItem as any).courier_status || (firstItem.type === "online" ? "pending" : null),
+      courier_name: (firstItem as any).courier_name || (firstItem.type === "online" ? "Courier" : null),
+      tracking_code: (firstItem as any).tracking_code || null,
+      returned: (firstItem as any).returned || false,
       created_at: firstItem.created_at,
       parties: firstItem.parties,
       items: items,
@@ -218,6 +234,7 @@ export default function SalesPage() {
         if (activeTab === "bkash" && s.type !== "bkash") return false;
         if (activeTab === "bank" && s.type !== "bank") return false;
         if (activeTab === "credit" && s.type !== "credit") return false;
+        if (activeTab === "courier_pending" && (s.type !== "online" || s.courier_status === "collected" || s.courier_status === "cancelled" || s.returned)) return false;
         if (activeTab === "online" && s.type !== "online") return false;
       }
 
@@ -245,15 +262,15 @@ export default function SalesPage() {
 
   // Financial KPIs for filtered set
   const filteredTotalSales = useMemo(() => {
-    return filteredSales.reduce((acc, s) => acc + s.sell_price, 0);
+    return filteredSales.reduce((acc, s) => acc + (s.returned ? 0 : s.sell_price), 0);
   }, [filteredSales]);
 
   const filteredTotalProfit = useMemo(() => {
-    return filteredSales.reduce((acc, s) => acc + s.profit, 0);
+    return filteredSales.reduce((acc, s) => acc + (s.returned ? 0 : s.profit), 0);
   }, [filteredSales]);
 
   const filteredTotalDue = useMemo(() => {
-    return filteredSales.reduce((acc, s) => acc + s.due_amount, 0);
+    return filteredSales.reduce((acc, s) => acc + (s.returned ? 0 : s.due_amount), 0);
   }, [filteredSales]);
 
   // CSV Exporter
@@ -268,7 +285,7 @@ export default function SalesPage() {
         s.type === "bkash" ? (isBn ? "বিকাশ" : "bKash") :
         s.type === "bank" ? (isBn ? "ব্যাংক" : "Bank") :
         s.type === "credit" ? (isBn ? "বাকী" : "Credit") :
-        s.type === "online" ? (isBn ? "অনলাইন" : "Online") :
+        s.type === "online" ? (isBn ? `কুরিয়ার (${s.courier_status || "pending"})` : `Courier (${s.courier_status || "pending"})`) :
         (isBn ? "নগদ" : "Cash");
 
       const custName = s.parties?.name || (isBn ? "সাধারণ কাস্টমার" : "Walk-in Customer");
@@ -513,11 +530,11 @@ export default function SalesPage() {
         </Card>
       </div>
 
-      {/* Payment Method Tabs (All, Cash, bKash, Bank, Credit, Online) */}
+      {/* Payment Method Tabs (All, Cash, bKash, Bank, Credit, Courier Pending, Online All) */}
       <Tabs value={activeTab} onValueChange={v => { setActiveTab(v); setPage(1); }}>
-        <TabsList className="grid grid-cols-6 w-full text-xs font-bold p-1 bg-muted/80 rounded-xl">
+        <TabsList className="grid grid-cols-3 sm:grid-cols-7 w-full text-xs font-bold p-1 bg-muted/80 rounded-xl gap-1">
           <TabsTrigger value="all" className="rounded-lg text-[11px] sm:text-xs">
-            {lang === "bn" ? "সব" : "All"}
+            {lang === "bn" ? "সব বিক্রি" : "All Sales"}
           </TabsTrigger>
           <TabsTrigger value="cash" className="rounded-lg text-[11px] sm:text-xs">
             {lang === "bn" ? "নগদ" : "Cash"}
@@ -531,8 +548,11 @@ export default function SalesPage() {
           <TabsTrigger value="credit" className="rounded-lg text-[11px] sm:text-xs">
             {lang === "bn" ? "বাকী" : "Credit"}
           </TabsTrigger>
+          <TabsTrigger value="courier_pending" className="rounded-lg text-[11px] sm:text-xs text-amber-700 dark:text-amber-300">
+            ⏳ {lang === "bn" ? "কুরিয়ার পেন্ডিং" : "Pending Courier"}
+          </TabsTrigger>
           <TabsTrigger value="online" className="rounded-lg text-[11px] sm:text-xs">
-            {lang === "bn" ? "অনলাইন" : "Online"}
+            {lang === "bn" ? "অনলাইন সব" : "All Online"}
           </TabsTrigger>
         </TabsList>
 
@@ -579,6 +599,7 @@ function SalesTab({
   const qc = useQueryClient();
   const { items: paged, totalPages, safePage } = paginate(items, page, pageSize);
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
+  const [actionBusyId, setActionBusyId] = useState<string | null>(null);
 
   const toggleGroup = (id: string) => {
     setExpandedGroups(prev => ({ ...prev, [id]: !prev[id] }));
@@ -586,6 +607,35 @@ function SalesTab({
 
   const [saleToDelete, setSaleToDelete] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+
+  async function handleApproveCourier(id: string) {
+    setActionBusyId(id);
+    try {
+      await approveCourierPaymentFn({ data: { id } });
+      toast.success(lang === "bn" ? "কুরিয়ার পেমেন্ট সফলভাবে ক্যাশবক্সে জমা হয়েছে!" : "Courier payment collected and deposited into Cashbox!");
+      qc.invalidateQueries({ queryKey: ["sales"] });
+      qc.invalidateQueries({ queryKey: ["cashbox"] });
+    } catch (err: any) {
+      toast.error(err.message || String(err));
+    } finally {
+      setActionBusyId(null);
+    }
+  }
+
+  async function handleCancelCourier(id: string) {
+    setActionBusyId(id);
+    try {
+      await cancelCourierOrderFn({ data: { id } });
+      toast.success(lang === "bn" ? "কুরিয়ার অর্ডার বাতিল এবং স্টক ফিরিয়ে দেওয়া হয়েছে!" : "Courier order cancelled and stock restored!");
+      qc.invalidateQueries({ queryKey: ["sales"] });
+      qc.invalidateQueries({ queryKey: ["products"] });
+      qc.invalidateQueries({ queryKey: ["cashbox"] });
+    } catch (err: any) {
+      toast.error(err.message || String(err));
+    } finally {
+      setActionBusyId(null);
+    }
+  }
 
   async function performDelete() {
     if (!saleToDelete) return;
@@ -625,7 +675,7 @@ function SalesTab({
       s.type === "bkash" ? "BKASH (বিকাশ)" :
       s.type === "bank" ? "BANK (ব্যাংক)" :
       s.type === "credit" ? "CREDIT (বাকী)" :
-      s.type === "online" ? "ONLINE (অনলাইন)" :
+      s.type === "online" ? `COURIER [${s.courier_name || "Courier"}]` :
       "CASH (নগদ)";
 
     try {
@@ -674,22 +724,30 @@ function SalesTab({
         const expanded = expandedGroups[s.id] || false;
 
         // Payment Method Badge Color
+        const isPendingCourier = s.type === "online" && s.courier_status !== "collected" && s.courier_status !== "cancelled" && !s.returned;
+        const isCollectedCourier = s.type === "online" && s.courier_status === "collected";
+        const isCancelled = s.returned || s.courier_status === "cancelled";
+
         const badgeColor =
+          isCancelled ? "bg-rose-500/15 text-rose-700 dark:text-rose-300 border-rose-500/30 line-through" :
+          isPendingCourier ? "bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30" :
+          isCollectedCourier ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30" :
           s.type === "bkash" ? "bg-[#E2136E]/15 text-[#E2136E] border-[#E2136E]/30" :
           s.type === "bank" ? "bg-sky-500/15 text-sky-700 dark:text-sky-300 border-sky-500/30" :
           s.type === "credit" ? "bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30" :
-          s.type === "online" ? "bg-purple-500/15 text-purple-700 dark:text-purple-300 border-purple-500/30" :
           "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30";
 
         const badgeLabel =
+          isCancelled ? (lang === "bn" ? "বাতিলকৃত অর্ডার" : "Order Cancelled") :
+          isPendingCourier ? (lang === "bn" ? `⏳ কুরিয়ার পেন্ডিং [${s.courier_name || "Courier"}]` : `⏳ Courier Pending [${s.courier_name || "Courier"}]`) :
+          isCollectedCourier ? (lang === "bn" ? `✓ কুরিয়ার পেইড [${s.courier_name || "Courier"}]` : `✓ Courier Paid [${s.courier_name || "Courier"}]`) :
           s.type === "bkash" ? (lang === "bn" ? "পেইড: বিকাশ" : "Paid by bKash") :
           s.type === "bank" ? (lang === "bn" ? "পেইড: ব্যাংক" : "Paid by Bank") :
           s.type === "credit" ? (lang === "bn" ? "বাকী বিক্রি" : "Credit / Due") :
-          s.type === "online" ? (lang === "bn" ? "অনলাইন সেল" : "Online Sale") :
           (lang === "bn" ? "পেইড: নগদ" : "Paid by Cash");
 
         return (
-          <Card key={s.id} className="p-3 sm:p-3.5 rounded-xl border border-border/80 bg-card shadow-xs space-y-2">
+          <Card key={s.id} className="p-3 sm:p-3.5 rounded-xl border border-border/80 bg-card shadow-xs space-y-2.5">
             <div className="flex items-start justify-between gap-2">
               <div className="space-y-1">
                 <div className="flex items-center gap-2 flex-wrap">
@@ -701,7 +759,7 @@ function SalesTab({
                   </span>
                 </div>
 
-                <h3 className="font-bold text-sm text-foreground">
+                <h3 className={`font-bold text-sm text-foreground ${isCancelled ? "line-through text-muted-foreground" : ""}`}>
                   {s.product_name}
                 </h3>
 
@@ -713,19 +771,69 @@ function SalesTab({
               </div>
 
               <div className="text-right shrink-0">
-                <p className="text-sm sm:text-base font-bold font-serif text-foreground">
+                <p className={`text-sm sm:text-base font-bold font-serif text-foreground ${isCancelled ? "line-through text-muted-foreground" : ""}`}>
                   {fmtMoney(s.sell_price)}
                 </p>
                 <p className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
-                  {lang === "bn" ? "লাভ:" : "Profit:"} {fmtMoney(s.profit)}
+                  {lang === "bn" ? "লাভ:" : "Profit:"} {isCancelled ? "৳০" : fmtMoney(s.profit)}
                 </p>
-                {s.due_amount > 0 && (
+                {s.due_amount > 0 && !isCancelled && (
                   <p className="text-[11px] font-bold text-rose-600">
                     {lang === "bn" ? "বাকী:" : "Due:"} {fmtMoney(s.due_amount)}
                   </p>
                 )}
               </div>
             </div>
+
+            {/* Inline Courier Delivery Info & Approval Actions if Online Sale */}
+            {s.type === "online" && (
+              <div className="p-2.5 rounded-xl bg-purple-500/10 border border-purple-500/20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-xs">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Truck className="size-4 text-purple-600 shrink-0" />
+                  <span className="font-bold text-purple-900 dark:text-purple-200">{s.courier_name || "Courier Delivery"}</span>
+                  {s.tracking_code && (
+                    <span className="font-mono text-[11px] bg-background text-foreground px-2 py-0.5 rounded-md border border-border">
+                      ID: {s.tracking_code}
+                    </span>
+                  )}
+                </div>
+
+                {isCollectedCourier ? (
+                  <span className="text-[11px] font-bold text-emerald-700 dark:text-emerald-300 flex items-center gap-1 bg-emerald-500/15 px-2 py-0.5 rounded-md border border-emerald-500/30">
+                    <CheckCircle2 className="size-3.5" />
+                    {lang === "bn" ? "পেমেন্ট ক্যাশবক্সে জমা হয়েছে" : "Deposited in Cashbox"}
+                  </span>
+                ) : isCancelled ? (
+                  <span className="text-[11px] font-bold text-rose-700 dark:text-rose-300 flex items-center gap-1 bg-rose-500/15 px-2 py-0.5 rounded-md border border-rose-500/30">
+                    <XCircle className="size-3.5" />
+                    {lang === "bn" ? "অর্ডার বাতিলকৃত" : "Order Cancelled"}
+                  </span>
+                ) : (
+                  <div className="flex items-center gap-1.5 w-full sm:w-auto">
+                    <Button
+                      size="sm"
+                      onClick={() => handleApproveCourier(s.id)}
+                      disabled={actionBusyId === s.id}
+                      className="h-7 px-2.5 text-xs font-bold rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white gap-1 shadow-xs flex-1 sm:flex-initial cursor-pointer"
+                    >
+                      <PackageCheck className="size-3.5" />
+                      <span>{lang === "bn" ? "✓ পেমেন্ট গ্রহণ" : "Accept Payment"}</span>
+                    </Button>
+
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      onClick={() => handleCancelCourier(s.id)}
+                      disabled={actionBusyId === s.id}
+                      className="h-7 px-2 text-xs font-semibold rounded-lg gap-1 flex-1 sm:flex-initial cursor-pointer"
+                    >
+                      <RotateCcw className="size-3" />
+                      <span>{lang === "bn" ? "বাতিল" : "Cancel"}</span>
+                    </Button>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Actions Bar */}
             <div className="flex items-center justify-between gap-2 pt-1 border-t border-border/60">
@@ -754,7 +862,7 @@ function SalesTab({
               </div>
 
               <div className="flex items-center gap-1">
-                {!isGroup && (
+                {!isGroup && !isCancelled && (
                   <Button
                     onClick={() => onEdit(s.items[0])}
                     variant="ghost"

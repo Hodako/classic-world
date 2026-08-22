@@ -112,6 +112,8 @@ async function executeFirestoreAction(actionName: string, args: any) {
     case "createSaleFn": return await fs.fsCreateSale(data);
     case "deleteSaleFn": return await fs.fsDeleteSale(id);
     case "editSaleFn": return await fs.fsEditSale(id, data);
+    case "approveCourierPaymentFn": return await fs.fsApproveCourierPayment(args?.data?.id || id);
+    case "cancelCourierOrderFn": return await fs.fsCancelCourierOrder(args?.data?.id || id);
 
     // Expenses
     case "getExpensesFn": return await fs.fsGetExpenses();
@@ -273,6 +275,8 @@ export const deletePayableSettlementFn = (args?: any) => runWriteAction("deleteP
 export const createSaleFn = (args?: any) => runWriteAction("createSaleFn", args);
 export const deleteSaleFn = (args?: any) => runWriteAction("deleteSaleFn", args);
 export const editSaleFn = (args?: any) => runWriteAction("editSaleFn", args);
+export const approveCourierPaymentFn = (args?: any) => runWriteAction("approveCourierPaymentFn", args);
+export const cancelCourierOrderFn = (args?: any) => runWriteAction("cancelCourierOrderFn", args);
 
 export const updateUserAvatarFn = (args?: any) => runWriteAction("updateUserAvatarFn", args);
 export const createReturnFn = (args?: any) => runWriteAction("createReturnFn", args);

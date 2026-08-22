@@ -8,7 +8,8 @@ import {
   Package, PlusCircle, ArrowUpRight, ArrowDownRight, CreditCard, PiggyBank,
   DollarSign, Banknote, Users, Search, ChevronDown, ChevronUp, ArrowUpDown,
   Trash2, Plus, Calendar, BarChart3, LineChart as LineChartIcon, AreaChart as AreaChartIcon, CheckSquare, Square,
-  Palette, Sparkles, LayoutGrid, SlidersHorizontal, Layers, Eye, EyeOff
+  Palette, Sparkles, LayoutGrid, SlidersHorizontal, Layers, Eye, EyeOff,
+  Truck, PackageCheck, CheckCircle2, XCircle, Clock
 } from "lucide-react";
 import { useT } from "@/lib/i18n";
 import { getExpenses, getSales, getWithdrawals, getProducts, getParties, getReminders, getAllPayments, getAllPartyReceivables, getAllPartyPayables, getAllPayableSettlements, getPurchases, getSomiti } from "@/lib/queries";
@@ -28,7 +29,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { createReminderFn, toggleReminderFn, deleteReminderFn } from "@/lib/rpc";
+import { createReminderFn, toggleReminderFn, deleteReminderFn, approveCourierPaymentFn, cancelCourierOrderFn } from "@/lib/rpc";
 import { SaleDialog } from "@/components/sale-dialog";
 import { playTapSound } from "@/lib/audio";
 
@@ -456,6 +457,7 @@ export default function Dashboard() {
   // Quick Sell Dialog state
   const [saleOpen, setSaleOpen] = useState(false);
   const [salePresetType, setSalePresetType] = useState<"cash" | "credit" | "online">("cash");
+  const [todaysSalesModalOpen, setTodaysSalesModalOpen] = useState(false);
 
   // Recent Activity Limit state
   const [activityLimit, setActivityLimit] = useState(5);
@@ -463,11 +465,12 @@ export default function Dashboard() {
   // Best Selling Limit state
   const [bestSellingLimit, setBestSellingLimit] = useState(5);
 
-  // Helper to ensure purchases and somiti exist in kpi order
+  // Helper to ensure total_sales, purchases and somiti exist in kpi order
   const normalizeKpiOrder = (order?: string[]) => {
-    const defaultList = ["credit_sale", "cash_sale", "online_sell", "purchases", "profit", "loss", "expense", "due", "cashbox", "somiti"];
+    const defaultList = ["total_sales", "cash_sale", "credit_sale", "online_sell", "purchases", "profit", "loss", "expense", "due", "cashbox", "somiti"];
     if (!order || !Array.isArray(order)) return defaultList;
     const list = [...order];
+    if (!list.includes("total_sales")) list.unshift("total_sales");
     if (!list.includes("purchases")) {
       const idx = list.indexOf("online_sell");
       if (idx !== -1) list.splice(idx + 1, 0, "purchases");
@@ -491,7 +494,7 @@ export default function Dashboard() {
     borderStyle: "subtle",
     curve: "none",
     bentoGrid: true,
-    order: ["credit_sale", "cash_sale", "online_sell", "purchases", "profit", "loss", "expense", "due", "cashbox", "somiti"]
+    order: ["total_sales", "cash_sale", "credit_sale", "online_sell", "purchases", "profit", "loss", "expense", "due", "cashbox", "somiti"]
   });
 
   const [bentoCustomizerOpen, setBentoCustomizerOpen] = useState(false);
@@ -779,14 +782,20 @@ export default function Dashboard() {
   const filteredPurchases = (purchases.data ?? []).filter(p => isDateInRange(p.created_at));
 
   // KPIs
+  const totalSalesToday = filteredSales.reduce((a, s) => a + (s.returned ? 0 : Number(s.sell_price) * s.qty), 0);
   const cashToday    = filteredSales.filter(s => s.type === "cash").reduce((a, s) => a + Number(s.sell_price) * s.qty, 0);
+  const bkashToday   = filteredSales.filter(s => s.type === "bkash").reduce((a, s) => a + Number(s.sell_price) * s.qty, 0);
+  const bankToday    = filteredSales.filter(s => s.type === "bank").reduce((a, s) => a + Number(s.sell_price) * s.qty, 0);
   const creditToday  = filteredSales.filter(s => s.type === "credit").reduce((a, s) => a + Number(s.due_amount), 0);
   const onlineToday  = filteredSales.filter(s => s.type === "online").reduce((a, s) => a + Number(s.sell_price) * s.qty, 0);
+  const onlinePendingToday = filteredSales.filter(s => s.type === "online" && (s as any).courier_status !== "collected" && (s as any).courier_status !== "cancelled").reduce((a, s) => a + Number(s.sell_price) * s.qty, 0);
+  const onlineCollectedToday = filteredSales.filter(s => s.type === "online" && (s as any).courier_status === "collected").reduce((a, s) => a + Number(s.sell_price) * s.qty, 0);
+  const cashboxDepositedToday = cashToday + bkashToday + bankToday + onlineCollectedToday;
   const purchasesToday = filteredPurchases.reduce((a, p) => a + Number(p.total), 0);
-  const profitToday  = filteredSales.reduce((a, s) => a + Number(s.profit), 0);
+  const profitToday  = filteredSales.filter(s => !s.returned && (s as any).courier_status !== "cancelled").reduce((a, s) => a + Number(s.profit), 0);
   
   // loss today
-  const lossToday = filteredSales.filter(s => Number(s.profit) < 0).reduce((a, s) => a + Math.abs(Number(s.profit)), 0);
+  const lossToday = filteredSales.filter(s => !s.returned && Number(s.profit) < 0).reduce((a, s) => a + Math.abs(Number(s.profit)), 0);
   
   const totalDues = allParties.reduce((sum, p) => {
     if (p.archived) return sum;
@@ -1154,12 +1163,39 @@ export default function Dashboard() {
   const renderWidget = (widgetId: string) => {
     switch (widgetId) {
       case "kpis":
-        const isHeroCard = (id: string) => kpiConfig.bentoGrid && (id === "cash_sale" || id === "profit" || id === "cashbox");
+        const isHeroCard = (id: string) => kpiConfig.bentoGrid && (id === "total_sales" || id === "cash_sale" || id === "profit" || id === "cashbox");
         const allowPurchases = perms ? canAccess(perms, "purchases") : true;
         const allowSomiti = perms ? canAccess(perms, "expenses") : true;
 
         // Define all cards dynamically in a map with Bento Grid & Custom Style options
         const kpiCardsMap: Record<string, React.ReactNode> = {
+          total_sales: (
+            <div
+              key="total_sales"
+              className={`block cursor-pointer ${isHeroCard("total_sales") ? "sm:col-span-2" : ""}`}
+              onClick={() => {
+                playTapSound();
+                setTodaysSalesModalOpen(true);
+              }}
+            >
+              <KPICard
+                label={lang === "bn" ? "আজকের মোট বিক্রি" : "Today's Total Sales"}
+                value={fmtMoney(totalSalesToday)}
+                sub={lang === "bn" ? "বিস্তারিত ও আর্থিক অগ্রগতি দেখুন" : "View analytics & orders"}
+                imageUrl="/icons/sell_icon.png"
+                icon={ShoppingBag}
+                color="bg-indigo-600"
+                className="h-full w-full"
+                align={kpiConfig.align as any}
+                size={kpiConfig.size as any}
+                variant={(kpiConfig.variant || "glass") as any}
+                shadowStyle={(kpiConfig.shadow || "glow") as any}
+                borderStyle={(kpiConfig.borderStyle || "subtle") as any}
+                curve={(kpiConfig.curve || "none") as any}
+                isBentoHero={isHeroCard("total_sales")}
+              />
+            </div>
+          ),
           credit_sale: (
             <KPICard
               key="credit_sale"
@@ -1207,27 +1243,24 @@ export default function Dashboard() {
             />
           ),
           online_sell: (
-            <KPICard
-              key="online_sell"
-              label={t("online_sell")}
-              value={fmtMoney(onlineToday)}
-              sub={dateRangeLabel}
-              imageUrl="/icons/online_sale_icon.png"
-              icon={DollarSign}
-              color="bg-sky-500"
-              onClick={() => {
-                playTapSound();
-                setSalePresetType("online");
-                setSaleOpen(true);
-              }}
-              align={kpiConfig.align as any}
-              size={kpiConfig.size as any}
-              variant={(kpiConfig.variant || "glass") as any}
-              shadowStyle={(kpiConfig.shadow || "glow") as any}
-              borderStyle={(kpiConfig.borderStyle || "subtle") as any}
-              curve={(kpiConfig.curve || "none") as any}
-              isBentoHero={isHeroCard("online_sell")}
-            />
+            <Link href="/online-sells" className={`block ${isHeroCard("online_sell") ? "sm:col-span-2" : ""}`} key="online_sell" onClick={() => playTapSound()}>
+              <KPICard
+                label={t("online_sell")}
+                value={fmtMoney(onlineToday)}
+                sub={lang === "bn" ? `পেন্ডিং: ${fmtMoney(onlinePendingToday)}` : `Pending: ${fmtMoney(onlinePendingToday)}`}
+                imageUrl="/icons/online_sale_icon.png"
+                icon={Truck}
+                color="bg-purple-600"
+                className="h-full w-full"
+                align={kpiConfig.align as any}
+                size={kpiConfig.size as any}
+                variant={(kpiConfig.variant || "glass") as any}
+                shadowStyle={(kpiConfig.shadow || "glow") as any}
+                borderStyle={(kpiConfig.borderStyle || "subtle") as any}
+                curve={(kpiConfig.curve || "none") as any}
+                isBentoHero={isHeroCard("online_sell")}
+              />
+            </Link>
           ),
           purchases: allowPurchases ? (
             <Link href="/purchases" className={`block ${isHeroCard("purchases") ? "sm:col-span-2" : ""}`} key="purchases" onClick={() => playTapSound()}>
@@ -2783,6 +2816,150 @@ export default function Dashboard() {
           <DialogFooter className="pt-2 border-t border-border/50">
             <Button className="w-full font-bold rounded-xl" onClick={() => setBentoCustomizerOpen(false)}>
               {lang === "bn" ? "সংরক্ষণ করুন" : "Save & Close"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Comprehensive Today's Sales & Financial Insights Modal */}
+      <Dialog open={todaysSalesModalOpen} onOpenChange={setTodaysSalesModalOpen}>
+        <DialogContent className="w-[calc(100vw-20px)] sm:max-w-2xl md:max-w-3xl max-h-[90dvh] flex flex-col p-0 rounded-2xl overflow-hidden border-border shadow-2xl">
+          <DialogHeader className="p-4 sm:p-5 pb-3 border-b border-border/80 bg-card">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="size-9 rounded-xl bg-indigo-500/10 flex items-center justify-center text-indigo-600">
+                  <ShoppingBag className="size-5" />
+                </div>
+                <div>
+                  <DialogTitle className="text-base sm:text-lg font-bold">
+                    {lang === "bn" ? "আজকের বিক্রয় ও আর্থিক অগ্রগতি" : "Today's Sales & Financial Overview"}
+                  </DialogTitle>
+                  <p className="text-[11px] text-muted-foreground">
+                    {dateRangeLabel} · {filteredSales.length} {lang === "bn" ? "টি বিক্রয় রেকর্ড" : "orders recorded"}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </DialogHeader>
+
+          <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4">
+            {/* Financial Metric Bento Cards */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              <div className="p-3 rounded-xl border border-indigo-500/30 bg-indigo-500/5">
+                <span className="text-[10.5px] text-indigo-700 dark:text-indigo-300 font-semibold">{lang === "bn" ? "মোট বিক্রি" : "Total Sales"}</span>
+                <p className="text-base sm:text-lg font-bold font-serif text-indigo-700 dark:text-indigo-300 mt-0.5">{fmtMoney(totalSalesToday)}</p>
+              </div>
+              <div className="p-3 rounded-xl border border-emerald-500/30 bg-emerald-500/5">
+                <span className="text-[10.5px] text-emerald-700 dark:text-emerald-300 font-semibold">{lang === "bn" ? "ক্যাশবক্সে জমা" : "Deposited in Cashbox"}</span>
+                <p className="text-base sm:text-lg font-bold font-serif text-emerald-700 dark:text-emerald-300 mt-0.5">{fmtMoney(cashboxDepositedToday)}</p>
+              </div>
+              <div className="p-3 rounded-xl border border-amber-500/30 bg-amber-500/5">
+                <span className="text-[10.5px] text-amber-700 dark:text-amber-300 font-semibold">{lang === "bn" ? "কুরিয়ার পেন্ডিং" : "Pending Courier"}</span>
+                <p className="text-base sm:text-lg font-bold font-serif text-amber-700 dark:text-amber-300 mt-0.5">{fmtMoney(onlinePendingToday)}</p>
+              </div>
+              <div className="p-3 rounded-xl border border-emerald-500/30 bg-emerald-500/5">
+                <span className="text-[10.5px] text-emerald-700 dark:text-emerald-300 font-semibold">{lang === "bn" ? "নিট লাভ" : "Net Profit"}</span>
+                <p className="text-base sm:text-lg font-bold font-serif text-emerald-700 dark:text-emerald-300 mt-0.5">{fmtMoney(profitToday)}</p>
+              </div>
+            </div>
+
+            {/* Channel Breakdown Breakdown Bars */}
+            <div className="p-3.5 rounded-xl border border-border/80 bg-card space-y-2">
+              <h3 className="text-xs font-bold text-foreground flex items-center justify-between">
+                <span>{lang === "bn" ? "পেমেন্ট মাধ্যম অনুযায়ী বিক্রয় বিন্যাস" : "Sales Channel Breakdown"}</span>
+                <span className="text-[11px] text-muted-foreground font-mono">{fmtMoney(totalSalesToday)}</span>
+              </h3>
+
+              <div className="space-y-1.5 pt-1 text-xs">
+                <div className="flex items-center justify-between">
+                  <span className="flex items-center gap-1.5 text-muted-foreground">
+                    <Banknote className="size-3.5 text-emerald-600" /> {lang === "bn" ? "নগদ বিক্রি (Cash)" : "Cash Sale"}
+                  </span>
+                  <span className="font-mono font-bold text-foreground">{fmtMoney(cashToday)}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="flex items-center gap-1.5 text-muted-foreground">
+                    <DollarSign className="size-3.5 text-[#E2136E]" /> {lang === "bn" ? "বিকাশ পেমেন্ট (bKash)" : "bKash Payment"}
+                  </span>
+                  <span className="font-mono font-bold text-foreground">{fmtMoney(bkashToday)}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="flex items-center gap-1.5 text-muted-foreground">
+                    <DollarSign className="size-3.5 text-sky-600" /> {lang === "bn" ? "ব্যাংক পেমেন্ট (Bank)" : "Bank Payment"}
+                  </span>
+                  <span className="font-mono font-bold text-foreground">{fmtMoney(bankToday)}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="flex items-center gap-1.5 text-muted-foreground">
+                    <Truck className="size-3.5 text-purple-600" /> {lang === "bn" ? "অনলাইন কুরিয়ার (Courier)" : "Courier Delivery"}
+                  </span>
+                  <span className="font-mono font-bold text-foreground">{fmtMoney(onlineToday)}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="flex items-center gap-1.5 text-muted-foreground">
+                    <CreditCard className="size-3.5 text-amber-600" /> {lang === "bn" ? "বাকী বিক্রি (Credit)" : "Credit Sale"}
+                  </span>
+                  <span className="font-mono font-bold text-foreground">{fmtMoney(creditToday)}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Today's Sales List */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <h3 className="text-xs font-bold text-foreground">{lang === "bn" ? "আজকের বিক্রয় তালিকা" : "Today's Orders"}</h3>
+                <Link href="/sales" className="text-[11px] text-primary hover:underline font-semibold" onClick={() => setTodaysSalesModalOpen(false)}>
+                  {lang === "bn" ? "সেলস পেজে যান →" : "View in Sales →"}
+                </Link>
+              </div>
+
+              {filteredSales.length === 0 ? (
+                <div className="p-8 text-center border border-dashed rounded-xl text-xs text-muted-foreground">
+                  {lang === "bn" ? "আজকের দিনে এখনো কোন বিক্রয় রেকর্ড করা হয়নি।" : "No sales recorded yet for today."}
+                </div>
+              ) : (
+                <div className="space-y-2 max-h-[260px] overflow-y-auto pr-1">
+                  {filteredSales.slice(0, 10).map((s) => (
+                    <div key={s.id} className="p-2.5 rounded-lg border border-border/80 bg-card flex items-center justify-between gap-2 text-xs">
+                      <div>
+                        <div className="font-bold text-foreground truncate">{s.product_name} <span className="text-muted-foreground font-mono">×{s.qty}</span></div>
+                        <div className="text-[10.5px] text-muted-foreground">
+                          {s.type === "online" ? `কুরিয়ার (${(s as any).courier_status || "pending"})` : s.type?.toUpperCase()} · {fmtDateTime(s.created_at)}
+                        </div>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <div className="font-bold font-serif">{fmtMoney(Number(s.sell_price) * s.qty)}</div>
+                        <div className="text-[10px] text-emerald-600 font-semibold">+{fmtMoney(s.profit)}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <DialogFooter className="p-3 border-t border-border/80 bg-muted/20 flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setTodaysSalesModalOpen(false);
+                router.push("/sales");
+              }}
+              className="text-xs font-semibold"
+            >
+              {lang === "bn" ? "সকল বিক্রয় দেখুন" : "View All Sales"}
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => {
+                setTodaysSalesModalOpen(false);
+                setSaleOpen(true);
+              }}
+              className="text-xs font-bold"
+            >
+              <Plus className="size-3.5 mr-1" />
+              {lang === "bn" ? "নতুন বিক্রি" : "New Sale"}
             </Button>
           </DialogFooter>
         </DialogContent>

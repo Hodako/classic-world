@@ -741,8 +741,8 @@ function SalesTab({
   }
 
   return (
-    <div className="space-y-2.5">
-      {paged.map(s => {
+    <div className="space-y-2">
+      {paged.map((s) => {
         const isGroup = s.isGroup;
         const expanded = expandedGroups[s.id] || false;
 
@@ -761,176 +761,210 @@ function SalesTab({
           "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30";
 
         const badgeLabel =
-          isCancelled ? (lang === "bn" ? "বাতিলকৃত অর্ডার" : "Order Cancelled") :
-          isPendingCourier ? (lang === "bn" ? `⏳ কুরিয়ার পেন্ডিং [${s.courier_name || "Courier"}]` : `⏳ Courier Pending [${s.courier_name || "Courier"}]`) :
-          isCollectedCourier ? (lang === "bn" ? `✓ কুরিয়ার পেইড [${s.courier_name || "Courier"}]` : `✓ Courier Paid [${s.courier_name || "Courier"}]`) :
-          s.type === "bkash" ? (lang === "bn" ? "পেইড: বিকাশ" : "Paid by bKash") :
-          s.type === "bank" ? (lang === "bn" ? "পেইড: ব্যাংক" : "Paid by Bank") :
-          s.type === "credit" ? (lang === "bn" ? "বাকী বিক্রি" : "Credit / Due") :
-          (lang === "bn" ? "পেইড: নগদ" : "Paid by Cash");
+          isCancelled ? (lang === "bn" ? "বাতিল" : "Cancelled") :
+          isPendingCourier ? (lang === "bn" ? "⏳ কুরিয়ার" : "⏳ Courier") :
+          isCollectedCourier ? (lang === "bn" ? "✓ কুরিয়ার" : "✓ Courier") :
+          s.type === "bkash" ? (lang === "bn" ? "বিকাশ" : "bKash") :
+          s.type === "bank" ? (lang === "bn" ? "ব্যাংক" : "Bank") :
+          s.type === "credit" ? (lang === "bn" ? "বাকী" : "Credit") :
+          (lang === "bn" ? "নগদ" : "Cash");
 
         return (
-          <Card key={s.id} className="p-3 sm:p-3.5 rounded-xl border border-border/80 bg-card shadow-xs space-y-2.5">
-            <div className="flex items-start justify-between gap-2">
-              <div className="space-y-1">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border uppercase tracking-wider ${badgeColor}`}>
-                    {badgeLabel}
+          <div
+            key={s.id}
+            className={`rounded-xl border border-dashed transition-all duration-150 ${
+              expanded
+                ? "border-primary/70 bg-primary/[0.02] shadow-xs"
+                : "border-border hover:border-primary/50 bg-card"
+            }`}
+          >
+            {/* Clickable Compact 2-Line Summary Statement */}
+            <div
+              onClick={() => toggleGroup(s.id)}
+              className="p-2.5 sm:p-3 cursor-pointer select-none space-y-1"
+            >
+              {/* Line 1: Product Name & Count | Total Amount & Payment Badge */}
+              <div className="flex items-center justify-between gap-2">
+                <div className="min-w-0 flex-1 flex items-center gap-1.5">
+                  <span className={`font-bold text-xs sm:text-sm text-foreground truncate ${isCancelled ? "line-through text-muted-foreground" : ""}`}>
+                    {s.product_name}
                   </span>
-                  <span className="text-[11px] text-muted-foreground font-mono">
-                    {fmtDateTime(s.created_at)}
-                  </span>
-                </div>
-
-                <h3 className={`font-bold text-sm text-foreground ${isCancelled ? "line-through text-muted-foreground" : ""}`}>
-                  {s.product_name}
-                </h3>
-
-                {s.parties?.name && (
-                  <p className="text-xs text-muted-foreground">
-                    {lang === "bn" ? "ক্রেতা:" : "Customer:"} <strong className="text-foreground">{s.parties.name}</strong>
-                  </p>
-                )}
-              </div>
-
-              <div className="text-right shrink-0">
-                <p className={`text-sm sm:text-base font-bold font-serif text-foreground ${isCancelled ? "line-through text-muted-foreground" : ""}`}>
-                  {fmtMoney(s.sell_price)}
-                </p>
-                <p className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
-                  {lang === "bn" ? "লাভ:" : "Profit:"} {isCancelled ? "৳০" : fmtMoney(s.profit)}
-                </p>
-                {s.due_amount > 0 && !isCancelled && (
-                  <p className="text-[11px] font-bold text-rose-600">
-                    {lang === "bn" ? "বাকী:" : "Due:"} {fmtMoney(s.due_amount)}
-                  </p>
-                )}
-              </div>
-            </div>
-
-            {/* Inline Courier Delivery Info & Approval Actions if Online Sale */}
-            {s.type === "online" && (
-              <div className="p-2.5 rounded-xl bg-purple-500/10 border border-purple-500/20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-xs">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <Truck className="size-4 text-purple-600 shrink-0" />
-                  <span className="font-bold text-purple-900 dark:text-purple-200">{s.courier_name || "Courier Delivery"}</span>
-                  {s.tracking_code && (
-                    <span className="font-mono text-[11px] bg-background text-foreground px-2 py-0.5 rounded-md border border-border">
-                      ID: {s.tracking_code}
+                  {isGroup && (
+                    <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-muted text-muted-foreground shrink-0">
+                      {s.items.length}টি
                     </span>
                   )}
                 </div>
 
-                {isCollectedCourier ? (
-                  <span className="text-[11px] font-bold text-emerald-700 dark:text-emerald-300 flex items-center gap-1 bg-emerald-500/15 px-2 py-0.5 rounded-md border border-emerald-500/30">
-                    <CheckCircle2 className="size-3.5" />
-                    {lang === "bn" ? "পেমেন্ট ক্যাশবক্সে জমা হয়েছে" : "Deposited in Cashbox"}
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border uppercase tracking-wider ${badgeColor}`}>
+                    {badgeLabel}
                   </span>
-                ) : isCancelled ? (
-                  <span className="text-[11px] font-bold text-rose-700 dark:text-rose-300 flex items-center gap-1 bg-rose-500/15 px-2 py-0.5 rounded-md border border-rose-500/30">
-                    <XCircle className="size-3.5" />
-                    {lang === "bn" ? "অর্ডার বাতিলকৃত" : "Order Cancelled"}
+                  <span className={`text-xs sm:text-sm font-extrabold font-serif text-foreground ${isCancelled ? "line-through text-muted-foreground" : ""}`}>
+                    {fmtMoney(s.sell_price)}
                   </span>
-                ) : (
-                  <div className="flex items-center gap-1.5 w-full sm:w-auto">
-                    <Button
-                      size="sm"
-                      onClick={() => handleApproveCourier(s.id)}
-                      disabled={actionBusyId === s.id}
-                      className="h-7 px-2.5 text-xs font-bold rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white gap-1 shadow-xs flex-1 sm:flex-initial cursor-pointer"
-                    >
-                      <PackageCheck className="size-3.5" />
-                      <span>{lang === "bn" ? "✓ পেমেন্ট গ্রহণ" : "Accept Payment"}</span>
-                    </Button>
-
-                    <Button
-                      size="sm"
-                      variant="destructive"
-                      onClick={() => handleCancelCourier(s.id)}
-                      disabled={actionBusyId === s.id}
-                      className="h-7 px-2 text-xs font-semibold rounded-lg gap-1 flex-1 sm:flex-initial cursor-pointer"
-                    >
-                      <RotateCcw className="size-3" />
-                      <span>{lang === "bn" ? "বাতিল" : "Cancel"}</span>
-                    </Button>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Actions Bar */}
-            <div className="flex items-center justify-between gap-2 pt-1 border-t border-border/60">
-              <div className="flex items-center gap-1">
-                <Button
-                  onClick={() => handlePrintSale(s)}
-                  variant="outline"
-                  size="sm"
-                  className="h-7 text-xs font-semibold rounded-lg gap-1"
-                >
-                  <Printer className="size-3" />
-                  <span>{lang === "bn" ? "রসিদ প্রিন্ট" : "Print"}</span>
-                </Button>
-
-                {isGroup && (
-                  <Button
-                    onClick={() => toggleGroup(s.id)}
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 text-xs text-muted-foreground gap-1"
-                  >
-                    <span>{s.items.length} {lang === "bn" ? "টি আইটেম" : "items"}</span>
-                    {expanded ? <ChevronUp className="size-3" /> : <ChevronDown className="size-3" />}
-                  </Button>
-                )}
+                </div>
               </div>
 
-              <div className="flex items-center gap-1">
-                {!isGroup && !isCancelled && (
-                  <Button
-                    onClick={() => onEdit(s.items[0])}
-                    variant="ghost"
-                    size="icon"
-                    className="size-7 text-muted-foreground hover:text-foreground"
-                  >
-                    <Pencil className="size-3.5" />
-                  </Button>
-                )}
-                <Button
-                  onClick={() => handleDeleteClick(s.items[0].id)}
-                  variant="ghost"
-                  size="icon"
-                  className="size-7 text-muted-foreground hover:text-destructive"
-                >
-                  <Trash2 className="size-3.5" />
-                </Button>
+              {/* Line 2: Customer / Date | Profit / Due & Reveal Icon */}
+              <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
+                <div className="min-w-0 flex-1 truncate flex items-center gap-1">
+                  {s.parties?.name ? (
+                    <>
+                      <span className="font-semibold text-foreground truncate max-w-[120px] sm:max-w-[200px]">
+                        {s.parties.name}
+                      </span>
+                      <span>·</span>
+                    </>
+                  ) : null}
+                  <span className="font-mono text-[10.5px]">
+                    {fmtDateTime(s.created_at)}
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-1.5 shrink-0">
+                  {s.due_amount > 0 && !isCancelled ? (
+                    <span className="text-[10.5px] font-bold text-rose-600">
+                      {lang === "bn" ? "বাকী:" : "Due:"} {fmtMoney(s.due_amount)}
+                    </span>
+                  ) : (
+                    <span className="text-[10.5px] font-semibold text-emerald-600 dark:text-emerald-400">
+                      +{isCancelled ? "৳০" : fmtMoney(s.profit)}
+                    </span>
+                  )}
+                  <span className="p-0.5 rounded text-muted-foreground/70 hover:text-foreground">
+                    {expanded ? <ChevronUp className="size-3.5" /> : <ChevronDown className="size-3.5" />}
+                  </span>
+                </div>
               </div>
             </div>
 
-            {/* Expanded items if group */}
-            {isGroup && expanded && (
-              <div className="pt-2 border-t border-border/40 space-y-1.5 bg-muted/20 p-2 rounded-lg">
-                {s.items.map(item => (
-                  <div key={item.id} className="flex justify-between items-center text-xs">
-                    <div>
-                      <span className="font-semibold text-foreground">{item.product_name}</span>
-                      <span className="text-muted-foreground font-mono ml-1.5">×{item.qty}</span>
+            {/* Revealable Action & Details Drawer */}
+            {expanded && (
+              <div className="px-3 pb-3 pt-1 border-t border-dashed border-border/70 space-y-2.5 bg-muted/10 rounded-b-xl animate-in fade-in-50 duration-150">
+                {/* Note / Remarks if any */}
+                {s.note && (
+                  <p className="text-[11px] text-muted-foreground bg-muted/40 px-2.5 py-1 rounded border border-border/50">
+                    <strong className="text-foreground">{lang === "bn" ? "নোট:" : "Note:"}</strong> {s.note}
+                  </p>
+                )}
+
+                {/* Inline Courier Delivery Info & Approval Actions if Online Sale */}
+                {s.type === "online" && (
+                  <div className="p-2 rounded-lg bg-purple-500/10 border border-purple-500/20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-xs">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <Truck className="size-3.5 text-purple-600 shrink-0" />
+                      <span className="font-bold text-purple-900 dark:text-purple-200">{s.courier_name || "Courier Delivery"}</span>
+                      {s.tracking_code && (
+                        <span className="font-mono text-[10.5px] bg-background text-foreground px-1.5 py-0.5 rounded border border-border">
+                          ID: {s.tracking_code}
+                        </span>
+                      )}
                     </div>
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono font-bold">{fmtMoney(Number(item.sell_price) * item.qty)}</span>
-                      <Button
-                        onClick={() => onEdit(item)}
-                        variant="ghost"
-                        size="icon"
-                        className="size-6 text-muted-foreground hover:text-foreground"
-                      >
-                        <Pencil className="size-3" />
-                      </Button>
-                    </div>
+
+                    {isCollectedCourier ? (
+                      <span className="text-[10.5px] font-bold text-emerald-700 dark:text-emerald-300 flex items-center gap-1 bg-emerald-500/15 px-2 py-0.5 rounded border border-emerald-500/30">
+                        <CheckCircle2 className="size-3" />
+                        {lang === "bn" ? "পেমেন্ট ক্যাশবক্সে জমা হয়েছে" : "Deposited in Cashbox"}
+                      </span>
+                    ) : isCancelled ? (
+                      <span className="text-[10.5px] font-bold text-rose-700 dark:text-rose-300 flex items-center gap-1 bg-rose-500/15 px-2 py-0.5 rounded border border-rose-500/30">
+                        <XCircle className="size-3" />
+                        {lang === "bn" ? "অর্ডার বাতিলকৃত" : "Order Cancelled"}
+                      </span>
+                    ) : (
+                      <div className="flex items-center gap-1.5 w-full sm:w-auto">
+                        <Button
+                          size="sm"
+                          onClick={(e) => { e.stopPropagation(); handleApproveCourier(s.id); }}
+                          disabled={actionBusyId === s.id}
+                          className="h-6.5 px-2 text-[11px] font-bold rounded-md bg-emerald-600 hover:bg-emerald-700 text-white gap-1 shadow-xs flex-1 sm:flex-initial cursor-pointer"
+                        >
+                          <PackageCheck className="size-3" />
+                          <span>{lang === "bn" ? "✓ গ্রহণ" : "Accept"}</span>
+                        </Button>
+
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          onClick={(e) => { e.stopPropagation(); handleCancelCourier(s.id); }}
+                          disabled={actionBusyId === s.id}
+                          className="h-6.5 px-2 text-[11px] font-semibold rounded-md gap-1 flex-1 sm:flex-initial cursor-pointer"
+                        >
+                          <RotateCcw className="size-3" />
+                          <span>{lang === "bn" ? "বাতিল" : "Cancel"}</span>
+                        </Button>
+                      </div>
+                    )}
                   </div>
-                ))}
+                )}
+
+                {/* Multi-Item Breakdown List if Group */}
+                {isGroup && (
+                  <div className="space-y-1 bg-background/80 p-2 rounded-lg border border-border/50">
+                    <span className="text-[10px] font-bold uppercase text-muted-foreground tracking-wider block">
+                      {lang === "bn" ? "কার্ট আইটেম তালিকা" : "Cart Items"}
+                    </span>
+                    {s.items.map((item) => (
+                      <div key={item.id} className="flex justify-between items-center text-xs py-0.5 border-b border-border/30 last:border-0">
+                        <div className="truncate mr-2">
+                          <span className="font-semibold text-foreground">{item.product_name}</span>
+                          <span className="text-muted-foreground font-mono ml-1">×{item.qty}</span>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className="font-mono font-bold text-foreground">{fmtMoney(Number(item.sell_price) * item.qty)}</span>
+                          <Button
+                            onClick={(e) => { e.stopPropagation(); onEdit(item); }}
+                            variant="ghost"
+                            size="icon"
+                            className="size-5 text-muted-foreground hover:text-foreground"
+                          >
+                            <Pencil className="size-3" />
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Actions Toolbar */}
+                <div className="flex items-center justify-between gap-2 pt-1">
+                  <Button
+                    onClick={(e) => { e.stopPropagation(); handlePrintSale(s); }}
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-xs font-semibold rounded-lg gap-1.5 cursor-pointer bg-background hover:bg-muted"
+                  >
+                    <Printer className="size-3.5 text-primary" />
+                    <span>{lang === "bn" ? "রসিদ প্রিন্ট" : "Print Invoice"}</span>
+                  </Button>
+
+                  <div className="flex items-center gap-1">
+                    {!isGroup && !isCancelled && (
+                      <Button
+                        onClick={(e) => { e.stopPropagation(); onEdit(s.items[0]); }}
+                        variant="outline"
+                        size="sm"
+                        className="h-7 px-2.5 text-xs text-muted-foreground hover:text-foreground gap-1 rounded-lg"
+                      >
+                        <Pencil className="size-3.5" />
+                        <span>{lang === "bn" ? "এডিট" : "Edit"}</span>
+                      </Button>
+                    )}
+                    <Button
+                      onClick={(e) => { e.stopPropagation(); handleDeleteClick(s.items[0].id); }}
+                      variant="outline"
+                      size="sm"
+                      className="h-7 px-2.5 text-xs text-rose-600 hover:bg-rose-500/10 hover:text-rose-700 gap-1 rounded-lg"
+                    >
+                      <Trash2 className="size-3.5" />
+                      <span>{lang === "bn" ? "ডিলিট" : "Delete"}</span>
+                    </Button>
+                  </div>
+                </div>
               </div>
             )}
-          </Card>
+          </div>
         );
       })}
 

@@ -219,6 +219,11 @@ export default function OnlineSellsPage() {
     }
   }
 
+  const [expandedOrders, setExpandedOrders] = useState<Record<string, boolean>>({});
+  const toggleOrder = (id: string) => {
+    setExpandedOrders((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
+
   return (
     <div className="space-y-4 pb-12">
       {/* Top Header */}
@@ -310,7 +315,7 @@ export default function OnlineSellsPage() {
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList className="grid grid-cols-4 w-full text-xs font-bold p-1 bg-muted/80 rounded-xl gap-1">
           <TabsTrigger value="all" className="rounded-lg text-[11px] sm:text-xs">
-            {lang === "bn" ? `সকল অর্ডার (${groupedOnlineSales.length})` : `All (${groupedOnlineSales.length})`}
+            {lang === "bn" ? `সব (${groupedOnlineSales.length})` : `All (${groupedOnlineSales.length})`}
           </TabsTrigger>
           <TabsTrigger value="pending" className="rounded-lg text-[11px] sm:text-xs text-amber-700 dark:text-amber-300">
             ⏳ {lang === "bn" ? "অপেক্ষমাণ" : "Pending"}
@@ -319,11 +324,11 @@ export default function OnlineSellsPage() {
             ✓ {lang === "bn" ? "কালেক্টেড" : "Collected"}
           </TabsTrigger>
           <TabsTrigger value="cancelled" className="rounded-lg text-[11px] sm:text-xs text-rose-700 dark:text-rose-300">
-            ✕ {lang === "bn" ? "বাতিলকৃত" : "Cancelled"}
+            ✕ {lang === "bn" ? "বাতিল" : "Cancelled"}
           </TabsTrigger>
         </TabsList>
 
-        <div className="pt-3 space-y-2.5">
+        <div className="pt-3 space-y-2">
           {filteredList.length === 0 ? (
             <Card className="p-12 text-center rounded-2xl border-dashed border-border text-muted-foreground">
               <Truck className="size-8 mx-auto mb-2 text-muted-foreground/40" />
@@ -336,111 +341,165 @@ export default function OnlineSellsPage() {
               const isPending = item.courier_status !== "collected" && item.courier_status !== "cancelled" && !item.returned;
               const isCollected = item.courier_status === "collected";
               const isCancelled = item.courier_status === "cancelled" || item.returned;
+              const isExpanded = expandedOrders[item.id] || false;
 
               return (
-                <Card key={item.id} className="p-3.5 rounded-xl border border-border/80 bg-card shadow-xs space-y-2.5">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2 flex-wrap">
+                <div
+                  key={item.id}
+                  className={`rounded-xl border border-dashed transition-all duration-150 ${
+                    isExpanded
+                      ? "border-primary/70 bg-primary/[0.02] shadow-xs"
+                      : "border-border hover:border-primary/50 bg-card"
+                  }`}
+                >
+                  {/* Compact 2-Line Clickable Summary */}
+                  <div
+                    onClick={() => toggleOrder(item.id)}
+                    className="p-2.5 sm:p-3 cursor-pointer select-none space-y-1"
+                  >
+                    {/* Line 1: Product Name & Count | Total Amount & Courier Status Pill */}
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="min-w-0 flex-1 flex items-center gap-1.5">
+                        <span className={`font-bold text-xs sm:text-sm text-foreground truncate ${isCancelled ? "line-through text-muted-foreground" : ""}`}>
+                          {item.product_name}
+                        </span>
+                        {item.items.length > 1 && (
+                          <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-muted text-muted-foreground shrink-0">
+                            {item.items.length}টি
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-1.5 shrink-0">
                         {isPending ? (
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full border bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30 animate-pulse">
-                            ⏳ {lang === "bn" ? "কুরিয়ার পেন্ডিং (অপেক্ষমাণ)" : "Pending Collection"}
+                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded border uppercase tracking-wider bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30 animate-pulse">
+                            ⏳ {lang === "bn" ? "পেন্ডিং" : "Pending"}
                           </span>
                         ) : isCollected ? (
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full border bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30">
-                            ✓ {lang === "bn" ? "ক্যাশবক্সে জমা হয়েছে" : "Collected & Paid"}
+                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded border uppercase tracking-wider bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30">
+                            ✓ {lang === "bn" ? "পেইড" : "Paid"}
                           </span>
                         ) : (
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full border bg-rose-500/15 text-rose-700 dark:text-rose-300 border-rose-500/30 line-through">
-                            ✕ {lang === "bn" ? "বাতিলকৃত অর্ডার" : "Cancelled"}
+                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded border uppercase tracking-wider bg-rose-500/15 text-rose-700 dark:text-rose-300 border-rose-500/30 line-through">
+                            ✕ {lang === "bn" ? "বাতিল" : "Cancelled"}
                           </span>
                         )}
 
-                        <span className="text-[11px] text-muted-foreground font-mono">
+                        <span className={`text-xs sm:text-sm font-extrabold font-serif text-foreground ${isCancelled ? "line-through text-muted-foreground" : ""}`}>
+                          {fmtMoney(item.sell_price)}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Line 2: Customer / Date | Profit & Reveal Trigger */}
+                    <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
+                      <div className="min-w-0 flex-1 truncate flex items-center gap-1">
+                        {item.parties?.name ? (
+                          <>
+                            <span className="font-semibold text-foreground truncate max-w-[120px] sm:max-w-[200px]">
+                              {item.parties.name}
+                            </span>
+                            <span>·</span>
+                          </>
+                        ) : null}
+                        <span className="font-mono text-[10.5px]">
                           {fmtDateTime(item.created_at)}
                         </span>
                       </div>
 
-                      <h3 className={`font-bold text-sm text-foreground ${isCancelled ? "line-through text-muted-foreground" : ""}`}>
-                        {item.product_name}
-                      </h3>
-
-                      {item.parties?.name && (
-                        <p className="text-xs text-muted-foreground">
-                          {lang === "bn" ? "ক্রেতা:" : "Customer:"}{" "}
-                          <Link href={`/customers/detail?id=${item.party_id}`} className="font-semibold text-foreground hover:underline">
-                            {item.parties.name}
-                          </Link>
-                        </p>
-                      )}
-
-                      {item.note && (
-                        <p className="text-[11px] text-muted-foreground bg-muted/40 px-2 py-0.5 rounded border border-border/50 max-w-fit">
-                          {item.note}
-                        </p>
-                      )}
-                    </div>
-
-                    <div className="text-right shrink-0">
-                      <p className={`text-sm sm:text-base font-bold font-serif text-foreground ${isCancelled ? "line-through text-muted-foreground" : ""}`}>
-                        {fmtMoney(item.sell_price)}
-                      </p>
-                      <p className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
-                        {lang === "bn" ? "লাভ:" : "Profit:"} {isCancelled ? "৳০" : fmtMoney(item.profit)}
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Courier Details Bar & Actions */}
-                  <div className="p-2.5 rounded-xl bg-purple-500/10 border border-purple-500/20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-xs">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <Truck className="size-4 text-purple-600 shrink-0" />
-                      <span className="font-bold text-purple-900 dark:text-purple-200">{item.courier_name || "Courier Delivery"}</span>
-                      {item.tracking_code && (
-                        <span className="font-mono text-[11px] bg-background text-foreground px-2 py-0.5 rounded-md border border-border">
-                          ID: {item.tracking_code}
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <span className="text-[10.5px] font-semibold text-emerald-600 dark:text-emerald-400">
+                          {lang === "bn" ? "লাভ:" : "Profit:"} {isCancelled ? "৳০" : fmtMoney(item.profit)}
                         </span>
-                      )}
-                    </div>
-
-                    <div className="flex items-center gap-1.5 w-full sm:w-auto">
-                      <Button
-                        onClick={() => handlePrint(item)}
-                        variant="outline"
-                        size="sm"
-                        className="h-7 px-2 text-xs font-semibold rounded-lg gap-1 cursor-pointer"
-                      >
-                        <Printer className="size-3" />
-                        <span>{lang === "bn" ? "রসিদ" : "Slip"}</span>
-                      </Button>
-
-                      {isPending && (
-                        <>
-                          <Button
-                            size="sm"
-                            onClick={() => handleApprove(item.id)}
-                            disabled={actionBusyId === item.id}
-                            className="h-7 px-2.5 text-xs font-bold rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white gap-1 shadow-xs flex-1 sm:flex-initial cursor-pointer"
-                          >
-                            <PackageCheck className="size-3.5" />
-                            <span>{lang === "bn" ? "✓ পেমেন্ট গ্রহণ" : "Accept Payment"}</span>
-                          </Button>
-
-                          <Button
-                            size="sm"
-                            variant="destructive"
-                            onClick={() => handleCancel(item.id)}
-                            disabled={actionBusyId === item.id}
-                            className="h-7 px-2 text-xs font-semibold rounded-lg gap-1 flex-1 sm:flex-initial cursor-pointer"
-                          >
-                            <RotateCcw className="size-3" />
-                            <span>{lang === "bn" ? "বাতিল" : "Cancel"}</span>
-                          </Button>
-                        </>
-                      )}
+                        <span className="p-0.5 rounded text-muted-foreground/70 hover:text-foreground">
+                          {isExpanded ? <ChevronUp className="size-3.5" /> : <ChevronDown className="size-3.5" />}
+                        </span>
+                      </div>
                     </div>
                   </div>
-                </Card>
+
+                  {/* Revealable Action & Order Details Drawer */}
+                  {isExpanded && (
+                    <div className="px-3 pb-3 pt-1 border-t border-dashed border-border/70 space-y-2.5 bg-muted/10 rounded-b-xl animate-in fade-in-50 duration-150">
+                      {/* Courier Information Bar */}
+                      <div className="p-2 rounded-lg bg-purple-500/10 border border-purple-500/20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-xs">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <Truck className="size-3.5 text-purple-600 shrink-0" />
+                          <span className="font-bold text-purple-900 dark:text-purple-200">{item.courier_name || "Courier Delivery"}</span>
+                          {item.tracking_code && (
+                            <span className="font-mono text-[10.5px] bg-background text-foreground px-1.5 py-0.5 rounded border border-border">
+                              ID: {item.tracking_code}
+                            </span>
+                          )}
+                        </div>
+
+                        {item.note && (
+                          <span className="text-[11px] text-muted-foreground italic">
+                            {item.note}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Multi-Item Breakdown List if Group */}
+                      {item.items.length > 1 && (
+                        <div className="space-y-1 bg-background/80 p-2 rounded-lg border border-border/50">
+                          <span className="text-[10px] font-bold uppercase text-muted-foreground tracking-wider block">
+                            {lang === "bn" ? "অর্ডার আইটেম সমূহ" : "Order Items"}
+                          </span>
+                          {item.items.map((it: any) => (
+                            <div key={it.id} className="flex justify-between items-center text-xs py-0.5 border-b border-border/30 last:border-0">
+                              <div className="truncate mr-2">
+                                <span className="font-semibold text-foreground">{it.product_name}</span>
+                                <span className="text-muted-foreground font-mono ml-1">×{it.qty}</span>
+                              </div>
+                              <span className="font-mono font-bold text-foreground shrink-0">
+                                {fmtMoney(Number(it.sell_price) * it.qty)}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Actions Toolbar */}
+                      <div className="flex items-center justify-between gap-2 pt-1">
+                        <Button
+                          onClick={(e) => { e.stopPropagation(); handlePrint(item); }}
+                          variant="outline"
+                          size="sm"
+                          className="h-7 text-xs font-semibold rounded-lg gap-1.5 cursor-pointer bg-background hover:bg-muted"
+                        >
+                          <Printer className="size-3.5 text-primary" />
+                          <span>{lang === "bn" ? "রসিদ প্রিন্ট" : "Print Invoice"}</span>
+                        </Button>
+
+                        {isPending && (
+                          <div className="flex items-center gap-1.5">
+                            <Button
+                              size="sm"
+                              onClick={(e) => { e.stopPropagation(); handleApprove(item.id); }}
+                              disabled={actionBusyId === item.id}
+                              className="h-7 px-2.5 text-xs font-bold rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white gap-1 shadow-xs cursor-pointer"
+                            >
+                              <PackageCheck className="size-3.5" />
+                              <span>{lang === "bn" ? "✓ পেমেন্ট গ্রহণ" : "Accept"}</span>
+                            </Button>
+
+                            <Button
+                              size="sm"
+                              variant="destructive"
+                              onClick={(e) => { e.stopPropagation(); handleCancel(item.id); }}
+                              disabled={actionBusyId === item.id}
+                              className="h-7 px-2 text-xs font-semibold rounded-lg gap-1 cursor-pointer"
+                            >
+                              <RotateCcw className="size-3" />
+                              <span>{lang === "bn" ? "বাতিল" : "Cancel"}</span>
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
               );
             })
           )}

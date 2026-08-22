@@ -7,7 +7,7 @@ import {
   Settings, CheckCircle2, AlertCircle, Clock, ShieldCheck,
   Eye, EyeOff, Plus, Trash2, Search, Smartphone, Info,
   Check, ArrowRight, ExternalLink, HelpCircle, FileText,
-  BadgePercent, UserCheck, PhoneCall, Copy
+  BadgePercent, UserCheck, PhoneCall, Copy, MessageCircle
 } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -80,6 +80,14 @@ export default function SmsPage() {
   const qc = useQueryClient();
 
   const [activeTab, setActiveTab] = useState("direct");
+  const [rechargeOpen, setRechargeOpen] = useState(false);
+  const [selectedPackage, setSelectedPackage] = useState<{ count: number; price: number; nameBn: string; nameEn: string; rate: string }>({
+    count: 500,
+    price: 225,
+    nameBn: "জনপ্রিয় প্যাক",
+    nameEn: "Popular Pack",
+    rate: "৳0.45/SMS",
+  });
 
   // Queries
   const { data: smsSettings, isLoading: settingsLoading, refetch: refetchSettings } = useQuery({
@@ -549,12 +557,12 @@ export default function SmsPage() {
           </p>
         </div>
 
-        {/* Real-time SMS Balance Widget */}
-        <div className="flex items-center justify-between sm:justify-start gap-3 bg-card/80 backdrop-blur border border-border/80 p-2.5 sm:p-3.5 rounded-xl sm:rounded-2xl shadow-sm">
+        {/* Real-time SMS Balance & Recharge Widget */}
+        <div className="flex flex-wrap items-center justify-between sm:justify-start gap-2.5 sm:gap-3 bg-card/80 backdrop-blur border border-border/80 p-2.5 sm:p-3.5 rounded-xl sm:rounded-2xl shadow-sm">
           <div className="flex flex-col">
             <span className="text-[11px] sm:text-xs text-muted-foreground font-medium flex items-center gap-1">
               <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-              {lang === "bn" ? "অবশিষ্ট এসএমএস" : "SMS Balance"}
+              {lang === "bn" ? "অবশিষ্ট এসএমএস ক্রেডিট" : "Available SMS Credits"}
             </span>
             <div className="flex items-baseline gap-1.5 mt-0.5">
               <span className="text-xl sm:text-2xl font-bold text-foreground font-num">
@@ -562,8 +570,8 @@ export default function SmsPage() {
                   <RefreshCw className="w-4 h-4 sm:w-5 sm:h-5 animate-spin text-primary inline" />
                 ) : balance !== null ? (
                   balance
-                ) : hasConfig ? (
-                  "--"
+                ) : smsSettings?.sms_credits !== undefined ? (
+                  smsSettings.sms_credits
                 ) : (
                   "0"
                 )}
@@ -571,72 +579,29 @@ export default function SmsPage() {
               <span className="text-xs text-muted-foreground">{lang === "bn" ? "টি" : "SMS"}</span>
             </div>
           </div>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={fetchBalance}
-            disabled={balanceLoading || !hasConfig}
-            className="h-8 sm:h-9 px-2.5 sm:px-3 rounded-lg sm:rounded-xl border-primary/30 hover:bg-primary/5 text-primary"
-            title={lang === "bn" ? "ব্যালেন্স রিফ্রেশ" : "Refresh Balance"}
-          >
-            <RefreshCw className={`w-3.5 h-3.5 sm:w-4 sm:h-4 ${balanceLoading ? "animate-spin" : ""}`} />
-          </Button>
-        </div>
-      </div>
 
-      {!hasConfig && (
-        <div className="bg-amber-500/10 border border-amber-500/30 text-amber-900 dark:text-amber-200 p-3.5 sm:p-4 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4">
-          <div className="flex items-center gap-2.5 sm:gap-3">
-            <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0" />
-            <p className="text-xs sm:text-sm font-medium">
-              {lang === "bn"
-                ? "এসএমএস সুবিধা সক্রিয় করতে আপনার MiMSMS API Key ও Sender Name সেটিংস ট্যাবে সেট করুন।"
-                : "Configure your MiMSMS API Key and Sender Name in the Settings tab to start sending SMS."}
-            </p>
-          </div>
-          <Button size="sm" onClick={() => setActiveTab("settings")} className="rounded-lg bg-amber-600 hover:bg-amber-700 text-white flex-shrink-0 w-full sm:w-auto h-8 text-xs font-semibold">
-            {lang === "bn" ? "সেটিংস খুলুন" : "Open Settings"}
-          </Button>
-        </div>
-      )}
-
-      {ipBlocked && (
-        <div className="bg-rose-500/10 border border-rose-500/30 text-rose-900 dark:text-rose-200 p-3.5 sm:p-4 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4 shadow-xs">
-          <div className="flex items-start gap-2.5 sm:gap-3">
-            <AlertCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
-            <div className="space-y-0.5">
-              <p className="text-xs sm:text-sm font-bold text-rose-700 dark:text-rose-300">
-                {lang === "bn" ? "MiMSMS আইপি হোয়াইটলিস্ট সতর্কতা (IP Blacklist)" : "MiMSMS IP Whitelist Required"}
-              </p>
-              <p className="text-[11px] sm:text-xs text-rose-800/90 dark:text-rose-300/90 leading-relaxed">
-                {lang === "bn"
-                  ? "MiMSMS পোর্টালে আপনার সার্ভার বা বর্তমান আইপি Whitelist-এ অন্তর্ভুক্ত না থাকলে ব্যালেন্স ও এসএমএস আটকে যায়। sms.mimsms.com-এ লগইন করে Developer → IP Whitelist-এ গিয়ে আপনার IP যুক্ত করুন অথবা IP restriction বন্ধ করুন।"
-                  : "MiMSMS requires whitelisting your server/outbound IP. Please login to sms.mimsms.com → Developer → IP Whitelist and add your IP."}
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2 w-full sm:w-auto shrink-0">
+          <div className="flex items-center gap-1.5 sm:gap-2">
             <Button
               size="sm"
               variant="outline"
               onClick={() => fetchBalance(true)}
-              className="rounded-lg h-8 text-xs border-rose-500/30 text-rose-700 dark:text-rose-300 hover:bg-rose-500/10"
+              disabled={balanceLoading}
+              className="h-8 sm:h-9 px-2.5 rounded-lg sm:rounded-xl border-primary/30 hover:bg-primary/5 text-primary"
+              title={lang === "bn" ? "ব্যালেন্স রিফ্রেশ" : "Refresh Balance"}
             >
-              <RefreshCw className="w-3.5 h-3.5 mr-1" />
-              {lang === "bn" ? "পুনরায় চেষ্টা" : "Retry"}
+              <RefreshCw className={`w-3.5 h-3.5 ${balanceLoading ? "animate-spin" : ""}`} />
             </Button>
-            <a
-              href="https://sms.mimsms.com"
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center justify-center rounded-lg bg-rose-600 hover:bg-rose-700 text-white h-8 px-3 text-xs font-semibold"
+            <Button
+              size="sm"
+              onClick={() => setRechargeOpen(true)}
+              className="h-8 sm:h-9 px-3 sm:px-4 rounded-lg sm:rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-xs sm:text-sm shadow-md gap-1.5 cursor-pointer"
             >
-              <span>{lang === "bn" ? "প্যানেল খুলুন" : "Open Panel"}</span>
-              <ExternalLink className="w-3 h-3 ml-1" />
-            </a>
+              <MessageCircle className="w-4 h-4 fill-current" />
+              <span>{lang === "bn" ? "রিচার্জ করুন" : "Recharge SMS"}</span>
+            </Button>
           </div>
         </div>
-      )}
+      </div>
 
       {/* Main Feature Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4 sm:space-y-6">
@@ -1807,173 +1772,120 @@ export default function SmsPage() {
           </Card>
         </TabsContent>
 
-        {/* ─── TAB 6: GATEWAY SETTINGS ─────────────────────────────────────── */}
-        <TabsContent value="settings" className="space-y-6">
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <Card className="lg:col-span-2 border-border/80 shadow-sm rounded-2xl">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-lg">
-                  <Settings className="w-5 h-5 text-emerald-600" />
-                  {lang === "bn" ? "MiMSMS API ও ক্রেডেনশিয়াল কনফিগারেশন" : "MiMSMS API Gateway Credentials"}
-                </CardTitle>
-                <CardDescription>
-                  {lang === "bn"
-                    ? "sms.mimsms.com থেকে পাওয়া আপনার API Key ও Sender Name নিচে কনফিগার করুন।"
-                    : "Enter your official API Key and registered Sender Name from your MiMSMS dashboard."}
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-5">
-                <div className="space-y-2">
-                  <Label htmlFor="api-key" className="font-semibold text-sm">
-                    {lang === "bn" ? "MiMSMS এপিআই কী (API Key)" : "MiMSMS API Key"}
-                  </Label>
-                  <div className="relative">
-                    <Input
-                      id="api-key"
-                      type={showApiKey ? "text" : "password"}
-                      placeholder="e.g. 1OSY3FSZ7H4IHOU..."
-                      value={apiKey}
-                      onChange={e => setApiKey(e.target.value)}
-                      className="rounded-xl pr-10 font-mono text-sm"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowApiKey(!showApiKey)}
-                      className="absolute right-3 top-2.5 text-muted-foreground hover:text-foreground"
-                    >
-                      {showApiKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="user-name" className="font-semibold text-sm">
-                      {lang === "bn" ? "ইউজারনেম / ইমেইল (User Name / Email)" : "Account Username (Email)"}
-                    </Label>
-                    <Input
-                      id="user-name"
-                      placeholder="e.g. business@domain.com"
-                      value={userName}
-                      onChange={e => setUserName(e.target.value)}
-                      className="rounded-xl text-sm"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="sender-name" className="font-semibold text-sm">
-                      {lang === "bn" ? "সেন্ডার আইডি / নাম (Sender Name)" : "Registered Sender Name"}
-                    </Label>
-                    <Input
-                      id="sender-name"
-                      placeholder="e.g. DreamFashion or Non-masking number"
-                      value={senderName}
-                      onChange={e => setSenderName(e.target.value)}
-                      className="rounded-xl text-sm"
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label className="font-semibold text-sm">
-                    {lang === "bn" ? "ডিফল্ট এসএমএস টাইপ" : "Default Route Type"}
-                  </Label>
-                  <Select value={defaultTxType} onValueChange={(val: "T" | "P") => setDefaultTxType(val)}>
-                    <SelectTrigger className="h-10 rounded-xl text-sm w-full sm:w-60">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="T">{lang === "bn" ? "Transactional (T) - ওটিপি ও অ্যালার্ট" : "Transactional (T) - Fast / OTPs"}</SelectItem>
-                      <SelectItem value="P">{lang === "bn" ? "Promotional (P) - প্রচারমূলক" : "Promotional (P) - Marketing"}</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-4 border-t">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={fetchBalance}
-                    disabled={balanceLoading || !apiKey || !userName}
-                    className="w-full sm:w-auto rounded-xl"
-                  >
-                    <ShieldCheck className="w-4 h-4 mr-2 text-emerald-600" />
-                    {lang === "bn" ? "সংযোগ ও ব্যালেন্স পরীক্ষা করুন" : "Test Connection & Balance"}
-                  </Button>
-
-                  <Button
-                    onClick={handleSaveSettings}
-                    disabled={settingsSaving}
-                    className="w-full sm:w-auto rounded-xl px-6 bg-emerald-600 hover:bg-emerald-700 text-white font-medium"
-                  >
-                    {settingsSaving ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <CheckCircle2 className="w-4 h-4 mr-2" />}
-                    {lang === "bn" ? "ক্রেডেনশিয়াল সংরক্ষণ করুন" : "Save Gateway Credentials"}
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Developer / Whitelist Help Card */}
-            <Card className="border-border/80 shadow-sm rounded-2xl bg-muted/20">
-              <CardHeader>
-                <CardTitle className="text-base flex items-center gap-2">
-                  <Info className="w-4 h-4 text-emerald-600" />
-                  {lang === "bn" ? "গো-লাইভ গাইডলাইন ও নির্দেশনা" : "MiMSMS Setup Checklist"}
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4 text-xs leading-relaxed text-muted-foreground">
-                <div className="space-y-1.5 p-3 rounded-xl bg-card border border-border/50">
-                  <p className="font-semibold text-foreground flex items-center gap-1">
-                    <span className="w-4 h-4 rounded-full bg-primary/10 text-primary flex items-center justify-center text-[10px]">1</span>
-                    {lang === "bn" ? "API Key সক্রিয়করণ" : "Activate API Key"}
-                  </p>
-                  <p>
-                    {lang === "bn"
-                      ? "sms.mimsms.com → Utility → Developer এ গিয়ে API Key সক্রিয় (Activate) করুন।"
-                      : "Visit sms.mimsms.com → Utility → Developer to view and activate your key."}
-                  </p>
-                </div>
-
-                <div className="space-y-1.5 p-3 rounded-xl bg-card border border-border/50">
-                  <p className="font-semibold text-foreground flex items-center gap-1">
-                    <span className="w-4 h-4 rounded-full bg-primary/10 text-primary flex items-center justify-center text-[10px]">2</span>
-                    {lang === "bn" ? "IP ও Domain হোয়াইটলিস্ট" : "IP & Domain Whitelisting"}
-                  </p>
-                  <p>
-                    {lang === "bn"
-                      ? "আপনার সার্ভার IP ও ডোমেন MiMSMS Developer মেনুতে হোয়াইটলিস্ট তালিকায় যোগ করতে হবে।"
-                      : "Add your server/hosting IP and domain to the whitelisted table in MiMSMS panel."}
-                  </p>
-                </div>
-
-                <div className="space-y-1.5 p-3 rounded-xl bg-card border border-border/50">
-                  <p className="font-semibold text-foreground flex items-center gap-1">
-                    <span className="w-4 h-4 rounded-full bg-primary/10 text-primary flex items-center justify-center text-[10px]">3</span>
-                    {lang === "bn" ? "সেন্ডার আইডি (Sender ID)" : "Sender ID Approval"}
-                  </p>
-                  <p>
-                    {lang === "bn"
-                      ? "রেজিস্ট্রিকৃত ও অনুমোদিত Sender Name হুবহু ব্যবহার করতে হবে।"
-                      : "Use the exact masking brand name approved under Utility → Sender ID."}
-                  </p>
-                </div>
-
-                <div className="pt-2">
-                  <a
-                    href="https://sms.mimsms.com"
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-primary hover:underline font-semibold flex items-center gap-1"
-                  >
-                    <span>{lang === "bn" ? "MiMSMS প্যানেল খুলুন" : "Open MiMSMS Panel"}</span>
-                    <ExternalLink className="w-3 h-3" />
-                  </a>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        </TabsContent>
       </Tabs>
+
+      {/* ─── SMS RECHARGE MODAL ────────────────────────────────────────── */}
+      <Dialog open={rechargeOpen} onOpenChange={setRechargeOpen}>
+        <DialogContent className="max-w-xl p-5 sm:p-7 rounded-2xl sm:rounded-3xl border border-primary/20 shadow-2xl space-y-5">
+          <DialogHeader className="space-y-2">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-2xl bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 shadow-inner">
+                <Sparkles className="size-6 text-emerald-500 animate-pulse" />
+              </div>
+              <div>
+                <DialogTitle className="text-xl sm:text-2xl font-bold tracking-tight text-foreground">
+                  {lang === "bn" ? "এসএমএস ব্যালেন্স রিচার্জ" : "Recharge SMS Credits"}
+                </DialogTitle>
+                <DialogDescription className="text-xs sm:text-sm text-muted-foreground">
+                  {lang === "bn"
+                    ? "প্যাকেজ নির্বাচন করুন এবং সরাসরি হোয়াটসঅ্যাপে অ্যাডমিনের সাথে যোগাযোগ করে ব্যালেন্স রিচার্জ করুন।"
+                    : "Select a package and contact admin on WhatsApp to instantly refill your SMS balance."}
+                </DialogDescription>
+              </div>
+            </div>
+          </DialogHeader>
+
+          {/* Pricing Cards Grid */}
+          <div className="grid grid-cols-2 gap-2.5 sm:gap-3.5">
+            {[
+              { count: 100, price: 50, nameBn: "স্টার্টার প্যাক", nameEn: "Starter Pack", rate: "৳0.50/SMS" },
+              { count: 500, price: 225, nameBn: "জনপ্রিয় প্যাক", nameEn: "Popular Pack", rate: "৳0.45/SMS", popular: true },
+              { count: 1000, price: 400, nameBn: "বিজনেস প্যাক", nameEn: "Business Pack", rate: "৳0.40/SMS" },
+              { count: 5000, price: 1800, nameBn: "এন্টারপ্রাইজ প্যাক", nameEn: "Enterprise Pack", rate: "৳0.36/SMS" },
+            ].map(pack => {
+              const isSelected = selectedPackage.count === pack.count;
+              return (
+                <div
+                  key={pack.count}
+                  onClick={() => setSelectedPackage(pack)}
+                  className={`relative p-3 sm:p-4 rounded-xl sm:rounded-2xl border-2 transition-all cursor-pointer select-none ${
+                    isSelected
+                      ? "border-emerald-500 bg-emerald-500/10 shadow-md ring-2 ring-emerald-500/20"
+                      : "border-border/80 bg-card/60 hover:bg-card hover:border-emerald-500/40"
+                  }`}
+                >
+                  {pack.popular && (
+                    <Badge className="absolute -top-2.5 right-2 bg-emerald-600 hover:bg-emerald-600 text-[9px] px-1.5 py-0 h-4 uppercase tracking-wider text-white shadow-xs">
+                      Popular
+                    </Badge>
+                  )}
+                  <div className="space-y-1">
+                    <p className="text-xs font-semibold text-muted-foreground truncate">
+                      {lang === "bn" ? pack.nameBn : pack.nameEn}
+                    </p>
+                    <div className="flex items-baseline gap-1">
+                      <span className="text-lg sm:text-2xl font-bold font-num text-foreground">
+                        {pack.count.toLocaleString()}
+                      </span>
+                      <span className="text-[11px] text-muted-foreground">{lang === "bn" ? "টি এসএমএস" : "SMS"}</span>
+                    </div>
+                    <div className="flex items-center justify-between pt-1 border-t border-border/50 text-xs">
+                      <span className="font-bold text-emerald-600 dark:text-emerald-400 font-num">
+                        ৳{pack.price}
+                      </span>
+                      <span className="text-[10px] text-muted-foreground font-mono">
+                        {pack.rate}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* WhatsApp / Call Action Card */}
+          {(() => {
+            const adminWhatsapp = smsSettings?.admin_whatsapp || user?.admin_whatsapp || "8801700000000";
+            const cleanNumber = adminWhatsapp.replace(/[^0-9]/g, "");
+            const shopName = user?.business_name || "My Shop";
+            const shopEmail = user?.email || "";
+            const waText = encodeURIComponent(
+              `Hello Admin, I want to recharge SMS credits for my shop "${shopName}" (${shopEmail}).\n\nSelected Package: ${selectedPackage.count} SMS (Price: Tk ${selectedPackage.price}).\nPlease refill my account.`
+            );
+            const waUrl = `https://wa.me/${cleanNumber.startsWith("88") ? cleanNumber : `880${cleanNumber}`}?text=${waText}`;
+
+            return (
+              <div className="space-y-3 pt-1">
+                <a
+                  href={waUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full inline-flex items-center justify-center gap-2.5 px-4 py-3.5 rounded-xl sm:rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-sm sm:text-base shadow-lg hover:shadow-emerald-500/25 transition-all cursor-pointer"
+                >
+                  <MessageCircle className="size-5 fill-current" />
+                  <span>
+                    {lang === "bn"
+                      ? `হোয়াটসঅ্যাপে ৳${selectedPackage.price} রিচার্জ মেসেজ দিন`
+                      : `Request Recharge (Tk ${selectedPackage.price}) via WhatsApp`}
+                  </span>
+                </a>
+
+                <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground px-1">
+                  <span>
+                    {lang === "bn" ? "জরুরি প্রয়োজনে সরাসরি কল করুন:" : "Direct Hotline:"}{" "}
+                    <a href={`tel:${adminWhatsapp}`} className="text-primary font-bold hover:underline font-num">
+                      {adminWhatsapp}
+                    </a>
+                  </span>
+                  <Button variant="ghost" size="sm" onClick={() => setRechargeOpen(false)} className="h-7 text-xs">
+                    {lang === "bn" ? "বাতিল" : "Cancel"}
+                  </Button>
+                </div>
+              </div>
+            );
+          })()}
+        </DialogContent>
+      </Dialog>
 
       {/* Inspect Log Dialog */}
       <Dialog open={Boolean(inspectLog)} onOpenChange={open => !open && setInspectLog(null)}>

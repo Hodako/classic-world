@@ -8,6 +8,7 @@ import { requestStore } from "@/lib/request-store";
 import type { PermissionSet } from "@/lib/permissions";
 import { DEFAULT_EMPLOYEE_PERMISSIONS, OWNER_PERMISSIONS } from "@/lib/permissions";
 import { appendRowToGoogleSheet, bulkExportToGoogleSheets } from "@/lib/google-sheets";
+import { sendSingleSms, sendBroadcastSms, sendDynamicSms, checkSmsBalance, lookupDlrStatus, type MiMSMSResponse } from "@/lib/mimsms";
 
 type CashboxKind = "deposit" | "withdraw" | "sale" | "expense";
 
@@ -72,17 +73,43 @@ async function insertCashboxEntry(
 
 function saleCashboxAmount(data: { type: string; sell_price: number; qty: number; paid_amount: number }) {
   if (data.type === "credit") return Number(data.paid_amount) || 0;
-  if (data.type === "cash") return Number(data.paid_amount) || (Number(data.sell_price) * (Number(data.qty) || 1));
-  // Online sales: admin does not receive money immediately, so not added to cashbox
-  return 0;
+  // Cash, bKash, Bank, Nagad, Card, POS payments all deposit into Cashbox
+  if (data.type === "cash" || data.type === "bkash" || data.type === "bank" || data.type === "nagad" || data.type === "card" || data.type === "pos") {
+    return Number(data.paid_amount) || (Number(data.sell_price) * (Number(data.qty) || 1));
+  }
+  // Online deliveries (courier pending): only if paid_amount > 0
+  if (data.type === "online") return Number(data.paid_amount) || 0;
+  return Number(data.paid_amount) || (Number(data.sell_price) * (Number(data.qty) || 1));
 }
 
 async function mapUser(db: Awaited<ReturnType<typeof getDb>>, userId: string) {
   const user = await db.collection("users").findOne({ _id: userId as any });
   if (!user) return null;
-  const business = user.business_id
+  let business = user.business_id
     ? await db.collection("businesses").findOne({ _id: user.business_id as any })
-    : null;
+    : await db.collection("businesses").findOne({ owner_id: user.owner_id || user._id });
+
+  // If owner has no business record yet, initialize one automatically
+  if (!business && user.role === "owner") {
+    const newBizId = crypto.randomUUID();
+    business = {
+      _id: newBizId as any,
+      owner_id: user._id,
+      name: user.full_name || "My Fashion Store",
+      logo_url: "/logo.png",
+      business_type: "retail",
+      theme: "green",
+      status: "active",
+      sms_credits: 50,
+      max_products: 500,
+      max_invoices: 10000,
+      employee_limit: 5,
+      created_at: new Date().toISOString(),
+    };
+    await db.collection("businesses").insertOne(business as any);
+    await db.collection("users").updateOne({ _id: user._id as any }, { $set: { business_id: newBizId } });
+  }
+
   const cookieStore = await cookies();
   const store = requestStore.getStore();
   const activeProfile = store?.activeProfile || cookieStore.get("active_profile")?.value || "default";
@@ -93,25 +120,33 @@ async function mapUser(db: Awaited<ReturnType<typeof getDb>>, userId: string) {
     { id: "default", name: "Default Profile", created_at: new Date().toISOString() }
   ];
 
+  const platform = await db.collection("platform_settings").findOne({ _id: "global" as any });
+  const adminWhatsapp = (platform?.admin_whatsapp as string) || "8801700000000";
+
   return {
     id: user._id as any as string,
     email: user.email as string,
     full_name: (user.full_name as string) || "",
-    activated: user.activated === false ? false : Boolean(user.activated ?? true),
+    activated: true,
     role: (user.role as string) || "owner",
-    business_id: (user.business_id as string) || null,
-    business_name: (business?.name as string) || "Classic World",
+    business_id: (business?._id as any as string) || (user.business_id as string) || null,
+    business_name: (business?.name as string) || "Dream Fashion",
     business_address: (business?.address as string) || "",
     business_phone_numbers: (business?.phone_numbers as string) || (business?.phone as string) || "",
     business_emails: (business?.emails as string) || (business?.email as string) || "",
     invoice_page_size: (business?.invoice_page_size as string) || "80mm",
     invoice_page_width: (business?.invoice_page_width as string) || "",
     invoice_page_height: (business?.invoice_page_height as string) || "",
-    logo_url: (business?.logo_url as string) || "/logo.svg",
+    logo_url: (business?.logo_url as string) || "/logo.png",
     avatar_url: (user.avatar_url as string) || "",
     permissions: (user.role === "owner" ? OWNER_PERMISSIONS : (user.permissions as PermissionSet)) || DEFAULT_EMPLOYEE_PERMISSIONS,
     profiles,
     activeProfile,
+    status: (business?.status as string) || (user?.status as string) || "active",
+    frozen_reason: (business?.frozen_reason as string) || (user?.frozen_reason as string) || "",
+    subscription_expires_at: (business?.subscription_expires_at as string) || "",
+    sms_credits: Number(business?.sms_credits ?? 50),
+    admin_whatsapp: adminWhatsapp,
   };
 }
 
@@ -195,7 +230,28 @@ export async function registerFn(input: { data: { email: string; password: strin
   const db = await getDb();
   const existing = await db.collection("users").findOne({ email: data.email.toLowerCase().trim() });
   if (existing) throw new Error("User already exists");
+  
   const userId = crypto.randomUUID();
+  const businessId = crypto.randomUUID();
+  const now = new Date().toISOString();
+  const shopName = sanitizeInput(data.fullName ? `${data.fullName}'s Shop` : "Dream Fashion");
+
+  // Create default business for new user with starter SMS credits
+  await db.collection("businesses").insertOne({
+    _id: businessId as any,
+    owner_id: userId,
+    name: shopName,
+    logo_url: "/logo.png",
+    business_type: "retail",
+    theme: "green",
+    status: "active",
+    sms_credits: 50, // 50 Free starter credits
+    max_products: 500,
+    max_invoices: 10000,
+    employee_limit: 5,
+    created_at: now,
+  });
+
   await db.collection("users").insertOne({
     _id: userId as any,
     email: data.email.toLowerCase().trim(),
@@ -203,9 +259,13 @@ export async function registerFn(input: { data: { email: string; password: strin
     plain_password: data.password,
     full_name: sanitizeInput(data.fullName || ""),
     role: "owner",
-    activated: false,
-    created_at: new Date().toISOString(),
+    business_id: businessId,
+    owner_id: userId,
+    activated: true,
+    status: "active",
+    created_at: now,
   });
+
   const token = await signToken({ userId, email: data.email.toLowerCase().trim() });
   const cookieStore = await cookies();
   cookieStore.set("token", token, { maxAge: 30 * 24 * 60 * 60, httpOnly: true, sameSite: "lax", path: "/" });
@@ -442,7 +502,7 @@ export async function getPayableSettlementsFn(input: { data: { partyId: string }
 export async function getSalesFn() {
   const session = await requireSession();
   const db = await getDb();
-  const items = await db.collection("sales").find({ owner_id: session.ownerId }).sort({ created_at: -1 }).limit(200).toArray();
+  const items = await db.collection("sales").find({ owner_id: session.ownerId }).sort({ created_at: -1 }).limit(10000).toArray();
 
   const partyIds = items.map(s => s.party_id).filter(Boolean);
   const customers = await db.collection("customers").find({ _id: { $in: partyIds } }).toArray();
@@ -470,23 +530,36 @@ export async function getSalesForPartyFn(input: { data: { partyId: string } }) {
   return items.map((s) => ({ ...s, id: s._id as any as string }));
 }
 
-export async function createSaleFn(input: { data: { product_id?: string | null; product_name: string; qty: number; buy_price: number; sell_price: number; profit: number; type: string; party_id?: string | null; paid_amount: number; due_amount: number; note?: string | null; cart_id?: string | null; created_at?: string } }) {
+export async function createSaleFn(input: { data: { product_id?: string | null; product_name: string; qty: number; buy_price: number; sell_price: number; profit: number; type: string; party_id?: string | null; paid_amount: number; due_amount: number; note?: string | null; cart_id?: string | null; courier_name?: string | null; tracking_code?: string | null; courier_status?: string | null; created_at?: string } }) {
   const { data } = input;
   const session = await requireSession();
   const db = await getDb();
   const id = crypto.randomUUID();
-  const doc = { _id: id, owner_id: session.ownerId, ...data, party_id: data.party_id || null, created_at: data.created_at || new Date().toISOString() };
+  const isOnline = data.type === "online";
+  const doc = {
+    _id: id,
+    owner_id: session.ownerId,
+    ...data,
+    courier_status: isOnline ? (data.courier_status || "pending") : undefined,
+    courier_name: data.courier_name || (isOnline ? "Courier Delivery" : undefined),
+    tracking_code: data.tracking_code || undefined,
+    paid_amount: isOnline ? (data.courier_status === "collected" ? data.paid_amount : 0) : data.paid_amount,
+    due_amount: isOnline ? (data.courier_status === "collected" ? 0 : Number(data.sell_price) * (Number(data.qty) || 1)) : data.due_amount,
+    party_id: data.party_id || null,
+    created_at: data.created_at || new Date().toISOString()
+  };
   await db.collection("sales").insertOne(doc as any);
   if (data.product_id) {
     const product = await db.collection("products").findOne({ _id: data.product_id as any });
     if (product) await db.collection("products").updateOne({ _id: data.product_id as any }, { $set: { stock: Math.max(((product.stock as number) ?? 0) - data.qty, 0) } });
   }
-  const cashAmt = saleCashboxAmount(data);
+  const cashAmt = isOnline ? (doc.courier_status === "collected" ? Number(doc.paid_amount) : 0) : saleCashboxAmount(data);
   if (cashAmt > 0) {
+    const methodTag = data.type === "online" ? " [Paid by COURIER]" : data.type ? ` [Paid by ${data.type.toUpperCase()}]` : "";
     await insertCashboxEntry(db, session.ownerId, {
       kind: "sale",
       amount: cashAmt,
-      note: `Sale: ${data.product_name}`,
+      note: `Sale${methodTag}: ${data.product_name}${data.note ? ` - ${data.note}` : ""}`,
       ref_id: id,
       created_at: doc.created_at,
     });
@@ -494,11 +567,112 @@ export async function createSaleFn(input: { data: { product_id?: string | null; 
 
   // Sheets Sync
   appendRowToGoogleSheet(session.ownerId, "Sales",
-    ["ID", "Product Name", "Qty", "Buy Price", "Sell Price", "Profit", "Type", "Party ID", "Paid Amount", "Due Amount", "Created At"],
-    [id, data.product_name, data.qty, data.buy_price, data.sell_price, data.profit, data.type, data.party_id || "", data.paid_amount, data.due_amount, doc.created_at]
+    ["ID", "Product Name", "Qty", "Buy Price", "Sell Price", "Profit", "Type", "Party ID", "Paid Amount", "Due Amount", "Courier Status", "Created At"],
+    [id, data.product_name, data.qty, data.buy_price, data.sell_price, data.profit, data.type, data.party_id || "", doc.paid_amount, doc.due_amount, doc.courier_status || "", doc.created_at]
   );
 
+  // Trigger Automatic SMS if enabled
+  if (data.party_id) {
+    triggerAutoPurchaseSms(db, session.ownerId, {
+      id,
+      product_name: data.product_name,
+      qty: data.qty,
+      sell_price: data.sell_price,
+      paid_amount: doc.paid_amount,
+      due_amount: doc.due_amount,
+      party_id: data.party_id,
+    }).catch(err => console.error("Auto purchase SMS error:", err));
+  }
+
   return { ...doc, id };
+}
+
+export async function approveCourierPaymentFn(input: { data: { id: string } }) {
+  const { data } = input;
+  const session = await requireSession();
+  const db = await getDb();
+
+  const sale = await db.collection("sales").findOne({ _id: data.id as any, owner_id: session.ownerId });
+  if (!sale) throw new Error("Sale not found");
+  if (sale.courier_status === "collected") return { success: true, message: "Already collected" };
+
+  const cartId = sale.cart_id;
+  const salesToApprove = cartId
+    ? await db.collection("sales").find({ cart_id: cartId, owner_id: session.ownerId }).toArray()
+    : [sale];
+
+  const nowStr = new Date().toISOString();
+  for (const s of salesToApprove) {
+    const totalAmount = Number(s.sell_price) || (Number(s.qty) * Number(s.buy_price) + Number(s.profit));
+    await db.collection("sales").updateOne(
+      { _id: s._id as any, owner_id: session.ownerId },
+      {
+        $set: {
+          courier_status: "collected",
+          paid_amount: totalAmount,
+          due_amount: 0,
+          collected_at: nowStr,
+          updated_at: nowStr,
+        }
+      }
+    );
+
+    // Deposit remittance into Cashbox
+    await insertCashboxEntry(db, session.ownerId, {
+      kind: "sale",
+      amount: totalAmount,
+      note: `Online Courier Payment Collected: ${s.product_name} [${s.courier_name || "Courier"}] (INV-${(s._id as string).slice(-6).toUpperCase()})`,
+      ref_id: s._id as string,
+      created_at: nowStr,
+    });
+  }
+
+  return { success: true };
+}
+
+export async function cancelCourierOrderFn(input: { data: { id: string } }) {
+  const { data } = input;
+  const session = await requireSession();
+  const db = await getDb();
+
+  const sale = await db.collection("sales").findOne({ _id: data.id as any, owner_id: session.ownerId });
+  if (!sale) throw new Error("Sale not found");
+
+  const cartId = sale.cart_id;
+  const salesToCancel = cartId
+    ? await db.collection("sales").find({ cart_id: cartId, owner_id: session.ownerId }).toArray()
+    : [sale];
+
+  const nowStr = new Date().toISOString();
+  for (const s of salesToCancel) {
+    if (s.courier_status === "collected") {
+      await db.collection("cashbox_entries").deleteMany({ owner_id: session.ownerId, ref_id: s._id as any });
+    }
+
+    if (s.product_id && !s.returned) {
+      const qtyToRestore = Number(s.qty) || 0;
+      if (qtyToRestore > 0) {
+        await db.collection("products").updateOne(
+          { _id: s.product_id as any, owner_id: session.ownerId },
+          { $inc: { stock: qtyToRestore } }
+        );
+      }
+    }
+
+    await db.collection("sales").updateOne(
+      { _id: s._id as any, owner_id: session.ownerId },
+      {
+        $set: {
+          courier_status: "cancelled",
+          returned: true,
+          cancelled_at: nowStr,
+          updated_at: nowStr,
+        }
+      }
+    );
+  }
+
+  return { success: true };
 }
 
 export async function deleteSaleFn(input: { data: { id: string } }) {
@@ -845,7 +1019,7 @@ export async function createPartyReturnFn(input: { data: { party_id: string; pro
 export async function getReturnsFn() {
   const session = await requireSession();
   const db = await getDb();
-  const items = await db.collection("returns").find({ owner_id: session.ownerId }).sort({ created_at: -1 }).limit(200).toArray();
+  const items = await db.collection("returns").find({ owner_id: session.ownerId }).sort({ created_at: -1 }).limit(5000).toArray();
   return items.map((r) => ({ ...r, id: r._id as any as string }));
 }
 
@@ -909,7 +1083,7 @@ export async function deleteReturnFn(input: { data: { id: string } }) {
 export async function getPurchasesFn() {
   const session = await requireSession();
   const db = await getDb();
-  const items = await db.collection("purchases").find({ owner_id: session.ownerId }).sort({ created_at: -1 }).limit(200).toArray();
+  const items = await db.collection("purchases").find({ owner_id: session.ownerId }).sort({ created_at: -1 }).limit(10000).toArray();
   return items.map((p) => ({ ...p, id: p._id as any as string }));
 }
 
@@ -1031,7 +1205,7 @@ export async function deletePurchaseFn(input: { data: { id: string } }) {
 export async function getExpensesFn() {
   const session = await requireSession();
   const db = await getDb();
-  const items = await db.collection("expenses").find({ owner_id: session.ownerId }).sort({ created_at: -1 }).limit(200).toArray();
+  const items = await db.collection("expenses").find({ owner_id: session.ownerId }).sort({ created_at: -1 }).limit(10000).toArray();
   return items.map((e) => ({ ...e, id: e._id as any as string }));
 }
 
@@ -1122,7 +1296,6 @@ export async function deletePaymentFn(input: { data: { id: string } }) {
   const session = await requireSession();
   const db = await getDb();
   
-  // Calculate total cashbox delta impact of deleting this payment (which is a deposit)
   const relatedEntries = await db.collection("cashbox_entries").find({ owner_id: session.ownerId, ref_id: data.id } as any).toArray();
   const relatedIds = relatedEntries.map(e => e._id.toString());
   let paymentDeltaEffect = 0;
@@ -1131,7 +1304,6 @@ export async function deletePaymentFn(input: { data: { id: string } }) {
     const val = isPos ? Number(entry.amount) : -Number(entry.amount);
     paymentDeltaEffect += val;
   }
-  // Deleting it means the balance changes by -paymentDeltaEffect
   if (-paymentDeltaEffect < 0) {
     await checkCashboxBalanceEffect(db, session.ownerId, -paymentDeltaEffect, relatedIds);
   }
@@ -1146,7 +1318,7 @@ export async function deletePaymentFn(input: { data: { id: string } }) {
 export async function getSomitiFn() {
   const session = await requireSession();
   const db = await getDb();
-  const items = await db.collection("somiti_entries").find({ owner_id: session.ownerId }).sort({ created_at: -1 }).limit(200).toArray();
+  const items = await db.collection("somiti_entries").find({ owner_id: session.ownerId }).sort({ created_at: -1 }).limit(10000).toArray();
   return items.map((s) => ({ ...s, id: s._id as any as string }));
 }
 
@@ -1158,12 +1330,13 @@ export async function createSomitiFn(input: { data: { kind: string; amount: numb
   const doc = { _id: id, owner_id: session.ownerId, ...data, created_at: new Date().toISOString() };
   await db.collection("somiti_entries").insertOne(doc as any);
 
-  // Sync to cashbox — ALL somiti entries take money out of the business cashbox
-  // (samity contributions always leave the business, regardless of deposit/withdraw kind)
+  // Sync to cashbox — Samity is a savings asset, not an operational expense (does NOT cut from net profit)
+  // Depositing into Samity reduces cash in cashbox (withdraw); withdrawing from Samity returns cash to cashbox (deposit)
+  const cashboxKind = data.kind === "withdraw" ? "deposit" : "withdraw";
   await insertCashboxEntry(db, session.ownerId, {
-    kind: "withdraw",
+    kind: cashboxKind,
     amount: Number(data.amount),
-    note: data.note || "Samity payment",
+    note: data.note ? `Samity (${data.kind}): ${data.note}` : `Samity ${data.kind}`,
     ref_id: id,
   });
 
@@ -1180,13 +1353,13 @@ export async function updateSomitiFn(input: { data: { id: string; kind: string; 
     { $set: updates }
   );
 
-  // Keep cashbox entry in sync — always withdraw since samity always takes money out
+  const cashboxKind = data.kind === "withdraw" ? "deposit" : "withdraw";
   await db.collection("cashbox_entries").updateOne(
     { owner_id: session.ownerId, ref_id: id },
     { $set: {
-        kind: "withdraw",
+        kind: cashboxKind,
         amount: Number(data.amount),
-        note: data.note || "Samity payment",
+        note: data.note ? `Samity (${data.kind}): ${data.note}` : `Samity ${data.kind}`,
       }
     }
   );
@@ -2202,3 +2375,682 @@ export async function repairCashboxDbFn() {
 
   return { success: true, repairedCount };
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Bank Accounts & Loan Management Engine
+// ─────────────────────────────────────────────────────────────────────────────
+export async function getBankAccountsFn() {
+  const session = await requireSession();
+  const db = await getDb();
+  const accounts = await db.collection("bank_accounts").find({ owner_id: session.ownerId }).sort({ created_at: -1 }).toArray();
+  return accounts.map(a => ({ ...a, id: a._id.toString() }));
+}
+
+export async function createBankAccountFn(input: { data: { bank_name: string; account_name: string; account_number: string; branch?: string | null; balance?: number; note?: string | null } }) {
+  const { data } = input;
+  const session = await requireSession();
+  const db = await getDb();
+  const id = crypto.randomUUID();
+  const doc = {
+    _id: id,
+    owner_id: session.ownerId,
+    bank_name: data.bank_name,
+    account_name: data.account_name,
+    account_number: data.account_number,
+    branch: data.branch || null,
+    balance: Number(data.balance) || 0,
+    note: data.note || null,
+    created_at: new Date().toISOString(),
+  };
+  await db.collection("bank_accounts").insertOne(doc as any);
+  return { ...doc, id };
+}
+
+export async function updateBankAccountFn(input: { data: { id: string; bank_name?: string; account_name?: string; account_number?: string; branch?: string | null; balance?: number; note?: string | null } }) {
+  const { data } = input;
+  const session = await requireSession();
+  const db = await getDb();
+  const { id, ...updates } = data;
+  await db.collection("bank_accounts").updateOne(
+    { _id: id as any, owner_id: session.ownerId },
+    { $set: updates }
+  );
+  const updated = await db.collection("bank_accounts").findOne({ _id: id as any });
+  return { ...updated, id };
+}
+
+export async function deleteBankAccountFn(input: { data: { id: string } }) {
+  const { data } = input;
+  const session = await requireSession();
+  const db = await getDb();
+  await db.collection("bank_accounts").deleteOne({ _id: data.id as any, owner_id: session.ownerId });
+  return { success: true };
+}
+
+export async function createBankTransactionFn(input: { data: { account_id: string; type: "deposit" | "withdraw"; amount: number; note?: string | null; sync_cashbox?: boolean } }) {
+  const { data } = input;
+  const session = await requireSession();
+  const db = await getDb();
+  const amount = Number(data.amount) || 0;
+  const txId = crypto.randomUUID();
+
+  const balanceDelta = data.type === "deposit" ? amount : -amount;
+  await db.collection("bank_accounts").updateOne(
+    { _id: data.account_id as any, owner_id: session.ownerId },
+    { $inc: { balance: balanceDelta } }
+  );
+
+  const txDoc = {
+    _id: txId,
+    owner_id: session.ownerId,
+    account_id: data.account_id,
+    type: data.type,
+    amount,
+    note: data.note || null,
+    created_at: new Date().toISOString(),
+  };
+  await db.collection("bank_transactions").insertOne(txDoc as any);
+
+  if (data.sync_cashbox !== false) {
+    const cashboxKind = data.type === "deposit" ? "withdraw" : "deposit";
+    const noteText = data.type === "deposit" 
+      ? `Bank Deposit: ${data.note || "Transfer to bank"}`
+      : `Bank Withdrawal: ${data.note || "Cash from bank"}`;
+    await insertCashboxEntry(db, session.ownerId, {
+      kind: cashboxKind,
+      amount,
+      note: noteText,
+      ref_id: txId,
+    });
+  }
+
+  return { success: true, id: txId };
+}
+
+export async function getBankLoansFn() {
+  const session = await requireSession();
+  const db = await getDb();
+  const loans = await db.collection("bank_loans").find({ owner_id: session.ownerId }).sort({ created_at: -1 }).toArray();
+  return loans.map(l => ({ ...l, id: l._id.toString() }));
+}
+
+export async function createBankLoanFn(input: { data: { bank_name: string; loan_title: string; principal_amount: number; total_repayable: number; total_installments: number; installment_amount: number; receive_to_cashbox?: boolean; note?: string | null } }) {
+  const { data } = input;
+  const session = await requireSession();
+  const db = await getDb();
+  const loanId = crypto.randomUUID();
+
+  const doc = {
+    _id: loanId,
+    owner_id: session.ownerId,
+    bank_name: data.bank_name,
+    loan_title: data.loan_title,
+    principal_amount: Number(data.principal_amount) || 0,
+    total_repayable: Number(data.total_repayable) || Number(data.principal_amount) || 0,
+    total_installments: Number(data.total_installments) || 1,
+    installment_amount: Number(data.installment_amount) || 0,
+    paid_amount: 0,
+    paid_installments: 0,
+    status: "active",
+    note: data.note || null,
+    created_at: new Date().toISOString(),
+  };
+
+  await db.collection("bank_loans").insertOne(doc as any);
+
+  if (data.receive_to_cashbox) {
+    await insertCashboxEntry(db, session.ownerId, {
+      kind: "deposit",
+      amount: Number(data.principal_amount),
+      note: `Bank Loan Disbursement: ${data.bank_name} (${data.loan_title})`,
+      ref_id: loanId,
+    });
+  }
+
+  return { ...doc, id: loanId };
+}
+
+export async function payBankLoanInstallmentFn(input: { data: { loan_id: string; amount: number; payment_method?: string; note?: string | null } }) {
+  const { data } = input;
+  const session = await requireSession();
+  const db = await getDb();
+  const amount = Number(data.amount) || 0;
+  const pmtId = crypto.randomUUID();
+
+  const loan = await db.collection("bank_loans").findOne({ _id: data.loan_id as any, owner_id: session.ownerId });
+  if (!loan) throw new Error("Loan not found");
+
+  const newPaidAmount = (Number(loan.paid_amount) || 0) + amount;
+  const newPaidInstallments = (Number(loan.paid_installments) || 0) + 1;
+  const isFullyPaid = newPaidAmount >= Number(loan.total_repayable);
+
+  await db.collection("bank_loans").updateOne(
+    { _id: data.loan_id as any, owner_id: session.ownerId },
+    {
+      $set: {
+        paid_amount: newPaidAmount,
+        paid_installments: newPaidInstallments,
+        status: isFullyPaid ? "completed" : "active",
+      }
+    }
+  );
+
+  const pmtDoc = {
+    _id: pmtId,
+    owner_id: session.ownerId,
+    loan_id: data.loan_id,
+    amount,
+    payment_method: data.payment_method || "cashbox",
+    note: data.note || null,
+    created_at: new Date().toISOString(),
+  };
+  await db.collection("bank_loan_payments").insertOne(pmtDoc as any);
+
+  // ALWAYS cut installment money from CASHBOX
+  await insertCashboxEntry(db, session.ownerId, {
+    kind: "withdraw",
+    amount,
+    note: `Bank Loan Installment: ${loan.bank_name} (${loan.loan_title}) - ${data.note || `Installment #${newPaidInstallments}`}`,
+    ref_id: pmtId,
+  });
+
+  return { success: true, id: pmtId, isFullyPaid, remaining: Math.max(Number(loan.total_repayable) - newPaidAmount, 0) };
+}
+
+export async function deleteBankLoanFn(input: { data: { id: string } }) {
+  const { data } = input;
+  const session = await requireSession();
+  const db = await getDb();
+  await db.collection("cashbox_entries").deleteMany({ owner_id: session.ownerId, ref_id: data.id });
+  await db.collection("bank_loan_payments").deleteMany({ owner_id: session.ownerId, loan_id: data.id });
+  await db.collection("bank_loans").deleteOne({ _id: data.id as any, owner_id: session.ownerId });
+  return { success: true };
+}
+
+// ─── SMS Gateway & Management (MiMSMS v2) ───────────────────────────────────
+
+async function triggerAutoPurchaseSms(
+  db: Awaited<ReturnType<typeof getDb>>,
+  ownerId: string,
+  sale: {
+    id: string;
+    product_name: string;
+    qty: number;
+    sell_price: number;
+    paid_amount: number;
+    due_amount: number;
+    party_id?: string | null;
+  }
+) {
+  try {
+    if (!sale.party_id) return;
+    const smsSettings = await db.collection("sms_settings").findOne({ owner_id: ownerId });
+    if (
+      !smsSettings ||
+      !smsSettings.customer_sms_after_purchase ||
+      !smsSettings.apiKey ||
+      !smsSettings.userName ||
+      !smsSettings.senderName
+    ) {
+      return;
+    }
+
+    // Find customer details
+    let party = await db.collection("customers").findOne({ _id: sale.party_id as any, owner_id: ownerId });
+    if (!party) {
+      party = await db.collection("parties").findOne({ _id: sale.party_id as any, owner_id: ownerId });
+    }
+    if (!party || !party.phone) return;
+
+    const business = await db.collection("businesses").findOne({ owner_id: ownerId });
+    const shopName = business?.name || "Dream Fashion";
+
+    const platform = await db.collection("platform_settings").findOne({ _id: "global" as any });
+    const apiKey = (platform?.master_sms_api_key as string) || (smsSettings?.apiKey as string) || "";
+    const userName = (platform?.master_sms_user_name as string) || (smsSettings?.userName as string) || "";
+    const senderName = (platform?.master_sms_sender_name as string) || (smsSettings?.senderName as string) || "DreamFashion";
+
+    const currentCredits = Number(business?.sms_credits ?? 0);
+    if (currentCredits < 1) {
+      console.warn("Skipping auto-purchase SMS: Insufficient SMS credits for business", business?._id);
+      return;
+    }
+
+    const customerName = party.name || "Customer";
+    const totalAmount = (Number(sale.sell_price) || 0) * (Number(sale.qty) || 1);
+    const paidAmount = Number(sale.paid_amount) || 0;
+    const dueAmount = Number(sale.due_amount) || 0;
+    const invoiceId = sale.id.slice(0, 8).toUpperCase();
+
+    const template =
+      smsSettings.purchase_sms_template ||
+      business?.purchase_sms_template ||
+      "Dear {customer_name}, thanks for shopping with {shop_name}! Items: {product_name} x{qty}, Total: Tk {total_amount}, Paid: Tk {paid_amount}, Due: Tk {due_amount}. Inv #{invoice_id}.";
+
+    const message = template
+      .replace(/{customer_name}/g, customerName)
+      .replace(/{shop_name}/g, shopName)
+      .replace(/{product_name}/g, sale.product_name || "Product")
+      .replace(/{qty}/g, String(sale.qty || 1))
+      .replace(/{total_amount}/g, String(totalAmount))
+      .replace(/{paid_amount}/g, String(paidAmount))
+      .replace(/{due_amount}/g, String(dueAmount))
+      .replace(/{invoice_id}/g, invoiceId);
+
+    let result: MiMSMSResponse = { statusCode: "200", status: "Success" };
+    if (apiKey && userName) {
+      result = await sendSingleSms({
+        apiKey,
+        userName,
+        senderName,
+        mobileNumber: party.phone,
+        message,
+        transactionType: "T",
+        campaignName: "auto-purchase",
+      });
+    }
+
+    if (result.status === "Success" || result.statusCode === "200") {
+      await db.collection("businesses").updateOne(
+        { owner_id: ownerId },
+        { $inc: { sms_credits: -1 } }
+      );
+    }
+
+    const logId = crypto.randomUUID();
+    await db.collection("sms_logs").insertOne({
+      _id: logId as any,
+      owner_id: ownerId,
+      recipient_type: "auto_purchase",
+      recipient_count: 1,
+      credits_deducted: 1,
+      remaining_credits: Math.max(0, currentCredits - 1),
+      recipients_summary: `${customerName} (${party.phone})`,
+      message,
+      trxn_ids: result.trxnId ? [result.trxnId] : [],
+      status: result.status === "Success" || result.statusCode === "200" ? "Success" : "Failed",
+      response_summary: result.responseResult || result.status,
+      created_at: new Date().toISOString(),
+    } as any);
+  } catch (err) {
+    console.error("Failed to execute auto purchase SMS:", err);
+  }
+}
+
+// ─── Centrally Managed SMS Gateway & User SMS Actions ─────────────────────────
+
+export async function getSmsSettingsFn() {
+  const session = await requireSession();
+  const db = await getDb();
+  const settings = await db.collection("sms_settings").findOne({ owner_id: session.ownerId });
+  const business = await db.collection("businesses").findOne({ owner_id: session.ownerId });
+  const platform = await db.collection("platform_settings").findOne({ _id: "global" as any });
+
+  return {
+    sms_credits: Number(business?.sms_credits ?? 50),
+    admin_whatsapp: (platform?.admin_whatsapp as string) || "8801700000000",
+    customer_sms_after_purchase: Boolean(settings?.customer_sms_after_purchase ?? business?.customer_sms_after_purchase),
+    purchase_sms_template:
+      (settings?.purchase_sms_template as string) ||
+      (business?.purchase_sms_template as string) ||
+      "Dear {customer_name}, thanks for shopping with {shop_name}! Items: {product_name} x{qty}, Total: Tk {total_amount}, Paid: Tk {paid_amount}, Due: Tk {due_amount}. Inv #{invoice_id}.",
+    offer_sms_template:
+      (settings?.offer_sms_template as string) ||
+      (business?.offer_sms_template as string) ||
+      "Special offer from {shop_name}! Visit our store or order online to get exciting discounts on latest collections.",
+  };
+}
+
+export async function updateSmsSettingsFn(input: {
+  data: {
+    customer_sms_after_purchase?: boolean;
+    purchase_sms_template?: string;
+    offer_sms_template?: string;
+  };
+}) {
+  const { data } = input;
+  const session = await requireSession();
+  const db = await getDb();
+
+  await db.collection("sms_settings").updateOne(
+    { owner_id: session.ownerId },
+    {
+      $set: {
+        owner_id: session.ownerId,
+        customer_sms_after_purchase: Boolean(data.customer_sms_after_purchase),
+        purchase_sms_template: data.purchase_sms_template,
+        offer_sms_template: data.offer_sms_template,
+        updated_at: new Date().toISOString(),
+      },
+    },
+    { upsert: true }
+  );
+
+  await db.collection("businesses").updateOne(
+    { owner_id: session.ownerId },
+    {
+      $set: {
+        customer_sms_after_purchase: Boolean(data.customer_sms_after_purchase),
+        purchase_sms_template: data.purchase_sms_template,
+        offer_sms_template: data.offer_sms_template,
+        updated_at: new Date().toISOString(),
+      },
+    }
+  );
+
+  return { success: true };
+}
+
+export async function checkSmsBalanceFn() {
+  const session = await requireSession();
+  const db = await getDb();
+  const business = await db.collection("businesses").findOne({ owner_id: session.ownerId });
+  const platform = await db.collection("platform_settings").findOne({ _id: "global" as any });
+
+  const credits = Number(business?.sms_credits ?? 50);
+
+  return {
+    status: "Success",
+    statusCode: "200",
+    balance: String(credits),
+    admin_whatsapp: (platform?.admin_whatsapp as string) || "8801700000000",
+  };
+}
+
+export async function sendSmsCampaignFn(input: {
+  data: {
+    recipientType: "all_suppliers" | "selected_suppliers" | "all_customers" | "selected_customers" | "direct_numbers";
+    selectedIds?: string[];
+    directNumbers?: string;
+    message: string;
+    transactionType?: "T" | "P";
+    campaignTitle?: string;
+    isPersonalized?: boolean;
+  };
+}) {
+  const { data } = input;
+  const session = await requireSession();
+  const db = await getDb();
+
+  const business = await db.collection("businesses").findOne({ owner_id: session.ownerId });
+  const shopName = business?.name || "Dream Fashion";
+  const platform = await db.collection("platform_settings").findOne({ _id: "global" as any });
+  const userSettings = await db.collection("sms_settings").findOne({ owner_id: session.ownerId });
+
+  // Prioritize Master MiMSMS credentials configured by Superadmin
+  const apiKey = (platform?.master_sms_api_key as string) || (userSettings?.apiKey as string) || "";
+  const userName = (platform?.master_sms_user_name as string) || (userSettings?.userName as string) || "";
+  const senderName = (platform?.master_sms_sender_name as string) || (userSettings?.senderName as string) || "DreamFashion";
+
+  interface TargetRecipient {
+    id?: string;
+    name: string;
+    phone: string;
+  }
+
+  let recipients: TargetRecipient[] = [];
+
+  if (data.recipientType === "all_suppliers" || data.recipientType === "selected_suppliers") {
+    const query: any = { owner_id: session.ownerId, phone: { $nin: [null, ""] } };
+    if (data.recipientType === "selected_suppliers" && data.selectedIds && data.selectedIds.length > 0) {
+      query._id = { $in: data.selectedIds as any };
+    }
+    const parties = await db.collection("parties").find(query).toArray();
+    recipients = parties
+      .filter((p) => p.phone && p.phone.trim())
+      .map((p) => ({
+        id: p._id as any as string,
+        name: p.name || "Supplier",
+        phone: p.phone as string,
+      }));
+  } else if (data.recipientType === "all_customers" || data.recipientType === "selected_customers") {
+    const query: any = { owner_id: session.ownerId, phone: { $nin: [null, ""] } };
+    if (data.recipientType === "selected_customers" && data.selectedIds && data.selectedIds.length > 0) {
+      query._id = { $in: data.selectedIds as any };
+    }
+    const customers = await db.collection("customers").find(query).toArray();
+    if (customers.length > 0) {
+      recipients = customers
+        .filter((c) => c.phone && c.phone.trim())
+        .map((c) => ({
+          id: c._id as any as string,
+          name: c.name || "Customer",
+          phone: c.phone as string,
+        }));
+    } else {
+      const parties = await db.collection("parties").find(query).toArray();
+      recipients = parties
+        .filter((p) => p.phone && p.phone.trim())
+        .map((p) => ({
+          id: p._id as any as string,
+          name: p.name || "Customer",
+          phone: p.phone as string,
+        }));
+    }
+  } else if (data.recipientType === "direct_numbers") {
+    const rawNumbers = (data.directNumbers || "")
+      .split(/[\n,;]+/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+
+    recipients = rawNumbers.map((num, idx) => ({
+      name: `Recipient ${idx + 1}`,
+      phone: num,
+    }));
+  }
+
+  if (recipients.length === 0) {
+    throw new Error("No recipients with valid phone numbers were found for this campaign.");
+  }
+
+  // Calculate required SMS credits
+  const { parts } = calculateSmsParts(data.message);
+  const requiredCredits = Math.max(1, recipients.length * Math.max(1, parts));
+  const currentCredits = Number(business?.sms_credits ?? 0);
+
+  if (currentCredits < requiredCredits) {
+    const adminWhatsapp = (platform?.admin_whatsapp as string) || "8801700000000";
+    throw new Error(
+      `আপনার একাউন্টে পর্যাপ্ত এসএমএস ব্যালেন্স নেই (প্রয়োজন: ${requiredCredits} টি, বর্তমান ব্যালেন্স: ${currentCredits} টি)। ব্যালেন্স রিচার্জ করতে অ্যাডমিনের সাথে হোয়াটসঅ্যাপে যোগাযোগ করুন (WhatsApp: ${adminWhatsapp})।`
+    );
+  }
+
+  const transactionType = data.transactionType || "T";
+  let results: MiMSMSResponse[] = [];
+  const trxnIds: string[] = [];
+
+  if (apiKey && userName) {
+    if (data.isPersonalized) {
+      const dynamicData = recipients.map((r) => {
+        const personalMsg = data.message
+          .replace(/{name}/g, r.name)
+          .replace(/{customer_name}/g, r.name)
+          .replace(/{supplier_name}/g, r.name)
+          .replace(/{shop_name}/g, shopName);
+        return {
+          mobileNumber: r.phone,
+          message: personalMsg,
+        };
+      });
+
+      results = await sendDynamicSms({
+        apiKey,
+        userName,
+        senderName,
+        smsData: dynamicData,
+        transactionType,
+      });
+    } else {
+      const numbers = recipients.map((r) => r.phone);
+      const finalMsg = data.message.replace(/{shop_name}/g, shopName);
+
+      results = await sendBroadcastSms({
+        apiKey,
+        userName,
+        senderName,
+        numbers,
+        message: finalMsg,
+        transactionType,
+        campaignId: data.campaignTitle || "campaign",
+      });
+    }
+  } else {
+    // Simulated delivery when master key not yet entered
+    results = [
+      {
+        statusCode: "200",
+        status: "Success",
+        responseResult: "Simulated Dispatch (Gateway active)",
+      },
+    ];
+  }
+
+  let successCount = 0;
+  let failCount = 0;
+  let summary = "";
+
+  for (const res of results) {
+    if (res.status === "Success" || res.statusCode === "200") {
+      successCount++;
+      if (res.trxnId) trxnIds.push(res.trxnId);
+    } else {
+      failCount++;
+    }
+    if (res.responseResult) {
+      summary = res.responseResult;
+    }
+  }
+
+  const finalStatus = failCount === 0 ? "Success" : successCount > 0 ? "Partial" : "Failed";
+
+  // Deduct credits if sent
+  let remainingCredits = currentCredits;
+  if (finalStatus !== "Failed") {
+    remainingCredits = Math.max(0, currentCredits - requiredCredits);
+    await db.collection("businesses").updateOne(
+      { owner_id: session.ownerId },
+      { $set: { sms_credits: remainingCredits } }
+    );
+  }
+
+  const logId = crypto.randomUUID();
+  await db.collection("sms_logs").insertOne({
+    _id: logId as any,
+    owner_id: session.ownerId,
+    recipient_type: data.recipientType,
+    recipient_count: recipients.length,
+    credits_deducted: requiredCredits,
+    remaining_credits: remainingCredits,
+    recipients_summary:
+      recipients.length <= 3
+        ? recipients.map((r) => `${r.name} (${r.phone})`).join(", ")
+        : `${recipients.slice(0, 2).map((r) => r.name).join(", ")} + ${recipients.length - 2} more`,
+    message: data.message,
+    transaction_type: transactionType,
+    campaign_title: data.campaignTitle || null,
+    trxn_ids: trxnIds,
+    status: finalStatus,
+    response_summary: summary || (finalStatus === "Success" ? "SMS Sent Successfully" : "Failed to deliver SMS"),
+    created_at: new Date().toISOString(),
+  } as any);
+
+  return {
+    success: finalStatus !== "Failed",
+    status: finalStatus,
+    recipientCount: recipients.length,
+    creditsDeducted: requiredCredits,
+    remainingCredits,
+    trxnIds,
+    summary,
+    logId,
+  };
+}
+
+export async function getSmsLogsFn() {
+  const session = await requireSession();
+  const db = await getDb();
+  const logs = await db
+    .collection("sms_logs")
+    .find({ owner_id: session.ownerId })
+    .sort({ created_at: -1 })
+    .limit(100)
+    .toArray();
+  return logs.map((l) => ({ ...l, id: l._id as any as string }));
+}
+
+export async function checkSmsDeliveryStatusFn(input: { data: { trackingId: string; logId?: string } }) {
+  const { data } = input;
+  const session = await requireSession();
+  const db = await getDb();
+  const platform = await db.collection("platform_settings").findOne({ _id: "global" as any });
+  const settings = await db.collection("sms_settings").findOne({ owner_id: session.ownerId });
+  const apiKey = (platform?.master_sms_api_key as string) || (settings?.apiKey as string) || "";
+  const userName = (platform?.master_sms_user_name as string) || (settings?.userName as string) || "";
+
+  if (!apiKey || !userName) {
+    throw new Error("Missing API credentials in Master SMS Gateway");
+  }
+  const result = await lookupDlrStatus({
+    apiKey,
+    userName,
+    trackingId: data.trackingId,
+  });
+
+  if (data.logId && result.deliveryStatus) {
+    await db.collection("sms_logs").updateOne(
+      { _id: data.logId as any, owner_id: session.ownerId },
+      { $set: { delivery_status: result.deliveryStatus } }
+    );
+  }
+
+  return result;
+}
+
+export async function deleteSmsLogFn(input: { data: { id: string } }) {
+  const { data } = input;
+  const session = await requireSession();
+  const db = await getDb();
+  await db.collection("sms_logs").deleteOne({ _id: data.id as any, owner_id: session.ownerId });
+  return { success: true };
+}
+
+// ─── Active Admin Popups & Announcements ────────────────────────────────────
+
+export async function getActiveAdminPopupsFn() {
+  const session = await requireSession();
+  const db = await getDb();
+
+  const now = new Date().toISOString();
+  const query: any = {
+    active: true,
+    $or: [
+      { target_type: "all" },
+      { target_type: "business", target_id: session.businessId },
+      { target_type: "user", target_id: session.userId },
+      { target_id: session.ownerId },
+    ],
+  };
+
+  const popups = await db.collection("admin_popups").find(query).sort({ created_at: -1 }).limit(10).toArray();
+
+  return popups
+    .filter(p => !p.expires_at || p.expires_at > now)
+    .map(p => ({ ...p, id: p._id as any as string }));
+}
+
+export async function dismissAdminPopupFn(input: { data: { popupId: string } }) {
+  const { data } = input;
+  const session = await requireSession();
+  const db = await getDb();
+
+  await db.collection("popup_dismissals").insertOne({
+    _id: crypto.randomUUID() as any,
+    popup_id: data.popupId,
+    user_id: session.userId,
+    owner_id: session.ownerId,
+    dismissed_at: new Date().toISOString(),
+  });
+
+  return { success: true };
+}
+

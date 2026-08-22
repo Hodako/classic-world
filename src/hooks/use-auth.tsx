@@ -28,6 +28,11 @@ export type AuthUser = {
   permissions?: PermissionSet;
   profiles?: { id: string; name: string; created_at: string }[];
   activeProfile?: string;
+  status?: string;
+  frozen_reason?: string;
+  subscription_expires_at?: string;
+  sms_credits?: number;
+  admin_whatsapp?: string;
 };
 
 type AuthCtx = {
@@ -94,7 +99,8 @@ function profileToUser(p: ReturnType<typeof readAuthProfile>): AuthUser | null {
 function getInitialUser(): AuthUser | null {
   if (typeof window === "undefined") return null;
   const cached = readAuthProfile();
-  if (cached) {
+  const tokenExists = !!window.localStorage.getItem("auth_token");
+  if (cached && tokenExists) {
     return profileToUser(cached);
   }
   return null;
@@ -104,9 +110,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(getInitialUser);
   const [loading, setLoading] = useState(() => {
     if (typeof window === "undefined") return true;
-    const cached = readAuthProfile();
-    if (cached) return false;
     const tokenExists = !!window.localStorage.getItem("auth_token");
+    const cached = readAuthProfile();
+    if (tokenExists && cached) return false;
     if (!tokenExists) return false;
     return true;
   });
@@ -117,20 +123,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   async function checkUser() {
     try {
       const data = await getMeFn();
-      const next = data?.user as AuthUser | null;
+      const next = data.user as AuthUser | null;
       if (next) {
         setUser(next);
         cacheUser(next);
         writeBrand({ name: next.business_name, logo_url: next.logo_url });
-      } else {
-        const local = readAuthProfile();
-        if (!local && !window.localStorage.getItem("auth_token")) {
-          setUser(null);
-          clearAuthProfile();
-        }
+      } else if (!window.localStorage.getItem("auth_token")) {
+        setUser(null);
+        clearAuthProfile();
       }
     } catch (err: any) {
-      console.warn("Background auth refresh info:", err?.message || err);
+      console.warn("Background auth check info:", err?.message || err);
     } finally {
       setLoading(false);
     }
@@ -139,9 +142,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => { void checkUser(); }, []);
 
   const login = (newUser: AuthUser) => {
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem("auth_token", "cw_token_" + (newUser.id || Date.now()));
-    }
     setUser(newUser);
     cacheUser(newUser);
     writeBrand({ name: newUser.business_name, logo_url: newUser.logo_url });

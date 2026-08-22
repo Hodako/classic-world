@@ -5,20 +5,19 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card } from "@/components/ui/card";
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import {
   superAdminLoginFn,
   superAdminLogoutFn,
   superAdminCheckFn,
-  generatePlatformLicenseFn,
-  listPlatformLicensesFn,
   listBusinessesFn,
   listAllUsersFn,
-  deleteLicenseFn,
   getPlatformStatsFn,
   getPlatformActivitiesFn,
-  suspendBusinessFn,
   deleteBusinessFn,
   impersonateUserFn,
   deleteUserFn,
@@ -27,6 +26,15 @@ import {
   resetSalesFn,
   resetSomitiFn,
   resetExpensesFn,
+  refillBusinessSmsFn,
+  freezeBusinessFn,
+  setBusinessLimitsFn,
+  createAdminPopupFn,
+  listAdminPopupsFn,
+  deleteAdminPopupFn,
+  getMasterSmsSettingsFn,
+  updateMasterSmsSettingsFn,
+  directSendSmsAsAdminFn,
 } from "@/lib/rpc-admin";
 import {
   Trash2,
@@ -37,7 +45,7 @@ import {
   Box,
   TrendingUp,
   Ban,
-  CheckCircle,
+  CheckCircle2,
   RefreshCw,
   Search,
   Key,
@@ -45,9 +53,20 @@ import {
   Clock,
   ShieldAlert,
   LogOut,
-  Copy,
   LogIn,
   Lock,
+  MessageSquare,
+  MessageCircle,
+  Sparkles,
+  PhoneCall,
+  Flame,
+  AlertTriangle,
+  Send,
+  Sliders,
+  Calendar,
+  ExternalLink,
+  Plus,
+  Radio,
 } from "lucide-react";
 import { SpeedLoader } from "@/components/speed-loader";
 import { fmtDateTime } from "@/lib/format";
@@ -55,38 +74,84 @@ import { fmtDateTime } from "@/lib/format";
 export default function SuperAdminPage() {
   const qc = useQueryClient();
   const auth = useQuery({ queryKey: ["super-admin"], queryFn: superAdminCheckFn });
-  
+
   const [username, setUsername] = useState("superadmin");
-  const [password, setPassword] = useState("superadmin123");
-  const [limit, setLimit] = useState("5");
-  const [note, setNote] = useState("");
+  const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
-  const [activeTab, setActiveTab] = useState<"feed" | "businesses" | "users" | "licenses" | "settings">("feed");
+  const [activeTab, setActiveTab] = useState<"feed" | "businesses" | "users" | "sms_gateway" | "settings">("feed");
   const [searchQuery, setSearchQuery] = useState("");
-  
-  // Safe cascade delete modal state — Business
+  const [bizStatusFilter, setBizStatusFilter] = useState<"all" | "active" | "frozen">("all");
+
+  // ─── Modal States ─────────────────────────────────────────────────────────
+
+  // 1. Refill SMS Modal
+  const [refillModalOpen, setRefillModalOpen] = useState(false);
+  const [refillBiz, setRefillBiz] = useState<any>(null);
+  const [refillAmount, setRefillAmount] = useState("100");
+  const [refillType, setRefillType] = useState<"add" | "set" | "deduct">("add");
+  const [refillNote, setRefillNote] = useState("");
+  const [refillBusy, setRefillBusy] = useState(false);
+
+  // 2. Freeze / Unfreeze Modal
+  const [freezeModalOpen, setFreezeModalOpen] = useState(false);
+  const [freezeBiz, setFreezeBiz] = useState<any>(null);
+  const [freezeReason, setFreezeReason] = useState("");
+  const [freezeExpiresAt, setFreezeExpiresAt] = useState("");
+  const [freezeBusy, setFreezeBusy] = useState(false);
+
+  // 3. Limits & Subscription Modal
+  const [limitsModalOpen, setLimitsModalOpen] = useState(false);
+  const [limitsBiz, setLimitsBiz] = useState<any>(null);
+  const [maxProducts, setMaxProducts] = useState("500");
+  const [maxInvoices, setMaxInvoices] = useState("10000");
+  const [subExpiryDate, setSubExpiryDate] = useState("");
+  const [limitsBusy, setLimitsBusy] = useState(false);
+
+  // 4. Send Popup Modal
+  const [popupModalOpen, setPopupModalOpen] = useState(false);
+  const [popupTargetType, setPopupTargetType] = useState<"all" | "business">("all");
+  const [popupBiz, setPopupBiz] = useState<any>(null);
+  const [popupTitle, setPopupTitle] = useState("");
+  const [popupMessage, setPopupMessage] = useState("");
+  const [popupType, setPopupType] = useState<"info" | "warning" | "urgent" | "promo">("info");
+  const [popupBusy, setPopupBusy] = useState(false);
+
+  // 5. Delete Business Modal
   const [bizToDelete, setBizToDelete] = useState<string | null>(null);
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
 
-  // Safe delete modal state — User
+  // 6. User Deletion & Password Change
   const [userToDelete, setUserToDelete] = useState<{ id: string; full_name: string; email: string } | null>(null);
   const [userDeleteConfirmText, setUserDeleteConfirmText] = useState("");
-
-  // User Password Change modal state
   const [userForPasswordChange, setUserForPasswordChange] = useState<{ id: string; email: string } | null>(null);
   const [newPassword, setNewPassword] = useState("");
   const [resetBusy, setResetBusy] = useState(false);
 
-  // Super Admin Password Change modal state
+  // 7. SuperAdmin Password Change
   const [superAdminPassOpen, setSuperAdminPassOpen] = useState(false);
   const [superAdminCurrentPass, setSuperAdminCurrentPass] = useState("");
   const [superAdminNewPass, setSuperAdminNewPass] = useState("");
   const [superAdminPassBusy, setSuperAdminPassBusy] = useState(false);
 
-  // Reset Business data modal state
+  // 8. Reset Business Data
   const [bizForReset, setBizForReset] = useState<{ id: string; name: string } | null>(null);
   const [resetType, setResetType] = useState<"sales" | "somiti" | "expenses" | null>(null);
   const [confirmResetText, setConfirmResetText] = useState("");
+
+  // 9. Master SMS Gateway state
+  const [masterApiKey, setMasterApiKey] = useState("");
+  const [masterUserName, setMasterUserName] = useState("");
+  const [masterSenderName, setMasterSenderName] = useState("");
+  const [adminWhatsapp, setAdminWhatsapp] = useState("");
+  const [masterSmsSaving, setMasterSmsSaving] = useState(false);
+
+  // 10. Direct SMS from Admin
+  const [directPhone, setDirectPhone] = useState("");
+  const [directMsg, setDirectMsg] = useState("");
+  const [directRoute, setDirectRoute] = useState<"T" | "P">("T");
+  const [directSending, setDirectSending] = useState(false);
+
+  // ─── Queries ──────────────────────────────────────────────────────────────
 
   const stats = useQuery({
     queryKey: ["platform-stats"],
@@ -98,13 +163,7 @@ export default function SuperAdminPage() {
     queryKey: ["platform-activities"],
     queryFn: getPlatformActivitiesFn,
     enabled: auth.data?.authenticated === true,
-    refetchInterval: 10000, // Poll every 10 seconds for real-time surveillance feel!
-  });
-
-  const licenses = useQuery({
-    queryKey: ["platform-licenses"],
-    queryFn: listPlatformLicensesFn,
-    enabled: auth.data?.authenticated === true,
+    refetchInterval: 10000,
   });
 
   const businesses = useQuery({
@@ -119,13 +178,32 @@ export default function SuperAdminPage() {
     enabled: auth.data?.authenticated === true,
   });
 
+  const popups = useQuery({
+    queryKey: ["admin-popups-list"],
+    queryFn: listAdminPopupsFn,
+    enabled: auth.data?.authenticated === true,
+  });
+
+  const masterSmsSettings = useQuery({
+    queryKey: ["master-sms-settings"],
+    queryFn: async () => {
+      const data = await getMasterSmsSettingsFn();
+      setMasterApiKey(data.apiKey || "");
+      setMasterUserName(data.userName || "");
+      setMasterSenderName(data.senderName || "DreamFashion");
+      setAdminWhatsapp(data.adminWhatsapp || "8801700000000");
+      return data;
+    },
+    enabled: auth.data?.authenticated === true,
+  });
+
   const handleRefreshAll = () => {
     qc.invalidateQueries({ queryKey: ["platform-stats"] });
     qc.invalidateQueries({ queryKey: ["platform-activities"] });
-    qc.invalidateQueries({ queryKey: ["platform-licenses"] });
     qc.invalidateQueries({ queryKey: ["businesses-admin"] });
     qc.invalidateQueries({ queryKey: ["users-admin"] });
-    toast.success("Surveillance dashboard updated!");
+    qc.invalidateQueries({ queryKey: ["admin-popups-list"] });
+    toast.success("Surveillance dashboard refreshed!");
   };
 
   if (auth.isLoading) return <SpeedLoader />;
@@ -133,17 +211,17 @@ export default function SuperAdminPage() {
   if (!auth.data?.authenticated) {
     return (
       <div className="min-h-screen flex items-center justify-center p-4 bg-background">
-        <Card className="glass-card w-full max-w-sm p-6 space-y-4 border-primary/20">
-          <div className="flex flex-col items-center space-y-2">
-            <div className="p-3 bg-primary/10 rounded-full text-primary">
+        <Card className="glass-card w-full max-w-sm p-6 space-y-4 border-primary/20 shadow-2xl">
+          <div className="flex flex-col items-center space-y-2 text-center">
+            <div className="p-3.5 bg-primary/10 rounded-2xl text-primary border border-primary/20 shadow-inner">
               <Shield className="size-8 animate-pulse" />
             </div>
-            <h1 className="text-xl font-bold tracking-tight text-center">Classic World Super Admin</h1>
-            <p className="text-xs text-muted-foreground text-center">Enter your administrator credentials to access surveillance</p>
+            <h1 className="text-xl font-bold tracking-tight">HakimQzz Super Admin</h1>
+            <p className="text-xs text-muted-foreground">Authorized platform administration console</p>
           </div>
-          
+
           <form
-            onSubmit={async e => {
+            onSubmit={async (e) => {
               e.preventDefault();
               setBusy(true);
               try {
@@ -155,18 +233,29 @@ export default function SuperAdminPage() {
                 setBusy(false);
               }
             }}
-            className="space-y-3"
+            className="space-y-3 pt-2"
           >
             <div className="space-y-1">
-              <Label className="text-xs">Username</Label>
-              <Input placeholder="superadmin" value={username} onChange={e => setUsername(e.target.value)} className="beveled-card bg-muted/40" />
+              <Label className="text-xs font-semibold">Administrator Username</Label>
+              <Input
+                placeholder="superadmin"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                className="rounded-xl bg-muted/40"
+              />
             </div>
             <div className="space-y-1">
-              <Label className="text-xs">Password</Label>
-              <Input type="password" placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} className="beveled-card bg-muted/40" />
+              <Label className="text-xs font-semibold">Master Password</Label>
+              <Input
+                type="password"
+                placeholder="••••••••"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="rounded-xl bg-muted/40"
+              />
             </div>
-            <Button type="submit" className="w-full beveled-button" disabled={busy}>
-              {busy ? "Authorizing..." : "Access Console"}
+            <Button type="submit" className="w-full rounded-xl beveled-button" disabled={busy}>
+              {busy ? "Authorizing..." : "Access Command Console"}
             </Button>
           </form>
         </Card>
@@ -174,19 +263,17 @@ export default function SuperAdminPage() {
     );
   }
 
-  // Filter lists based on search query
+  // Filter businesses
   const filteredBiz = (businesses.data ?? []).filter((b: any) => {
     const name = String(b.name || "").toLowerCase();
     const email = String(b.owner_email || "").toLowerCase();
     const query = searchQuery.toLowerCase();
-    return name.includes(query) || email.includes(query);
-  });
+    const matchesSearch = name.includes(query) || email.includes(query);
+    if (!matchesSearch) return false;
 
-  const filteredLicenses = (licenses.data ?? []).filter((l: any) => {
-    const id = String(l.id || "").toLowerCase();
-    const note = String(l.note || "").toLowerCase();
-    const query = searchQuery.toLowerCase();
-    return id.includes(query) || note.includes(query);
+    if (bizStatusFilter === "active") return b.status !== "frozen" && b.status !== "suspended";
+    if (bizStatusFilter === "frozen") return b.status === "frozen" || b.status === "suspended";
+    return true;
   });
 
   const filteredUsers = (users.data ?? []).filter((u: any) => {
@@ -199,1541 +286,1412 @@ export default function SuperAdminPage() {
     return name.includes(query) || email.includes(query) || role.includes(query) || biz.includes(query) || id.includes(query);
   });
 
-  const selectedBizToDelete = (businesses.data ?? []).find((b: any) => b.id === bizToDelete);
-
   return (
-    <div className="min-h-screen p-4 md:p-8 max-w-6xl mx-auto space-y-6">
-      
-      {/* HEADER SECTION */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-card/40 backdrop-blur-md p-6 rounded-2xl border border-border/60 shadow-lg">
+    <div className="min-h-screen bg-background text-foreground pb-20">
+      {/* ─── Top Control Header ────────────────────────────────────────── */}
+      <header className="border-b border-border/80 bg-card/80 backdrop-blur sticky top-0 z-40 px-4 sm:px-8 py-3 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <div className="p-2.5 bg-emerald-500/10 rounded-xl text-emerald-500">
-            <Shield className="size-6" />
+          <div className="p-2 rounded-xl bg-primary/10 text-primary border border-primary/20">
+            <Shield className="size-5" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold tracking-tight">HZ Surveillance Center</h1>
-            <p className="text-sm text-muted-foreground">Global Platform Intelligence & Business Audit</p>
+            <h1 className="text-base sm:text-lg font-bold tracking-tight flex items-center gap-2">
+              HakimQzz Super Admin
+              <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/30 text-[10px] font-mono">
+                COMMAND v2.5
+              </Badge>
+            </h1>
+            <p className="text-[11px] text-muted-foreground hidden sm:block">
+              Centralized platform governance, SMS gateway, subscription management & user control
+            </p>
           </div>
         </div>
-        
-        <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
-          <span className="hidden lg:inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 mr-1">
-            <span className="size-2 rounded-full bg-emerald-500 animate-pulse" /> Live Surveillance Syncing
-          </span>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setSuperAdminPassOpen(true)}
-            className="beveled-button border-amber-500/30 text-amber-600 dark:text-amber-400 hover:bg-amber-500/10"
-            title="Change Super Admin Password"
-          >
-            <Lock className="size-3.5 mr-1.5" />
-            Admin PW
+
+        <div className="flex items-center gap-2">
+          <Button size="sm" variant="outline" onClick={handleRefreshAll} className="h-8 text-xs rounded-xl gap-1.5">
+            <RefreshCw className="size-3.5" />
+            <span className="hidden sm:inline">Refresh</span>
           </Button>
+
           <Button
-            variant="outline"
             size="sm"
-            onClick={handleRefreshAll}
-            className="beveled-button"
+            variant="outline"
+            onClick={() => {
+              setPopupTargetType("all");
+              setPopupModalOpen(true);
+            }}
+            className="h-8 text-xs rounded-xl bg-primary/10 text-primary border-primary/30 hover:bg-primary/20 gap-1.5"
           >
-            <RefreshCw className="size-4 mr-1.5" />
-            Refresh
+            <Radio className="size-3.5 animate-pulse" />
+            <span>Broadcast Popup</span>
           </Button>
+
           <Button
+            size="sm"
             variant="ghost"
-            size="sm"
             onClick={async () => {
               await superAdminLogoutFn();
               qc.invalidateQueries({ queryKey: ["super-admin"] });
             }}
-            className="text-muted-foreground hover:text-foreground"
+            className="h-8 text-xs rounded-xl text-destructive hover:bg-destructive/10 gap-1.5"
           >
-            <LogOut className="size-4 mr-1.5" />
-            Logout
+            <LogOut className="size-3.5" />
+            <span>Exit</span>
           </Button>
         </div>
-      </div>
+      </header>
 
-      {/* KPI METRICS GRID */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 md:gap-4">
-        <Card className="glass-card p-4 space-y-2 border-border/40 relative overflow-hidden">
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-muted-foreground font-medium uppercase tracking-wider">Businesses</span>
-            <Store className="size-4.5 text-primary/80" />
-          </div>
-          <div className="space-y-0.5">
-            <div className="text-2xl font-bold tracking-tight">
-              {stats.isLoading ? "…" : stats.data?.totalBusinesses ?? 0}
-            </div>
-            <p className="text-[10px] text-muted-foreground">Registered Tenants</p>
-          </div>
-        </Card>
+      {/* ─── Main Content Container ───────────────────────────────────── */}
+      <main className="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8 space-y-6">
+        {/* KPI Metric Strip */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+          <Card className="p-3.5 rounded-2xl bg-card border-border/80 shadow-xs space-y-1">
+            <span className="text-[11px] text-muted-foreground font-medium flex items-center gap-1">
+              <Store className="size-3.5 text-blue-500" /> Total Shops
+            </span>
+            <p className="text-xl font-bold font-num text-foreground">
+              {(stats.data?.totalBusinesses ?? 0).toLocaleString()}
+            </p>
+            <span className="text-[10px] text-emerald-600 font-semibold">
+              {stats.data?.activeBusinesses ?? 0} Active / {stats.data?.frozenBusinesses ?? 0} Frozen
+            </span>
+          </Card>
 
-        <Card className="glass-card p-4 space-y-2 border-border/40 relative overflow-hidden">
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-muted-foreground font-medium uppercase tracking-wider">Total Users</span>
-            <Users className="size-4.5 text-blue-500/80" />
-          </div>
-          <div className="space-y-0.5">
-            <div className="text-2xl font-bold tracking-tight">
-              {stats.isLoading ? "…" : stats.data?.totalUsers ?? 0}
-            </div>
-            <p className="text-[10px] text-muted-foreground">Staff & Owners</p>
-          </div>
-        </Card>
+          <Card className="p-3.5 rounded-2xl bg-card border-border/80 shadow-xs space-y-1">
+            <span className="text-[11px] text-muted-foreground font-medium flex items-center gap-1">
+              <Users className="size-3.5 text-emerald-500" /> Users & Staff
+            </span>
+            <p className="text-xl font-bold font-num text-foreground">
+              {(stats.data?.totalUsers ?? 0).toLocaleString()}
+            </p>
+            <span className="text-[10px] text-muted-foreground">Platform accounts</span>
+          </Card>
 
-        <Card className="glass-card p-4 space-y-2 border-border/40 relative overflow-hidden">
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-muted-foreground font-medium uppercase tracking-wider">Total Products</span>
-            <Box className="size-4.5 text-purple-500/80" />
-          </div>
-          <div className="space-y-0.5">
-            <div className="text-2xl font-bold tracking-tight">
-              {stats.isLoading ? "…" : stats.data?.totalProducts ?? 0}
-            </div>
-            <p className="text-[10px] text-muted-foreground">Items Cataloged</p>
-          </div>
-        </Card>
+          <Card className="p-3.5 rounded-2xl bg-card border-border/80 shadow-xs space-y-1">
+            <span className="text-[11px] text-muted-foreground font-medium flex items-center gap-1">
+              <Box className="size-3.5 text-purple-500" /> Total Products
+            </span>
+            <p className="text-xl font-bold font-num text-foreground">
+              {(stats.data?.totalProducts ?? 0).toLocaleString()}
+            </p>
+            <span className="text-[10px] text-muted-foreground">Inventory SKUs</span>
+          </Card>
 
-        <Card className="glass-card p-4 space-y-2 border-border/40 relative overflow-hidden">
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-muted-foreground font-medium uppercase tracking-wider">Gross Sales</span>
-            <TrendingUp className="size-4.5 text-emerald-500/80" />
-          </div>
-          <div className="space-y-0.5">
-            <div className="text-2xl font-bold tracking-tight text-emerald-500 font-mono">
-              ৳{stats.isLoading ? "…" : (stats.data?.totalSalesVolume ?? 0).toLocaleString()}
-            </div>
-            <p className="text-[10px] text-muted-foreground">Gross Receipts</p>
-          </div>
-        </Card>
+          <Card className="p-3.5 rounded-2xl bg-card border-border/80 shadow-xs space-y-1">
+            <span className="text-[11px] text-muted-foreground font-medium flex items-center gap-1">
+              <MessageSquare className="size-3.5 text-amber-500" /> SMS Sent
+            </span>
+            <p className="text-xl font-bold font-num text-foreground">
+              {(stats.data?.totalSmsSent ?? 0).toLocaleString()}
+            </p>
+            <span className="text-[10px] text-emerald-600 font-semibold">Delivered via MiMSMS</span>
+          </Card>
 
-        <Card className="glass-card p-4 space-y-2 border-border/40 col-span-2 md:col-span-1 relative overflow-hidden">
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-muted-foreground font-medium uppercase tracking-wider">Platform Net Profit</span>
-            <TrendingUp className={`size-4.5 ${(stats.data?.totalPlatformNetProfit ?? 0) >= 0 ? "text-emerald-500/80" : "text-destructive/80"}`} />
-          </div>
-          <div className="space-y-0.5">
-            <div className={`text-2xl font-bold tracking-tight font-mono ${(stats.data?.totalPlatformNetProfit ?? 0) >= 0 ? "text-emerald-500" : "text-destructive"}`}>
-              ৳{stats.isLoading ? "…" : (stats.data?.totalPlatformNetProfit ?? 0).toLocaleString()}
-            </div>
-            <p className="text-[10px] text-muted-foreground">Adjusted P&L</p>
-          </div>
-        </Card>
-      </div>
+          <Card className="p-3.5 rounded-2xl bg-card border-border/80 shadow-xs space-y-1">
+            <span className="text-[11px] text-muted-foreground font-medium flex items-center gap-1">
+              <TrendingUp className="size-3.5 text-emerald-500" /> Total Sales Vol.
+            </span>
+            <p className="text-xl font-bold font-num text-emerald-600 dark:text-emerald-400 truncate">
+              ৳{((stats.data?.totalSalesVolume ?? 0) / 1000).toFixed(1)}k
+            </p>
+            <span className="text-[10px] text-muted-foreground">Across all stores</span>
+          </Card>
 
-      {/* SEARCH AND TABS FILTER WRAPPER */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-border/60 pb-3">
-        {/* TABS CONTAINER */}
-        <div className="flex gap-1 overflow-x-auto">
-          <button
-            onClick={() => { setActiveTab("feed"); setSearchQuery(""); }}
-            className={`px-4 py-2 text-sm font-semibold rounded-lg flex items-center gap-2 transition-all ${
-              activeTab === "feed"
-                ? "bg-primary/10 text-primary border border-primary/25"
-                : "text-muted-foreground hover:text-foreground hover:bg-muted/30"
-            }`}
-          >
-            <Activity className="size-4" />
-            Surveillance Feed
-          </button>
-          <button
-            onClick={() => { setActiveTab("businesses"); setSearchQuery(""); }}
-            className={`px-4 py-2 text-sm font-semibold rounded-lg flex items-center gap-2 transition-all ${
-              activeTab === "businesses"
-                ? "bg-primary/10 text-primary border border-primary/25"
-                : "text-muted-foreground hover:text-foreground hover:bg-muted/30"
-            }`}
-          >
-            <Store className="size-4" />
-            Businesses ({businesses.data?.length ?? 0})
-          </button>
-          <button
-            onClick={() => { setActiveTab("users"); setSearchQuery(""); }}
-            className={`px-4 py-2 text-sm font-semibold rounded-lg flex items-center gap-2 transition-all ${
-              activeTab === "users"
-                ? "bg-primary/10 text-primary border border-primary/25"
-                : "text-muted-foreground hover:text-foreground hover:bg-muted/30"
-            }`}
-          >
-            <Users className="size-4" />
-            Users ({users.data?.length ?? 0})
-          </button>
-          <button
-            onClick={() => { setActiveTab("licenses"); setSearchQuery(""); }}
-            className={`px-4 py-2 text-sm font-semibold rounded-lg flex items-center gap-2 transition-all ${
-              activeTab === "licenses"
-                ? "bg-primary/10 text-primary border border-primary/25"
-                : "text-muted-foreground hover:text-foreground hover:bg-muted/30"
-            }`}
-          >
-            <Key className="size-4" />
-            Platform Licenses ({licenses.data?.length ?? 0})
-          </button>
-          <button
-            onClick={() => { setActiveTab("settings"); setSearchQuery(""); }}
-            className={`px-4 py-2 text-sm font-semibold rounded-lg flex items-center gap-2 transition-all ${
-              activeTab === "settings"
-                ? "bg-primary/10 text-primary border border-primary/25"
-                : "text-muted-foreground hover:text-foreground hover:bg-muted/30"
-            }`}
-          >
-            <Shield className="size-4" />
-            Admin Settings
-          </button>
+          <Card className="p-3.5 rounded-2xl bg-card border-border/80 shadow-xs space-y-1">
+            <span className="text-[11px] text-muted-foreground font-medium flex items-center gap-1">
+              <Sparkles className="size-3.5 text-indigo-500" /> Platform Profit
+            </span>
+            <p className="text-xl font-bold font-num text-indigo-600 dark:text-indigo-400 truncate">
+              ৳{((stats.data?.totalPlatformNetProfit ?? 0) / 1000).toFixed(1)}k
+            </p>
+            <span className="text-[10px] text-muted-foreground">Net store profits</span>
+          </Card>
         </div>
 
-        {/* SEARCH BOX FOR FILTERABLE TABS */}
-        {activeTab !== "feed" && activeTab !== "settings" && (
-          <div className="relative w-full md:w-72">
-            <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input
-              type="text"
-              placeholder={
-                activeTab === "businesses" ? "Filter by name or email..." :
-                activeTab === "users" ? "Filter by name, email, role, or ID..." :
-                "Filter license code..."
-              }
-              className="pl-9 bg-muted/20 border-border/40 focus:border-primary/50"
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-            />
+        {/* ─── Navigation Tabs ────────────────────────────────────────── */}
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 pb-3">
+          <div className="flex items-center gap-1 bg-muted/60 p-1 rounded-xl">
+            <button
+              onClick={() => setActiveTab("feed")}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                activeTab === "feed" ? "bg-card text-foreground shadow-xs" : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <Activity className="size-3.5 inline mr-1.5" />
+              Surveillance Feed
+            </button>
+            <button
+              onClick={() => setActiveTab("businesses")}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                activeTab === "businesses" ? "bg-card text-foreground shadow-xs" : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <Store className="size-3.5 inline mr-1.5" />
+              Shops & Businesses ({filteredBiz.length})
+            </button>
+            <button
+              onClick={() => setActiveTab("users")}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                activeTab === "users" ? "bg-card text-foreground shadow-xs" : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <Users className="size-3.5 inline mr-1.5" />
+              Users & Logins ({filteredUsers.length})
+            </button>
+            <button
+              onClick={() => setActiveTab("sms_gateway")}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                activeTab === "sms_gateway" ? "bg-card text-foreground shadow-xs" : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <MessageSquare className="size-3.5 inline mr-1.5 text-amber-500" />
+              Master SMS & Popups
+            </button>
+            <button
+              onClick={() => setActiveTab("settings")}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                activeTab === "settings" ? "bg-card text-foreground shadow-xs" : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <Shield className="size-3.5 inline mr-1.5" />
+              Admin Settings
+            </button>
           </div>
-        )}
-      </div>
 
-      {/* TAB CONTENT AREAS */}
-      <div className="space-y-4">
-        
-        {/* 1. SURVEILLANCE FEED */}
+          {(activeTab === "businesses" || activeTab === "users") && (
+            <div className="relative w-full sm:w-64">
+              <Search className="size-3.5 absolute left-2.5 top-2.5 text-muted-foreground" />
+              <Input
+                placeholder="Search shops or users..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-8 h-8 rounded-xl text-xs bg-muted/40"
+              />
+            </div>
+          )}
+        </div>
+
+        {/* ─── TAB 1: SURVEILLANCE FEED ──────────────────────────────── */}
         {activeTab === "feed" && (
-          <Card className="glass-card p-6 space-y-4 border-border/40">
+          <div className="space-y-4">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Activity className="size-5 text-emerald-500 animate-pulse" />
-                <h2 className="font-semibold text-base">Real-Time Platform Audit Logs</h2>
-              </div>
-              <span className="text-xs text-muted-foreground bg-muted/40 px-2 py-0.5 rounded-full flex items-center gap-1.5">
-                <Clock className="size-3.5" />
-                Auto-refreshing every 10s
-              </span>
+              <h2 className="text-sm font-bold tracking-tight flex items-center gap-2">
+                <Radio className="size-4 text-red-500 animate-ping" />
+                Live System Audit & Event Surveillance
+              </h2>
+              <span className="text-xs text-muted-foreground font-mono">Auto-polling every 10s</span>
             </div>
 
-            {activities.isLoading ? (
-              <div className="py-20 text-center text-muted-foreground space-y-2">
-                <RefreshCw className="size-8 animate-spin mx-auto text-primary" />
-                <p className="text-sm">Polling global feeds...</p>
-              </div>
-            ) : (activities.data ?? []).length === 0 ? (
-              <div className="py-20 text-center text-muted-foreground border border-dashed rounded-xl">
-                No recent activity observed on the platform.
-              </div>
-            ) : (
-              <div className="space-y-3 max-h-[500px] overflow-y-auto pr-1">
-                {(activities.data ?? []).map((event: any) => {
-                  let badgeColor = "bg-primary/10 text-primary border-primary/20";
-                  if (event.type === "sale") badgeColor = "bg-emerald-500/10 text-emerald-500 border-emerald-500/20";
-                  if (event.type === "product") badgeColor = "bg-blue-500/10 text-blue-500 border-blue-500/20";
-                  if (event.type === "expense") badgeColor = "bg-amber-500/10 text-amber-500 border-amber-500/20";
-                  if (event.type === "business") badgeColor = "bg-purple-500/10 text-purple-500 border-purple-500/20";
-                  if (event.type === "user") badgeColor = "bg-cyan-500/10 text-cyan-500 border-cyan-500/20";
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {(activities.data ?? []).map((ev: any, idx: number) => {
+                const isSale = ev.type === "sale";
+                const isProd = ev.type === "product";
+                const isExpense = ev.type === "expense";
+                const isBiz = ev.type === "business";
 
-                  return (
+                return (
+                  <Card key={idx} className="p-3.5 rounded-2xl bg-card border-border/80 shadow-xs flex items-start gap-3">
                     <div
-                      key={event.id}
-                      className="p-3 bg-muted/15 border-l-4 border-border rounded-r-xl flex items-start justify-between gap-3 text-sm hover:bg-muted/30 transition-colors"
-                      style={{
-                        borderLeftColor:
-                          event.type === "sale" ? "#10b981" :
-                          event.type === "product" ? "#3b82f6" :
-                          event.type === "expense" ? "#f59e0b" :
-                          event.type === "business" ? "#a855f7" :
-                          event.type === "user" ? "#06b6d4" : "var(--border)"
-                      }}
+                      className={`p-2 rounded-xl shrink-0 ${
+                        isSale
+                          ? "bg-emerald-500/10 text-emerald-600"
+                          : isExpense
+                          ? "bg-rose-500/10 text-rose-600"
+                          : isProd
+                          ? "bg-blue-500/10 text-blue-600"
+                          : "bg-purple-500/10 text-purple-600"
+                      }`}
                     >
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${badgeColor}`}>
-                            {event.title}
-                          </span>
-                          <span className="font-semibold text-xs text-muted-foreground">
-                            @ {event.businessName}
-                          </span>
-                        </div>
-                        <p className="font-medium text-foreground">{event.detail}</p>
-                        {event.type === "user" && (
-                          <div className="flex items-center gap-1.5 pt-1">
-                            <span
-                              className="text-[10px] text-cyan-600 dark:text-cyan-400 font-mono bg-cyan-500/10 px-1.5 py-0.5 rounded border border-cyan-500/20 cursor-pointer hover:bg-cyan-500/20 transition-all flex items-center gap-1"
-                              onClick={() => {
-                                navigator.clipboard.writeText(event.id);
-                                toast.success(`User ID copied: ${event.id}`);
-                              }}
-                              title="Click to copy User ID"
-                            >
-                              <Copy className="size-2.5" />
-                              User ID: {event.id}
-                            </span>
-                          </div>
-                        )}
+                      {isSale ? (
+                        <TrendingUp className="size-4" />
+                      ) : isExpense ? (
+                        <RotateCcw className="size-4" />
+                      ) : isProd ? (
+                        <Box className="size-4" />
+                      ) : (
+                        <Store className="size-4" />
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0 space-y-0.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-xs font-bold text-foreground truncate">{ev.title}</span>
+                        <span className="text-[10px] text-muted-foreground font-mono shrink-0">
+                          {fmtDateTime(ev.time)}
+                        </span>
                       </div>
-                      <span className="text-xs text-muted-foreground shrink-0 font-mono">
-                        {fmtDateTime(event.time)}
+                      <p className="text-xs text-muted-foreground truncate">{ev.detail}</p>
+                      <span className="inline-block text-[10px] font-semibold text-primary/80 bg-primary/5 px-2 py-0.5 rounded-md mt-1">
+                        🏪 {ev.businessName}
                       </span>
                     </div>
-                  );
-                })}
-              </div>
-            )}
-          </Card>
+                  </Card>
+                );
+              })}
+            </div>
+          </div>
         )}
 
-        {/* 2. BUSINESSES LIST & OPERATION SWEEP */}
+        {/* ─── TAB 2: SHOPS & BUSINESSES MANAGEMENT ──────────────────── */}
         {activeTab === "businesses" && (
-          <Card className="glass-card overflow-hidden border-border/40">
-            {businesses.isLoading ? (
-              <div className="py-20 text-center text-muted-foreground">
-                <RefreshCw className="size-8 animate-spin mx-auto text-primary mb-2" />
-                Loading tenants list...
-              </div>
-            ) : filteredBiz.length === 0 ? (
-              <div className="py-20 text-center text-muted-foreground border-t">
-                No matching businesses found.
-              </div>
-            ) : (
-              <>
-                {/* Desktop View Table */}
-                <div className="hidden md:block overflow-x-auto">
-                  <table className="w-full text-left border-collapse text-sm">
-                    <thead>
-                      <tr className="border-b border-border/60 bg-muted/35 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                        <th className="p-4">Business Detail</th>
-                        <th className="p-4">Owner & Email</th>
-                        <th className="p-4 text-center">Resources Logged</th>
-                        <th className="p-4">Registered On</th>
-                        <th className="p-4 text-right">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-border/40">
-                      {(filteredBiz as any[]).map((b: any) => {
-                        const isSuspended = b.status === "suspended";
-                        return (
-                          <tr key={b.id} className="hover:bg-muted/10 transition-colors">
-                            <td className="p-4">
-                              <div className="flex flex-col gap-0.5">
-                                <span className="font-bold text-foreground text-sm">{b.name}</span>
-                                <div className="flex items-center gap-1.5">
-                                  <span className="text-[10px] text-muted-foreground font-mono">
-                                    ID: {b.id.slice(0, 8)}…
-                                  </span>
-                                  {isSuspended ? (
-                                    <span className="text-[10px] font-bold bg-destructive/10 text-destructive border border-destructive/20 px-1.5 py-0.2 rounded">
-                                      SUSPENDED
-                                    </span>
-                                  ) : (
-                                    <span className="text-[10px] font-bold bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 px-1.5 py-0.2 rounded">
-                                      ACTIVE
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
-                            </td>
-                            <td className="p-4 text-muted-foreground">
-                              <div className="flex flex-col gap-0.5">
-                                <span className="font-semibold text-foreground">{b.owner_email}</span>
-                                <span className="text-xs font-mono">Limit: {b.employee_limit} Staff</span>
-                                {b.owner_id && (
-                                  <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                                    <span
-                                      className="text-[10px] text-muted-foreground hover:text-primary transition-all font-mono flex items-center gap-1 cursor-pointer"
-                                      onClick={() => {
-                                        navigator.clipboard.writeText(b.owner_id);
-                                        toast.success(`Owner ID copied: ${b.owner_id}`);
-                                      }}
-                                      title="Click to copy Owner User ID"
-                                    >
-                                      <Copy className="size-2.5" />
-                                      Owner ID: {b.owner_id.slice(0, 8)}…
-                                    </span>
-                                    <button
-                                      type="button"
-                                      className="text-[10px] text-primary hover:text-primary-foreground font-semibold flex items-center gap-0.5 bg-primary/15 hover:bg-primary px-1.5 py-0.5 rounded transition-all cursor-pointer"
-                                      onClick={async () => {
-                                        try {
-                                          await impersonateUserFn({ data: { userId: b.owner_id } });
-                                          toast.success(`Logging in as ${b.owner_email}...`);
-                                          window.location.href = "/dashboard";
-                                        } catch (err: any) {
-                                          toast.error(err.message || "Failed to login as owner");
-                                        }
-                                      }}
-                                      title="Login to this Owner's dashboard"
-                                    >
-                                      <LogIn className="size-2.5" />
-                                      Login As Owner
-                                    </button>
-                                  </div>
-                                )}
-                              </div>
-                            </td>
-                            <td className="p-4 text-center">
-                              <div className="flex items-center justify-center gap-4 text-xs font-medium text-muted-foreground">
-                                <div className="flex flex-col">
-                                  <span className="text-foreground font-bold font-mono">{b.product_count ?? 0}</span>
-                                  <span>Products</span>
-                                </div>
-                                <div className="flex flex-col">
-                                  <span className="text-foreground font-bold font-mono">{b.sale_count ?? 0}</span>
-                                  <span>Sales</span>
-                                </div>
-                              </div>
-                            </td>
-                            <td className="p-4 text-muted-foreground text-xs font-mono">
-                              {fmtDateTime(b.created_at)}
-                            </td>
-                            <td className="p-4 text-right">
-                              <div className="flex justify-end gap-1.5">
-                                <Button
-                                  size="sm"
-                                  variant={isSuspended ? "default" : "outline"}
-                                  className={`h-8 font-semibold beveled-button ${
-                                    isSuspended 
-                                      ? "bg-emerald-500 hover:bg-emerald-600 text-white" 
-                                      : "text-amber-500 hover:text-amber-600 border-amber-500/30 hover:bg-amber-500/10"
-                                  }`}
-                                  onClick={async () => {
-                                    try {
-                                      await suspendBusinessFn({ data: { businessId: b.id, suspend: !isSuspended } });
-                                      toast.success(isSuspended ? `Reactivated "${b.name}"` : `Suspended "${b.name}"`);
-                                      qc.invalidateQueries({ queryKey: ["businesses-admin"] });
-                                    } catch (err: any) {
-                                      toast.error(err.message || "Operation failed");
-                                    }
-                                  }}
-                                >
-                                  {isSuspended ? (
-                                    <>
-                                      <CheckCircle className="size-3.5 mr-1" />
-                                      Activate
-                                    </>
-                                  ) : (
-                                    <>
-                                      <Ban className="size-3.5 mr-1" />
-                                      Suspend
-                                    </>
-                                  )}
-                                </Button>
-                                
-                                <Button
-                                  size="icon"
-                                  variant="ghost"
-                                  className="size-8 text-amber-500 hover:bg-amber-500/10"
-                                  onClick={() => {
-                                    setBizForReset({ id: b.id, name: b.name });
-                                    setResetType(null);
-                                    setConfirmResetText("");
-                                  }}
-                                  title="Reset sells, samity, or expenses"
-                                >
-                                  <RotateCcw className="size-3.5" />
-                                </Button>
-
-                                <Button
-                                  size="icon"
-                                  variant="ghost"
-                                  className="size-8 text-destructive hover:bg-destructive/10"
-                                  onClick={() => {
-                                    setBizToDelete(b.id);
-                                    setDeleteConfirmText("");
-                                  }}
-                                >
-                                  <Trash2 className="size-3.5" />
-                                </Button>
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-
-                {/* Mobile Card List View */}
-                <div className="block md:hidden divide-y divide-border/40">
-                  {(filteredBiz as any[]).map((b: any) => {
-                    const isSuspended = b.status === "suspended";
-                    return (
-                      <div key={b.id} className="p-4 space-y-3 hover:bg-muted/5 transition-colors">
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="space-y-1">
-                            <span className="font-bold text-foreground text-sm">{b.name}</span>
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                              <span className="text-[10px] text-muted-foreground font-mono">
-                                ID: {b.id.slice(0, 8)}…
-                              </span>
-                              {isSuspended ? (
-                                <span className="text-[10px] font-bold bg-destructive/10 text-destructive border border-destructive/20 px-1.5 py-0.2 rounded">
-                                  SUSPENDED
-                                </span>
-                              ) : (
-                                <span className="text-[10px] font-bold bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 px-1.5 py-0.2 rounded">
-                                  ACTIVE
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                          <span className="text-[10px] text-muted-foreground font-mono shrink-0">
-                            {fmtDateTime(b.created_at).split(" ")[0]}
-                          </span>
-                        </div>
-
-                        <div className="space-y-1.5 text-xs text-muted-foreground">
-                          <div className="flex justify-between items-center">
-                            <span>Owner:</span>
-                            <span className="font-semibold text-foreground text-right truncate max-w-[200px]">
-                              {b.owner_email}
-                            </span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span>Staff Limit:</span>
-                            <span className="font-mono text-foreground">{b.employee_limit} Staff</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span>Resources:</span>
-                            <span className="text-foreground">
-                              <strong className="font-mono">{b.product_count ?? 0}</strong> products · <strong className="font-mono">{b.sale_count ?? 0}</strong> sales
-                            </span>
-                          </div>
-                        </div>
-
-                        {b.owner_id && (
-                          <div className="flex items-center gap-2 flex-wrap pt-0.5">
-                            <span
-                              className="text-[10px] text-muted-foreground bg-muted/40 px-2 py-0.5 rounded border border-border/80 hover:text-primary transition-all font-mono flex items-center gap-1 cursor-pointer"
-                              onClick={() => {
-                                navigator.clipboard.writeText(b.owner_id);
-                                toast.success(`Owner ID copied: ${b.owner_id}`);
-                              }}
-                            >
-                              <Copy className="size-2.5" />
-                              Copy Owner ID
-                            </span>
-                            <button
-                              type="button"
-                              className="text-[10px] text-primary bg-primary/15 hover:bg-primary hover:text-primary-foreground font-semibold flex items-center gap-1 px-2 py-0.5 rounded transition-all cursor-pointer"
-                              onClick={async () => {
-                                try {
-                                  await impersonateUserFn({ data: { userId: b.owner_id } });
-                                  toast.success(`Logging in as ${b.owner_email}...`);
-                                  window.location.href = "/dashboard";
-                                } catch (err: any) {
-                                  toast.error(err.message || "Failed to login as owner");
-                                }
-                              }}
-                            >
-                              <LogIn className="size-2.5" />
-                              Login As Owner
-                            </button>
-                          </div>
-                        )}
-
-                        <div className="flex justify-end gap-1.5 pt-2 border-t border-border/20">
-                          <Button
-                            size="sm"
-                            variant={isSuspended ? "default" : "outline"}
-                            className={`h-8 text-xs font-semibold beveled-button ${
-                              isSuspended 
-                                ? "bg-emerald-500 hover:bg-emerald-600 text-white" 
-                                : "text-amber-500 hover:text-amber-600 border-amber-500/30 hover:bg-amber-500/10"
-                            }`}
-                            onClick={async () => {
-                              try {
-                                await suspendBusinessFn({ data: { businessId: b.id, suspend: !isSuspended } });
-                                toast.success(isSuspended ? `Reactivated "${b.name}"` : `Suspended "${b.name}"`);
-                                qc.invalidateQueries({ queryKey: ["businesses-admin"] });
-                              } catch (err: any) {
-                                toast.error(err.message || "Operation failed");
-                              }
-                            }}
-                          >
-                            {isSuspended ? (
-                              <>
-                                <CheckCircle className="size-3.5 mr-1" />
-                                Activate
-                              </>
-                            ) : (
-                              <>
-                                <Ban className="size-3.5 mr-1" />
-                                Suspend
-                              </>
-                            )}
-                          </Button>
-                          
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            className="size-8 text-amber-500 hover:bg-amber-500/10 border border-border/40"
-                            onClick={() => {
-                              setBizForReset({ id: b.id, name: b.name });
-                              setResetType(null);
-                              setConfirmResetText("");
-                            }}
-                          >
-                            <RotateCcw className="size-3.5" />
-                          </Button>
-
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            className="size-8 text-destructive hover:bg-destructive/10 border border-border/40"
-                            onClick={() => {
-                              setBizToDelete(b.id);
-                              setDeleteConfirmText("");
-                            }}
-                          >
-                            <Trash2 className="size-3.5" />
-                          </Button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </>
-            )}
-          </Card>
-        )}
-
-        {/* 3. USERS LIST */}
-        {activeTab === "users" && (
-          <Card className="glass-card overflow-hidden border-border/40">
-            {users.isLoading ? (
-              <div className="py-20 text-center text-muted-foreground">
-                <RefreshCw className="size-8 animate-spin mx-auto text-primary mb-2" />
-                Loading users list...
-              </div>
-            ) : filteredUsers.length === 0 ? (
-              <div className="py-20 text-center text-muted-foreground border-t">
-                No matching users found.
-              </div>
-            ) : (
-              <>
-                {/* Desktop View Table */}
-                <div className="hidden md:block overflow-x-auto">
-                  <table className="w-full text-left border-collapse text-sm">
-                    <thead>
-                      <tr className="border-b border-border/60 bg-muted/35 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                        <th className="p-4">User Detail</th>
-                        <th className="p-4">Role & Business</th>
-                        <th className="p-4">Registered On</th>
-                        <th className="p-4">Password</th>
-                        <th className="p-4 text-right">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-border/40">
-                      {(filteredUsers as any[]).map((u: any) => {
-                        const isOwner = u.role === "owner";
-                        const isActivated = u.activated;
-                        return (
-                          <tr key={u.id} className="hover:bg-muted/10 transition-colors">
-                            <td className="p-4">
-                              <div className="flex flex-col gap-0.5">
-                                <span className="font-bold text-foreground text-sm">
-                                  {u.full_name || "Unnamed User"}
-                                </span>
-                                <span className="text-xs text-muted-foreground">{u.email}</span>
-                              </div>
-                            </td>
-                            <td className="p-4">
-                              <div className="flex flex-col gap-0.5">
-                                <div className="flex items-center gap-1.5">
-                                  <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded border ${
-                                    isOwner 
-                                      ? "bg-purple-500/10 text-purple-500 border-purple-500/20" 
-                                      : "bg-blue-500/10 text-blue-500 border-blue-500/20"
-                                  }`}>
-                                    {isOwner ? "Owner" : "Employee"}
-                                  </span>
-                                  {isActivated ? (
-                                    <span className="text-[10px] font-bold bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 px-1.5 py-0.2 rounded">
-                                      Activated
-                                    </span>
-                                  ) : (
-                                    <span className="text-[10px] font-bold bg-amber-500/10 text-amber-500 border border-amber-500/20 px-1.5 py-0.2 rounded">
-                                      Pending License
-                                    </span>
-                                  )}
-                                </div>
-                                <span className="text-xs text-muted-foreground">{u.business_name}</span>
-                              </div>
-                            </td>
-                            <td className="p-4 text-muted-foreground text-xs font-mono">
-                              {u.created_at ? fmtDateTime(u.created_at) : "N/A"}
-                            </td>
-                            <td className="p-4">
-                              <span className="text-xs font-mono bg-muted/80 px-2 py-1 rounded border border-border/50 text-foreground font-medium select-all">
-                                {u.plain_password}
-                              </span>
-                            </td>
-                            <td className="p-4 text-right">
-                              <div className="flex items-center justify-end gap-2">
-                                <span
-                                  className="inline-flex items-center gap-1.5 text-xs font-mono bg-muted/65 text-foreground hover:text-primary border border-border/80 px-2.5 py-1 rounded-lg cursor-pointer hover:bg-muted/80 transition-all font-semibold"
-                                  onClick={() => {
-                                    navigator.clipboard.writeText(u.id);
-                                    toast.success(`User ID copied: ${u.id}`);
-                                  }}
-                                  title="Click to copy User ID"
-                                >
-                                  <Copy className="size-3.5 text-muted-foreground/80" />
-                                  <span className="select-all">{u.id.slice(0, 8)}…</span>
-                                </span>
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  className="h-8 beveled-button text-xs font-semibold cursor-pointer"
-                                  onClick={async () => {
-                                    try {
-                                      await impersonateUserFn({ data: { userId: u.id } });
-                                      toast.success(`Logging in as ${u.email}...`);
-                                      window.location.href = "/dashboard";
-                                    } catch (err: any) {
-                                      toast.error(err.message || "Failed to log in");
-                                    }
-                                  }}
-                                  title="Log in as this user"
-                                >
-                                  <LogIn className="size-3.5 mr-1" />
-                                  Login As
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  className="h-8 beveled-button text-xs font-semibold cursor-pointer"
-                                  onClick={() => {
-                                    setUserForPasswordChange({ id: u.id, email: u.email });
-                                    setNewPassword("");
-                                  }}
-                                  title="Reset user password"
-                                >
-                                  <Key className="size-3.5 mr-1" />
-                                  Reset PW
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  variant="destructive"
-                                  className="h-8 text-xs font-semibold cursor-pointer bg-destructive/10 text-destructive border border-destructive/30 hover:bg-destructive hover:text-white"
-                                  onClick={() => {
-                                    setUserToDelete({ id: u.id, full_name: u.full_name || u.email, email: u.email });
-                                    setUserDeleteConfirmText("");
-                                  }}
-                                  title="Delete this user"
-                                >
-                                  <Trash2 className="size-3.5 mr-1" />
-                                  Delete
-                                </Button>
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-
-                {/* Mobile Card List View */}
-                <div className="block md:hidden divide-y divide-border/40">
-                  {(filteredUsers as any[]).map((u: any) => {
-                    const isOwner = u.role === "owner";
-                    const isActivated = u.activated;
-                    return (
-                      <div key={u.id} className="p-4 space-y-3 hover:bg-muted/5 transition-colors">
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="space-y-0.5">
-                            <span className="font-bold text-foreground text-sm">
-                              {u.full_name || "Unnamed User"}
-                            </span>
-                            <p className="text-xs text-muted-foreground">{u.email}</p>
-                          </div>
-                          <span className="text-[10px] text-muted-foreground font-mono shrink-0">
-                            {u.created_at ? fmtDateTime(u.created_at).split(" ")[0] : "N/A"}
-                          </span>
-                        </div>
-
-                        <div className="space-y-1.5 text-xs text-muted-foreground">
-                          <div className="flex justify-between items-center">
-                            <span>Role:</span>
-                            <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded border ${
-                              isOwner 
-                                ? "bg-purple-500/10 text-purple-500 border-purple-500/20" 
-                                : "bg-blue-500/10 text-blue-500 border-blue-500/20"
-                            }`}>
-                              {isOwner ? "Owner" : "Employee"}
-                            </span>
-                          </div>
-                          <div className="flex justify-between items-center">
-                            <span>Status:</span>
-                            {isActivated ? (
-                              <span className="text-[10px] font-bold bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 px-1.5 py-0.2 rounded">
-                                Activated
-                              </span>
-                            ) : (
-                              <span className="text-[10px] font-bold bg-amber-500/10 text-amber-500 border border-amber-500/20 px-1.5 py-0.2 rounded">
-                                Pending License
-                              </span>
-                            )}
-                          </div>
-                          <div className="flex justify-between">
-                            <span>Business:</span>
-                            <span className="font-semibold text-foreground truncate max-w-[200px]">{u.business_name}</span>
-                          </div>
-                          <div className="flex justify-between items-center">
-                            <span>Password:</span>
-                            <span className="text-xs font-mono bg-muted/80 px-2 py-0.5 rounded border border-border/50 text-foreground font-semibold select-all">
-                              {u.plain_password}
-                            </span>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center gap-2 flex-wrap pt-0.5">
-                          <span
-                            className="text-[10px] text-muted-foreground bg-muted/40 px-2 py-0.5 rounded border border-border/80 hover:text-primary transition-all font-mono flex items-center gap-1 cursor-pointer font-semibold"
-                            onClick={() => {
-                              navigator.clipboard.writeText(u.id);
-                              toast.success(`User ID copied: ${u.id}`);
-                            }}
-                          >
-                            <Copy className="size-2.5" />
-                            ID: {u.id.slice(0, 8)}…
-                          </span>
-                        </div>
-
-                        <div className="flex justify-end gap-1.5 pt-2 border-t border-border/20 flex-wrap">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="h-8 text-xs font-semibold beveled-button cursor-pointer flex-1 sm:flex-initial justify-center"
-                            onClick={async () => {
-                              try {
-                                await impersonateUserFn({ data: { userId: u.id } });
-                                toast.success(`Logging in as ${u.email}...`);
-                                window.location.href = "/dashboard";
-                              } catch (err: any) {
-                                toast.error(err.message || "Failed to log in");
-                              }
-                            }}
-                          >
-                            <LogIn className="size-3.5 mr-1" />
-                            Login
-                          </Button>
-                          
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="h-8 text-xs font-semibold beveled-button cursor-pointer flex-1 sm:flex-initial justify-center"
-                            onClick={() => {
-                              setUserForPasswordChange({ id: u.id, email: u.email });
-                              setNewPassword("");
-                            }}
-                          >
-                            <Key className="size-3.5 mr-1" />
-                            Reset PW
-                          </Button>
-
-                          <Button
-                            size="sm"
-                            variant="destructive"
-                            className="h-8 text-xs font-semibold beveled-button cursor-pointer flex-1 sm:flex-initial justify-center bg-destructive/10 text-destructive border border-destructive/30 hover:bg-destructive hover:text-white"
-                            onClick={() => {
-                              setUserToDelete({ id: u.id, full_name: u.full_name || u.email, email: u.email });
-                              setUserDeleteConfirmText("");
-                            }}
-                          >
-                            <Trash2 className="size-3.5 mr-1" />
-                            Delete
-                          </Button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </>
-            )}
-          </Card>
-        )}
-
-        {/* 3. LICENSES MANAGEMENT */}
-        {activeTab === "licenses" && (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
-            
-            {/* GENERATOR */}
-            <Card className="glass-card p-5 space-y-4 border-border/40">
+          <div className="space-y-4">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
               <div className="flex items-center gap-2">
-                <Key className="size-5 text-primary" />
-                <h3 className="font-semibold">Generate Platform License</h3>
+                <span className="text-xs text-muted-foreground font-medium">Filter by Status:</span>
+                <div className="flex items-center gap-1 bg-muted/60 p-1 rounded-xl">
+                  <button
+                    onClick={() => setBizStatusFilter("all")}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-medium ${
+                      bizStatusFilter === "all" ? "bg-card text-foreground shadow-xs" : "text-muted-foreground"
+                    }`}
+                  >
+                    All ({businesses.data?.length ?? 0})
+                  </button>
+                  <button
+                    onClick={() => setBizStatusFilter("active")}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-medium ${
+                      bizStatusFilter === "active" ? "bg-card text-emerald-600 shadow-xs" : "text-muted-foreground"
+                    }`}
+                  >
+                    Active
+                  </button>
+                  <button
+                    onClick={() => setBizStatusFilter("frozen")}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-medium ${
+                      bizStatusFilter === "frozen" ? "bg-card text-rose-600 shadow-xs" : "text-muted-foreground"
+                    }`}
+                  >
+                    Frozen / Banned
+                  </button>
+                </div>
               </div>
-              <p className="text-xs text-muted-foreground leading-relaxed">
-                Platform licenses enable new business signups. Each generated key allows a business owner to activate their account and bounds their employee count limit.
-              </p>
+            </div>
 
-              <div className="space-y-3 pt-2">
+            <div className="grid grid-cols-1 gap-3">
+              {filteredBiz.map((biz: any) => {
+                const isFrozen = biz.status === "frozen" || biz.status === "suspended";
+
+                return (
+                  <Card
+                    key={biz.id}
+                    className={`p-4 rounded-2xl border transition-all shadow-xs space-y-3 ${
+                      isFrozen
+                        ? "border-rose-500/30 bg-rose-500/5 dark:bg-rose-950/10"
+                        : "border-border/80 bg-card hover:border-primary/40"
+                    }`}
+                  >
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h3 className="text-base font-bold text-foreground">{biz.name}</h3>
+                          <Badge
+                            variant="outline"
+                            className={`text-[10px] font-semibold uppercase ${
+                              isFrozen
+                                ? "bg-rose-500/10 text-rose-600 border-rose-500/30"
+                                : "bg-emerald-500/10 text-emerald-600 border-emerald-500/30"
+                            }`}
+                          >
+                            {isFrozen ? "Frozen / Banned" : "Active"}
+                          </Badge>
+                          {biz.subscription_expires_at && (
+                            <Badge variant="outline" className="text-[10px] text-muted-foreground gap-1">
+                              <Calendar className="size-3" />
+                              Sub: {new Date(biz.subscription_expires_at).toLocaleDateString()}
+                            </Badge>
+                          )}
+                        </div>
+                        <p className="text-xs text-muted-foreground flex items-center gap-2 flex-wrap">
+                          <span>👤 {biz.owner_email}</span>
+                          <span>•</span>
+                          <span>📦 {biz.product_count} products</span>
+                          <span>•</span>
+                          <span>🧾 {biz.sale_count} sales</span>
+                          <span>•</span>
+                          <span>💬 {biz.sms_sent_count || 0} SMS sent</span>
+                        </p>
+                        {isFrozen && biz.frozen_reason && (
+                          <p className="text-xs text-rose-600 font-medium bg-rose-500/10 px-2.5 py-1 rounded-lg inline-block">
+                            🔒 Freeze Reason: {biz.frozen_reason}
+                          </p>
+                        )}
+                      </div>
+
+                      {/* SMS Balance & Fast Actions */}
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-muted/60 border border-border">
+                          <MessageSquare className="size-3.5 text-amber-500" />
+                          <span className="text-xs font-bold font-num">{biz.sms_credits ?? 0}</span>
+                          <span className="text-[10px] text-muted-foreground">SMS</span>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => {
+                              setRefillBiz(biz);
+                              setRefillAmount("100");
+                              setRefillType("add");
+                              setRefillModalOpen(true);
+                            }}
+                            className="h-6 px-1.5 text-[10px] text-primary hover:bg-primary/10 ml-1 font-bold"
+                          >
+                            + Refill
+                          </Button>
+                        </div>
+
+                        {/* Action Buttons */}
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            setFreezeBiz(biz);
+                            setFreezeReason(biz.frozen_reason || "Subscription renewal required");
+                            setFreezeModalOpen(true);
+                          }}
+                          className={`h-8 text-xs rounded-xl gap-1 font-medium ${
+                            isFrozen
+                              ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/30 hover:bg-emerald-500/20"
+                              : "text-rose-600 border-rose-500/30 hover:bg-rose-500/10"
+                          }`}
+                        >
+                          {isFrozen ? <CheckCircle2 className="size-3.5" /> : <Ban className="size-3.5" />}
+                          <span>{isFrozen ? "Unfreeze" : "Freeze"}</span>
+                        </Button>
+
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            setLimitsBiz(biz);
+                            setMaxProducts(String(biz.max_products || 500));
+                            setMaxInvoices(String(biz.max_invoices || 10000));
+                            setSubExpiryDate(biz.subscription_expires_at ? biz.subscription_expires_at.slice(0, 10) : "");
+                            setLimitsModalOpen(true);
+                          }}
+                          className="h-8 text-xs rounded-xl gap-1"
+                        >
+                          <Sliders className="size-3.5 text-primary" />
+                          <span>Limits</span>
+                        </Button>
+
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            setPopupBiz(biz);
+                            setPopupTargetType("business");
+                            setPopupTitle("");
+                            setPopupMessage("");
+                            setPopupModalOpen(true);
+                          }}
+                          className="h-8 text-xs rounded-xl gap-1 text-amber-600 border-amber-500/30 hover:bg-amber-500/10"
+                        >
+                          <Radio className="size-3.5" />
+                          <span>Popup</span>
+                        </Button>
+
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={async () => {
+                            try {
+                              await impersonateUserFn({ data: { userId: biz.owner_id } });
+                              toast.success(`Logged in as ${biz.name}`);
+                              window.location.href = "/dashboard";
+                            } catch (err: any) {
+                              toast.error(err.message || "Impersonation failed");
+                            }
+                          }}
+                          className="h-8 text-xs rounded-xl gap-1 text-primary border-primary/30"
+                        >
+                          <LogIn className="size-3.5" />
+                          <span>Login As</span>
+                        </Button>
+
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            setBizForReset(biz);
+                            setResetType("sales");
+                            setConfirmResetText("");
+                          }}
+                          className="h-8 text-xs rounded-xl gap-1 text-amber-600 border-amber-500/30"
+                        >
+                          <RotateCcw className="size-3.5" />
+                          <span>Reset</span>
+                        </Button>
+
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => {
+                            setBizToDelete(biz.id);
+                            setDeleteConfirmText("");
+                          }}
+                          className="h-8 w-8 p-0 text-destructive hover:bg-destructive/10 rounded-xl"
+                        >
+                          <Trash2 className="size-3.5" />
+                        </Button>
+                      </div>
+                    </div>
+                  </Card>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* ─── TAB 3: USERS MANAGEMENT ───────────────────────────────── */}
+        {activeTab === "users" && (
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {filteredUsers.map((u: any) => (
+                <Card key={u.id} className="p-4 rounded-2xl bg-card border-border/80 shadow-xs space-y-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <h4 className="text-sm font-bold text-foreground">{u.full_name || "Unnamed User"}</h4>
+                      <p className="text-xs text-muted-foreground font-mono">{u.email}</p>
+                    </div>
+                    <Badge variant="outline" className="text-[10px] font-semibold uppercase">
+                      {u.role}
+                    </Badge>
+                  </div>
+
+                  <div className="text-xs text-muted-foreground space-y-0.5 pt-1 border-t border-border/50">
+                    <p>🏪 Shop: <span className="font-semibold text-foreground">{u.business_name}</span></p>
+                    <p>🕒 Created: {fmtDateTime(u.created_at)}</p>
+                    {u.plain_password && (
+                      <p className="font-mono text-[11px] text-amber-600 dark:text-amber-400">
+                        🔑 Password: {u.plain_password}
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="flex items-center justify-end gap-2 pt-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setUserForPasswordChange({ id: u.id, email: u.email });
+                        setNewPassword("");
+                      }}
+                      className="h-7 text-xs rounded-lg"
+                    >
+                      Change Pass
+                    </Button>
+
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={async () => {
+                        try {
+                          await impersonateUserFn({ data: { userId: u.id } });
+                          toast.success(`Logged in as ${u.email}`);
+                          window.location.href = "/dashboard";
+                        } catch (err: any) {
+                          toast.error(err.message || "Failed");
+                        }
+                      }}
+                      className="h-7 text-xs rounded-lg text-primary"
+                    >
+                      Login As
+                    </Button>
+
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => {
+                        setUserToDelete(u);
+                        setUserDeleteConfirmText("");
+                      }}
+                      className="h-7 w-7 p-0 text-destructive"
+                    >
+                      <Trash2 className="size-3.5" />
+                    </Button>
+                  </div>
+                </Card>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ─── TAB 4: MASTER SMS GATEWAY & POPUPS ────────────────────── */}
+        {activeTab === "sms_gateway" && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Master MiMSMS Gateway Configuration */}
+            <Card className="p-5 sm:p-6 rounded-2xl bg-card border-border/80 shadow-xs space-y-4">
+              <div className="space-y-1">
+                <h3 className="text-base font-bold flex items-center gap-2">
+                  <Shield className="size-5 text-emerald-600" />
+                  Master MiMSMS Gateway Credentials
+                </h3>
+                <p className="text-xs text-muted-foreground">
+                  Centrally configured gateway. All shops use this master gateway to dispatch SMS.
+                </p>
+              </div>
+
+              <div className="space-y-3">
                 <div className="space-y-1">
-                  <Label className="text-xs">Employee Limit per business</Label>
+                  <Label className="text-xs font-semibold">Master API Key</Label>
                   <Input
-                    className="beveled-card bg-muted/20"
-                    type="number"
-                    inputMode="numeric"
-                    placeholder="Limit"
-                    value={limit}
-                    onChange={e => setLimit(e.target.value)}
+                    type="password"
+                    placeholder="e.g. 1OSY3FSZ7H4IHOU..."
+                    value={masterApiKey}
+                    onChange={(e) => setMasterApiKey(e.target.value)}
+                    className="rounded-xl text-xs font-mono"
                   />
                 </div>
-                <div className="space-y-1">
-                  <Label className="text-xs">License Note (e.g. Client Name / Payment ref)</Label>
-                  <Input
-                    className="beveled-card bg-muted/20"
-                    placeholder="e.g. Hakim Dev Team"
-                    value={note}
-                    onChange={e => setNote(e.target.value)}
-                  />
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label className="text-xs font-semibold">Master Username</Label>
+                    <Input
+                      placeholder="e.g. admin@domain.com"
+                      value={masterUserName}
+                      onChange={(e) => setMasterUserName(e.target.value)}
+                      className="rounded-xl text-xs"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs font-semibold">Sender Name</Label>
+                    <Input
+                      placeholder="e.g. DreamFashion"
+                      value={masterSenderName}
+                      onChange={(e) => setMasterSenderName(e.target.value)}
+                      className="rounded-xl text-xs"
+                    />
+                  </div>
                 </div>
+
+                <div className="space-y-1">
+                  <Label className="text-xs font-semibold">Admin WhatsApp Hotline (for Refill & Unfreeze)</Label>
+                  <Input
+                    placeholder="e.g. 8801700000000"
+                    value={adminWhatsapp}
+                    onChange={(e) => setAdminWhatsapp(e.target.value)}
+                    className="rounded-xl text-xs font-mono"
+                  />
+                  <p className="text-[10px] text-muted-foreground">
+                    This phone number is prefilled in user "Recharge SMS" and "Unfreeze Account" WhatsApp buttons.
+                  </p>
+                </div>
+
                 <Button
-                  className="w-full beveled-button"
-                  disabled={busy}
                   onClick={async () => {
-                    setBusy(true);
+                    setMasterSmsSaving(true);
                     try {
-                      const res = await generatePlatformLicenseFn({
-                        data: { employeeLimit: Number(limit) || 5, note: note || undefined },
+                      await updateMasterSmsSettingsFn({
+                        data: {
+                          apiKey: masterApiKey,
+                          userName: masterUserName,
+                          senderName: masterSenderName,
+                          adminWhatsapp,
+                        },
                       });
-                      toast.success(`Platform Key: ${res.key}`);
-                      setNote("");
-                      qc.invalidateQueries({ queryKey: ["platform-licenses"] });
-                      qc.invalidateQueries({ queryKey: ["platform-stats"] });
-                    } catch (err: unknown) {
-                      toast.error(err instanceof Error ? err.message : String(err));
+                      toast.success("Master SMS Gateway settings saved!");
+                      qc.invalidateQueries({ queryKey: ["master-sms-settings"] });
+                    } catch (err: any) {
+                      toast.error(err.message || "Failed to save");
                     } finally {
-                      setBusy(false);
+                      setMasterSmsSaving(false);
                     }
                   }}
+                  disabled={masterSmsSaving}
+                  className="w-full rounded-xl beveled-button"
                 >
-                  Generate HZ License
+                  {masterSmsSaving ? "Saving..." : "Save Master Gateway Settings"}
                 </Button>
               </div>
             </Card>
 
-            {/* PLATFORM LICENSES LIST */}
-            <Card className="lg:col-span-2 glass-card divide-y divide-border/40 overflow-hidden border-border/40">
-              <div className="p-4 font-semibold text-sm bg-muted/25 flex items-center justify-between">
-                <span>License Register Logs</span>
-                <span className="text-xs font-normal text-muted-foreground">Max 100 entries shown</span>
+            {/* Direct Send SMS to Any Number */}
+            <Card className="p-5 sm:p-6 rounded-2xl bg-card border-border/80 shadow-xs space-y-4">
+              <div className="space-y-1">
+                <h3 className="text-base font-bold flex items-center gap-2">
+                  <Send className="size-5 text-primary" />
+                  Direct Send SMS to Any Mobile Number
+                </h3>
+                <p className="text-xs text-muted-foreground">
+                  Send live administrative notifications or test SMS to any BD mobile number.
+                </p>
               </div>
-              
-              {licenses.isLoading ? (
-                <div className="p-12 text-center text-muted-foreground">
-                  <RefreshCw className="size-6 animate-spin mx-auto text-primary mb-2" />
-                  Loading license keys...
+
+              <div className="space-y-3">
+                <div className="space-y-1">
+                  <Label className="text-xs font-semibold">Mobile Number</Label>
+                  <Input
+                    placeholder="01XXXXXXXXX"
+                    value={directPhone}
+                    onChange={(e) => setDirectPhone(e.target.value)}
+                    className="rounded-xl text-xs font-mono"
+                  />
                 </div>
-              ) : filteredLicenses.length === 0 ? (
-                <div className="p-12 text-center text-muted-foreground">
-                  No licenses match search.
+
+                <div className="space-y-1">
+                  <Label className="text-xs font-semibold">Message Text</Label>
+                  <Textarea
+                    placeholder="Write administrative message..."
+                    rows={3}
+                    value={directMsg}
+                    onChange={(e) => setDirectMsg(e.target.value)}
+                    className="rounded-xl text-xs leading-relaxed"
+                  />
                 </div>
-              ) : (
-                <div className="max-h-[500px] overflow-y-auto divide-y divide-border/40">
-                  {(filteredLicenses as any[]).map((l: any) => (
-                    <div key={l.id} className="p-3.5 flex items-center justify-between text-sm gap-4 hover:bg-muted/10 transition-colors">
-                      <div className="space-y-0.5">
-                        <code className="font-mono font-bold text-xs select-all bg-muted/65 px-2 py-0.5 rounded border border-border/80 text-foreground">
-                          {l.id}
-                        </code>
-                        <div className="text-[10px] text-muted-foreground flex items-center gap-1.5 flex-wrap">
-                          <span>Limit: {l.employee_limit} staff</span>
-                          {l.note && (
-                            <>
-                              <span>·</span>
-                              <span className="italic text-foreground">"{l.note}"</span>
-                            </>
-                          )}
-                          <span>·</span>
-                          <span className="font-mono">{fmtDateTime(l.created_at)}</span>
-                        </div>
+
+                <div className="flex items-center justify-between gap-3">
+                  <Select value={directRoute} onValueChange={(v: "T" | "P") => setDirectRoute(v)}>
+                    <SelectTrigger className="w-40 h-9 rounded-xl text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="T">Transactional (T)</SelectItem>
+                      <SelectItem value="P">Promotional (P)</SelectItem>
+                    </SelectContent>
+                  </Select>
+
+                  <Button
+                    onClick={async () => {
+                      if (!directPhone || !directMsg) {
+                        toast.error("Please enter phone number and message");
+                        return;
+                      }
+                      setDirectSending(true);
+                      try {
+                        const res = await directSendSmsAsAdminFn({
+                          data: {
+                            mobileNumber: directPhone,
+                            message: directMsg,
+                            routeType: directRoute,
+                          },
+                        });
+                        toast.success(`SMS dispatched! Status: ${res.status}`);
+                        setDirectMsg("");
+                      } catch (err: any) {
+                        toast.error(err.message || "Failed to send SMS");
+                      } finally {
+                        setDirectSending(false);
+                      }
+                    }}
+                    disabled={directSending}
+                    className="rounded-xl px-5 bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-xs h-9"
+                  >
+                    {directSending ? "Sending..." : "Dispatch SMS"}
+                  </Button>
+                </div>
+              </div>
+            </Card>
+
+            {/* Active Popups & Announcements */}
+            <Card className="lg:col-span-2 p-5 sm:p-6 rounded-2xl bg-card border-border/80 shadow-xs space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="space-y-1">
+                  <h3 className="text-base font-bold flex items-center gap-2">
+                    <Radio className="size-5 text-amber-500" />
+                    Active Dashboard Popups & Announcements
+                  </h3>
+                  <p className="text-xs text-muted-foreground">
+                    Popups currently visible to users inside their POS dashboard.
+                  </p>
+                </div>
+
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    setPopupTargetType("all");
+                    setPopupTitle("");
+                    setPopupMessage("");
+                    setPopupModalOpen(true);
+                  }}
+                  className="rounded-xl text-xs gap-1.5 beveled-button"
+                >
+                  <Plus className="size-3.5" />
+                  <span>Create Announcement</span>
+                </Button>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {(popups.data ?? []).map((p: any) => (
+                  <div
+                    key={p.id}
+                    className="p-3.5 rounded-xl bg-muted/40 border border-border/60 space-y-2 flex flex-col justify-between"
+                  >
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-xs font-bold text-foreground">{p.title}</span>
+                        <Badge variant="outline" className="text-[9px] uppercase font-mono">
+                          {p.popup_type}
+                        </Badge>
                       </div>
-                      
-                      <div className="flex items-center gap-2 shrink-0">
-                        {l.used ? (
-                          <span className="text-[10px] font-bold bg-muted/40 text-muted-foreground border px-2 py-0.5 rounded-full">
-                            Used
-                          </span>
-                        ) : (
-                          <span className="text-[10px] font-bold bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 px-2 py-0.5 rounded-full">
-                            Available
-                          </span>
-                        )}
-                        
-                        {!l.used && (
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            className="size-8 text-destructive hover:bg-destructive/10"
-                            onClick={async () => {
-                              try {
-                                await deleteLicenseFn({ data: { licenseKey: l.id } });
-                                qc.invalidateQueries({ queryKey: ["platform-licenses"] });
-                                qc.invalidateQueries({ queryKey: ["platform-stats"] });
-                                toast.success("License key deleted");
-                              } catch (err: unknown) {
-                                toast.error(err instanceof Error ? err.message : String(err));
-                              }
-                            }}
-                          >
-                            <Trash2 className="size-3.5" />
-                          </Button>
-                        )}
-                      </div>
+                      <p className="text-xs text-muted-foreground whitespace-pre-wrap">{p.message}</p>
                     </div>
-                  ))}
-                </div>
-              )}
+
+                    <div className="flex items-center justify-between pt-2 border-t border-border/40 text-[10px] text-muted-foreground">
+                      <span>Target: {p.target_type === "all" ? "All Shops" : `Shop ${p.target_id}`}</span>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={async () => {
+                          await deleteAdminPopupFn({ data: { popupId: p.id } });
+                          toast.success("Announcement deleted");
+                          qc.invalidateQueries({ queryKey: ["admin-popups-list"] });
+                        }}
+                        className="h-6 px-2 text-destructive hover:bg-destructive/10 text-[10px]"
+                      >
+                        Delete
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </Card>
           </div>
         )}
 
-        {/* 4. SUPERADMIN PASSWORD SETTINGS */}
+        {/* ─── TAB 5: ADMIN SETTINGS ─────────────────────────────────── */}
         {activeTab === "settings" && (
-          <Card className="glass-card p-6 border-border/40 max-w-md mx-auto space-y-4 bg-card relative overflow-hidden shadow-2xl">
-            <div className="absolute top-0 right-0 w-32 h-32 bg-primary/5 rounded-full blur-3xl pointer-events-none" />
-            
-            <div className="flex items-center gap-3 border-b border-border/40 pb-4">
-              <div className="p-2.5 bg-primary/10 text-primary rounded-xl border border-primary/20 shadow-inner">
-                <Shield className="size-5" />
-              </div>
-              <div>
-                <h3 className="font-bold text-base tracking-tight text-foreground bg-gradient-to-r from-primary to-emerald-600 bg-clip-text text-transparent">
-                  Superadmin Settings
+          <div className="max-w-xl mx-auto space-y-6">
+            <Card className="p-6 rounded-2xl bg-card border-border/80 shadow-xs space-y-4">
+              <div className="space-y-1">
+                <h3 className="text-base font-bold flex items-center gap-2">
+                  <Lock className="size-5 text-primary" />
+                  Change Super Administrator Password
                 </h3>
-                <p className="text-[10px] text-muted-foreground">Manage your credentials safely</p>
+                <p className="text-xs text-muted-foreground">
+                  Update the master password used to access this console.
+                </p>
               </div>
-            </div>
 
-            <p className="text-xs text-muted-foreground leading-relaxed">
-              Use this form to change your superadmin account password. Make sure to keep it secure as this account can manage all store registers and licenses on this server.
-            </p>
-
-            <form
-              onSubmit={async (e) => {
-                e.preventDefault();
-                const currentPw = (e.currentTarget.elements.namedItem("currentPassword") as HTMLInputElement).value;
-                const newPw = (e.currentTarget.elements.namedItem("newPassword") as HTMLInputElement).value;
-                const confirmPw = (e.currentTarget.elements.namedItem("confirmPassword") as HTMLInputElement).value;
-
-                if (newPw.trim().length < 6) {
-                  toast.error("New password must be at least 6 characters long");
-                  return;
-                }
-                if (newPw !== confirmPw) {
-                  toast.error("Passwords do not match");
-                  return;
-                }
-
-                setBusy(true);
-                try {
-                  await changeSuperAdminPasswordFn({
-                    data: { currentPassword: currentPw || undefined, newPassword: newPw }
-                  });
-                  toast.success("Superadmin password updated successfully!");
-                  (e.target as HTMLFormElement).reset();
-                } catch (err: any) {
-                  toast.error(err.message || "Failed to update superadmin password");
-                } finally {
-                  setBusy(false);
-                }
-              }}
-              className="space-y-4 pt-2 text-xs"
-            >
-              <div className="space-y-3.5 pt-2">
-                <div className="space-y-1.5">
-                  <Label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Current Password</Label>
-                  <div className="relative">
-                    <span className="absolute left-3 top-2.5 text-muted-foreground"><Key className="size-3.5" /></span>
-                    <Input
-                      name="currentPassword"
-                      type="password"
-                      placeholder="••••••••"
-                      className="pl-9 h-9 beveled-card bg-muted/20 border-border/60 text-xs focus:ring-1 focus:ring-primary/40 focus:border-primary/50"
-                    />
-                  </div>
+              <div className="space-y-3">
+                <div className="space-y-1">
+                  <Label className="text-xs font-semibold">Current Password</Label>
+                  <Input
+                    type="password"
+                    placeholder="••••••••"
+                    value={superAdminCurrentPass}
+                    onChange={(e) => setSuperAdminCurrentPass(e.target.value)}
+                    className="rounded-xl text-xs"
+                  />
                 </div>
-
-                <div className="space-y-1.5">
-                  <Label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">New Password (min 6 chars)</Label>
-                  <div className="relative">
-                    <span className="absolute left-3 top-2.5 text-muted-foreground"><Lock className="size-3.5" /></span>
-                    <Input
-                      name="newPassword"
-                      type="password"
-                      required
-                      placeholder="Enter new password"
-                      className="pl-9 h-9 beveled-card bg-muted/20 border-border/60 text-xs focus:ring-1 focus:ring-primary/40 focus:border-primary/50"
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-1.5">
-                  <Label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Confirm Password</Label>
-                  <div className="relative">
-                    <span className="absolute left-3 top-2.5 text-muted-foreground"><Lock className="size-3.5" /></span>
-                    <Input
-                      name="confirmPassword"
-                      type="password"
-                      required
-                      placeholder="Confirm new password"
-                      className="pl-9 h-9 beveled-card bg-muted/20 border-border/60 text-xs focus:ring-1 focus:ring-primary/40 focus:border-primary/50"
-                    />
-                  </div>
+                <div className="space-y-1">
+                  <Label className="text-xs font-semibold">New Master Password</Label>
+                  <Input
+                    type="password"
+                    placeholder="Minimum 6 characters"
+                    value={superAdminNewPass}
+                    onChange={(e) => setSuperAdminNewPass(e.target.value)}
+                    className="rounded-xl text-xs"
+                  />
                 </div>
 
                 <Button
-                  type="submit"
-                  disabled={busy}
-                  className="w-full h-10 font-bold beveled-button mt-4 bg-gradient-to-r from-primary to-emerald-600 hover:from-primary/95 hover:to-emerald-600/95 text-white shadow-lg active:scale-[0.99] transition-transform"
+                  onClick={async () => {
+                    if (!superAdminNewPass || superAdminNewPass.length < 6) {
+                      toast.error("Password must be at least 6 characters");
+                      return;
+                    }
+                    setSuperAdminPassBusy(true);
+                    try {
+                      await changeSuperAdminPasswordFn({
+                        data: {
+                          currentPassword: superAdminCurrentPass,
+                          newPassword: superAdminNewPass,
+                        },
+                      });
+                      toast.success("Master password updated successfully!");
+                      setSuperAdminCurrentPass("");
+                      setSuperAdminNewPass("");
+                    } catch (err: any) {
+                      toast.error(err.message || "Failed to update password");
+                    } finally {
+                      setSuperAdminPassBusy(false);
+                    }
+                  }}
+                  disabled={superAdminPassBusy}
+                  className="w-full rounded-xl beveled-button"
                 >
-                  {busy ? (
-                    <span className="flex items-center justify-center gap-1.5">
-                      <RefreshCw className="size-3.5 animate-spin" />
-                      Updating Password...
-                    </span>
-                  ) : (
-                    "Save New Password"
-                  )}
+                  {superAdminPassBusy ? "Updating..." : "Update Master Password"}
                 </Button>
               </div>
-            </form>
-          </Card>
+            </Card>
+          </div>
         )}
-      </div>
+      </main>
 
-      {/* CASCADE DELETE DIALOG OVERLAY */}
+      {/* ─── MODAL 1: REFILL SMS ──────────────────────────────────────── */}
+      {refillModalOpen && refillBiz && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <Card className="w-full max-w-md p-6 rounded-2xl bg-card border border-primary/30 shadow-2xl space-y-4">
+            <div className="space-y-1">
+              <h3 className="text-base font-bold flex items-center gap-2">
+                <Sparkles className="size-5 text-amber-500" />
+                Refill SMS Credits for {refillBiz.name}
+              </h3>
+              <p className="text-xs text-muted-foreground">
+                Current Balance: <span className="font-bold text-foreground">{refillBiz.sms_credits ?? 0} SMS</span>
+              </p>
+            </div>
+
+            <div className="space-y-3">
+              <div className="space-y-1">
+                <Label className="text-xs font-semibold">Action Type</Label>
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { type: "add", label: "+ Add Credits" },
+                    { type: "set", label: "= Set Exactly" },
+                    { type: "deduct", label: "- Deduct" },
+                  ].map((item) => (
+                    <Button
+                      key={item.type}
+                      type="button"
+                      variant={refillType === item.type ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setRefillType(item.type as any)}
+                      className="rounded-xl text-xs"
+                    >
+                      {item.label}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-xs font-semibold">Amount of SMS</Label>
+                <Input
+                  type="number"
+                  placeholder="e.g. 500"
+                  value={refillAmount}
+                  onChange={(e) => setRefillAmount(e.target.value)}
+                  className="rounded-xl text-sm font-bold font-num"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-xs font-semibold">Note / Transaction Ref (Optional)</Label>
+                <Input
+                  placeholder="e.g. bKash payment TrxID #88219"
+                  value={refillNote}
+                  onChange={(e) => setRefillNote(e.target.value)}
+                  className="rounded-xl text-xs"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t">
+                <Button variant="outline" size="sm" onClick={() => setRefillModalOpen(false)} className="rounded-xl">
+                  Cancel
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={async () => {
+                    setRefillBusy(true);
+                    try {
+                      await refillBusinessSmsFn({
+                        data: {
+                          businessId: refillBiz.id,
+                          amount: Number(refillAmount),
+                          type: refillType,
+                          note: refillNote,
+                        },
+                      });
+                      toast.success(`SMS balance updated for ${refillBiz.name}!`);
+                      setRefillModalOpen(false);
+                      qc.invalidateQueries({ queryKey: ["businesses-admin"] });
+                    } catch (err: any) {
+                      toast.error(err.message || "Failed to refill SMS");
+                    } finally {
+                      setRefillBusy(false);
+                    }
+                  }}
+                  disabled={refillBusy}
+                  className="rounded-xl px-5 bg-emerald-600 hover:bg-emerald-500 text-white font-medium"
+                >
+                  {refillBusy ? "Saving..." : "Confirm Refill"}
+                </Button>
+              </div>
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {/* ─── MODAL 2: FREEZE / UNFREEZE ACCOUNT ────────────────────────── */}
+      {freezeModalOpen && freezeBiz && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <Card className="w-full max-w-md p-6 rounded-2xl bg-card border border-primary/30 shadow-2xl space-y-4">
+            <div className="space-y-1">
+              <h3 className="text-base font-bold flex items-center gap-2">
+                <ShieldAlert className="size-5 text-rose-500" />
+                {freezeBiz.status === "frozen" || freezeBiz.status === "suspended" ? "Unfreeze Account" : "Freeze / Suspend Account"}
+              </h3>
+              <p className="text-xs text-muted-foreground">
+                Shop: <span className="font-semibold text-foreground">{freezeBiz.name}</span> ({freezeBiz.owner_email})
+              </p>
+            </div>
+
+            <div className="space-y-3">
+              {freezeBiz.status !== "frozen" && (
+                <div className="space-y-1">
+                  <Label className="text-xs font-semibold">Freeze / Lock Reason (Shown to User)</Label>
+                  <Textarea
+                    placeholder="e.g. Monthly subscription expired. Please contact admin to unfreeze."
+                    rows={3}
+                    value={freezeReason}
+                    onChange={(e) => setFreezeReason(e.target.value)}
+                    className="rounded-xl text-xs leading-relaxed"
+                  />
+                </div>
+              )}
+
+              {freezeBiz.status === "frozen" && (
+                <p className="text-xs text-emerald-600 font-medium bg-emerald-500/10 p-3 rounded-xl">
+                  Unfreezing will restore full access to POS dashboard, sales, products, and invoices immediately.
+                </p>
+              )}
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t">
+                <Button variant="outline" size="sm" onClick={() => setFreezeModalOpen(false)} className="rounded-xl">
+                  Cancel
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={async () => {
+                    setFreezeBusy(true);
+                    try {
+                      const willFreeze = freezeBiz.status !== "frozen" && freezeBiz.status !== "suspended";
+                      await freezeBusinessFn({
+                        data: {
+                          businessId: freezeBiz.id,
+                          freeze: willFreeze,
+                          reason: freezeReason,
+                        },
+                      });
+                      toast.success(willFreeze ? `Account frozen for ${freezeBiz.name}` : `Account unfrozen for ${freezeBiz.name}!`);
+                      setFreezeModalOpen(false);
+                      qc.invalidateQueries({ queryKey: ["businesses-admin"] });
+                    } catch (err: any) {
+                      toast.error(err.message || "Failed to update status");
+                    } finally {
+                      setFreezeBusy(false);
+                    }
+                  }}
+                  disabled={freezeBusy}
+                  className={`rounded-xl px-5 ${
+                    freezeBiz.status === "frozen" || freezeBiz.status === "suspended"
+                      ? "bg-emerald-600 hover:bg-emerald-500 text-white"
+                      : "bg-destructive text-destructive-foreground"
+                  }`}
+                >
+                  {freezeBusy ? "Updating..." : freezeBiz.status === "frozen" || freezeBiz.status === "suspended" ? "Unfreeze Account" : "Freeze Account"}
+                </Button>
+              </div>
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {/* ─── MODAL 3: SET LIMITS & SUBSCRIPTION ───────────────────────── */}
+      {limitsModalOpen && limitsBiz && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <Card className="w-full max-w-md p-6 rounded-2xl bg-card border border-primary/30 shadow-2xl space-y-4">
+            <div className="space-y-1">
+              <h3 className="text-base font-bold flex items-center gap-2">
+                <Sliders className="size-5 text-primary" />
+                Set Limits & Subscription for {limitsBiz.name}
+              </h3>
+              <p className="text-xs text-muted-foreground">Adjust maximum capacity and subscription duration</p>
+            </div>
+
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs font-semibold">Max Products</Label>
+                  <Input
+                    type="number"
+                    value={maxProducts}
+                    onChange={(e) => setMaxProducts(e.target.value)}
+                    className="rounded-xl text-xs font-num"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs font-semibold">Max Invoices</Label>
+                  <Input
+                    type="number"
+                    value={maxInvoices}
+                    onChange={(e) => setMaxInvoices(e.target.value)}
+                    className="rounded-xl text-xs font-num"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-xs font-semibold">Subscription Expiry Date</Label>
+                <Input
+                  type="date"
+                  value={subExpiryDate}
+                  onChange={(e) => setSubExpiryDate(e.target.value)}
+                  className="rounded-xl text-xs font-mono"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t">
+                <Button variant="outline" size="sm" onClick={() => setLimitsModalOpen(false)} className="rounded-xl">
+                  Cancel
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={async () => {
+                    setLimitsBusy(true);
+                    try {
+                      await setBusinessLimitsFn({
+                        data: {
+                          businessId: limitsBiz.id,
+                          max_products: Number(maxProducts),
+                          max_invoices: Number(maxInvoices),
+                          subscription_expires_at: subExpiryDate ? new Date(subExpiryDate).toISOString() : undefined,
+                        },
+                      });
+                      toast.success(`Limits updated for ${limitsBiz.name}!`);
+                      setLimitsModalOpen(false);
+                      qc.invalidateQueries({ queryKey: ["businesses-admin"] });
+                    } catch (err: any) {
+                      toast.error(err.message || "Failed to update limits");
+                    } finally {
+                      setLimitsBusy(false);
+                    }
+                  }}
+                  disabled={limitsBusy}
+                  className="rounded-xl px-5 beveled-button"
+                >
+                  {limitsBusy ? "Saving..." : "Save Limits"}
+                </Button>
+              </div>
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {/* ─── MODAL 4: SEND POPUP ANNOUNCEMENT ─────────────────────────── */}
+      {popupModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <Card className="w-full max-w-md p-6 rounded-2xl bg-card border border-primary/30 shadow-2xl space-y-4">
+            <div className="space-y-1">
+              <h3 className="text-base font-bold flex items-center gap-2">
+                <Radio className="size-5 text-amber-500" />
+                {popupTargetType === "all" ? "Broadcast Announcement to All Users" : `Send Popup Alert to ${popupBiz?.name}`}
+              </h3>
+              <p className="text-xs text-muted-foreground">
+                This message will pop up as a modal in the user's dashboard.
+              </p>
+            </div>
+
+            <div className="space-y-3">
+              <div className="space-y-1">
+                <Label className="text-xs font-semibold">Alert Tone / Type</Label>
+                <div className="grid grid-cols-4 gap-2">
+                  {[
+                    { type: "info", label: "Info", color: "text-blue-500" },
+                    { type: "warning", label: "Warning", color: "text-amber-500" },
+                    { type: "urgent", label: "Urgent", color: "text-red-500" },
+                    { type: "promo", label: "Promo", color: "text-purple-500" },
+                  ].map((t) => (
+                    <Button
+                      key={t.type}
+                      type="button"
+                      variant={popupType === t.type ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setPopupType(t.type as any)}
+                      className="rounded-xl text-xs"
+                    >
+                      {t.label}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-xs font-semibold">Popup Title</Label>
+                <Input
+                  placeholder="e.g. System Maintenance Notice"
+                  value={popupTitle}
+                  onChange={(e) => setPopupTitle(e.target.value)}
+                  className="rounded-xl text-xs"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-xs font-semibold">Message Body</Label>
+                <Textarea
+                  placeholder="Write the announcement message..."
+                  rows={4}
+                  value={popupMessage}
+                  onChange={(e) => setPopupMessage(e.target.value)}
+                  className="rounded-xl text-xs leading-relaxed"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t">
+                <Button variant="outline" size="sm" onClick={() => setPopupModalOpen(false)} className="rounded-xl">
+                  Cancel
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={async () => {
+                    if (!popupTitle || !popupMessage) {
+                      toast.error("Title and message are required");
+                      return;
+                    }
+                    setPopupBusy(true);
+                    try {
+                      await createAdminPopupFn({
+                        data: {
+                          target_type: popupTargetType,
+                          target_id: popupTargetType === "business" ? popupBiz?.id : undefined,
+                          title: popupTitle,
+                          message: popupMessage,
+                          popup_type: popupType,
+                        },
+                      });
+                      toast.success("Popup published!");
+                      setPopupModalOpen(false);
+                      qc.invalidateQueries({ queryKey: ["admin-popups-list"] });
+                    } catch (err: any) {
+                      toast.error(err.message || "Failed to publish");
+                    } finally {
+                      setPopupBusy(false);
+                    }
+                  }}
+                  disabled={popupBusy}
+                  className="rounded-xl px-5 beveled-button"
+                >
+                  {popupBusy ? "Publishing..." : "Send Popup"}
+                </Button>
+              </div>
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {/* ─── MODAL 5: DELETE BUSINESS ─────────────────────────────────── */}
       {bizToDelete && (
-        <div className="fixed inset-0 bg-background/85 backdrop-blur-md z-50 flex items-center justify-center p-4">
-          <Card className="glass-card max-w-md w-full p-6 space-y-4 border-destructive/40 shadow-2xl animate-in zoom-in-95 duration-200">
-            <div className="flex items-center gap-2 text-destructive">
-              <ShieldAlert className="size-6 shrink-0" />
-              <h3 className="font-bold text-lg tracking-tight">Confirm Cascade Deletion</h3>
-            </div>
-            
-            <div className="space-y-2 text-sm text-muted-foreground leading-relaxed">
-              <p>
-                You are about to delete <strong className="text-foreground font-bold">"{selectedBizToDelete?.name}"</strong>.
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <Card className="w-full max-w-md p-6 rounded-2xl bg-card border border-destructive/30 shadow-2xl space-y-4">
+            <div className="space-y-1 text-destructive">
+              <h3 className="text-base font-bold flex items-center gap-2">
+                <Trash2 className="size-5" /> Cascade Delete Business
+              </h3>
+              <p className="text-xs text-muted-foreground">
+                This will PERMANENTLY delete the business, owner account, employees, products, sales, expenses, and logs.
               </p>
-              <p className="text-destructive bg-destructive/10 p-3 rounded-lg border border-destructive/20 text-xs">
-                <strong>WARNING:</strong> This action is permanent and completely irreversible! The following data will be deleted instantly from the database:
-              </p>
-              <ul className="text-xs space-y-1 list-disc pl-5">
-                <li>Owner account and all associated staff/employee logins</li>
-                <li>All products, sizes, inventory stocks, and catalogs</li>
-                <li>All sales records, invoices, payments, and purchase logs</li>
-                <li>All parties ledger, transactions, and outstanding dues</li>
-                <li>All cashbox transactions and overhead expenses</li>
-              </ul>
             </div>
 
-            <div className="space-y-2 pt-2">
-              <Label className="text-xs text-foreground font-semibold">
-                To confirm, type the business name <span className="text-destructive font-mono">"{selectedBizToDelete?.name}"</span>:
-              </Label>
+            <div className="space-y-2">
+              <Label className="text-xs">Type &quot;DELETE&quot; to confirm:</Label>
               <Input
-                type="text"
-                className="beveled-card bg-muted/20 border-destructive/30"
-                placeholder={selectedBizToDelete?.name}
+                placeholder="DELETE"
                 value={deleteConfirmText}
-                onChange={e => setDeleteConfirmText(e.target.value)}
+                onChange={(e) => setDeleteConfirmText(e.target.value)}
+                className="rounded-xl text-xs font-mono"
               />
             </div>
 
-            <div className="flex gap-2.5 justify-end pt-2 text-xs">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  setBizToDelete(null);
-                  setDeleteConfirmText("");
-                }}
-                className="beveled-button h-9"
-              >
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <Button variant="outline" size="sm" onClick={() => setBizToDelete(null)} className="rounded-xl">
                 Cancel
               </Button>
               <Button
-                variant="destructive"
                 size="sm"
-                disabled={deleteConfirmText !== selectedBizToDelete?.name}
+                variant="destructive"
+                disabled={deleteConfirmText !== "DELETE"}
                 onClick={async () => {
                   try {
-                    await deleteBusinessFn({ data: { businessId: selectedBizToDelete.id } });
-                    toast.success("Business cascade deletion successful");
-                    qc.invalidateQueries({ queryKey: ["businesses-admin"] });
-                    qc.invalidateQueries({ queryKey: ["platform-stats"] });
-                    qc.invalidateQueries({ queryKey: ["platform-activities"] });
+                    await deleteBusinessFn({ data: { businessId: bizToDelete } });
+                    toast.success("Business deleted permanently");
                     setBizToDelete(null);
-                    setDeleteConfirmText("");
+                    qc.invalidateQueries({ queryKey: ["businesses-admin"] });
                   } catch (err: any) {
-                    toast.error(err.message || "Cascade delete failed");
+                    toast.error(err.message || "Failed to delete");
                   }
                 }}
-                className="h-9 font-semibold shadow-inner"
+                className="rounded-xl"
               >
-                Confirm Cascade Delete
+                Delete Everything
               </Button>
             </div>
           </Card>
         </div>
       )}
 
-      {/* ═══════════ USER DELETE CONFIRMATION MODAL ═══════════ */}
-      {userToDelete && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => { setUserToDelete(null); setUserDeleteConfirmText(""); }} />
-          <Card className="relative z-10 glass-card w-full max-w-md p-6 space-y-4 border-destructive/30 shadow-2xl">
-            <div className="flex items-start gap-3">
-              <div className="p-2 bg-destructive/10 rounded-lg shrink-0">
-                <Trash2 className="size-5 text-destructive" />
-              </div>
-              <div>
-                <h2 className="font-bold text-lg text-foreground">Delete User Account</h2>
-                <p className="text-xs text-muted-foreground mt-0.5">This action is permanent and cannot be undone.</p>
-              </div>
-            </div>
-
-            <div className="space-y-2 text-sm text-muted-foreground">
-              <p>
-                You are about to delete <strong className="text-foreground font-bold">"{userToDelete.full_name}"</strong>.
-              </p>
-              <p className="text-xs text-muted-foreground">{userToDelete.email}</p>
-              <p className="text-destructive bg-destructive/10 p-3 rounded-lg border border-destructive/20 text-xs">
-                <strong>WARNING:</strong> The user account will be permanently removed. If this is a business owner, their unused employee licenses will also be deleted.
+      {/* ─── MODAL 6: RESET BUSINESS DATA ─────────────────────────────── */}
+      {bizForReset && resetType && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <Card className="w-full max-w-md p-6 rounded-2xl bg-card border border-amber-500/30 shadow-2xl space-y-4">
+            <div className="space-y-1 text-amber-600">
+              <h3 className="text-base font-bold flex items-center gap-2">
+                <RotateCcw className="size-5" /> Reset {resetType.toUpperCase()} Data
+              </h3>
+              <p className="text-xs text-muted-foreground">
+                Shop: <span className="font-semibold text-foreground">{bizForReset.name}</span>
               </p>
             </div>
 
-            <div className="space-y-2 pt-1">
-              <label className="text-xs text-foreground font-semibold">
-                To confirm, type{" "}
-                <span className="text-destructive font-mono">"Delete {userToDelete.full_name}"</span>:
-              </label>
+            <div className="space-y-2">
+              <Label className="text-xs">Select data to wipe:</Label>
+              <div className="grid grid-cols-3 gap-2">
+                {(["sales", "somiti", "expenses"] as const).map((t) => (
+                  <Button
+                    key={t}
+                    size="sm"
+                    variant={resetType === t ? "default" : "outline"}
+                    onClick={() => setResetType(t)}
+                    className="rounded-xl text-xs uppercase"
+                  >
+                    {t}
+                  </Button>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-xs">Type &quot;RESET&quot; to confirm:</Label>
+              <Input
+                placeholder="RESET"
+                value={confirmResetText}
+                onChange={(e) => setConfirmResetText(e.target.value)}
+                className="rounded-xl text-xs font-mono"
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <Button variant="outline" size="sm" onClick={() => setBizForReset(null)} className="rounded-xl">
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                disabled={confirmResetText !== "RESET"}
+                onClick={async () => {
+                  try {
+                    if (resetType === "sales") await resetSalesFn({ data: { businessId: bizForReset.id } });
+                    if (resetType === "somiti") await resetSomitiFn({ data: { businessId: bizForReset.id } });
+                    if (resetType === "expenses") await resetExpensesFn({ data: { businessId: bizForReset.id } });
+                    toast.success(`${resetType.toUpperCase()} reset completed!`);
+                    setBizForReset(null);
+                    qc.invalidateQueries({ queryKey: ["businesses-admin"] });
+                  } catch (err: any) {
+                    toast.error(err.message || "Failed to reset");
+                  }
+                }}
+                className="rounded-xl bg-amber-600 hover:bg-amber-500 text-white"
+              >
+                Confirm Reset
+              </Button>
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {/* ─── MODAL 7: CHANGE USER PASSWORD ────────────────────────────── */}
+      {userForPasswordChange && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <Card className="w-full max-w-md p-6 rounded-2xl bg-card border border-primary/30 shadow-2xl space-y-4">
+            <div className="space-y-1">
+              <h3 className="text-base font-bold flex items-center gap-2">
+                <Key className="size-5 text-primary" />
+                Change Password for {userForPasswordChange.email}
+              </h3>
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-xs">New Password</Label>
               <Input
                 type="text"
-                className="beveled-card bg-muted/20 border-destructive/30"
-                placeholder={`Delete ${userToDelete.full_name}`}
-                value={userDeleteConfirmText}
-                onChange={e => setUserDeleteConfirmText(e.target.value)}
-                autoFocus
-              />
-            </div>
-
-            <div className="flex gap-2.5 justify-end pt-1 text-xs">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => { setUserToDelete(null); setUserDeleteConfirmText(""); }}
-                className="beveled-button h-9"
-              >
-                Cancel
-              </Button>
-              <Button
-                variant="destructive"
-                size="sm"
-                disabled={userDeleteConfirmText !== `Delete ${userToDelete.full_name}`}
-                onClick={async () => {
-                  try {
-                    await deleteUserFn({ data: { userId: userToDelete.id } });
-                    toast.success(`User "${userToDelete.full_name}" has been deleted.`);
-                    qc.invalidateQueries({ queryKey: ["users-admin"] });
-                    qc.invalidateQueries({ queryKey: ["platform-stats"] });
-                    setUserToDelete(null);
-                    setUserDeleteConfirmText("");
-                  } catch (err: any) {
-                    toast.error(err.message || "Failed to delete user");
-                  }
-                }}
-                className="h-9 font-semibold shadow-inner"
-              >
-                Confirm Delete User
-              </Button>
-            </div>
-          </Card>
-        </div>
-      )}
-      {/* ═══════════ USER PASSWORD RESET MODAL ═══════════ */}
-      {userForPasswordChange && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => { setUserForPasswordChange(null); setNewPassword(""); }} />
-          <Card className="relative z-10 glass-card w-full max-w-sm p-6 space-y-4 border-primary/20 shadow-2xl bg-card">
-            <div className="flex items-start gap-3">
-              <div className="p-2 bg-primary/10 rounded-lg shrink-0 text-primary">
-                <Key className="size-5" />
-              </div>
-              <div>
-                <h2 className="font-bold text-lg text-foreground">Reset User Password</h2>
-                <p className="text-xs text-muted-foreground mt-0.5">Set a new password for this user account.</p>
-              </div>
-            </div>
-
-            <div className="space-y-1.5 text-xs text-muted-foreground">
-              <span className="font-semibold text-foreground">Email:</span> {userForPasswordChange.email}
-            </div>
-
-            <div className="space-y-2 pt-1">
-              <label className="text-xs text-foreground font-semibold">New Password (min 6 characters):</label>
-              <Input
-                type="password"
-                className="beveled-card bg-muted/20"
                 placeholder="Enter new password"
                 value={newPassword}
-                onChange={e => setNewPassword(e.target.value)}
-                autoFocus
+                onChange={(e) => setNewPassword(e.target.value)}
+                className="rounded-xl text-xs"
               />
             </div>
 
-            <div className="flex gap-2.5 justify-end pt-1 text-xs">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => { setUserForPasswordChange(null); setNewPassword(""); }}
-                className="beveled-button h-9"
-              >
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <Button variant="outline" size="sm" onClick={() => setUserForPasswordChange(null)} className="rounded-xl">
                 Cancel
               </Button>
               <Button
                 size="sm"
-                disabled={resetBusy || newPassword.trim().length < 6}
                 onClick={async () => {
+                  if (!newPassword || newPassword.length < 6) {
+                    toast.error("Password must be at least 6 characters");
+                    return;
+                  }
                   setResetBusy(true);
                   try {
-                    await changeUserPasswordFn({ data: { userId: userForPasswordChange.id, newPassword } });
-                    toast.success(`Password for ${userForPasswordChange.email} has been updated.`);
+                    await changeUserPasswordFn({
+                      data: {
+                        userId: userForPasswordChange.id,
+                        newPassword,
+                      },
+                    });
+                    toast.success("Password changed successfully!");
                     setUserForPasswordChange(null);
-                    setNewPassword("");
+                    qc.invalidateQueries({ queryKey: ["users-admin"] });
                   } catch (err: any) {
-                    toast.error(err.message || "Failed to update password");
+                    toast.error(err.message || "Failed to change password");
                   } finally {
                     setResetBusy(false);
                   }
                 }}
-                className="h-9 font-semibold shadow-inner hover:bg-primary/95"
+                disabled={resetBusy}
+                className="rounded-xl beveled-button"
               >
-                Update Password
+                {resetBusy ? "Saving..." : "Update Password"}
               </Button>
             </div>
           </Card>
         </div>
       )}
 
-      {/* ═══════════ BUSINESS DATA RESET MODAL ═══════════ */}
-      {bizForReset && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setBizForReset(null)} />
-          <Card className="relative z-10 glass-card w-full max-w-md p-6 space-y-4 border-amber-500/20 shadow-2xl bg-card animate-in zoom-in-95 duration-200">
-            <div className="flex items-start gap-3">
-              <div className="p-2.5 bg-amber-500/10 rounded-xl text-amber-500">
-                <RotateCcw className="size-5" />
-              </div>
-              <div>
-                <h2 className="font-bold text-lg text-foreground tracking-tight">Reset Business Data</h2>
-                <p className="text-xs text-muted-foreground mt-0.5">Clear records for <strong className="text-foreground font-bold">"{bizForReset.name}"</strong>.</p>
-              </div>
+      {/* ─── MODAL 8: DELETE USER ─────────────────────────────────────── */}
+      {userToDelete && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <Card className="w-full max-w-md p-6 rounded-2xl bg-card border border-destructive/30 shadow-2xl space-y-4">
+            <div className="space-y-1 text-destructive">
+              <h3 className="text-base font-bold flex items-center gap-2">
+                <Trash2 className="size-5" /> Delete User Account
+              </h3>
+              <p className="text-xs text-muted-foreground">
+                Are you sure you want to delete {userToDelete.full_name} ({userToDelete.email})?
+              </p>
             </div>
 
-            <div className="space-y-2 pt-1 text-xs">
-              <Label className="font-semibold text-foreground">Select Data Type to Reset:</Label>
-              <div className="grid grid-cols-3 gap-2">
-                <button
-                  type="button"
-                  onClick={() => { setResetType("sales"); setConfirmResetText(""); }}
-                  className={`p-3 rounded-xl border text-center font-bold transition-all text-xs cursor-pointer ${
-                    resetType === "sales"
-                      ? "bg-amber-500/10 border-amber-500 text-amber-500 shadow-sm"
-                      : "bg-muted/10 border-border/40 hover:bg-muted/30 text-muted-foreground"
-                  }`}
-                >
-                  Sells (সিলস)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { setResetType("somiti"); setConfirmResetText(""); }}
-                  className={`p-3 rounded-xl border text-center font-bold transition-all text-xs cursor-pointer ${
-                    resetType === "somiti"
-                      ? "bg-amber-500/10 border-amber-500 text-amber-500 shadow-sm"
-                      : "bg-muted/10 border-border/40 hover:bg-muted/30 text-muted-foreground"
-                  }`}
-                >
-                  Samity (সমিতি)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { setResetType("expenses"); setConfirmResetText(""); }}
-                  className={`p-3 rounded-xl border text-center font-bold transition-all text-xs cursor-pointer ${
-                    resetType === "expenses"
-                      ? "bg-amber-500/10 border-amber-500 text-amber-500 shadow-sm"
-                      : "bg-muted/10 border-border/40 hover:bg-muted/30 text-muted-foreground"
-                  }`}
-                >
-                  Expenses (খরচ)
-                </button>
-              </div>
+            <div className="space-y-2">
+              <Label className="text-xs">Type &quot;DELETE&quot; to confirm:</Label>
+              <Input
+                placeholder="DELETE"
+                value={userDeleteConfirmText}
+                onChange={(e) => setUserDeleteConfirmText(e.target.value)}
+                className="rounded-xl text-xs font-mono"
+              />
             </div>
 
-            {resetType && (
-              <div className="space-y-3 pt-2 text-xs border-t border-border/40 animate-in fade-in duration-200">
-                <div className="p-3 bg-destructive/10 text-destructive border border-destructive/20 rounded-lg text-xs leading-relaxed">
-                  <strong>WARNING:</strong> This action is completely permanent and cannot be undone. All database records of this type will be deleted instantly.
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="font-semibold text-foreground">
-                    Type <code className="font-mono font-bold text-destructive select-all bg-muted px-1 py-0.5 rounded border border-border/80 text-xs">RESET</code> to confirm:
-                  </Label>
-                  <Input
-                    type="text"
-                    className="beveled-card bg-muted/20"
-                    placeholder="Type RESET"
-                    value={confirmResetText}
-                    onChange={e => setConfirmResetText(e.target.value)}
-                    autoFocus
-                  />
-                </div>
-              </div>
-            )}
-
-            <div className="flex gap-2.5 justify-end pt-2 text-xs border-t border-border/40">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setBizForReset(null)}
-                className="beveled-button h-9"
-              >
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <Button variant="outline" size="sm" onClick={() => setUserToDelete(null)} className="rounded-xl">
                 Cancel
               </Button>
               <Button
                 size="sm"
                 variant="destructive"
-                disabled={busy || !resetType || confirmResetText !== "RESET"}
+                disabled={userDeleteConfirmText !== "DELETE"}
                 onClick={async () => {
-                  setBusy(true);
                   try {
-                    if (resetType === "sales") {
-                      await resetSalesFn({ data: { businessId: bizForReset.id } });
-                      toast.success(`Sells data for "${bizForReset.name}" reset successfully.`);
-                    } else if (resetType === "somiti") {
-                      await resetSomitiFn({ data: { businessId: bizForReset.id } });
-                      toast.success(`Samity data for "${bizForReset.name}" reset successfully.`);
-                    } else if (resetType === "expenses") {
-                      await resetExpensesFn({ data: { businessId: bizForReset.id } });
-                      toast.success(`Expenses data for "${bizForReset.name}" reset successfully.`);
-                    }
-                    qc.invalidateQueries({ queryKey: ["businesses-admin"] });
-                    qc.invalidateQueries({ queryKey: ["platform-stats"] });
-                    setBizForReset(null);
+                    await deleteUserFn({ data: { userId: userToDelete.id } });
+                    toast.success("User account deleted");
+                    setUserToDelete(null);
+                    qc.invalidateQueries({ queryKey: ["users-admin"] });
                   } catch (err: any) {
-                    toast.error(err.message || "Failed to reset data");
-                  } finally {
-                    setBusy(false);
+                    toast.error(err.message || "Failed to delete");
                   }
                 }}
-                className="h-9 font-semibold shadow-inner"
+                className="rounded-xl"
               >
-                Execute Reset
+                Confirm Delete
               </Button>
             </div>
-          </Card>
-        </div>
-      )}
-
-      {/* ═══════════ SUPER ADMIN PASSWORD CHANGE MODAL ═══════════ */}
-      {superAdminPassOpen && (
-        <div className="fixed inset-0 z-[75] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => { setSuperAdminPassOpen(false); setSuperAdminCurrentPass(""); setSuperAdminNewPass(""); }} />
-          <Card className="relative z-10 glass-card w-full max-w-sm p-6 space-y-4 border-amber-500/20 shadow-2xl bg-card">
-            <div className="flex items-start gap-3">
-              <div className="p-2.5 bg-amber-500/10 rounded-xl text-amber-500 shrink-0">
-                <Lock className="size-5" />
-              </div>
-              <div>
-                <h2 className="font-bold text-lg text-foreground tracking-tight">Super Admin Credentials</h2>
-                <p className="text-xs text-muted-foreground mt-0.5">Update Super Admin Console access password.</p>
-              </div>
-            </div>
-
-            <form
-              onSubmit={async e => {
-                e.preventDefault();
-                if (superAdminNewPass.trim().length < 6) {
-                  return toast.error("New password must be at least 6 characters long");
-                }
-                setSuperAdminPassBusy(true);
-                try {
-                  await changeSuperAdminPasswordFn({
-                    data: {
-                      currentPassword: superAdminCurrentPass || undefined,
-                      newPassword: superAdminNewPass.trim(),
-                    },
-                  });
-                  toast.success("Super Admin password updated & synchronized!");
-                  setSuperAdminPassOpen(false);
-                  setSuperAdminCurrentPass("");
-                  setSuperAdminNewPass("");
-                } catch (err: any) {
-                  toast.error(err.message || "Failed to update password");
-                } finally {
-                  setSuperAdminPassBusy(false);
-                }
-              }}
-              className="space-y-3 pt-1"
-            >
-              <div className="space-y-1.5">
-                <label className="text-xs text-foreground font-semibold">Current Password (optional):</label>
-                <Input
-                  type="password"
-                  className="beveled-card bg-muted/20"
-                  placeholder="Enter current password"
-                  value={superAdminCurrentPass}
-                  onChange={e => setSuperAdminCurrentPass(e.target.value)}
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-xs text-foreground font-semibold">New Password (min 6 chars):</label>
-                <Input
-                  type="password"
-                  className="beveled-card bg-muted/20"
-                  placeholder="Enter new password"
-                  value={superAdminNewPass}
-                  onChange={e => setSuperAdminNewPass(e.target.value)}
-                  required
-                />
-              </div>
-
-              <div className="p-2.5 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 rounded-lg text-[11px] flex items-center gap-2">
-                <CheckCircle className="size-4 shrink-0" />
-                <span>Password will be permanently saved and updated in database.</span>
-              </div>
-
-              <div className="flex gap-2.5 justify-end pt-2 text-xs border-t border-border/40">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => { setSuperAdminPassOpen(false); setSuperAdminCurrentPass(""); setSuperAdminNewPass(""); }}
-                  className="beveled-button h-9"
-                >
-                  Cancel
-                </Button>
-                <Button
-                  type="submit"
-                  size="sm"
-                  disabled={superAdminPassBusy || superAdminNewPass.trim().length < 6}
-                  className="h-9 font-semibold shadow-inner bg-amber-600 hover:bg-amber-700 text-white"
-                >
-                  {superAdminPassBusy ? "Updating…" : "Save Super Admin PW"}
-                </Button>
-              </div>
-            </form>
           </Card>
         </div>
       )}

@@ -7,9 +7,8 @@ import { SpeedLoader } from "@/components/speed-loader";
 import { useAuth } from "@/hooks/use-auth";
 import { useT } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
 import { loginFn, registerFn } from "@/lib/rpc";
-import { GoogleAuthProvider, signInWithPopup } from "firebase/auth";
-import { auth } from "@/lib/firebase";
 import type { AuthUser } from "@/hooks/use-auth";
 
 export default function AuthPage() {
@@ -29,10 +28,8 @@ export default function AuthPage() {
 
   useEffect(() => {
     if (mounted && !loading) {
-      if (user?.activated) {
+      if (user) {
         router.replace("/dashboard");
-      } else if (user && !user.activated) {
-        router.replace("/activate");
       }
     }
   }, [user, loading, router, mounted]);
@@ -42,7 +39,7 @@ export default function AuthPage() {
   function afterAuth(u: AuthUser | null) {
     if (!u) return;
     login(u);
-    router.replace(u.activated ? "/dashboard" : "/activate");
+    router.replace("/dashboard");
   }
 
   async function signIn(e: React.FormEvent) {
@@ -63,60 +60,10 @@ export default function AuthPage() {
     setBusy(true);
     try {
       const data = await registerFn({ data: { email, password, fullName } });
-      toast.success(lang === "bn" ? "একাউন্ট তৈরি — লাইসেন্স দিয়ে সক্রিয় করুন" : "Account created — activate with license");
+      toast.success(lang === "bn" ? "একাউন্ট সফলভাবে তৈরি হয়েছে!" : "Account created successfully!");
       afterAuth(data.user as AuthUser);
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Registration failed");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function signInWithGoogle() {
-    setBusy(true);
-    try {
-      const provider = new GoogleAuthProvider();
-      provider.setCustomParameters({ prompt: "select_account" });
-      const res = await signInWithPopup(auth, provider);
-      const fbUser = res.user;
-      const gEmail = (fbUser.email || "").trim().toLowerCase();
-
-      let existingProfile: any = null;
-      if (typeof window !== "undefined") {
-        const stored = window.localStorage.getItem("classicworld_auth_profile") || window.localStorage.getItem("hz-auth-profile");
-        if (stored) {
-          try {
-            existingProfile = JSON.parse(stored);
-          } catch (_) {}
-        }
-      }
-
-      const authUser: AuthUser = {
-        id: fbUser.uid || existingProfile?.id || "cw_" + Date.now(),
-        email: gEmail,
-        full_name: fbUser.displayName || existingProfile?.full_name || gEmail.split("@")[0] || "Classic World User",
-        business_name: "Classic World",
-        role: existingProfile?.role || "owner",
-        activated: true,
-        license_key: existingProfile?.license_key || "HZ-GOOGLE-AUTH",
-        avatar_url: fbUser.photoURL || undefined,
-        logo_url: "/logo.svg",
-      };
-
-      if (typeof window !== "undefined") {
-        window.localStorage.setItem("classicworld_auth_profile", JSON.stringify(authUser));
-        window.localStorage.setItem("hz-auth-profile", JSON.stringify(authUser));
-        window.localStorage.setItem("auth_token", "cw_google_" + fbUser.uid);
-      }
-
-      toast.success(lang === "bn" ? "গুগল সাইন-ইন সফল হয়েছে!" : "Google sign-in successful!");
-      afterAuth(authUser);
-    } catch (err: unknown) {
-      console.error("Google sign in error:", err);
-      const msg = err instanceof Error ? err.message : "Google sign-in failed";
-      if (!msg.includes("popup-closed-by-user")) {
-        toast.error(msg);
-      }
     } finally {
       setBusy(false);
     }
@@ -475,13 +422,6 @@ export default function AuthPage() {
               {busy ? "…" : (activeTab === "signin" ? t("sign_in") : t("create_account"))}
             </button>
 
-            {/* Info Message */}
-            {activeTab === "signup" && (
-              <p className="text-[9.5px] text-zinc-400 text-center leading-normal mt-0.5">
-                After signup you will activate with a license key (HZ-… or EMP-…).
-              </p>
-            )}
-
             {/* Toggle Signin / Signup */}
             <p className="p mt-0.5 text-xs">
               {activeTab === "signin" ? "Don't have an account? " : "Already have an account? "}
@@ -498,7 +438,7 @@ export default function AuthPage() {
 
             {/* Social log-in row */}
             <div className="flex-row">
-              <button type="button" disabled={busy} onClick={signInWithGoogle} className="btn google flex-1 border-0 cursor-pointer transition-transform active:scale-95">
+              <button type="button" onClick={() => toast.info("Google sign-in is disabled")} className="btn google flex-1 border-0">
                 <svg version="1.1" width="15" id="Layer_1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" className="size-3.5">
                   <path style={{ fill: "#FBBB00" }} d="M113.47,309.408L95.648,375.94l-65.139,1.378C11.042,341.211,0,299.9,0,256c0-42.451,10.324-82.483,28.624-117.732h0.014l57.992,10.632l25.404,57.644c-5.317,15.501-8.215,32.141-8.215,49.456C103.821,274.792,107.225,292.797,113.47,309.408z"></path>
                   <path style={{ fill: "#518EF8" }} d="M507.527,208.176C510.467,223.662,512,239.655,512,256c0,18.328-1.927,36.206-5.598,53.451c-12.462,58.683-45.025,109.925-90.134,146.187l-0.014-0.014l-73.044-3.727l-10.338-64.535c29.932-17.554,53.324-45.025,65.646-77.911h-136.89V208.176h138.887L507.527,208.176L507.527,208.176z"></path>

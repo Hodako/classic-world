@@ -6,7 +6,7 @@ import { hashPassword, comparePassword, signToken, verifyToken } from "@/lib/aut
 import { requireSession, generateLicenseKey } from "@/lib/session";
 import { DEFAULT_EMPLOYEE_PERMISSIONS, OWNER_PERMISSIONS, type PermissionSet } from "@/lib/permissions";
 
-const DEFAULT_COMPANY = "Classic World";
+const DEFAULT_COMPANY = "HakimQzz";
 
 async function ensureSuperAdmin() {
   const db = await getDb();
@@ -40,7 +40,7 @@ export async function superAdminLoginFn(input: { data: { username: string; passw
   if (!admin || !(await comparePassword(data.password, admin.password as string, admin.plain_password as string))) {
     throw new Error("Invalid credentials");
   }
-  const token = await signToken({ userId: "superadmin", email: "superadmin@Classic World.local" });
+  const token = await signToken({ userId: "superadmin", email: "superadmin@hakimqzz.local" });
   const cookieStore = await cookies();
   cookieStore.set("super_token", token, { maxAge: 8 * 60 * 60, httpOnly: true, sameSite: "lax", path: "/" });
   return { success: true };
@@ -89,7 +89,7 @@ export async function listPlatformLicensesFn(): Promise<any[]> {
 export async function listBusinessesFn(): Promise<any[]> {
   await requireSuperAdminSession();
   const db = await getDb();
-  const items = await db.collection("businesses").find({}).sort({ created_at: -1 }).limit(100).toArray();
+  const items = await db.collection("businesses").find({}).sort({ created_at: -1 }).limit(200).toArray();
   
   const ownerIds = items.map(b => b.owner_id);
   const owners = await db.collection("users").find({ _id: { $in: ownerIds } }).toArray();
@@ -100,13 +100,23 @@ export async function listBusinessesFn(): Promise<any[]> {
     const ownerId = b.owner_id;
     const productCount = await db.collection("products").countDocuments({ owner_id: ownerId });
     const saleCount = await db.collection("sales").countDocuments({ owner_id: ownerId });
+    const invoiceCount = await db.collection("invoices").countDocuments({ owner_id: ownerId });
+    const smsCount = await db.collection("sms_logs").countDocuments({ owner_id: ownerId });
+
     results.push({
       ...b,
       id: b._id as any as string,
       owner_email: ownerMap.get(ownerId) || "No owner email",
       product_count: productCount,
       sale_count: saleCount,
+      invoice_count: invoiceCount || saleCount,
+      sms_sent_count: smsCount,
+      sms_credits: Number(b.sms_credits ?? 50),
       status: (b.status as string) || "active",
+      frozen_reason: (b.frozen_reason as string) || "",
+      subscription_expires_at: (b.subscription_expires_at as string) || null,
+      max_products: Number(b.max_products || 500),
+      max_invoices: Number(b.max_invoices || 10000),
     });
   }
   return results;
@@ -129,9 +139,10 @@ export async function listAllUsersFn(): Promise<any[]> {
     email: (u.email as string) || "",
     full_name: (u.full_name as string) || "",
     role: (u.role as string) || "user",
-    activated: Boolean(u.activated),
+    activated: true,
+    status: (u.status as string) || "active",
     business_id: (u.business_id as string) || null,
-    business_name: u.business_id ? (bizMap.get(u.business_id as string) || "Unknown Business") : "Pending Activation",
+    business_name: u.business_id ? (bizMap.get(u.business_id as string) || "Unknown Business") : "Active Shop",
     created_at: (u.created_at as string) || (u.activated_at as string) || "",
     plain_password: (u.plain_password as string) || "(Hashed in DB)",
     password_updated_at: (u.password_updated_at as string) || (u.updated_at as string) || null,
@@ -143,9 +154,11 @@ export async function getPlatformStatsFn(): Promise<any> {
   const db = await getDb();
   
   const totalBusinesses = await db.collection("businesses").countDocuments({});
+  const activeBusinesses = await db.collection("businesses").countDocuments({ status: { $ne: "frozen" } });
+  const frozenBusinesses = await db.collection("businesses").countDocuments({ status: "frozen" });
   const totalUsers = await db.collection("users").countDocuments({});
-  const totalLicenses = await db.collection("licenses").countDocuments({});
   const totalProducts = await db.collection("products").countDocuments({});
+  const totalSmsSent = await db.collection("sms_logs").countDocuments({});
   
   const salesSum = await db.collection("sales").aggregate([
     {
@@ -173,9 +186,11 @@ export async function getPlatformStatsFn(): Promise<any> {
 
   return {
     totalBusinesses,
+    activeBusinesses,
+    frozenBusinesses,
     totalUsers,
-    totalLicenses,
     totalProducts,
+    totalSmsSent,
     totalSalesVolume,
     totalExpenseVolume,
     totalPlatformNetProfit,
@@ -320,7 +335,7 @@ export async function activateLicenseFn(input: { data: { licenseKey: string } })
       _id: businessId as any,
       owner_id: session.userId,
       name: DEFAULT_COMPANY,
-      logo_url: "/logo.svg",
+      logo_url: "/logo.png",
       business_type: "retail",
       theme: "green",
       employee_limit: license.employee_limit ?? 5,
@@ -392,7 +407,7 @@ export async function getBusinessSettingsFn() {
       _id: id as any,
       owner_id: session.ownerId,
       name: DEFAULT_COMPANY,
-      logo_url: "/logo.svg",
+      logo_url: "/logo.png",
       business_type: "retail",
       theme: "green",
       employee_limit: 5,
@@ -423,7 +438,7 @@ export async function getBusinessSettingsFn() {
       invoice_page_size: (business.invoice_page_size as string) || "80mm",
       invoice_page_width: (business.invoice_page_width as string) || "",
       invoice_page_height: (business.invoice_page_height as string) || "",
-      logo_url: (business.logo_url as string) || "/logo.svg",
+      logo_url: (business.logo_url as string) || "/logo.png",
       business_type: (business.business_type as string) || "retail",
       theme: (business.theme as string) || "green",
       employee_limit: (business.employee_limit as number) || 5,
@@ -682,4 +697,265 @@ export async function resetExpensesFn(input: { data: { businessId: string } }) {
   await db.collection("cashbox_entries").deleteMany({ owner_id: ownerId, kind: "expense" });
 
   return { success: true };
+}
+
+// ─── Superadmin SMS Refill & Management ──────────────────────────────────────
+
+export async function refillBusinessSmsFn(input: {
+  data: {
+    businessId: string;
+    amount: number;
+    type?: "add" | "set" | "deduct";
+    note?: string;
+  };
+}) {
+  const { data } = input;
+  await requireSuperAdminSession();
+  const db = await getDb();
+
+  const biz = await db.collection("businesses").findOne({ _id: data.businessId as any });
+  if (!biz) throw new Error("Business not found");
+
+  const currentCredits = Number(biz.sms_credits ?? 50);
+  const amount = Number(data.amount) || 0;
+  let newCredits = currentCredits;
+
+  if (data.type === "set") {
+    newCredits = Math.max(0, amount);
+  } else if (data.type === "deduct") {
+    newCredits = Math.max(0, currentCredits - amount);
+  } else {
+    // Default "add"
+    newCredits = currentCredits + amount;
+  }
+
+  const now = new Date().toISOString();
+  await db.collection("businesses").updateOne(
+    { _id: data.businessId as any },
+    { $set: { sms_credits: newCredits, updated_at: now } }
+  );
+
+  // Log SMS refill
+  await db.collection("sms_refill_logs").insertOne({
+    _id: crypto.randomUUID() as any,
+    business_id: data.businessId,
+    business_name: biz.name,
+    owner_id: biz.owner_id,
+    previous_credits: currentCredits,
+    amount_changed: amount,
+    type: data.type || "add",
+    new_credits: newCredits,
+    note: data.note || "Refilled by Superadmin",
+    created_at: now,
+  });
+
+  return { success: true, sms_credits: newCredits };
+}
+
+// ─── Superadmin Account Freeze / Unfreeze / Ban ─────────────────────────────
+
+export async function freezeBusinessFn(input: {
+  data: {
+    businessId: string;
+    freeze: boolean;
+    reason?: string;
+    subscription_expires_at?: string;
+  };
+}) {
+  const { data } = input;
+  await requireSuperAdminSession();
+  const db = await getDb();
+
+  const biz = await db.collection("businesses").findOne({ _id: data.businessId as any });
+  if (!biz) throw new Error("Business not found");
+
+  const now = new Date().toISOString();
+  const status = data.freeze ? "frozen" : "active";
+  const updates: Record<string, any> = {
+    status,
+    frozen_reason: data.freeze ? (data.reason || "Subscription payment pending") : null,
+    updated_at: now,
+  };
+
+  if (data.subscription_expires_at) {
+    updates.subscription_expires_at = data.subscription_expires_at;
+  }
+
+  await db.collection("businesses").updateOne(
+    { _id: data.businessId as any },
+    { $set: updates }
+  );
+
+  // Also sync user status
+  await db.collection("users").updateMany(
+    { business_id: data.businessId },
+    { $set: { status, frozen_reason: updates.frozen_reason, updated_at: now } }
+  );
+
+  return { success: true, status };
+}
+
+// ─── Superadmin Set Custom Limits & Subscriptions ───────────────────────────
+
+export async function setBusinessLimitsFn(input: {
+  data: {
+    businessId: string;
+    max_products?: number;
+    max_invoices?: number;
+    employee_limit?: number;
+    subscription_expires_at?: string;
+  };
+}) {
+  const { data } = input;
+  await requireSuperAdminSession();
+  const db = await getDb();
+
+  const biz = await db.collection("businesses").findOne({ _id: data.businessId as any });
+  if (!biz) throw new Error("Business not found");
+
+  const updates: Record<string, any> = {
+    updated_at: new Date().toISOString(),
+  };
+
+  if (data.max_products !== undefined) updates.max_products = Number(data.max_products) || 500;
+  if (data.max_invoices !== undefined) updates.max_invoices = Number(data.max_invoices) || 10000;
+  if (data.employee_limit !== undefined) updates.employee_limit = Number(data.employee_limit) || 5;
+  if (data.subscription_expires_at !== undefined) updates.subscription_expires_at = data.subscription_expires_at;
+
+  await db.collection("businesses").updateOne(
+    { _id: data.businessId as any },
+    { $set: updates }
+  );
+
+  return { success: true };
+}
+
+// ─── Superadmin Popups & Broadcast Alerts ────────────────────────────────────
+
+export async function createAdminPopupFn(input: {
+  data: {
+    target_type: "all" | "business" | "user";
+    target_id?: string;
+    title: string;
+    message: string;
+    popup_type?: "info" | "warning" | "urgent" | "promo";
+    expires_at?: string;
+  };
+}) {
+  const { data } = input;
+  await requireSuperAdminSession();
+  const db = await getDb();
+
+  if (!data.title || !data.message) {
+    throw new Error("Popup Title and Message are required");
+  }
+
+  const id = crypto.randomUUID();
+  const doc = {
+    _id: id as any,
+    target_type: data.target_type || "all",
+    target_id: data.target_id || null,
+    title: data.title.trim(),
+    message: data.message.trim(),
+    popup_type: data.popup_type || "info",
+    expires_at: data.expires_at || null,
+    active: true,
+    created_at: new Date().toISOString(),
+  };
+
+  await db.collection("admin_popups").insertOne(doc as any);
+
+  return { success: true, id };
+}
+
+export async function listAdminPopupsFn(): Promise<any[]> {
+  await requireSuperAdminSession();
+  const db = await getDb();
+  const popups = await db.collection("admin_popups").find({}).sort({ created_at: -1 }).limit(50).toArray();
+  return popups.map(p => ({ ...p, id: p._id as any as string }));
+}
+
+export async function deleteAdminPopupFn(input: { data: { popupId: string } }) {
+  const { data } = input;
+  await requireSuperAdminSession();
+  const db = await getDb();
+  await db.collection("admin_popups").deleteOne({ _id: data.popupId as any });
+  return { success: true };
+}
+
+// ─── Superadmin Master SMS Gateway Settings ─────────────────────────────────
+
+export async function getMasterSmsSettingsFn() {
+  await requireSuperAdminSession();
+  const db = await getDb();
+  const platform = await db.collection("platform_settings").findOne({ _id: "global" as any });
+
+  return {
+    apiKey: (platform?.master_sms_api_key as string) || "",
+    userName: (platform?.master_sms_user_name as string) || "",
+    senderName: (platform?.master_sms_sender_name as string) || "DreamFashion",
+    adminWhatsapp: (platform?.admin_whatsapp as string) || "8801700000000",
+  };
+}
+
+export async function updateMasterSmsSettingsFn(input: {
+  data: {
+    apiKey: string;
+    userName: string;
+    senderName: string;
+    adminWhatsapp?: string;
+  };
+}) {
+  const { data } = input;
+  await requireSuperAdminSession();
+  const db = await getDb();
+
+  await db.collection("platform_settings").updateOne(
+    { _id: "global" as any },
+    {
+      $set: {
+        master_sms_api_key: (data.apiKey || "").trim(),
+        master_sms_user_name: (data.userName || "").trim(),
+        master_sms_sender_name: (data.senderName || "").trim(),
+        admin_whatsapp: (data.adminWhatsapp || "").trim(),
+        updated_at: new Date().toISOString(),
+      },
+    },
+    { upsert: true }
+  );
+
+  return { success: true };
+}
+
+export async function directSendSmsAsAdminFn(input: {
+  data: {
+    mobileNumber: string;
+    message: string;
+    routeType?: "T" | "P";
+  };
+}) {
+  const { data } = input;
+  await requireSuperAdminSession();
+  const db = await getDb();
+
+  const platform = await db.collection("platform_settings").findOne({ _id: "global" as any });
+  const apiKey = (platform?.master_sms_api_key as string) || "";
+  const userName = (platform?.master_sms_user_name as string) || "";
+  const senderName = (platform?.master_sms_sender_name as string) || "DreamFashion";
+
+  if (!apiKey || !userName) {
+    throw new Error("Master MiMSMS credentials are not configured. Please save API Key & Username first.");
+  }
+
+  const { sendSingleSms } = await import("@/lib/mimsms");
+  const res = await sendSingleSms({
+    apiKey,
+    userName,
+    senderName,
+    mobileNumber: data.mobileNumber,
+    message: data.message,
+    transactionType: data.routeType || "T",
+  });
+
+  return res;
 }

@@ -36,6 +36,7 @@ import { FloatingAiChat } from "@/components/floating-ai-chat";
 import { PWAInstallButton } from "@/components/pwa-install-button";
 
 import { CustomHomeIcon } from "@/components/custom-home-icon";
+import { AdminPopupDialog } from "@/components/admin-popup-dialog";
 
 type NavItem = {
   to: string;
@@ -435,6 +436,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </nav>
       )}
       <FloatingAiChat />
+      <AdminPopupDialog />
     </div>
   );
 }

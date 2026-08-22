@@ -266,3 +266,7 @@ export const sendSmsCampaignFn = makeWriteAction("sendSmsCampaignFn");
 export const getSmsLogsFn = makeReadAction("getSmsLogsFn");
 export const checkSmsDeliveryStatusFn = makeWriteAction("checkSmsDeliveryStatusFn");
 export const deleteSmsLogFn = makeWriteAction("deleteSmsLogFn");
+
+// ── Admin Popups & Announcements ──────────────────────────────────────────
+export const getActiveAdminPopupsFn = makeReadAction("getActiveAdminPopupsFn");
+export const dismissAdminPopupFn = makeWriteAction("dismissAdminPopupFn");

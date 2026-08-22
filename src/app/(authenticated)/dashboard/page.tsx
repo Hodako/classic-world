@@ -795,11 +795,20 @@ export default function Dashboard() {
   const onlinePendingToday = filteredSales.filter(s => s.type === "online" && (s as any).courier_status !== "collected" && (s as any).courier_status !== "cancelled").reduce((a, s) => a + Number(s.sell_price) * s.qty, 0);
   const onlineCollectedToday = filteredSales.filter(s => s.type === "online" && (s as any).courier_status === "collected").reduce((a, s) => a + Number(s.sell_price) * s.qty, 0);
   const cashboxDepositedToday = cashToday + bkashToday + bankToday + onlineCollectedToday;
-  const purchasesToday = filteredPurchases.reduce((a, p) => a + Number(p.total), 0);
-  const profitToday  = filteredSales.filter(s => !s.returned && (s as any).courier_status !== "cancelled").reduce((a, s) => a + Number(s.profit), 0);
+  const validFilteredSales = filteredSales.filter(s => !s.returned && (s as any).courier_status !== "cancelled");
+  const calcSaleProfit = (s: any) => {
+    if (s.profit !== undefined && s.profit !== null && !isNaN(Number(s.profit))) {
+      return Number(s.profit);
+    }
+    const sell = Number(s.sell_price) || 0;
+    const buy = Number(s.buy_price) || 0;
+    const qty = Number(s.qty) || 1;
+    return (sell - buy) * qty;
+  };
+  const profitToday  = validFilteredSales.reduce((a, s) => a + calcSaleProfit(s), 0);
   
   // loss today
-  const lossToday = filteredSales.filter(s => !s.returned && Number(s.profit) < 0).reduce((a, s) => a + Math.abs(Number(s.profit)), 0);
+  const lossToday = validFilteredSales.filter(s => calcSaleProfit(s) < 0).reduce((a, s) => a + Math.abs(calcSaleProfit(s)), 0);
   
   const totalDues = allParties.reduce((sum, p) => {
     if (p.archived) return sum;

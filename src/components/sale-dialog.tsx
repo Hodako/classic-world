@@ -208,12 +208,12 @@ export function SaleDialog({
   const sellTotal = cart.reduce((a, l) => a + lineTotal(l), 0);
   const profitTotal = cart.reduce((a, l) => {
     const p = products.find(x => x.id === l.productId);
-    if (!p) return a;
-    const sell = Number(l.sellPrice) || p.sell_price || 0;
+    const sell = Number(l.sellPrice) || (p ? p.sell_price : 0) || 0;
     const disc = Number(l.discount) || 0;
     const finalPrice = Math.max(sell - disc, 0);
-    const qty = Number(l.qty) || 0;
-    return a + (finalPrice - p.buy_price) * qty;
+    const qty = Number(l.qty) || 1;
+    const buy = Number(p?.buy_price) || 0;
+    return a + (finalPrice - buy) * qty;
   }, 0);
 
   const isFullPaid = type === "cash" || type === "bkash" || type === "online";
@@ -806,9 +806,19 @@ export function SaleDialog({
                     <span>{t("total")}</span>
                     <span className="text-base font-serif text-foreground">৳{sellTotal}</span>
                   </div>
-                  {profitTotal !== 0 && (
-                    <div className="text-[10px] text-emerald-600 dark:text-emerald-400 text-right font-medium">
-                      +{fmtMoney(profitTotal)} profit
+                  {cart.length > 0 && (
+                    <div className={`text-[11px] font-bold text-right ${
+                      profitTotal > 0
+                        ? "text-emerald-600 dark:text-emerald-400"
+                        : profitTotal < 0
+                        ? "text-rose-600 dark:text-rose-400"
+                        : "text-muted-foreground"
+                    }`}>
+                      {profitTotal > 0
+                        ? `+${fmtMoney(profitTotal)} ${lang === "bn" ? "লাভ" : "Profit"}`
+                        : profitTotal < 0
+                        ? `-${fmtMoney(Math.abs(profitTotal))} ${lang === "bn" ? "ক্ষতি" : "Loss"}`
+                        : `৳0 ${lang === "bn" ? "লাভ/ক্ষতিহীন" : "Breakeven"}`}
                     </div>
                   )}
                 </div>
@@ -817,9 +827,24 @@ export function SaleDialog({
           </div>
 
           <DialogFooter className="px-5 py-3 shrink-0 border-t border-border bg-card flex flex-row items-center justify-between sm:justify-between gap-2">
-            <div className="text-xs">
+            <div className="text-xs flex items-center gap-1.5 flex-wrap">
               <span className="text-muted-foreground">{t("total")}: </span>
               <span className="font-bold text-base font-serif text-foreground">৳{sellTotal}</span>
+              {cart.length > 0 && (
+                <span className={`text-[11px] font-bold ${
+                  profitTotal > 0
+                    ? "text-emerald-600 dark:text-emerald-400"
+                    : profitTotal < 0
+                    ? "text-rose-600 dark:text-rose-400"
+                    : "text-muted-foreground"
+                }`}>
+                  ({profitTotal > 0
+                    ? `+${fmtMoney(profitTotal)} ${lang === "bn" ? "লাভ" : "Profit"}`
+                    : profitTotal < 0
+                    ? `-${fmtMoney(Math.abs(profitTotal))} ${lang === "bn" ? "ক্ষতি" : "Loss"}`
+                    : `৳0`})
+                </span>
+              )}
             </div>
             <div className="flex items-center gap-1.5 flex-wrap">
               <Button

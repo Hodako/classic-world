@@ -404,11 +404,18 @@ export default function Dashboard() {
 
     if (!revealedKpis[key]) {
       setRevealedKpis(prev => ({ ...prev, [key]: true }));
-      toast.info(
-        lang === "bn"
-          ? (key === "profit" ? "লাভের পরিমাণ দেখানো হচ্ছে (পুনরায় ট্যাপ করলে বিস্তারিত পেজে যাবে)" : "সমিতি জমার পরিমাণ দেখানো হচ্ছে (পুনরায় ট্যাপ করলে বিস্তারিত পেজে যাবে)")
-          : "Amount revealed (tap again to open details page)"
-      );
+      const hasShown = typeof sessionStorage !== "undefined" && sessionStorage.getItem(`kpi_hint_${key}`);
+      if (!hasShown) {
+        try {
+          sessionStorage.setItem(`kpi_hint_${key}`, "true");
+        } catch (_) {}
+        toast.info(
+          lang === "bn"
+            ? (key === "profit" ? "লাভের পরিমাণ দৃশ্যমান হয়েছে" : "সমিতি জমার পরিমাণ দৃশ্যমান হয়েছে")
+            : "Amount revealed",
+          { duration: 900 }
+        );
+      }
     } else {
       router.push(path);
     }
@@ -2500,7 +2507,7 @@ export default function Dashboard() {
           >
             <ShoppingBag className="size-4" />
             <span>{t("new_sale")}</span>
-            <span className="text-[10px] font-mono opacity-80 ml-0.5">[Space]</span>
+            <span className="text-[10px] font-mono opacity-80 ml-0.5 hidden sm:inline">[Space]</span>
           </Button>
         </div>
       </div>

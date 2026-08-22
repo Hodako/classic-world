@@ -510,7 +510,7 @@ export default function SalesPage() {
       <div className="grid grid-cols-3 gap-2 text-center">
         <Card
           className="p-2.5 sm:p-3 rounded-xl border-[0.5px] border-black/75 shadow-xs transition-all text-zinc-950"
-          style={{ backgroundColor: "#fff3a3" }}
+          style={{ backgroundColor: "#E0B0FF" }}
         >
           <span className="text-[11px] sm:text-xs font-bold font-balooda text-zinc-900 uppercase tracking-tight block">
             {lang === "bn" ? "মোট বিক্রি" : "Total Sales"}
@@ -521,25 +521,25 @@ export default function SalesPage() {
         </Card>
 
         <Card
-          className="p-2.5 sm:p-3 rounded-xl border-[0.5px] border-black/75 shadow-xs transition-all text-emerald-950"
-          style={{ backgroundColor: "#fff3a3" }}
+          className="p-2.5 sm:p-3 rounded-xl border-[0.5px] border-black/75 shadow-xs transition-all text-zinc-950"
+          style={{ backgroundColor: "#E0B0FF" }}
         >
-          <span className="text-[11px] sm:text-xs font-bold font-balooda text-emerald-950 uppercase tracking-tight block">
+          <span className="text-[11px] sm:text-xs font-bold font-balooda text-zinc-900 uppercase tracking-tight block">
             {lang === "bn" ? "মোট লাভ" : "Total Profit"}
           </span>
-          <p className="text-base sm:text-lg font-extrabold font-serif text-emerald-950 mt-0.5">
+          <p className="text-base sm:text-lg font-extrabold font-serif text-zinc-950 mt-0.5">
             {fmtMoney(filteredTotalProfit)}
           </p>
         </Card>
 
         <Card
-          className="p-2.5 sm:p-3 rounded-xl border-[0.5px] border-black/75 shadow-xs transition-all text-rose-950"
-          style={{ backgroundColor: "#fff3a3" }}
+          className="p-2.5 sm:p-3 rounded-xl border-[0.5px] border-black/75 shadow-xs transition-all text-zinc-950"
+          style={{ backgroundColor: "#E0B0FF" }}
         >
-          <span className="text-[11px] sm:text-xs font-bold font-balooda text-rose-950 uppercase tracking-tight block">
+          <span className="text-[11px] sm:text-xs font-bold font-balooda text-zinc-900 uppercase tracking-tight block">
             {lang === "bn" ? "মোট বাকী" : "Total Due"}
           </span>
-          <p className="text-base sm:text-lg font-extrabold font-serif text-rose-950 mt-0.5">
+          <p className="text-base sm:text-lg font-extrabold font-serif text-zinc-950 mt-0.5">
             {fmtMoney(filteredTotalDue)}
           </p>
         </Card>

@@ -648,7 +648,7 @@ export function SaleDialog({
                   )}
 
                   <Button type="button" variant="default" size="sm" className="w-full h-9 text-xs font-semibold cursor-pointer" onClick={addToCart}>
-                    <Plus className="size-4 mr-1" />{t("add_to_cart")} <span className="opacity-70 ml-1 font-mono text-[10px]">[Enter]</span>
+                    <Plus className="size-4 mr-1" />{t("add_to_cart")} <span className="opacity-70 ml-1 font-mono text-[10px] hidden sm:inline">[Enter]</span>
                   </Button>
                 </div>
               </div>

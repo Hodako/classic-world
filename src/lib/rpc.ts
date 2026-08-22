@@ -116,6 +116,7 @@ export const getRemindersFn = makeReadAction("getRemindersFn");
 // ─── Export Network-Only Auth/Writes ─────────────────────────────────────────
 export const loginFn = makeReadAction("loginFn");
 export const registerFn = makeReadAction("registerFn");
+export const firebaseAuthSyncFn = makeReadAction("firebaseAuthSyncFn");
 export const logoutFn = makeReadAction("logoutFn");
 export const changeMyPasswordFn = makeReadAction("changeMyPasswordFn");
 export const verifyOwnerPasswordFn = makeReadAction("verifyOwnerPasswordFn");

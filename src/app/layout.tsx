@@ -4,17 +4,37 @@ import { PwaInstallPrompt } from "@/components/pwa-install-prompt";
 import "../styles.css";
 
 export const metadata: Metadata = {
-  title: "Dream Fashion — Smart POS & Accounting",
-  description: "Smart Inventory, Sales, POS & Accounting Management System.",
-  authors: [{ name: "Dream Fashion" }],
+  metadataBase: new URL("https://hakimqzz.web.app"),
+  title: "HakimQzz POS software",
+  description: "HakimQzz POS software — Automated inventory, sales, accounting, and store management system for any shop.",
+  authors: [{ name: "HakimQzz" }],
   icons: {
     icon: "/logo.png",
     apple: "/apple-touch-icon.png",
   },
   manifest: "/manifest.json",
+  openGraph: {
+    title: "HakimQzz POS software",
+    description: "HakimQzz POS software — Automated inventory, sales, accounting, and store management system for any shop.",
+    images: [
+      {
+        url: "/og-banner.svg",
+        width: 1200,
+        height: 630,
+        alt: "HakimQzz POS software",
+      },
+    ],
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "HakimQzz POS software",
+    description: "HakimQzz POS software — Automated inventory, sales, accounting, and store management system for any shop.",
+    images: ["/og-banner.svg"],
+  },
   appleWebApp: {
     capable: true,
-    title: "Dream Fashion",
+    title: "HakimQzz POS software",
     statusBarStyle: "black-translucent",
   },
 };

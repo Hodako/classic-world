@@ -409,39 +409,39 @@ export default function SuperAdminPage() {
         </div>
 
         {/* ─── Navigation Tabs ────────────────────────────────────────── */}
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 pb-3">
-          <div className="flex items-center gap-1 bg-muted/60 p-1 rounded-xl">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-border/60 pb-3">
+          <div className="flex items-center gap-1.5 bg-muted/70 p-1 rounded-2xl overflow-x-auto max-w-full no-scrollbar whitespace-nowrap shadow-inner border border-border/40">
             <button
               onClick={() => setActiveTab("feed")}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                activeTab === "feed" ? "bg-card text-foreground shadow-xs" : "text-muted-foreground hover:text-foreground"
+              className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-all flex items-center shrink-0 ${
+                activeTab === "feed" ? "bg-card text-foreground shadow-xs border border-border/60" : "text-muted-foreground hover:text-foreground"
               }`}
             >
-              <Activity className="size-3.5 inline mr-1.5" />
+              <Activity className="size-3.5 inline mr-1.5 text-blue-500" />
               Surveillance Feed
             </button>
             <button
               onClick={() => setActiveTab("businesses")}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                activeTab === "businesses" ? "bg-card text-foreground shadow-xs" : "text-muted-foreground hover:text-foreground"
+              className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-all flex items-center shrink-0 ${
+                activeTab === "businesses" ? "bg-card text-foreground shadow-xs border border-border/60" : "text-muted-foreground hover:text-foreground"
               }`}
             >
-              <Store className="size-3.5 inline mr-1.5" />
-              Shops & Businesses ({filteredBiz.length})
+              <Store className="size-3.5 inline mr-1.5 text-emerald-500" />
+              Shops ({filteredBiz.length})
             </button>
             <button
               onClick={() => setActiveTab("users")}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                activeTab === "users" ? "bg-card text-foreground shadow-xs" : "text-muted-foreground hover:text-foreground"
+              className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-all flex items-center shrink-0 ${
+                activeTab === "users" ? "bg-card text-foreground shadow-xs border border-border/60" : "text-muted-foreground hover:text-foreground"
               }`}
             >
-              <Users className="size-3.5 inline mr-1.5" />
-              Users & Logins ({filteredUsers.length})
+              <Users className="size-3.5 inline mr-1.5 text-indigo-500" />
+              Users ({filteredUsers.length})
             </button>
             <button
               onClick={() => setActiveTab("sms_gateway")}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                activeTab === "sms_gateway" ? "bg-card text-foreground shadow-xs" : "text-muted-foreground hover:text-foreground"
+              className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-all flex items-center shrink-0 ${
+                activeTab === "sms_gateway" ? "bg-card text-foreground shadow-xs border border-border/60" : "text-muted-foreground hover:text-foreground"
               }`}
             >
               <MessageSquare className="size-3.5 inline mr-1.5 text-amber-500" />
@@ -449,11 +449,11 @@ export default function SuperAdminPage() {
             </button>
             <button
               onClick={() => setActiveTab("settings")}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                activeTab === "settings" ? "bg-card text-foreground shadow-xs" : "text-muted-foreground hover:text-foreground"
+              className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-all flex items-center shrink-0 ${
+                activeTab === "settings" ? "bg-card text-foreground shadow-xs border border-border/60" : "text-muted-foreground hover:text-foreground"
               }`}
             >
-              <Shield className="size-3.5 inline mr-1.5" />
+              <Shield className="size-3.5 inline mr-1.5 text-purple-500" />
               Admin Settings
             </button>
           </div>

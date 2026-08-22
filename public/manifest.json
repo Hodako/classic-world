@@ -1,10 +1,10 @@
 {
-  "name": "Classic World — Smart POS & Accounting",
-  "short_name": "Classic World",
+  "name": "HakimQzz POS software",
+  "short_name": "HakimQzz",
   "id": "/",
   "start_url": "/",
   "scope": "/",
-  "description": "Smart Inventory, Sales & Accounting POS for Classic World",
+  "description": "HakimQzz POS software — Automated inventory, sales, accounting, and store management system for any shop.",
   "display": "standalone",
   "display_override": ["window-controls-overlay", "standalone", "minimal-ui"],
   "background_color": "#ffffff",
@@ -14,12 +14,6 @@
   "categories": ["business", "finance", "productivity", "utilities"],
   "icons": [
     {
-      "src": "/classic-world.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
-      "purpose": "any maskable"
-    },
-    {
       "src": "/icon-512.png",
       "sizes": "192x192",
       "type": "image/png",
@@ -40,38 +34,37 @@
     {
       "src": "/logo.png",
       "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/apple-touch-icon.png",
+      "sizes": "180x180",
       "type": "image/png",
       "purpose": "any"
     }
   ],
   "shortcuts": [
     {
-      "name": "Point of Sale",
-      "short_name": "POS",
-      "description": "Open Sales & Invoicing",
+      "name": "নতুন বিক্রয় (New Sale)",
+      "short_name": "বিক্রয়",
+      "description": "Quick Sale Point of Sale",
       "url": "/sales",
-      "icons": [{ "src": "/icons/sales_icon.png", "sizes": "96x96" }]
+      "icons": [{ "src": "/logo.png", "sizes": "512x512" }]
     },
     {
-      "name": "Products & Stock",
-      "short_name": "Stock",
-      "description": "View inventory & products",
-      "url": "/products",
-      "icons": [{ "src": "/icons/products_icon.png", "sizes": "96x96" }]
-    },
-    {
-      "name": "Financial Reports",
-      "short_name": "Reports",
-      "description": "Generate Official Reports",
-      "url": "/reports",
-      "icons": [{ "src": "/icons/reports_icon.png", "sizes": "96x96" }]
-    },
-    {
-      "name": "Expenses",
-      "short_name": "Expenses",
-      "description": "Track Shop Overhead",
+      "name": "দোকান খরচ (Expenses)",
+      "short_name": "খরচ",
+      "description": "Record Shop Expense",
       "url": "/expenses",
-      "icons": [{ "src": "/icons/expense_icon.png", "sizes": "96x96" }]
+      "icons": [{ "src": "/logo.png", "sizes": "512x512" }]
+    },
+    {
+      "name": "হিসাব প্রতিবেদন (Reports)",
+      "short_name": "প্রতিবেদন",
+      "description": "Business Accounting Statement",
+      "url": "/reports",
+      "icons": [{ "src": "/logo.png", "sizes": "512x512" }]
     }
   ]
 }

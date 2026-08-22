@@ -74,7 +74,7 @@ export function StorefrontClient({
           Welcome to <span className="text-primary">{business.name}</span>
         </h2>
         <p className="text-sm sm:text-base text-muted-foreground max-w-lg mx-auto">
-          Browse our live collection of premium clothing products and accessories.
+          Browse our live collection of available products and items.
         </p>
 
         {/* Search Bar */}

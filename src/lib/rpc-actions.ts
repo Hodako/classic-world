@@ -371,6 +371,25 @@ export async function createProductFn(input: { data: { name: string; image_url?:
   return { ...doc, id };
 }
 
+/**
+ * Auto-delete old image from ImgBB when updating image or deleting product
+ */
+export async function deleteImgbbImage(imageUrl?: string | null) {
+  if (!imageUrl || typeof imageUrl !== "string") return;
+  if (!imageUrl.includes("ibb.co") && !imageUrl.includes("imgbb.com")) return;
+
+  try {
+    const db = await getDb();
+    const record = await db.collection("uploaded_images").findOne({ url: imageUrl });
+    if (record?.delete_url) {
+      await fetch(record.delete_url, { method: "GET" }).catch(() => {});
+      await db.collection("uploaded_images").deleteOne({ _id: record._id });
+    }
+  } catch (err) {
+    console.warn("Could not auto-remove image from ImgBB:", err);
+  }
+}
+
 export async function updateProductFn(input: { data: { id: string; name?: string; image_url?: string | null; buy_price?: number; sell_price?: number; stock?: number; attributes?: Record<string, string>; min_stock?: number; category?: string; barcode?: string | null; archived?: boolean } }) {
   const { data } = input;
   const session = await requireSession();
@@ -383,6 +402,15 @@ export async function updateProductFn(input: { data: { id: string; name?: string
   if (sanitizedUpdates.barcode !== undefined) sanitizedUpdates.barcode = sanitizedUpdates.barcode ? sanitizeInput(sanitizedUpdates.barcode) : null;
   
   const db = await getDb();
+
+  // If image_url changed or cleared, clean up old image from ImgBB
+  if (sanitizedUpdates.image_url !== undefined) {
+    const oldProd = await db.collection("products").findOne({ _id: id as any, owner_id: session.ownerId });
+    if (oldProd?.image_url && oldProd.image_url !== sanitizedUpdates.image_url) {
+      void deleteImgbbImage(oldProd.image_url);
+    }
+  }
+
   await db.collection("products").updateOne({ _id: id as any, owner_id: session.ownerId }, { $set: sanitizedUpdates });
   const updated = await db.collection("products").findOne({ _id: id as any });
   return { ...updated, id };
@@ -392,6 +420,13 @@ export async function deleteProductFn(input: { data: { id: string } }) {
   const { data } = input;
   const session = await requireSession();
   const db = await getDb();
+
+  // Auto-remove product image from ImgBB
+  const prod = await db.collection("products").findOne({ _id: data.id as any, owner_id: session.ownerId });
+  if (prod?.image_url) {
+    void deleteImgbbImage(prod.image_url);
+  }
+
   await db.collection("products").deleteOne({ _id: data.id as any, owner_id: session.ownerId });
   return { success: true };
 }
@@ -884,6 +919,12 @@ export async function updateUserAvatarFn(input: { data: { avatar_url: string } }
   const { data } = input;
   const session = await requireSession();
   const db = await getDb();
+
+  const oldUser = await db.collection("users").findOne({ _id: session.userId as any });
+  if (oldUser?.avatar_url && oldUser.avatar_url !== data.avatar_url) {
+    void deleteImgbbImage(oldUser.avatar_url);
+  }
+
   await db.collection("users").updateOne(
     { _id: session.userId as any },
     { $set: { avatar_url: data.avatar_url } }

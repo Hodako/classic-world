@@ -187,7 +187,7 @@ export default function PurchaseReportsPage() {
           <div className="text-[10px] text-muted-foreground uppercase tracking-wide font-medium">{lang === "bn" ? "কেনা পণ্যের সংখ্যা" : "Items Purchased"}</div>
           <div className="mt-2">
             <div className="text-lg font-bold font-serif text-indigo-600 dark:text-indigo-400">{totalItemsPurchased} {lang === "bn" ? "টি" : "Units"}</div>
-            <span className="text-[9px] text-muted-foreground block">{lang === "bn" ? "মোট কেনা পোশাকের পরিমাণ" : "Total Clothing Quantity"}</span>
+            <span className="text-[9px] text-muted-foreground block">{lang === "bn" ? "মোট ক্রয়কৃত পণ্যের পরিমাণ" : "Total Purchased Quantity"}</span>
           </div>
         </Card>
 

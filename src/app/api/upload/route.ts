@@ -4,8 +4,9 @@ import { requireSession } from "@/lib/session";
 export async function POST(req: NextRequest) {
   const origin = req.headers.get("origin") || "*";
   try {
+    let session: any = null;
     try {
-      await requireSession();
+      session = await requireSession();
     } catch {
       return NextResponse.json({ error: "Unauthorized" }, {
         status: 401,
@@ -73,7 +74,26 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    return NextResponse.json({ url: json.data.url as string }, {
+    const imageUrl = json.data?.url as string;
+    const deleteUrl = json.data?.delete_url as string;
+
+    // Store deletion URL in DB for automatic cleanup
+    try {
+      const { getDb } = await import("@/lib/db");
+      const db = await getDb();
+      await db.collection("uploaded_images").insertOne({
+        _id: crypto.randomUUID() as any,
+        owner_id: session?.ownerId || null,
+        url: imageUrl,
+        display_url: json.data?.display_url || imageUrl,
+        delete_url: deleteUrl || null,
+        created_at: new Date().toISOString(),
+      });
+    } catch (dbErr) {
+      console.warn("Could not save image delete_url:", dbErr);
+    }
+
+    return NextResponse.json({ url: imageUrl, delete_url: deleteUrl }, {
       headers: {
         "Access-Control-Allow-Origin": origin,
         "Access-Control-Allow-Credentials": "true",

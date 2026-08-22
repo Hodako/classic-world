@@ -514,19 +514,42 @@ export default function SalesPage() {
         </div>
       </Card>
 
-      {/* Summary KPI Strip */}
+      {/* Highlighted Summary KPI Strip with #fff3a3 */}
       <div className="grid grid-cols-3 gap-2 text-center">
-        <Card className="p-2.5 rounded-xl border border-border/80 bg-card shadow-xs">
-          <span className="text-[10.5px] text-muted-foreground font-semibold">{lang === "bn" ? "মোট বিক্রি" : "Total Sales"}</span>
-          <p className="text-sm sm:text-base font-bold font-serif text-foreground mt-0.5">{fmtMoney(filteredTotalSales)}</p>
+        <Card
+          className="p-2.5 sm:p-3 rounded-xl border border-[#e6db74] shadow-xs transition-all text-zinc-950"
+          style={{ backgroundColor: "#fff3a3" }}
+        >
+          <span className="text-[11px] font-bold text-zinc-800 uppercase tracking-tight block">
+            {lang === "bn" ? "মোট বিক্রি" : "Total Sales"}
+          </span>
+          <p className="text-base sm:text-lg font-extrabold font-serif text-zinc-950 mt-0.5">
+            {fmtMoney(filteredTotalSales)}
+          </p>
         </Card>
-        <Card className="p-2.5 rounded-xl border border-emerald-500/20 bg-emerald-500/5 shadow-xs">
-          <span className="text-[10.5px] text-emerald-600 dark:text-emerald-400 font-semibold">{lang === "bn" ? "মোট লাভ" : "Total Profit"}</span>
-          <p className="text-sm sm:text-base font-bold font-serif text-emerald-600 dark:text-emerald-400 mt-0.5">{fmtMoney(filteredTotalProfit)}</p>
+
+        <Card
+          className="p-2.5 sm:p-3 rounded-xl border border-[#e6db74] shadow-xs transition-all text-emerald-950"
+          style={{ backgroundColor: "#fff3a3" }}
+        >
+          <span className="text-[11px] font-bold text-emerald-900 uppercase tracking-tight block">
+            {lang === "bn" ? "মোট লাভ" : "Total Profit"}
+          </span>
+          <p className="text-base sm:text-lg font-extrabold font-serif text-emerald-950 mt-0.5">
+            {fmtMoney(filteredTotalProfit)}
+          </p>
         </Card>
-        <Card className="p-2.5 rounded-xl border border-rose-500/20 bg-rose-500/5 shadow-xs">
-          <span className="text-[10.5px] text-rose-600 dark:text-rose-400 font-semibold">{lang === "bn" ? "মোট বাকী" : "Total Due"}</span>
-          <p className="text-sm sm:text-base font-bold font-serif text-rose-600 dark:text-rose-400 mt-0.5">{fmtMoney(filteredTotalDue)}</p>
+
+        <Card
+          className="p-2.5 sm:p-3 rounded-xl border border-[#e6db74] shadow-xs transition-all text-rose-950"
+          style={{ backgroundColor: "#fff3a3" }}
+        >
+          <span className="text-[11px] font-bold text-rose-900 uppercase tracking-tight block">
+            {lang === "bn" ? "মোট বাকী" : "Total Due"}
+          </span>
+          <p className="text-base sm:text-lg font-extrabold font-serif text-rose-950 mt-0.5">
+            {fmtMoney(filteredTotalDue)}
+          </p>
         </Card>
       </div>
 

@@ -1739,6 +1739,31 @@ export default function Dashboard() {
         const renderDesktopCard = (key: string, index: number) => {
           const hotkey = index + 1 <= 9 ? index + 1 : undefined;
           switch (key) {
+            case "total_sales":
+              return (
+                <div
+                  key="total_sales"
+                  className="block cursor-pointer h-full"
+                  onClick={() => {
+                    playTapSound();
+                    setTodaysSalesModalOpen(true);
+                  }}
+                >
+                  <KPICard
+                    label={lang === "bn" ? "আজকের মোট বিক্রি" : "Today's Total Sales"}
+                    value={fmtMoney(totalSalesToday)}
+                    sub={lang === "bn" ? "বিস্তারিত ও আর্থিক অগ্রগতি দেখুন" : "View analytics & orders"}
+                    imageUrl="/icons/sell_icon.png"
+                    icon={ShoppingBag}
+                    color="bg-indigo-600"
+                    isDesktop={true}
+                    hotkey={hotkey}
+                    className="h-full"
+                    align={kpiConfig.align as any}
+                    size={kpiConfig.size as any}
+                  />
+                </div>
+              );
             case "credit_sale":
               return (
                 <KPICard
@@ -1746,6 +1771,7 @@ export default function Dashboard() {
                   label={t("credit_sale")}
                   value={fmtMoney(creditToday)}
                   sub={dateRangeLabel}
+                  imageUrl="/icons/credit_sale_icon.png"
                   icon={CreditCard}
                   color="bg-amber-500"
                   isDesktop={true}
@@ -1766,6 +1792,7 @@ export default function Dashboard() {
                   label={t("cash_sale")}
                   value={fmtMoney(cashToday)}
                   sub={dateRangeLabel}
+                  imageUrl="/icons/sell_icon.png"
                   icon={ShoppingBag}
                   color="bg-indigo-500"
                   isDesktop={true}
@@ -1781,23 +1808,21 @@ export default function Dashboard() {
               );
             case "online_sell":
               return (
-                <KPICard
-                  key="online_sell"
-                  label={t("online_sell")}
-                  value={fmtMoney(onlineToday)}
-                  sub={dateRangeLabel}
-                  icon={DollarSign}
-                  color="bg-sky-500"
-                  isDesktop={true}
-                  hotkey={hotkey}
-                  onClick={() => {
-                    playTapSound();
-                    setSalePresetType("online");
-                    setSaleOpen(true);
-                  }}
-                  align={kpiConfig.align as any}
-                  size={kpiConfig.size as any}
-                />
+                <Link href="/online-sells" className="block h-full" key="online_sell" onClick={() => playTapSound()}>
+                  <KPICard
+                    label={t("online_sell")}
+                    value={fmtMoney(onlineToday)}
+                    sub={lang === "bn" ? `পেন্ডিং: ${fmtMoney(onlinePendingToday)}` : `Pending: ${fmtMoney(onlinePendingToday)}`}
+                    imageUrl="/icons/online_sale_icon.png"
+                    icon={Truck}
+                    color="bg-purple-600"
+                    isDesktop={true}
+                    hotkey={hotkey}
+                    className="h-full"
+                    align={kpiConfig.align as any}
+                    size={kpiConfig.size as any}
+                  />
+                </Link>
               );
             case "purchases":
               return canAccess(perms, "purchases") ? (

@@ -1170,7 +1170,7 @@ export default function Dashboard() {
             <Link
               href="/sales"
               key="total_sales"
-              className={`block cursor-pointer ${isHeroCard("total_sales") ? "sm:col-span-2" : ""}`}
+              className={`hidden sm:block cursor-pointer ${isHeroCard("total_sales") ? "sm:col-span-2" : ""}`}
               onClick={() => playTapSound()}
             >
               <KPICard

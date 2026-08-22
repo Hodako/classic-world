@@ -80,9 +80,14 @@ export default function AuthPage() {
   }
 
   return (
-    <div className="auth-page h-screen h-[100dvh] max-h-[100dvh] overflow-hidden grid grid-cols-1 md:grid-cols-12 select-none">
+    <div className="auth-page fixed inset-0 w-full h-full z-50 overflow-hidden grid grid-cols-1 md:grid-cols-12 select-none">
       {/* Dynamic Scoped Styles */}
       <style dangerouslySetInnerHTML={{ __html: `
+        html:has(.auth-page), body:has(.auth-page) {
+          overflow: hidden !important;
+          height: 100% !important;
+          max-height: 100vh !important;
+        }
         .auth-page .form {
           display: flex;
           flex-direction: column;

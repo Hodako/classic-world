@@ -1,11 +1,11 @@
-const CACHE_NAME = "classicworld-v3";
+const CACHE_NAME = "dreamfashion-v13";
 
 const PRECACHE_ASSETS = [
   "/",
   "/manifest.json",
-  "/classic-world.svg",
-  "/logo.svg",
-  "/background.avif",
+  "/logo.png",
+  "/icon-512.png",
+  "/apple-touch-icon.png",
 ];
 
 // ── Install: Pre-cache core shell & images ───────────────────────────
@@ -43,30 +43,28 @@ self.addEventListener("activate", (event) => {
   self.clients.claim();
 });
 
-// ── Fetch: Robust Cache-First with Guaranteed Valid Response ─────────
+// ── Fetch: Cache-First for static assets, Network-First for pages ───
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
 
   const url = new URL(event.request.url);
 
-  // Skip non-http, WebSockets, API calls, and Chrome extension URLs
+  // Skip non-http, WebSockets, HMR and API routes
   if (
     !url.protocol.startsWith("http") ||
     url.pathname.includes("/_next/webpack-hmr") ||
-    url.pathname.startsWith("/api/") ||
-    url.hostname.includes("firestore.googleapis.com") ||
-    url.hostname.includes("identitytoolkit.googleapis.com")
+    url.pathname.startsWith("/api/")
   ) {
     return;
   }
 
+  // Cache fonts, images, and static chunks Cache-First for instant loads
   const isStaticAsset = (
     url.pathname.startsWith("/_next/static/") ||
     url.pathname.endsWith(".svg") ||
     url.pathname.endsWith(".png") ||
     url.pathname.endsWith(".jpg") ||
-    url.pathname.endsWith(".avif") ||
-    url.pathname.endsWith(".lottie") ||
+    url.pathname.endsWith(".webp") ||
     url.pathname.endsWith(".woff2") ||
     url.pathname.endsWith(".woff") ||
     url.pathname.endsWith(".ttf") ||
@@ -75,32 +73,49 @@ self.addEventListener("fetch", (event) => {
     url.hostname.includes("banglawebfonts.pages.dev")
   );
 
-  event.respondWith(
-    (async () => {
-      try {
-        const cache = await caches.open(CACHE_NAME);
-        const cached = await cache.match(event.request);
-
-        if (isStaticAsset && cached) {
-          return cached;
-        }
-
+  if (isStaticAsset) {
+    event.respondWith(
+      caches.open(CACHE_NAME).then(async (cache) => {
         try {
+          const cached = await cache.match(event.request);
+          if (cached) return cached;
+
           const networkRes = await fetch(event.request);
           if (networkRes && networkRes.status === 200) {
-            cache.put(event.request, networkRes.clone()).catch(() => {});
+            cache.put(event.request, networkRes.clone());
           }
           return networkRes;
         } catch (_) {
-          if (cached) return cached;
-          return new Response("Offline resource unavailable", {
-            status: 503,
-            headers: { "Content-Type": "text/plain" },
-          });
+          return new Response("", { status: 408, statusText: "Request Timeout" });
         }
-      } catch (_) {
-        return fetch(event.request);
-      }
-    })()
+      })
+    );
+    return;
+  }
+
+  // Network-First with Cache fallback for pages & navigation
+  event.respondWith(
+    fetch(event.request)
+      .then((networkRes) => {
+        if (networkRes && networkRes.status === 200) {
+          const clone = networkRes.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+        }
+        return networkRes;
+      })
+      .catch(async () => {
+        try {
+          const cache = await caches.open(CACHE_NAME);
+          const cached = await cache.match(event.request);
+          if (cached) return cached;
+          const fallback = await cache.match("/");
+          if (fallback) return fallback;
+        } catch (_) {}
+        return new Response("Offline", {
+          status: 503,
+          statusText: "Service Unavailable",
+          headers: { "Content-Type": "text/plain" }
+        });
+      })
   );
 });

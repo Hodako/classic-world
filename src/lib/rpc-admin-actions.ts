@@ -111,7 +111,7 @@ export async function listBusinessesFn(): Promise<any[]> {
       sale_count: saleCount,
       invoice_count: invoiceCount || saleCount,
       sms_sent_count: smsCount,
-      sms_credits: Number(b.sms_credits ?? 50),
+      sms_credits: Number(b.sms_credits ?? 0),
       status: (b.status as string) || "active",
       frozen_reason: (b.frozen_reason as string) || "",
       subscription_expires_at: (b.subscription_expires_at as string) || null,
@@ -716,7 +716,7 @@ export async function refillBusinessSmsFn(input: {
   const biz = await db.collection("businesses").findOne({ _id: data.businessId as any });
   if (!biz) throw new Error("Business not found");
 
-  const currentCredits = Number(biz.sms_credits ?? 50);
+  const currentCredits = Number(biz.sms_credits ?? 0);
   const amount = Number(data.amount) || 0;
   let newCredits = currentCredits;
 

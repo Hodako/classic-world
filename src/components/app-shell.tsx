@@ -9,7 +9,7 @@ import {
   Home, Package, ShoppingBag, Users, MoreHorizontal,
   LogOut, Languages, Banknote, DollarSign, Settings,
   BarChart3, Receipt, PiggyBank, ShoppingCart, Moon, Sun, FileText,
-  TrendingUp, TrendingDown, Sparkles, Palette,
+  TrendingUp, TrendingDown, Sparkles, Palette, MessageSquare,
 } from "lucide-react";
 import { useTheme } from "@/hooks/use-theme";
 import { useT } from "@/lib/i18n";
@@ -39,7 +39,7 @@ import { CustomHomeIcon } from "@/components/custom-home-icon";
 
 type NavItem = {
   to: string;
-  labelKey: "home" | "products" | "sales" | "parties" | "settings" | "more" | "online_sell" | "cash_management" | "trackback" | "expenses" | "somiti" | "new_purchase" | "invoice_generator" | "due" | "profit" | "products_buy" | "losses" | "reports_generator" | "ai_audits" | "customers" | "theme_settings";
+  labelKey: "home" | "products" | "sales" | "parties" | "settings" | "more" | "online_sell" | "cash_management" | "trackback" | "expenses" | "somiti" | "new_purchase" | "invoice_generator" | "due" | "profit" | "products_buy" | "losses" | "reports_generator" | "ai_audits" | "customers" | "theme_settings" | "sms";
   icon: React.ElementType;
   perm?: keyof PermissionSet;
 };
@@ -61,6 +61,7 @@ const desktopNavGroups: NavGroup[] = [
   {
     labelKey: "more",
     items: [
+      { to: "/sms", labelKey: "sms", icon: MessageSquare, perm: "sales" },
       { to: "/invoices", labelKey: "invoice_generator", icon: FileText, perm: "sales" },
       { to: "/purchases", labelKey: "new_purchase", icon: ShoppingCart, perm: "purchases" },
       { to: "/expenses", labelKey: "expenses", icon: Receipt, perm: "expenses" },
@@ -78,7 +79,6 @@ const desktopNavGroups: NavGroup[] = [
       { to: "/trackback", labelKey: "trackback", icon: BarChart3, perm: "reports" },
       { to: "/purchase-reports", labelKey: "products_buy", icon: ShoppingCart, perm: "reports" },
       { to: "/ai-audits", labelKey: "ai_audits", icon: Sparkles, perm: "reports" },
-      { to: "/settings", labelKey: "theme_settings", icon: Palette, perm: "settings" },
       { to: "/settings", labelKey: "settings", icon: Settings, perm: "settings" },
     ],
   },
@@ -257,7 +257,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 <SidebarGroupContent>
                   <SidebarMenu>
                     {group.items.map(({ to, labelKey, icon: Icon }) => (
-                      <SidebarMenuItem key={to}>
+                      <SidebarMenuItem key={`${to}-${labelKey}`}>
                         <SidebarMenuButton
                           isActive={isActive(to)}
                           tooltip={t(labelKey)}

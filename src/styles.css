@@ -52,7 +52,7 @@
 
 :root {
   --loader-color: #059669;
-  --background: #93CAED;
+  --background: #B7F7A8;
   --foreground: #18181b;
   --card: #FFFFFF;
   --card-foreground: #18181b;
@@ -499,9 +499,19 @@
 .site-bg {
   position: relative;
   min-height: 100vh;
-  background-color: var(--background);
+  background-color: #B7F7A8;
+  background-image:
+    radial-gradient(at 15% 15%, #D4F9CE 0px, transparent 55%),
+    radial-gradient(at 85% 85%, #9FE890 0px, transparent 55%),
+    linear-gradient(165deg, #C8F7C5 0%, #B7F7A8 50%, #A8F59A 100%);
+  background-attachment: fixed;
   overflow-x: hidden;
   isolation: isolate;
+}
+
+.dark .site-bg {
+  background-color: var(--background);
+  background-image: none;
 }
 
 .site-bg::before {

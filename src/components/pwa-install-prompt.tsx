@@ -12,11 +12,13 @@ interface BeforeInstallPromptEvent extends Event {
 
 export function PwaInstallPrompt() {
   const { lang, t } = useT();
+  const [mounted, setMounted] = useState(false);
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [isDismissed, setIsDismissed] = useState(false);
   const [isStandalone, setIsStandalone] = useState(false);
 
   useEffect(() => {
+    setMounted(true);
     // Check if already running in standalone mode (already installed)
     const isStandaloneMode =
       window.matchMedia("(display-mode: standalone)").matches ||
@@ -69,7 +71,7 @@ export function PwaInstallPrompt() {
     sessionStorage.setItem("pwa_install_dismissed", "true");
   };
 
-  if (isStandalone || isDismissed || !deferredPrompt) {
+  if (!mounted || isStandalone || isDismissed || !deferredPrompt) {
     return null;
   }
 
@@ -85,7 +87,7 @@ export function PwaInstallPrompt() {
           </div>
           <div>
             <h4 className="text-xs font-bold text-foreground flex items-center gap-1.5">
-              <span>Classic World POS</span>
+              <span>Dream Fashion POS</span>
               <Sparkles className="size-3 text-amber-500" />
             </h4>
             <p className="text-[11px] text-muted-foreground leading-tight mt-0.5">

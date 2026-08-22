@@ -4,12 +4,12 @@ export type ThemeMode = "light" | "dark" | "system";
 export type AccentColor = "mechanix" | "indigo" | "emerald" | "violet" | "blue" | "rose";
 export type BgStyle = "default" | "warm" | "cool" | "clean" | "glass";
 
-const STORAGE_KEY = "cw-theme";
-const ACCENT_KEY = "cw-accent";
-const BG_STYLE_KEY = "cw-bg-style";
+const STORAGE_KEY = "hz-theme";
+const ACCENT_KEY = "hz-accent";
+const BG_STYLE_KEY = "hz-bg-style";
 
 const ACCENTS = {
-  mechanix: { hue: 85, light: "#B8902E", dark: "#DFBB63" },
+  mechanix: { hue: 120, light: "#228B22", dark: "#228B22" },
   emerald: { hue: 155, light: "oklch(0.38 0.12 155)", dark: "oklch(0.65 0.14 155)" },
   indigo: { hue: 264, light: "oklch(0.5 0.2 264)", dark: "oklch(0.68 0.18 264)" },
   violet: { hue: 290, light: "oklch(0.55 0.22 290)", dark: "oklch(0.7 0.2 290)" },

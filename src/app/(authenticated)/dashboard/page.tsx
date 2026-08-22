@@ -1238,7 +1238,7 @@ export default function Dashboard() {
             />
           ),
           online_sell: (
-            <Link href="/online-sells" className={`block ${isHeroCard("online_sell") ? "sm:col-span-2" : ""}`} key="online_sell" onClick={() => playTapSound()}>
+            <div className={`block ${isHeroCard("online_sell") ? "sm:col-span-2" : ""}`} key="online_sell">
               <KPICard
                 label={t("online_sell")}
                 value={fmtMoney(onlineToday)}
@@ -1254,8 +1254,13 @@ export default function Dashboard() {
                 borderStyle={(kpiConfig.borderStyle || "subtle") as any}
                 curve={(kpiConfig.curve || "none") as any}
                 isBentoHero={isHeroCard("online_sell")}
+                onClick={() => {
+                  playTapSound();
+                  setSalePresetType("online");
+                  setSaleOpen(true);
+                }}
               />
-            </Link>
+            </div>
           ),
           purchases: allowPurchases ? (
             <Link href="/purchases" className={`block ${isHeroCard("purchases") ? "sm:col-span-2" : ""}`} key="purchases" onClick={() => playTapSound()}>
@@ -1801,21 +1806,25 @@ export default function Dashboard() {
               );
             case "online_sell":
               return (
-                <Link href="/online-sells" className="block h-full" key="online_sell" onClick={() => playTapSound()}>
-                  <KPICard
-                    label={t("online_sell")}
-                    value={fmtMoney(onlineToday)}
-                    sub={lang === "bn" ? `পেন্ডিং: ${fmtMoney(onlinePendingToday)}` : `Pending: ${fmtMoney(onlinePendingToday)}`}
-                    imageUrl="/icons/online_sale_icon.png"
-                    icon={Truck}
-                    color="bg-purple-600"
-                    isDesktop={true}
-                    hotkey={hotkey}
-                    className="h-full"
-                    align={kpiConfig.align as any}
-                    size={kpiConfig.size as any}
-                  />
-                </Link>
+                <KPICard
+                  key="online_sell"
+                  label={t("online_sell")}
+                  value={fmtMoney(onlineToday)}
+                  sub={lang === "bn" ? `পেন্ডিং: ${fmtMoney(onlinePendingToday)}` : `Pending: ${fmtMoney(onlinePendingToday)}`}
+                  imageUrl="/icons/online_sale_icon.png"
+                  icon={Truck}
+                  color="bg-purple-600"
+                  isDesktop={true}
+                  hotkey={hotkey}
+                  className="h-full"
+                  align={kpiConfig.align as any}
+                  size={kpiConfig.size as any}
+                  onClick={() => {
+                    playTapSound();
+                    setSalePresetType("online");
+                    setSaleOpen(true);
+                  }}
+                />
               );
             case "purchases":
               return canAccess(perms, "purchases") ? (

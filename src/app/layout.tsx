@@ -67,7 +67,7 @@ export default function RootLayout({
                     doc.classList.remove('dark');
                   }
                   var accents = {
-                    mechanix: { light: '#B8902E', dark: '#DFBB63' },
+                    mechanix: { light: '#228B22', dark: '#228B22' },
                     emerald: { light: 'oklch(0.38 0.12 155)', dark: 'oklch(0.65 0.14 155)' },
                     indigo: { light: 'oklch(0.5 0.2 264)', dark: 'oklch(0.68 0.18 264)' },
                     violet: { light: 'oklch(0.55 0.22 290)', dark: 'oklch(0.7 0.2 290)' },

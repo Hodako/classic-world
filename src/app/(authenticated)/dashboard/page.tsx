@@ -795,6 +795,7 @@ export default function Dashboard() {
   const onlinePendingToday = filteredSales.filter(s => s.type === "online" && (s as any).courier_status !== "collected" && (s as any).courier_status !== "cancelled").reduce((a, s) => a + Number(s.sell_price) * s.qty, 0);
   const onlineCollectedToday = filteredSales.filter(s => s.type === "online" && (s as any).courier_status === "collected").reduce((a, s) => a + Number(s.sell_price) * s.qty, 0);
   const cashboxDepositedToday = cashToday + bkashToday + bankToday + onlineCollectedToday;
+  const purchasesToday = filteredPurchases.reduce((a, p) => a + (Number(p.total) || 0), 0);
   const validFilteredSales = filteredSales.filter(s => !s.returned && (s as any).courier_status !== "cancelled");
   const calcSaleProfit = (s: any) => {
     if (s.profit !== undefined && s.profit !== null && !isNaN(Number(s.profit))) {

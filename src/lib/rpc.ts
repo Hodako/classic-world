@@ -248,15 +248,15 @@ export async function callAiChat(messages: any[], lang: string) {
 }
 
 // ── Bank & Loans ─────────────────────────────────────────────────────────────
-export const getBankAccountsFn = () => rpc<any[]>({ method: "getBankAccountsFn" });
-export const createBankAccountFn = (input: { data: any }) => rpc<any>({ method: "createBankAccountFn", input });
-export const updateBankAccountFn = (input: { data: any }) => rpc<any>({ method: "updateBankAccountFn", input });
-export const deleteBankAccountFn = (input: { data: { id: string } }) => rpc<{ success: boolean }>({ method: "deleteBankAccountFn", input });
-export const createBankTransactionFn = (input: { data: any }) => rpc<{ success: boolean; id: string }>({ method: "createBankTransactionFn", input });
-export const getBankLoansFn = () => rpc<any[]>({ method: "getBankLoansFn" });
-export const createBankLoanFn = (input: { data: any }) => rpc<any>({ method: "createBankLoanFn", input });
-export const payBankLoanInstallmentFn = (input: { data: any }) => rpc<{ success: boolean; id: string; isFullyPaid: boolean; remaining: number }>({ method: "payBankLoanInstallmentFn", input });
-export const deleteBankLoanFn = (input: { data: { id: string } }) => rpc<{ success: boolean }>({ method: "deleteBankLoanFn", input });
+export const getBankAccountsFn = makeReadAction("getBankAccountsFn");
+export const createBankAccountFn = makeWriteAction("createBankAccountFn");
+export const updateBankAccountFn = makeWriteAction("updateBankAccountFn");
+export const deleteBankAccountFn = makeWriteAction("deleteBankAccountFn");
+export const createBankTransactionFn = makeWriteAction("createBankTransactionFn");
+export const getBankLoansFn = makeReadAction("getBankLoansFn");
+export const createBankLoanFn = makeWriteAction("createBankLoanFn");
+export const payBankLoanInstallmentFn = makeWriteAction("payBankLoanInstallmentFn");
+export const deleteBankLoanFn = makeWriteAction("deleteBankLoanFn");
 
 // ── SMS Gateway & Campaigns (MiMSMS v2) ─────────────────────────────────────
 export const getSmsSettingsFn = makeReadAction("getSmsSettingsFn");

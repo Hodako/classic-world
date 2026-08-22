@@ -485,22 +485,22 @@ export default function SmsPage() {
   const hasConfig = Boolean(smsSettings?.apiKey && smsSettings?.userName && smsSettings?.senderName);
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-6">
+    <div className="p-2.5 sm:p-5 lg:p-8 max-w-7xl mx-auto space-y-4 sm:space-y-6">
       {/* Top Banner / Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-gradient-to-r from-emerald-600/10 via-teal-600/10 to-primary/10 border border-emerald-500/20 p-5 rounded-2xl shadow-sm">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 sm:gap-4 bg-gradient-to-r from-emerald-600/10 via-teal-600/10 to-primary/10 border border-emerald-500/20 p-3.5 sm:p-5 rounded-xl sm:rounded-2xl shadow-sm">
         <div className="space-y-1">
           <div className="flex items-center gap-2">
-            <div className="p-2 rounded-xl bg-primary/10 text-primary">
-              <MessageSquare className="w-6 h-6" />
+            <div className="p-1.5 sm:p-2 rounded-xl bg-primary/10 text-primary">
+              <MessageSquare className="w-5 h-5 sm:w-6 sm:h-6" />
             </div>
-            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">
+            <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold tracking-tight">
               {lang === "bn" ? "এসএমএস সিস্টেম ও বার্তা প্যানেল" : "SMS Management & Gateway"}
             </h1>
-            <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/30 text-xs font-semibold uppercase">
+            <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/30 text-[10px] sm:text-xs font-semibold uppercase">
               MiMSMS v2
             </Badge>
           </div>
-          <p className="text-muted-foreground text-sm">
+          <p className="text-muted-foreground text-xs sm:text-sm">
             {lang === "bn"
               ? "সাপ্লায়ার, কাস্টমারদের কাছে বাল্ক এসএমএস, বিশেষ অফার এবং বিক্রির পর অটোমেটিক বার্তা পাঠান।"
               : "Send broadcast SMS, promotional offers, supplier alerts, and automatic post-purchase confirmations."}
@@ -508,16 +508,16 @@ export default function SmsPage() {
         </div>
 
         {/* Real-time SMS Balance Widget */}
-        <div className="flex items-center gap-3 bg-card/80 backdrop-blur border border-border/80 p-3.5 rounded-2xl shadow-sm">
+        <div className="flex items-center justify-between sm:justify-start gap-3 bg-card/80 backdrop-blur border border-border/80 p-2.5 sm:p-3.5 rounded-xl sm:rounded-2xl shadow-sm">
           <div className="flex flex-col">
-            <span className="text-xs text-muted-foreground font-medium flex items-center gap-1">
+            <span className="text-[11px] sm:text-xs text-muted-foreground font-medium flex items-center gap-1">
               <Sparkles className="w-3.5 h-3.5 text-amber-500" />
               {lang === "bn" ? "অবশিষ্ট এসএমএস" : "SMS Balance"}
             </span>
             <div className="flex items-baseline gap-1.5 mt-0.5">
-              <span className="text-2xl font-bold text-foreground font-num">
+              <span className="text-xl sm:text-2xl font-bold text-foreground font-num">
                 {balanceLoading ? (
-                  <RefreshCw className="w-5 h-5 animate-spin text-primary inline" />
+                  <RefreshCw className="w-4 h-4 sm:w-5 sm:h-5 animate-spin text-primary inline" />
                 ) : balance !== null ? (
                   balance
                 ) : hasConfig ? (
@@ -534,69 +534,69 @@ export default function SmsPage() {
             variant="outline"
             onClick={fetchBalance}
             disabled={balanceLoading || !hasConfig}
-            className="h-9 px-3 rounded-xl border-primary/30 hover:bg-primary/5 text-primary"
+            className="h-8 sm:h-9 px-2.5 sm:px-3 rounded-lg sm:rounded-xl border-primary/30 hover:bg-primary/5 text-primary"
             title={lang === "bn" ? "ব্যালেন্স রিফ্রেশ" : "Refresh Balance"}
           >
-            <RefreshCw className={`w-4 h-4 ${balanceLoading ? "animate-spin" : ""}`} />
+            <RefreshCw className={`w-3.5 h-3.5 sm:w-4 sm:h-4 ${balanceLoading ? "animate-spin" : ""}`} />
           </Button>
         </div>
       </div>
 
       {!hasConfig && (
-        <div className="bg-amber-500/10 border border-amber-500/30 text-amber-900 dark:text-amber-200 p-4 rounded-xl flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
+        <div className="bg-amber-500/10 border border-amber-500/30 text-amber-900 dark:text-amber-200 p-3.5 sm:p-4 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4">
+          <div className="flex items-center gap-2.5 sm:gap-3">
             <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0" />
-            <p className="text-sm font-medium">
+            <p className="text-xs sm:text-sm font-medium">
               {lang === "bn"
                 ? "এসএমএস সুবিধা সক্রিয় করতে আপনার MiMSMS API Key ও Sender Name সেটিংস ট্যাবে সেট করুন।"
                 : "Configure your MiMSMS API Key and Sender Name in the Settings tab to start sending SMS."}
             </p>
           </div>
-          <Button size="sm" onClick={() => setActiveTab("settings")} className="rounded-lg bg-amber-600 hover:bg-amber-700 text-white flex-shrink-0">
+          <Button size="sm" onClick={() => setActiveTab("settings")} className="rounded-lg bg-amber-600 hover:bg-amber-700 text-white flex-shrink-0 w-full sm:w-auto h-8 text-xs font-semibold">
             {lang === "bn" ? "সেটিংস খুলুন" : "Open Settings"}
           </Button>
         </div>
       )}
 
       {/* Main Feature Tabs */}
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <div className="overflow-x-auto pb-1">
-          <TabsList className="bg-muted/60 p-1 rounded-xl h-auto inline-flex flex-wrap gap-1 min-w-full sm:min-w-0">
-            <TabsTrigger value="direct" className="rounded-lg px-3.5 py-2 text-sm font-medium data-[state=active]:bg-card data-[state=active]:shadow-sm flex items-center gap-2">
-              <Send className="w-4 h-4 text-emerald-600" />
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4 sm:space-y-6">
+        <div className="overflow-x-auto pb-1 -mx-2.5 px-2.5 sm:mx-0 sm:px-0">
+          <TabsList className="bg-muted/70 p-1 rounded-xl sm:rounded-2xl h-auto flex flex-nowrap sm:flex-wrap overflow-x-auto gap-1 min-w-max sm:min-w-0">
+            <TabsTrigger value="direct" className="shrink-0 rounded-lg px-2.5 sm:px-3.5 py-1.5 sm:py-2 text-xs sm:text-sm font-medium data-[state=active]:bg-card data-[state=active]:shadow-sm flex items-center gap-1.5 sm:gap-2">
+              <Send className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-600" />
               <span>{lang === "bn" ? "ডাইরেক্ট মেসেজ" : "Direct SMS"}</span>
             </TabsTrigger>
-            <TabsTrigger value="customers" className="rounded-lg px-3.5 py-2 text-sm font-medium data-[state=active]:bg-card data-[state=active]:shadow-sm flex items-center gap-2">
-              <Users className="w-4 h-4 text-blue-600" />
+            <TabsTrigger value="customers" className="shrink-0 rounded-lg px-2.5 sm:px-3.5 py-1.5 sm:py-2 text-xs sm:text-sm font-medium data-[state=active]:bg-card data-[state=active]:shadow-sm flex items-center gap-1.5 sm:gap-2">
+              <Users className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-blue-600" />
               <span>{lang === "bn" ? "কাস্টমার ও অফার" : "Customer & Offers"}</span>
-              <Badge variant="secondary" className="text-xs px-1.5 py-0 h-5">
+              <Badge variant="secondary" className="text-[10px] sm:text-xs px-1.5 py-0 h-4 sm:h-5">
                 {validCustomers.length}
               </Badge>
             </TabsTrigger>
-            <TabsTrigger value="suppliers" className="rounded-lg px-3.5 py-2 text-sm font-medium data-[state=active]:bg-card data-[state=active]:shadow-sm flex items-center gap-2">
-              <Truck className="w-4 h-4 text-purple-600" />
+            <TabsTrigger value="suppliers" className="shrink-0 rounded-lg px-2.5 sm:px-3.5 py-1.5 sm:py-2 text-xs sm:text-sm font-medium data-[state=active]:bg-card data-[state=active]:shadow-sm flex items-center gap-1.5 sm:gap-2">
+              <Truck className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-purple-600" />
               <span>{lang === "bn" ? "সাপ্লায়ার এসএমএস" : "Suppliers SMS"}</span>
-              <Badge variant="secondary" className="text-xs px-1.5 py-0 h-5">
+              <Badge variant="secondary" className="text-[10px] sm:text-xs px-1.5 py-0 h-4 sm:h-5">
                 {validParties.length}
               </Badge>
             </TabsTrigger>
-            <TabsTrigger value="auto" className="rounded-lg px-3.5 py-2 text-sm font-medium data-[state=active]:bg-card data-[state=active]:shadow-sm flex items-center gap-2">
-              <Smartphone className="w-4 h-4 text-amber-600" />
-              <span>{lang === "bn" ? "ক্রয়ের পর অটো এসএমএস" : "Auto Purchase SMS"}</span>
+            <TabsTrigger value="auto" className="shrink-0 rounded-lg px-2.5 sm:px-3.5 py-1.5 sm:py-2 text-xs sm:text-sm font-medium data-[state=active]:bg-card data-[state=active]:shadow-sm flex items-center gap-1.5 sm:gap-2">
+              <Smartphone className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-600" />
+              <span>{lang === "bn" ? "অটো এসএমএস" : "Auto SMS"}</span>
               {autoSmsEnabled && (
                 <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
               )}
             </TabsTrigger>
-            <TabsTrigger value="logs" className="rounded-lg px-3.5 py-2 text-sm font-medium data-[state=active]:bg-card data-[state=active]:shadow-sm flex items-center gap-2">
-              <Clock className="w-4 h-4 text-indigo-600" />
-              <span>{lang === "bn" ? "মেসেজ হিস্টোরি" : "SMS Logs"}</span>
-              <Badge variant="secondary" className="text-xs px-1.5 py-0 h-5">
+            <TabsTrigger value="logs" className="shrink-0 rounded-lg px-2.5 sm:px-3.5 py-1.5 sm:py-2 text-xs sm:text-sm font-medium data-[state=active]:bg-card data-[state=active]:shadow-sm flex items-center gap-1.5 sm:gap-2">
+              <Clock className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-indigo-600" />
+              <span>{lang === "bn" ? "হিস্টোরি" : "SMS Logs"}</span>
+              <Badge variant="secondary" className="text-[10px] sm:text-xs px-1.5 py-0 h-4 sm:h-5">
                 {smsLogs.length}
               </Badge>
             </TabsTrigger>
-            <TabsTrigger value="settings" className="rounded-lg px-3.5 py-2 text-sm font-medium data-[state=active]:bg-card data-[state=active]:shadow-sm flex items-center gap-2">
-              <Settings className="w-4 h-4 text-zinc-600" />
-              <span>{lang === "bn" ? "গেটওয়ে সেটিংস" : "API Settings"}</span>
+            <TabsTrigger value="settings" className="shrink-0 rounded-lg px-2.5 sm:px-3.5 py-1.5 sm:py-2 text-xs sm:text-sm font-medium data-[state=active]:bg-card data-[state=active]:shadow-sm flex items-center gap-1.5 sm:gap-2">
+              <Settings className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-zinc-600" />
+              <span>{lang === "bn" ? "সেটিংস" : "Settings"}</span>
             </TabsTrigger>
           </TabsList>
         </div>
@@ -1535,109 +1535,192 @@ export default function SmsPage() {
                   <p className="text-sm font-medium">{lang === "bn" ? "কোন এসএমএস লগ পাওয়া যায়নি" : "No SMS history records found"}</p>
                 </div>
               ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-sm border-collapse">
-                    <thead>
-                      <tr className="border-b text-xs text-muted-foreground font-semibold bg-muted/30">
-                        <th className="p-3">{lang === "bn" ? "তারিখ ও সময়" : "Date & Time"}</th>
-                        <th className="p-3">{lang === "bn" ? "টাইপ ও ক্যাম্পেইন" : "Type / Title"}</th>
-                        <th className="p-3">{lang === "bn" ? "প্রাপক" : "Recipients"}</th>
-                        <th className="p-3">{lang === "bn" ? "বার্তা" : "Message"}</th>
-                        <th className="p-3">{lang === "bn" ? "স্ট্যাটাস" : "Status"}</th>
-                        <th className="p-3 text-right">{lang === "bn" ? "অ্যাকশন" : "Actions"}</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-border/60 font-sans">
-                      {filteredLogs.map((log: any) => {
-                        const dateStr = new Date(log.created_at).toLocaleString("en-US", {
-                          month: "short",
-                          day: "numeric",
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        });
-                        const isSuccess = log.status === "Success";
-                        const trxnId = log.trxn_ids && log.trxn_ids[0];
+                <div className="space-y-4">
+                  {/* Mobile Card View */}
+                  <div className="block md:hidden space-y-3">
+                    {filteredLogs.map((log: any) => {
+                      const dateStr = new Date(log.created_at).toLocaleString("en-US", {
+                        month: "short",
+                        day: "numeric",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      });
+                      const isSuccess = log.status === "Success";
+                      const trxnId = log.trxn_ids && log.trxn_ids[0];
 
-                        return (
-                          <tr key={log.id} className="hover:bg-muted/20 transition-colors">
-                            <td className="p-3 text-xs text-muted-foreground whitespace-nowrap font-mono">
-                              {dateStr}
-                            </td>
-                            <td className="p-3 whitespace-nowrap">
-                              <div className="flex flex-col">
-                                <span className="font-semibold text-xs text-foreground">
-                                  {log.campaign_title || log.recipient_type}
-                                </span>
-                                <span className="text-[10px] text-muted-foreground uppercase">
-                                  {log.recipient_type === "auto_purchase"
-                                    ? "Auto-Purchase"
-                                    : log.recipient_type === "all_customers"
-                                    ? "Customers"
-                                    : log.recipient_type === "all_suppliers"
-                                    ? "Suppliers"
-                                    : "Direct"}
-                                </span>
-                              </div>
-                            </td>
-                            <td className="p-3 text-xs">
-                              <span className="font-semibold font-num">{log.recipient_count} </span>
-                              <span className="text-muted-foreground text-[11px]">
-                                ({log.recipients_summary})
-                              </span>
-                            </td>
-                            <td className="p-3 text-xs max-w-xs truncate text-muted-foreground">
-                              {log.message}
-                            </td>
-                            <td className="p-3 whitespace-nowrap">
-                              <div className="flex items-center gap-1.5">
-                                <Badge
-                                  variant="outline"
-                                  className={`text-[10px] px-2 py-0.5 rounded-md ${
-                                    isSuccess
-                                      ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/30"
-                                      : log.status === "Partial"
-                                      ? "bg-amber-500/10 text-amber-600 border-amber-500/30"
-                                      : "bg-red-500/10 text-red-600 border-red-500/30"
-                                  }`}
-                                >
-                                  {log.status}
+                      return (
+                        <div key={log.id} className="p-3.5 rounded-xl border border-border/80 bg-card space-y-2.5 shadow-xs">
+                          <div className="flex items-start justify-between gap-2">
+                            <div>
+                              <p className="font-bold text-xs text-foreground">
+                                {log.campaign_title || log.recipient_type}
+                              </p>
+                              <p className="text-[10px] text-muted-foreground font-mono mt-0.5">
+                                {dateStr}
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <Badge
+                                variant="outline"
+                                className={`text-[10px] px-1.5 py-0.5 rounded-md ${
+                                  isSuccess
+                                    ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/30"
+                                    : log.status === "Partial"
+                                    ? "bg-amber-500/10 text-amber-600 border-amber-500/30"
+                                    : "bg-red-500/10 text-red-600 border-red-500/30"
+                                }`}
+                              >
+                                {log.status}
+                              </Badge>
+                              {log.delivery_status && (
+                                <Badge variant="secondary" className="text-[10px] font-mono px-1.5 py-0.5">
+                                  {log.delivery_status}
                                 </Badge>
-                                {log.delivery_status && (
-                                  <Badge variant="secondary" className="text-[10px] font-mono">
-                                    {log.delivery_status}
-                                  </Badge>
-                                )}
-                              </div>
-                            </td>
-                            <td className="p-3 text-right whitespace-nowrap">
-                              <div className="flex items-center justify-end gap-1.5">
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="text-xs bg-muted/40 p-2.5 rounded-lg text-foreground whitespace-pre-wrap leading-relaxed">
+                            {log.message}
+                          </div>
+
+                          <div className="flex items-center justify-between pt-1 text-xs">
+                            <span className="text-[11px] text-muted-foreground">
+                              {lang === "bn" ? "প্রাপক:" : "Recipients:"} <strong className="text-foreground">{log.recipient_count}</strong> ({log.recipients_summary})
+                            </span>
+                            <div className="flex items-center gap-1.5">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-7.5 px-2.5 text-xs rounded-lg"
+                                onClick={() => setInspectLog(log)}
+                              >
+                                <Eye className="w-3.5 h-3.5 mr-1 text-primary" />
+                                <span>{lang === "bn" ? "ডিটেইলস" : "Details"}</span>
+                              </Button>
+                              {trxnId && (
                                 <Button
-                                  variant="ghost"
+                                  variant="outline"
                                   size="sm"
-                                  className="h-8 px-2 text-xs"
-                                  onClick={() => setInspectLog(log)}
+                                  className="h-7.5 px-2 text-xs rounded-lg"
+                                  onClick={() => handleCheckDlr(trxnId, log.id)}
+                                  title="Check Live DLR"
                                 >
-                                  <Eye className="w-3.5 h-3.5 mr-1" />
-                                  {lang === "bn" ? "বিস্তারিত" : "Details"}
+                                  <RefreshCw className="w-3.5 h-3.5 text-emerald-600" />
                                 </Button>
-                                {trxnId && (
-                                  <Button
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Desktop Table View */}
+                  <div className="hidden md:block overflow-x-auto">
+                    <table className="w-full text-left text-sm border-collapse">
+                      <thead>
+                        <tr className="border-b text-xs text-muted-foreground font-semibold bg-muted/30">
+                          <th className="p-3">{lang === "bn" ? "তারিখ ও সময়" : "Date & Time"}</th>
+                          <th className="p-3">{lang === "bn" ? "টাইপ ও ক্যাম্পেইন" : "Type / Title"}</th>
+                          <th className="p-3">{lang === "bn" ? "প্রাপক" : "Recipients"}</th>
+                          <th className="p-3">{lang === "bn" ? "বার্তা" : "Message"}</th>
+                          <th className="p-3">{lang === "bn" ? "স্ট্যাটাস" : "Status"}</th>
+                          <th className="p-3 text-right">{lang === "bn" ? "অ্যাকশন" : "Actions"}</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border/60 font-sans">
+                        {filteredLogs.map((log: any) => {
+                          const dateStr = new Date(log.created_at).toLocaleString("en-US", {
+                            month: "short",
+                            day: "numeric",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          });
+                          const isSuccess = log.status === "Success";
+                          const trxnId = log.trxn_ids && log.trxn_ids[0];
+
+                          return (
+                            <tr key={log.id} className="hover:bg-muted/20 transition-colors">
+                              <td className="p-3 text-xs text-muted-foreground whitespace-nowrap font-mono">
+                                {dateStr}
+                              </td>
+                              <td className="p-3 whitespace-nowrap">
+                                <div className="flex flex-col">
+                                  <span className="font-semibold text-xs text-foreground">
+                                    {log.campaign_title || log.recipient_type}
+                                  </span>
+                                  <span className="text-[10px] text-muted-foreground uppercase">
+                                    {log.recipient_type === "auto_purchase"
+                                      ? "Auto-Purchase"
+                                      : log.recipient_type === "all_customers"
+                                      ? "Customers"
+                                      : log.recipient_type === "all_suppliers"
+                                      ? "Suppliers"
+                                      : "Direct"}
+                                  </span>
+                                </div>
+                              </td>
+                              <td className="p-3 text-xs">
+                                <span className="font-semibold font-num">{log.recipient_count} </span>
+                                <span className="text-muted-foreground text-[11px]">
+                                  ({log.recipients_summary})
+                                </span>
+                              </td>
+                              <td className="p-3 text-xs max-w-xs truncate text-muted-foreground">
+                                {log.message}
+                              </td>
+                              <td className="p-3 whitespace-nowrap">
+                                <div className="flex items-center gap-1.5">
+                                  <Badge
                                     variant="outline"
+                                    className={`text-[10px] px-2 py-0.5 rounded-md ${
+                                      isSuccess
+                                        ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/30"
+                                        : log.status === "Partial"
+                                        ? "bg-amber-500/10 text-amber-600 border-amber-500/30"
+                                        : "bg-red-500/10 text-red-600 border-red-500/30"
+                                    }`}
+                                  >
+                                    {log.status}
+                                  </Badge>
+                                  {log.delivery_status && (
+                                    <Badge variant="secondary" className="text-[10px] font-mono">
+                                      {log.delivery_status}
+                                    </Badge>
+                                  )}
+                                </div>
+                              </td>
+                              <td className="p-3 text-right whitespace-nowrap">
+                                <div className="flex items-center justify-end gap-1.5">
+                                  <Button
+                                    variant="ghost"
                                     size="sm"
                                     className="h-8 px-2 text-xs"
-                                    onClick={() => handleCheckDlr(trxnId, log.id)}
-                                    title="Check Live DLR"
+                                    onClick={() => setInspectLog(log)}
                                   >
-                                    <RefreshCw className="w-3.5 h-3.5" />
+                                    <Eye className="w-3.5 h-3.5 mr-1" />
+                                    {lang === "bn" ? "বিস্তারিত" : "Details"}
                                   </Button>
-                                )}
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
+                                  {trxnId && (
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      className="h-8 px-2 text-xs"
+                                      onClick={() => handleCheckDlr(trxnId, log.id)}
+                                      title="Check Live DLR"
+                                    >
+                                      <RefreshCw className="w-3.5 h-3.5" />
+                                    </Button>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               )}
             </CardContent>

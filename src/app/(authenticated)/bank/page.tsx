@@ -91,6 +91,7 @@ export default function BankPage() {
     loan_title: "",
     principal_amount: "",
     total_repayable: "",
+    has_installments: true,
     total_installments: "12",
     installment_amount: "",
     receive_to_cashbox: true,
@@ -223,17 +224,19 @@ export default function BankPage() {
     try {
       const principal = Number(loanForm.principal_amount) || 0;
       const repayable = Number(loanForm.total_repayable) || principal;
-      const installments = Number(loanForm.total_installments) || 1;
-      const perInstallment = Number(loanForm.installment_amount) || (repayable / installments);
+      const hasInst = loanForm.has_installments;
+      const installments = hasInst ? (Number(loanForm.total_installments) || 1) : 0;
+      const perInstallment = hasInst ? (Number(loanForm.installment_amount) || Math.round(repayable / (installments || 1))) : 0;
 
       await createBankLoanFn({
         data: {
           bank_name: loanForm.bank_name.trim(),
-          loan_title: loanForm.loan_title.trim() || "Business Loan",
+          loan_title: loanForm.loan_title.trim() || (hasInst ? "Business Loan" : "Flexible Loan"),
           principal_amount: principal,
           total_repayable: repayable,
           total_installments: installments,
           installment_amount: perInstallment,
+          has_installments: hasInst,
           receive_to_cashbox: loanForm.receive_to_cashbox,
           note: loanForm.note.trim() || null,
         },
@@ -248,6 +251,7 @@ export default function BankPage() {
         loan_title: "",
         principal_amount: "",
         total_repayable: "",
+        has_installments: true,
         total_installments: "12",
         installment_amount: "",
         receive_to_cashbox: true,
@@ -542,8 +546,16 @@ export default function BankPage() {
                       </div>
 
                       <div className="text-[11px] text-muted-foreground font-medium bg-muted/40 p-2 rounded-lg flex justify-between items-center">
-                        <span>{lang === "bn" ? "কিস্তি সংখ্যা:" : "Installments:"} <strong>{loan.paid_installments || 0}/{loan.total_installments || 1}</strong></span>
-                        <span>{lang === "bn" ? "প্রতি কিস্তি:" : "Per EMI:"} <strong>{fmtMoney(loan.installment_amount)}</strong></span>
+                        {Number(loan.total_installments) > 0 ? (
+                          <>
+                            <span>{lang === "bn" ? "কিস্তি সংখ্যা:" : "Installments:"} <strong>{loan.paid_installments || 0}/{loan.total_installments}</strong></span>
+                            <span>{lang === "bn" ? "প্রতি কিস্তি:" : "Per EMI:"} <strong>{fmtMoney(loan.installment_amount)}</strong></span>
+                          </>
+                        ) : (
+                          <span className="font-semibold text-emerald-700 dark:text-emerald-400">
+                            {lang === "bn" ? "পরিশোধ ধরন: কিস্তি ছাড়া / এককালীন ও নমনীয়" : "Type: Flexible / No Fixed Installment"}
+                          </span>
+                        )}
                       </div>
                     </div>
 
@@ -552,7 +564,7 @@ export default function BankPage() {
                         onClick={() => {
                           setSelectedLoan(loan);
                           setInstallmentForm({
-                            amount: String(loan.installment_amount || remaining),
+                            amount: String(Number(loan.total_installments) > 0 ? (loan.installment_amount || remaining) : remaining),
                             payment_method: "cashbox",
                             note: "",
                           });
@@ -561,7 +573,11 @@ export default function BankPage() {
                         className="w-full h-8 text-xs font-bold rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs gap-1.5"
                       >
                         <Banknote className="size-3.5" />
-                        <span>{lang === "bn" ? "ক্যাশ থেকে কিস্তি পরিশোধ" : "Pay Installment (Cashbox)"}</span>
+                        <span>
+                          {Number(loan.total_installments) > 0
+                            ? (lang === "bn" ? "ক্যাশ থেকে কিস্তি পরিশোধ" : "Pay Installment (Cashbox)")
+                            : (lang === "bn" ? "ক্যাশ থেকে ঋণ পরিশোধ / জমা" : "Repay Loan (Cashbox)")}
+                        </span>
                       </Button>
                     )}
                   </Card>
@@ -940,35 +956,82 @@ export default function BankPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-2">
-              <div className="space-y-1">
-                <Label>{lang === "bn" ? "মোট কিস্তির সংখ্যা" : "Total Installments"}</Label>
-                <Input
-                  type="number"
-                  placeholder="12"
-                  value={loanForm.total_installments}
-                  onChange={e => {
-                    const inst = Number(e.target.value) || 1;
-                    const rep = Number(loanForm.total_repayable) || 0;
+            <div className="space-y-1.5 pt-1">
+              <Label>{lang === "bn" ? "ঋণ পরিশোধের পদ্ধতি" : "Repayment Structure"}</Label>
+              <div className="grid grid-cols-2 gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={loanForm.has_installments ? "default" : "outline"}
+                  onClick={() => {
+                    const rep = Number(loanForm.total_repayable) || Number(loanForm.principal_amount) || 0;
                     setLoanForm({
                       ...loanForm,
-                      total_installments: e.target.value,
-                      installment_amount: String(Math.round(rep / inst)),
+                      has_installments: true,
+                      total_installments: loanForm.total_installments && Number(loanForm.total_installments) > 0 ? loanForm.total_installments : "12",
+                      installment_amount: String(Math.round(rep / (Number(loanForm.total_installments) || 12))),
                     });
                   }}
-                />
-              </div>
-
-              <div className="space-y-1">
-                <Label>{lang === "bn" ? "প্রতি কিস্তির পরিমাণ" : "Per Installment (EMI)"}</Label>
-                <Input
-                  type="number"
-                  placeholder="9166"
-                  value={loanForm.installment_amount}
-                  onChange={e => setLoanForm({ ...loanForm, installment_amount: e.target.value })}
-                />
+                  className="h-8 text-xs font-semibold"
+                >
+                  {lang === "bn" ? "কিস্তিভিত্তিক (EMI)" : "Installment (EMI)"}
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={!loanForm.has_installments ? "default" : "outline"}
+                  onClick={() => {
+                    setLoanForm({
+                      ...loanForm,
+                      has_installments: false,
+                      total_installments: "0",
+                      installment_amount: "0",
+                    });
+                  }}
+                  className="h-8 text-xs font-semibold"
+                >
+                  {lang === "bn" ? "কিস্তি ছাড়া / এককালীন" : "No Installment / Flexible"}
+                </Button>
               </div>
             </div>
+
+            {loanForm.has_installments ? (
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <Label>{lang === "bn" ? "মোট কিস্তির সংখ্যা" : "Total Installments"}</Label>
+                  <Input
+                    type="number"
+                    placeholder="12"
+                    value={loanForm.total_installments}
+                    onChange={e => {
+                      const inst = Number(e.target.value) || 1;
+                      const rep = Number(loanForm.total_repayable) || 0;
+                      setLoanForm({
+                        ...loanForm,
+                        total_installments: e.target.value,
+                        installment_amount: String(Math.round(rep / inst)),
+                      });
+                    }}
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <Label>{lang === "bn" ? "প্রতি কিস্তির পরিমাণ" : "Per Installment (EMI)"}</Label>
+                  <Input
+                    type="number"
+                    placeholder="9166"
+                    value={loanForm.installment_amount}
+                    onChange={e => setLoanForm({ ...loanForm, installment_amount: e.target.value })}
+                  />
+                </div>
+              </div>
+            ) : (
+              <div className="p-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-800 dark:text-emerald-300 text-[11px] leading-relaxed">
+                {lang === "bn"
+                  ? "✓ কিস্তি ছাড়া ঋণ: কোনো নির্দিষ্ট মাসিক কিস্তি নেই। সুবিধা অনুযায়ী যেকোনো সময়ে আংশিক বা এককালীন পরিশোধ করা যাবে।"
+                  : "✓ Flexible Loan: No fixed monthly installments. You can repay partially or in full at any time."}
+              </div>
+            )}
 
             <div className="flex items-center gap-2 pt-1">
               <input
@@ -997,7 +1060,11 @@ export default function BankPage() {
           <DialogHeader>
             <DialogTitle className="text-base font-bold flex items-center gap-2">
               <Banknote className="size-5 text-emerald-600" />
-              <span>{lang === "bn" ? "ঋণের কিস্তি পরিশোধ" : "Pay Loan Installment"}</span>
+              <span>
+                {selectedLoan && Number(selectedLoan.total_installments) === 0
+                  ? (lang === "bn" ? "ব্যাংক ঋণ পরিশোধ" : "Repay Bank Loan")
+                  : (lang === "bn" ? "ঋণের কিস্তি পরিশোধ" : "Pay Loan Installment")}
+              </span>
             </DialogTitle>
           </DialogHeader>
           <form onSubmit={handlePayInstallment} className="space-y-3 text-xs">
@@ -1013,11 +1080,25 @@ export default function BankPage() {
                     {fmtMoney(Math.max(Number(selectedLoan.total_repayable) - Number(selectedLoan.paid_amount), 0))}
                   </span>
                 </div>
+                {Number(selectedLoan.total_installments) > 0 ? (
+                  <div className="flex justify-between text-muted-foreground text-[11px]">
+                    <span>{lang === "bn" ? "নির্ধারিত কিস্তি:" : "Standard EMI:"}</span>
+                    <span className="font-mono font-semibold text-foreground">{fmtMoney(selectedLoan.installment_amount)}</span>
+                  </div>
+                ) : (
+                  <div className="text-[11px] text-emerald-600 font-medium">
+                    {lang === "bn" ? "নমনীয় পরিশোধ: যেকোনো পরিমাণ অর্থ পরিশোধ করতে পারেন" : "Flexible repayment: Pay any custom amount"}
+                  </div>
+                )}
               </div>
             )}
 
             <div className="space-y-1">
-              <Label>{lang === "bn" ? "কিস্তির টাকার পরিমাণ *" : "Installment Amount *"}</Label>
+              <Label>
+                {selectedLoan && Number(selectedLoan.total_installments) === 0
+                  ? (lang === "bn" ? "পরিশোধের টাকার পরিমাণ *" : "Payment Amount *")
+                  : (lang === "bn" ? "কিস্তির টাকার পরিমাণ *" : "Installment Amount *")}
+              </Label>
               <Input
                 required
                 type="number"
@@ -1028,7 +1109,7 @@ export default function BankPage() {
 
             <div className="p-2.5 bg-amber-500/10 border border-amber-500/20 rounded-lg text-amber-800 dark:text-amber-300 text-[11.5px] font-medium flex items-center gap-2">
               <AlertCircle className="size-4 shrink-0" />
-              <span>{lang === "bn" ? "এই কিস্তির টাকা সরাসরি নগদ ক্যাশবক্স (Cashbox) থেকে কেটে নেওয়া হবে।" : "This installment will be automatically deducted from Cashbox."}</span>
+              <span>{lang === "bn" ? "এই টাকা সরাসরি নগদ ক্যাশবক্স (Cashbox) থেকে কেটে নেওয়া হবে।" : "This payment will be automatically deducted from Cashbox."}</span>
             </div>
 
             <div className="space-y-1">
@@ -1042,7 +1123,9 @@ export default function BankPage() {
 
             <DialogFooter className="pt-2">
               <Button type="button" variant="ghost" onClick={() => setInstallmentDialogOpen(false)}>{t("cancel")}</Button>
-              <Button type="submit" disabled={busy} className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold">{lang === "bn" ? "কিস্তি পরিশোধ নিশ্চিত করুন" : "Confirm Payment"}</Button>
+              <Button type="submit" disabled={busy} className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold">
+                {lang === "bn" ? "পরিশোধ নিশ্চিত করুন" : "Confirm Payment"}
+              </Button>
             </DialogFooter>
           </form>
         </DialogContent>

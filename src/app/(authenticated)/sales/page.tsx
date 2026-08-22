@@ -328,14 +328,14 @@ export default function SalesPage() {
     <div className="space-y-3 pb-12 font-hind">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-card p-3 sm:p-3.5 rounded-2xl border-[0.5px] border-black/75 dark:border-white/30 shadow-xs">
         <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2.5">
-            <div className="size-9 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="size-9 rounded-xl bg-primary/10 flex items-center justify-center text-primary shrink-0">
               <ShoppingBag className="size-5" />
             </div>
-            <div>
-              <h1 className="text-lg sm:text-xl font-bold font-charukola">{lang === "bn" ? "বিক্রয় হিসাব" : "Sales Ledger"}</h1>
-              <p className="text-[11px] text-muted-foreground font-balooda">
-                {lang === "bn" ? "সকল বিক্রয় রেকর্ড, কুরিয়ার পেমেন্ট ও ইনভয়েস ট্র্যাকিং" : "Manage sales transactions, invoice history, and delivery remittances"}
+            <div className="min-w-0">
+              <h1 className="text-lg sm:text-xl font-bold font-balooda tracking-tight truncate">{lang === "bn" ? "বিক্রয় হিসাব" : "Sales Ledger"}</h1>
+              <p className="text-[11px] text-muted-foreground font-balooda truncate max-w-[210px] min-[400px]:max-w-[260px] sm:max-w-none">
+                {lang === "bn" ? "বিক্রয়, কুরিয়ার ও ইনভয়েস ট্র্যাকিং" : "Track sales, courier & invoices"}
               </p>
             </div>
           </div>
@@ -343,7 +343,7 @@ export default function SalesPage() {
           <Button
             onClick={() => setOpen(true)}
             size="sm"
-            className="sm:hidden h-8 px-2.5 text-xs font-bold font-balooda rounded-lg bg-primary text-primary-foreground gap-1"
+            className="sm:hidden h-8 px-2.5 text-xs font-bold font-balooda rounded-lg bg-primary text-primary-foreground gap-1 shrink-0"
           >
             <Plus className="size-3.5 stroke-[2.5]" />
             <span>{lang === "bn" ? "নতুন বিক্রি" : "New"}</span>
@@ -546,26 +546,47 @@ export default function SalesPage() {
       </div>
 
       <Tabs value={activeTab} onValueChange={v => { setActiveTab(v); setPage(1); }}>
-        <TabsList className="grid grid-cols-3 sm:grid-cols-7 w-full text-xs font-bold font-balooda p-1 bg-muted/80 rounded-xl gap-1">
-          <TabsTrigger value="all" className="rounded-lg text-[11px] sm:text-xs font-bold">
+        {/* Mobile Category Dropdown Selector */}
+        <div className="sm:hidden flex items-center justify-between gap-2 p-2 bg-card rounded-xl border-[0.5px] border-black/75 dark:border-white/30 shadow-2xs font-balooda">
+          <span className="text-xs font-bold text-muted-foreground whitespace-nowrap pl-1">
+            {lang === "bn" ? "বিক্রয় ফিল্টার:" : "Sales Filter:"}
+          </span>
+          <select
+            value={activeTab}
+            onChange={(e) => { setActiveTab(e.target.value); setPage(1); }}
+            className="flex-1 h-8.5 rounded-lg border-[0.5px] border-black/60 dark:border-white/30 bg-background px-2.5 text-xs font-bold font-balooda text-foreground shadow-xs cursor-pointer focus:ring-1 focus:ring-primary"
+          >
+            <option value="all">{lang === "bn" ? "সব বিক্রি" : "All Sales"}</option>
+            <option value="cash">{lang === "bn" ? "নগদ" : "Cash"}</option>
+            <option value="bkash">{lang === "bn" ? "বিকাশ" : "bKash"}</option>
+            <option value="bank">{lang === "bn" ? "ব্যাংক" : "Bank"}</option>
+            <option value="credit">{lang === "bn" ? "বাকী" : "Credit"}</option>
+            <option value="courier_pending">{lang === "bn" ? "⏳ কুরিয়ার পেন্ডিং" : "⏳ Pending Courier"}</option>
+            <option value="online">{lang === "bn" ? "অনলাইন সব" : "All Online"}</option>
+          </select>
+        </div>
+
+        {/* Desktop Tabs List */}
+        <TabsList className="hidden sm:grid sm:grid-cols-7 w-full text-xs font-bold font-balooda p-1 bg-muted/80 rounded-xl gap-1">
+          <TabsTrigger value="all" className="rounded-lg text-xs font-bold">
             {lang === "bn" ? "সব বিক্রি" : "All Sales"}
           </TabsTrigger>
-          <TabsTrigger value="cash" className="rounded-lg text-[11px] sm:text-xs font-bold">
+          <TabsTrigger value="cash" className="rounded-lg text-xs font-bold">
             {lang === "bn" ? "নগদ" : "Cash"}
           </TabsTrigger>
-          <TabsTrigger value="bkash" className="rounded-lg text-[11px] sm:text-xs font-bold">
+          <TabsTrigger value="bkash" className="rounded-lg text-xs font-bold">
             {lang === "bn" ? "বিকাশ" : "bKash"}
           </TabsTrigger>
-          <TabsTrigger value="bank" className="rounded-lg text-[11px] sm:text-xs font-bold">
+          <TabsTrigger value="bank" className="rounded-lg text-xs font-bold">
             {lang === "bn" ? "ব্যাংক" : "Bank"}
           </TabsTrigger>
-          <TabsTrigger value="credit" className="rounded-lg text-[11px] sm:text-xs font-bold">
+          <TabsTrigger value="credit" className="rounded-lg text-xs font-bold">
             {lang === "bn" ? "বাকী" : "Credit"}
           </TabsTrigger>
-          <TabsTrigger value="courier_pending" className="rounded-lg text-[11px] sm:text-xs text-amber-700 dark:text-amber-300">
+          <TabsTrigger value="courier_pending" className="rounded-lg text-xs font-bold text-amber-700 dark:text-amber-300">
             ⏳ {lang === "bn" ? "কুরিয়ার পেন্ডিং" : "Pending Courier"}
           </TabsTrigger>
-          <TabsTrigger value="online" className="rounded-lg text-[11px] sm:text-xs">
+          <TabsTrigger value="online" className="rounded-lg text-xs font-bold">
             {lang === "bn" ? "অনলাইন সব" : "All Online"}
           </TabsTrigger>
         </TabsList>

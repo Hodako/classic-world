@@ -145,10 +145,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       ) {
         return;
       }
-      
+
+      const hasModifier = e.ctrlKey || e.metaKey || e.altKey;
       const key = e.key.toLowerCase();
       const isCtrlK = (e.ctrlKey || e.metaKey) && key === "k";
-      const isSlash = e.key === "/" && !e.shiftKey;
+      const isSlash = e.key === "/" && !e.shiftKey && !hasModifier;
+
+      // Allow browser native shortcuts (Ctrl+C for copy, Ctrl+R for reload, etc.)
+      if (hasModifier && !isCtrlK) {
+        return;
+      }
 
       if (key === "s" || isCtrlK || isSlash) {
         e.preventDefault();
@@ -217,7 +223,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     items: group.items.filter(item => !(isEmployee && (item.to === "/somiti" || item.to === "/parties" || item.to === "/dues" || item.to === "/customers")))
   })).filter(group => group.items.length > 0);
   const bottomNav = filterNav(mobileNav, perms).filter(item => !(isEmployee && (item.to === "/somiti" || item.to === "/parties" || item.to === "/dues" || item.to === "/customers")));
-  const brandName = user.business_name || "Classic World";
+  const brandName = user.business_name || "HakimQzz";
   const userInitials = user.email?.slice(0, 2).toUpperCase() ?? "HZ";
 
   async function handleSignOut() {
@@ -237,9 +243,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <div className="flex items-center gap-2 overflow-hidden">
               <AppLogo size="sm" />
               <div className="min-w-0 group-data-[collapsible=icon]:hidden">
-                <p className="font-serif font-semibold text-sm truncate leading-tight">{brandName || "Classic World"}</p>
+                <p className="font-serif font-semibold text-sm truncate leading-tight">{brandName}</p>
                 <p className="text-[10px] text-muted-foreground truncate">{t("tagline")}</p>
-                <p className="text-[8px] text-muted-foreground/80 truncate mt-0.5 font-medium">Classic World POS</p>
+                <p className="text-[8px] text-muted-foreground/80 truncate mt-0.5 font-medium">Powered by Dream Fashion</p>
               </div>
             </div>
           </SidebarHeader>
@@ -251,7 +257,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 <SidebarGroupContent>
                   <SidebarMenu>
                     {group.items.map(({ to, labelKey, icon: Icon }) => (
-                      <SidebarMenuItem key={`${to}-${labelKey}`}>
+                      <SidebarMenuItem key={to}>
                         <SidebarMenuButton
                           isActive={isActive(to)}
                           tooltip={t(labelKey)}
@@ -301,7 +307,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               </SidebarMenuItem>
             </SidebarMenu>
             <div className="text-[9px] text-center text-muted-foreground pb-2 pt-1 group-data-[collapsible=icon]:hidden border-t border-sidebar-border/30">
-              Powered by Classic World
+              Powered by Dream Fashion
             </div>
           </SidebarFooter>
         </Sidebar>
@@ -324,7 +330,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   <AppLogo size="sm" />
                   <div className="min-w-0 flex flex-col justify-center">
                     <h1 className="font-serif font-semibold text-sm truncate leading-none">{brandName}</h1>
-                    <span className="text-[8px] text-muted-foreground mt-0.5 leading-none">Powered by Classic World</span>
+                    <span className="text-[8px] text-muted-foreground mt-0.5 leading-none">Powered by Dream Fashion</span>
                   </div>
                 </>
               ) : (
@@ -332,7 +338,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   <SidebarTrigger className="size-7 shrink-0" />
                   <div className="min-w-0 flex flex-col justify-center">
                     <h1 className="font-serif font-semibold text-base truncate leading-none hidden sm:block">{brandName}</h1>
-                    <span className="text-[8px] text-muted-foreground mt-0.5 leading-none hidden sm:block">Powered by Classic World</span>
+                    <span className="text-[8px] text-muted-foreground mt-0.5 leading-none hidden sm:block">Powered by Dream Fashion</span>
                   </div>
                 </>
               )}
@@ -345,7 +351,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 {resolved === "dark" ? <Sun className="icon-sm" /> : <Moon className="icon-sm" />}
               </Button>
               {!isMobile && (
-                <span className="text-[10px] text-muted-foreground mr-1 hidden lg:block" suppressHydrationWarning>
+                <span className="text-[10px] text-muted-foreground mr-1 hidden lg:block">
                   {new Date().toLocaleDateString("en-US", { weekday: "short", day: "numeric", month: "short" })}
                 </span>
               )}
@@ -405,7 +411,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               const active = isActive(to);
               return (
                 <Link
-                  key={`${to}-${labelKey}`}
+                  key={to}
                   href={to}
                   prefetch={true}
                   className={`flex flex-col items-center justify-center py-1 gap-0.5 text-[10px] font-medium transition-colors active:scale-95 ${

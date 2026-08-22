@@ -692,6 +692,9 @@ export default function Dashboard() {
       if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable || target.tagName === "SELECT")) {
         return;
       }
+      if (e.ctrlKey || e.metaKey || e.altKey) {
+        return;
+      }
       if (saleOpen || showFilter || showPopup || bentoCustomizerOpen) {
         return;
       }

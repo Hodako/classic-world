@@ -52,25 +52,25 @@
 
 :root {
   --loader-color: #059669;
-  --background: #f8fafc;
-  --foreground: #201C16;
+  --background: #93CAED;
+  --foreground: #18181b;
   --card: #FFFFFF;
-  --card-foreground: #201C16;
+  --card-foreground: #18181b;
   --popover: #FFFFFF;
-  --popover-foreground: #201C16;
+  --popover-foreground: #18181b;
   --primary: #059669;
   --primary-foreground: #FFFFFF;
   --secondary: #E6F4EA;
   --secondary-foreground: #047857;
-  --muted: #EFECE6;
-  --muted-foreground: #8B857A;
+  --muted: #E0EFF8;
+  --muted-foreground: #475569;
   --accent: #E6F4EA;
   --accent-foreground: #059669;
   --destructive: #7A2635;
   --destructive-foreground: #FFFFFF;
   --success: #10B981;
   --warning: #F59E0B;
-  --border: #E5E2D9;
+  --border: #bfdbfe;
   --input: #FFFFFF;
   --ring: #059669;
   --chart-1: #059669;
@@ -79,16 +79,16 @@
   --chart-4: #8C8C90;
   --chart-5: #34D399;
   --sidebar: #ffffff;
-  --sidebar-foreground: #201C16;
+  --sidebar-foreground: #18181b;
   --sidebar-primary: #059669;
   --sidebar-primary-foreground: #FFFFFF;
   --sidebar-accent: #E6F4EA;
   --sidebar-accent-foreground: #059669;
-  --sidebar-border: #E5E2D9;
+  --sidebar-border: #bfdbfe;
   --sidebar-ring: #059669;
-  --font-sans: 'Siyam Rupali', Roboto, "Hind Siliguri", sans-serif;
-  --font-serif: Lora, serif;
-  --font-mono: "Fira Code", monospace;
+  --font-sans: 'Hind Siliguri', 'Baloo Da 2', 'Poppins', sans-serif;
+  --font-serif: 'Poppins', 'Montserrat', 'Roboto', sans-serif;
+  --font-mono: 'Fira Code', 'Roboto Mono', 'Poppins', monospace;
   --radius: 0.5rem;
 
   /* bKash Fintech Design System Tokens */
@@ -649,6 +649,10 @@
 }
 
 /* Custom Bangla Web Typography Utilities */
+.font-hind {
+  font-family: 'Hind Siliguri', 'Baloo Da 2', sans-serif !important;
+}
+
 .font-balooda {
   font-family: 'Baloo Da 2', 'Hind Siliguri', sans-serif !important;
 }
@@ -659,6 +663,11 @@
 
 .font-bensen {
   font-family: 'Bensen Handwriting', 'Bensen', 'Hind Siliguri', cursive, sans-serif !important;
+}
+
+.font-num {
+  font-family: 'Poppins', 'Montserrat', 'Roboto', 'Fira Code', sans-serif !important;
+  font-variant-numeric: tabular-nums;
 }
 
 

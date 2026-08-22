@@ -325,7 +325,7 @@ export default function SalesPage() {
   };
 
   return (
-    <div className="space-y-3 pb-12">
+    <div className="space-y-3 pb-12 font-hind">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-card p-3 sm:p-3.5 rounded-2xl border-[0.5px] border-black/75 dark:border-white/30 shadow-xs">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2.5">

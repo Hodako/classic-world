@@ -286,11 +286,6 @@ function KPICard({
 
       <div className={`flex items-center justify-between w-full ${align === "right" ? "flex-row-reverse" : ""}`}>
         <div className="flex items-center gap-1.5 min-w-0 mr-2">
-          {isDesktop && hotkey !== undefined && (
-            <span className="px-1.5 py-0.5 text-[9px] font-mono font-extrabold rounded bg-muted/80 text-foreground/90 border border-border/80 shadow-2xs shrink-0 select-none">
-              [{hotkey}]
-            </span>
-          )}
           <span className={`${labelSize} font-bold text-muted-foreground truncate tracking-tight`}>{label}</span>
         </div>
         {imageUrl && !imgFailed ? (
@@ -457,7 +452,6 @@ export default function Dashboard() {
   // Quick Sell Dialog state
   const [saleOpen, setSaleOpen] = useState(false);
   const [salePresetType, setSalePresetType] = useState<"cash" | "credit" | "online">("cash");
-  const [todaysSalesModalOpen, setTodaysSalesModalOpen] = useState(false);
 
   // Recent Activity Limit state
   const [activityLimit, setActivityLimit] = useState(5);
@@ -1170,18 +1164,16 @@ export default function Dashboard() {
         // Define all cards dynamically in a map with Bento Grid & Custom Style options
         const kpiCardsMap: Record<string, React.ReactNode> = {
           total_sales: (
-            <div
+            <Link
+              href="/sales"
               key="total_sales"
               className={`block cursor-pointer ${isHeroCard("total_sales") ? "sm:col-span-2" : ""}`}
-              onClick={() => {
-                playTapSound();
-                setTodaysSalesModalOpen(true);
-              }}
+              onClick={() => playTapSound()}
             >
               <KPICard
                 label={lang === "bn" ? "আজকের মোট বিক্রি" : "Today's Total Sales"}
                 value={fmtMoney(totalSalesToday)}
-                sub={lang === "bn" ? "বিস্তারিত ও আর্থিক অগ্রগতি দেখুন" : "View analytics & orders"}
+                sub={dateRangeLabel}
                 imageUrl="/icons/sell_icon.png"
                 icon={ShoppingBag}
                 color="bg-indigo-600"
@@ -1194,7 +1186,7 @@ export default function Dashboard() {
                 curve={(kpiConfig.curve || "none") as any}
                 isBentoHero={isHeroCard("total_sales")}
               />
-            </div>
+            </Link>
           ),
           credit_sale: (
             <KPICard
@@ -1741,18 +1733,16 @@ export default function Dashboard() {
           switch (key) {
             case "total_sales":
               return (
-                <div
+                <Link
+                  href="/sales"
                   key="total_sales"
                   className="block cursor-pointer h-full"
-                  onClick={() => {
-                    playTapSound();
-                    setTodaysSalesModalOpen(true);
-                  }}
+                  onClick={() => playTapSound()}
                 >
                   <KPICard
                     label={lang === "bn" ? "আজকের মোট বিক্রি" : "Today's Total Sales"}
                     value={fmtMoney(totalSalesToday)}
-                    sub={lang === "bn" ? "বিস্তারিত ও আর্থিক অগ্রগতি দেখুন" : "View analytics & orders"}
+                    sub={dateRangeLabel}
                     imageUrl="/icons/sell_icon.png"
                     icon={ShoppingBag}
                     color="bg-indigo-600"
@@ -1762,7 +1752,7 @@ export default function Dashboard() {
                     align={kpiConfig.align as any}
                     size={kpiConfig.size as any}
                   />
-                </div>
+                </Link>
               );
             case "credit_sale":
               return (
@@ -2846,149 +2836,6 @@ export default function Dashboard() {
         </DialogContent>
       </Dialog>
 
-      {/* Comprehensive Today's Sales & Financial Insights Modal */}
-      <Dialog open={todaysSalesModalOpen} onOpenChange={setTodaysSalesModalOpen}>
-        <DialogContent className="w-[calc(100vw-20px)] sm:max-w-2xl md:max-w-3xl max-h-[90dvh] flex flex-col p-0 rounded-2xl overflow-hidden border-border shadow-2xl">
-          <DialogHeader className="p-4 sm:p-5 pb-3 border-b border-border/80 bg-card">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <div className="size-9 rounded-xl bg-indigo-500/10 flex items-center justify-center text-indigo-600">
-                  <ShoppingBag className="size-5" />
-                </div>
-                <div>
-                  <DialogTitle className="text-base sm:text-lg font-bold">
-                    {lang === "bn" ? "আজকের বিক্রয় ও আর্থিক অগ্রগতি" : "Today's Sales & Financial Overview"}
-                  </DialogTitle>
-                  <p className="text-[11px] text-muted-foreground">
-                    {dateRangeLabel} · {filteredSales.length} {lang === "bn" ? "টি বিক্রয় রেকর্ড" : "orders recorded"}
-                  </p>
-                </div>
-              </div>
-            </div>
-          </DialogHeader>
-
-          <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4">
-            {/* Financial Metric Bento Cards */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-              <div className="p-3 rounded-xl border border-indigo-500/30 bg-indigo-500/5">
-                <span className="text-[10.5px] text-indigo-700 dark:text-indigo-300 font-semibold">{lang === "bn" ? "মোট বিক্রি" : "Total Sales"}</span>
-                <p className="text-base sm:text-lg font-bold font-serif text-indigo-700 dark:text-indigo-300 mt-0.5">{fmtMoney(totalSalesToday)}</p>
-              </div>
-              <div className="p-3 rounded-xl border border-emerald-500/30 bg-emerald-500/5">
-                <span className="text-[10.5px] text-emerald-700 dark:text-emerald-300 font-semibold">{lang === "bn" ? "ক্যাশবক্সে জমা" : "Deposited in Cashbox"}</span>
-                <p className="text-base sm:text-lg font-bold font-serif text-emerald-700 dark:text-emerald-300 mt-0.5">{fmtMoney(cashboxDepositedToday)}</p>
-              </div>
-              <div className="p-3 rounded-xl border border-amber-500/30 bg-amber-500/5">
-                <span className="text-[10.5px] text-amber-700 dark:text-amber-300 font-semibold">{lang === "bn" ? "কুরিয়ার পেন্ডিং" : "Pending Courier"}</span>
-                <p className="text-base sm:text-lg font-bold font-serif text-amber-700 dark:text-amber-300 mt-0.5">{fmtMoney(onlinePendingToday)}</p>
-              </div>
-              <div className="p-3 rounded-xl border border-emerald-500/30 bg-emerald-500/5">
-                <span className="text-[10.5px] text-emerald-700 dark:text-emerald-300 font-semibold">{lang === "bn" ? "নিট লাভ" : "Net Profit"}</span>
-                <p className="text-base sm:text-lg font-bold font-serif text-emerald-700 dark:text-emerald-300 mt-0.5">{fmtMoney(profitToday)}</p>
-              </div>
-            </div>
-
-            {/* Channel Breakdown Breakdown Bars */}
-            <div className="p-3.5 rounded-xl border border-border/80 bg-card space-y-2">
-              <h3 className="text-xs font-bold text-foreground flex items-center justify-between">
-                <span>{lang === "bn" ? "পেমেন্ট মাধ্যম অনুযায়ী বিক্রয় বিন্যাস" : "Sales Channel Breakdown"}</span>
-                <span className="text-[11px] text-muted-foreground font-mono">{fmtMoney(totalSalesToday)}</span>
-              </h3>
-
-              <div className="space-y-1.5 pt-1 text-xs">
-                <div className="flex items-center justify-between">
-                  <span className="flex items-center gap-1.5 text-muted-foreground">
-                    <Banknote className="size-3.5 text-emerald-600" /> {lang === "bn" ? "নগদ বিক্রি (Cash)" : "Cash Sale"}
-                  </span>
-                  <span className="font-mono font-bold text-foreground">{fmtMoney(cashToday)}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="flex items-center gap-1.5 text-muted-foreground">
-                    <DollarSign className="size-3.5 text-[#E2136E]" /> {lang === "bn" ? "বিকাশ পেমেন্ট (bKash)" : "bKash Payment"}
-                  </span>
-                  <span className="font-mono font-bold text-foreground">{fmtMoney(bkashToday)}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="flex items-center gap-1.5 text-muted-foreground">
-                    <DollarSign className="size-3.5 text-sky-600" /> {lang === "bn" ? "ব্যাংক পেমেন্ট (Bank)" : "Bank Payment"}
-                  </span>
-                  <span className="font-mono font-bold text-foreground">{fmtMoney(bankToday)}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="flex items-center gap-1.5 text-muted-foreground">
-                    <Truck className="size-3.5 text-purple-600" /> {lang === "bn" ? "অনলাইন কুরিয়ার (Courier)" : "Courier Delivery"}
-                  </span>
-                  <span className="font-mono font-bold text-foreground">{fmtMoney(onlineToday)}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="flex items-center gap-1.5 text-muted-foreground">
-                    <CreditCard className="size-3.5 text-amber-600" /> {lang === "bn" ? "বাকী বিক্রি (Credit)" : "Credit Sale"}
-                  </span>
-                  <span className="font-mono font-bold text-foreground">{fmtMoney(creditToday)}</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Today's Sales List */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <h3 className="text-xs font-bold text-foreground">{lang === "bn" ? "আজকের বিক্রয় তালিকা" : "Today's Orders"}</h3>
-                <Link href="/sales" className="text-[11px] text-primary hover:underline font-semibold" onClick={() => setTodaysSalesModalOpen(false)}>
-                  {lang === "bn" ? "সেলস পেজে যান →" : "View in Sales →"}
-                </Link>
-              </div>
-
-              {filteredSales.length === 0 ? (
-                <div className="p-8 text-center border border-dashed rounded-xl text-xs text-muted-foreground">
-                  {lang === "bn" ? "আজকের দিনে এখনো কোন বিক্রয় রেকর্ড করা হয়নি।" : "No sales recorded yet for today."}
-                </div>
-              ) : (
-                <div className="space-y-2 max-h-[260px] overflow-y-auto pr-1">
-                  {filteredSales.slice(0, 10).map((s) => (
-                    <div key={s.id} className="p-2.5 rounded-lg border border-border/80 bg-card flex items-center justify-between gap-2 text-xs">
-                      <div>
-                        <div className="font-bold text-foreground truncate">{s.product_name} <span className="text-muted-foreground font-mono">×{s.qty}</span></div>
-                        <div className="text-[10.5px] text-muted-foreground">
-                          {s.type === "online" ? `কুরিয়ার (${(s as any).courier_status || "pending"})` : s.type?.toUpperCase()} · {fmtDateTime(s.created_at)}
-                        </div>
-                      </div>
-                      <div className="text-right shrink-0">
-                        <div className="font-bold font-serif">{fmtMoney(Number(s.sell_price) * s.qty)}</div>
-                        <div className="text-[10px] text-emerald-600 font-semibold">+{fmtMoney(s.profit)}</div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-
-          <DialogFooter className="p-3 border-t border-border/80 bg-muted/20 flex gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                setTodaysSalesModalOpen(false);
-                router.push("/sales");
-              }}
-              className="text-xs font-semibold"
-            >
-              {lang === "bn" ? "সকল বিক্রয় দেখুন" : "View All Sales"}
-            </Button>
-            <Button
-              size="sm"
-              onClick={() => {
-                setTodaysSalesModalOpen(false);
-                setSaleOpen(true);
-              }}
-              className="text-xs font-bold"
-            >
-              <Plus className="size-3.5 mr-1" />
-              {lang === "bn" ? "নতুন বিক্রি" : "New Sale"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

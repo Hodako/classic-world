@@ -284,29 +284,125 @@ export async function sendDynamicSms(params: SendDynamicSmsParams): Promise<MiMS
 }
 
 /**
- * Check remaining balance via GET /V2/BalanceCheck
+ * Check remaining balance via GET /V2/BalanceCheck (with POST fallback & multi-format response parsing)
  */
-export async function checkSmsBalance(credentials: { apiKey: string; userName: string }): Promise<MiMSMSResponse> {
+export async function checkSmsBalance(credentials: { apiKey: string; userName: string }): Promise<MiMSMSResponse & { isIpBlocked?: boolean }> {
   const { apiKey, userName } = credentials;
 
   if (!apiKey || !userName) {
     throw new Error("API Key and Username are required to check balance");
   }
 
-  const url = `${BASE_URL}/V2/BalanceCheck?apiKey=${encodeURIComponent(apiKey)}&userName=${encodeURIComponent(userName)}`;
+  const cleanApiKey = apiKey.trim();
+  const cleanUserName = userName.trim();
 
-  const res = await fetch(url, {
-    method: "GET",
-    headers: { "Content-Type": "application/json" },
-  });
+  // Helper to extract balance from raw body text or parsed JSON
+  const parseBalanceData = (rawText: string): (MiMSMSResponse & { isIpBlocked?: boolean }) | null => {
+    if (!rawText) return null;
+    const text = rawText.trim();
 
-  const data: MiMSMSResponse = await res.json().catch(() => ({
-    statusCode: String(res.status),
-    status: "Failed",
-    responseResult: `HTTP ${res.status}: ${res.statusText}`,
-  }));
+    // 1. If response is a direct number string (e.g. "500" or "500.50")
+    if (/^\d+(\.\d+)?$/.test(text)) {
+      return {
+        statusCode: "200",
+        status: "Success",
+        balance: text,
+      };
+    }
 
-  return data;
+    // 2. Try JSON parse
+    try {
+      const json = JSON.parse(text);
+      if (json && typeof json === "object") {
+        const bal = json.balance ?? json.Balance ?? json.smsCount ?? json.SmsCount ?? json.data?.balance ?? json.data?.Balance;
+        const status = json.status ?? json.Status ?? (json.statusCode === "200" || json.StatusCode === "200" ? "Success" : "Failed");
+        const respResult = json.responseResult ?? json.ResponseResult ?? json.message ?? json.error ?? text;
+
+        const isBlocked =
+          String(respResult).toLowerCase().includes("black") ||
+          String(respResult).toLowerCase().includes("ip") ||
+          String(status).toLowerCase().includes("black");
+
+        if (bal !== undefined && bal !== null && !isBlocked) {
+          return {
+            statusCode: String(json.statusCode || json.StatusCode || "200"),
+            status: "Success",
+            balance: String(bal),
+            responseResult: String(respResult),
+          };
+        }
+
+        if (isBlocked) {
+          return {
+            statusCode: "403",
+            status: "Failed",
+            isIpBlocked: true,
+            responseResult: "IP Blacklisted: Your server or device IP is not whitelisted in MiMSMS. Please add your IP in sms.mimsms.com -> Settings -> API -> IP Whitelist.",
+          };
+        }
+
+        return {
+          statusCode: String(json.statusCode || json.StatusCode || "400"),
+          status: status,
+          balance: bal !== undefined ? String(bal) : undefined,
+          responseResult: String(respResult),
+        };
+      }
+    } catch (e) {}
+
+    // Check if raw text mentions IP blacklist
+    if (text.toLowerCase().includes("black") || text.toLowerCase().includes("ip")) {
+      return {
+        statusCode: "403",
+        status: "Failed",
+        isIpBlocked: true,
+        responseResult: "IP Blacklisted: Your server or device IP is not whitelisted in MiMSMS. Please add your IP in sms.mimsms.com -> Settings -> API -> IP Whitelist.",
+      };
+    }
+
+    return null;
+  };
+
+  // Attempt 1: GET request
+  try {
+    const url = `${BASE_URL}/V2/BalanceCheck?apiKey=${encodeURIComponent(cleanApiKey)}&userName=${encodeURIComponent(cleanUserName)}`;
+    const res = await fetch(url, {
+      method: "GET",
+      headers: { Accept: "application/json, text/plain, */*" },
+    });
+    const text = await res.text();
+    const parsed = parseBalanceData(text);
+    if (parsed) return parsed;
+  } catch (err: any) {
+    console.warn("MiMSMS GET BalanceCheck failed, trying POST fallback...", err?.message);
+  }
+
+  // Attempt 2: POST request
+  try {
+    const res = await fetch(`${BASE_URL}/V2/BalanceCheck`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json, text/plain, */*" },
+      body: JSON.stringify({
+        apiKey: cleanApiKey,
+        userName: cleanUserName,
+      }),
+    });
+    const text = await res.text();
+    const parsed = parseBalanceData(text);
+    if (parsed) return parsed;
+
+    return {
+      statusCode: String(res.status),
+      status: "Failed",
+      responseResult: text || `HTTP ${res.status}: ${res.statusText}`,
+    };
+  } catch (err: any) {
+    return {
+      statusCode: "500",
+      status: "Failed",
+      responseResult: err?.message || "Failed to reach MiMSMS API Gateway",
+    };
+  }
 }
 
 /**

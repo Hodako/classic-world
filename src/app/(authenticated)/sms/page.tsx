@@ -110,19 +110,61 @@ export default function SmsPage() {
   // Balance State
   const [balance, setBalance] = useState<string | null>(null);
   const [balanceLoading, setBalanceLoading] = useState(false);
+  const [ipBlocked, setIpBlocked] = useState(false);
 
-  const fetchBalance = async () => {
+  const fetchBalance = async (showToast = true) => {
     try {
       setBalanceLoading(true);
-      const res = await checkSmsBalanceFn();
-      if (res?.status === "Success" || res?.statusCode === "200") {
-        setBalance(res.balance || "0");
-        toast.success(lang === "bn" ? `বর্তমান ব্যালেন্স: ${res.balance || 0} টি এসএমএস` : `Current balance: ${res.balance || 0} SMS`);
+      const res: any = await checkSmsBalanceFn();
+      
+      const balVal =
+        res?.balance ??
+        res?.Balance ??
+        res?.smsCount ??
+        res?.SmsCount ??
+        res?.data?.balance ??
+        res?.data?.Balance ??
+        (res?.status === "Success" && typeof res?.responseResult === "number" ? res.responseResult : null);
+
+      if (balVal !== undefined && balVal !== null && !res?.isIpBlocked) {
+        setBalance(String(balVal));
+        setIpBlocked(false);
+        if (showToast) {
+          toast.success(lang === "bn" ? `বর্তমান ব্যালেন্স: ${balVal} টি এসএমএস` : `Current balance: ${balVal} SMS`);
+        }
+      } else if ((res?.status === "Success" || res?.statusCode === "200") && !res?.isIpBlocked) {
+        const b = String(res?.balance || res?.Balance || "0");
+        setBalance(b);
+        setIpBlocked(false);
+        if (showToast) {
+          toast.success(lang === "bn" ? `বর্তমান ব্যালেন্স: ${b} টি এসএমএস` : `Current balance: ${b} SMS`);
+        }
       } else {
-        toast.error(res?.responseResult || (lang === "bn" ? "ব্যালেন্স আনা সম্ভব হয়নি" : "Failed to fetch balance"));
+        const respStr = String(res?.responseResult || res?.ResponseResult || res?.message || res?.error || "");
+        if (res?.isIpBlocked || respStr.toLowerCase().includes("black") || respStr.toLowerCase().includes("ip")) {
+          setIpBlocked(true);
+          if (showToast) {
+            toast.error(
+              lang === "bn"
+                ? "MiMSMS সতর্কতা: আপনার সার্ভার/ডিভাইস IP অনুমোদিত নয় (IP Blacklist)। sms.mimsms.com-এ গিয়ে IP Whitelist চেক করুন।"
+                : "MiMSMS Warning: Server/Device IP is blocked or not in MiMSMS IP Whitelist."
+            );
+          }
+        } else {
+          if (showToast) {
+            toast.error(respStr || (lang === "bn" ? "ব্যালেন্স আনা সম্ভব হয়নি" : "Failed to fetch balance"));
+          }
+        }
       }
     } catch (err: any) {
-      toast.error(err?.message || (lang === "bn" ? "ব্যালেন্স আনা সম্ভব হয়নি" : "Failed to fetch balance"));
+      console.warn("fetchBalance error:", err);
+      const msg = String(err?.message || "");
+      if (msg.toLowerCase().includes("black") || msg.toLowerCase().includes("ip")) {
+        setIpBlocked(true);
+      }
+      if (showToast) {
+        toast.error(err?.message || (lang === "bn" ? "ব্যালেন্স আনা সম্ভব হয়নি" : "Failed to fetch balance"));
+      }
     } finally {
       setBalanceLoading(false);
     }
@@ -130,7 +172,7 @@ export default function SmsPage() {
 
   useEffect(() => {
     if (smsSettings?.apiKey && smsSettings?.userName) {
-      fetchBalance();
+      fetchBalance(false);
     }
   }, [smsSettings?.apiKey, smsSettings?.userName]);
 
@@ -558,6 +600,44 @@ export default function SmsPage() {
         </div>
       )}
 
+      {ipBlocked && (
+        <div className="bg-rose-500/10 border border-rose-500/30 text-rose-900 dark:text-rose-200 p-3.5 sm:p-4 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4 shadow-xs">
+          <div className="flex items-start gap-2.5 sm:gap-3">
+            <AlertCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+            <div className="space-y-0.5">
+              <p className="text-xs sm:text-sm font-bold text-rose-700 dark:text-rose-300">
+                {lang === "bn" ? "MiMSMS আইপি হোয়াইটলিস্ট সতর্কতা (IP Blacklist)" : "MiMSMS IP Whitelist Required"}
+              </p>
+              <p className="text-[11px] sm:text-xs text-rose-800/90 dark:text-rose-300/90 leading-relaxed">
+                {lang === "bn"
+                  ? "MiMSMS পোর্টালে আপনার সার্ভার বা বর্তমান আইপি Whitelist-এ অন্তর্ভুক্ত না থাকলে ব্যালেন্স ও এসএমএস আটকে যায়। sms.mimsms.com-এ লগইন করে Developer → IP Whitelist-এ গিয়ে আপনার IP যুক্ত করুন অথবা IP restriction বন্ধ করুন।"
+                  : "MiMSMS requires whitelisting your server/outbound IP. Please login to sms.mimsms.com → Developer → IP Whitelist and add your IP."}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 w-full sm:w-auto shrink-0">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => fetchBalance(true)}
+              className="rounded-lg h-8 text-xs border-rose-500/30 text-rose-700 dark:text-rose-300 hover:bg-rose-500/10"
+            >
+              <RefreshCw className="w-3.5 h-3.5 mr-1" />
+              {lang === "bn" ? "পুনরায় চেষ্টা" : "Retry"}
+            </Button>
+            <a
+              href="https://sms.mimsms.com"
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center justify-center rounded-lg bg-rose-600 hover:bg-rose-700 text-white h-8 px-3 text-xs font-semibold"
+            >
+              <span>{lang === "bn" ? "প্যানেল খুলুন" : "Open Panel"}</span>
+              <ExternalLink className="w-3 h-3 ml-1" />
+            </a>
+          </div>
+        </div>
+      )}
+
       {/* Main Feature Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4 sm:space-y-6">
         <div className="overflow-x-auto pb-1 -mx-2.5 px-2.5 sm:mx-0 sm:px-0">
@@ -802,58 +882,58 @@ export default function SmsPage() {
                     <Label className="font-semibold text-sm">
                       {lang === "bn" ? "প্রাপক কাস্টমার নির্বাচন করুন:" : "Target Customer Audience:"}
                     </Label>
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div className="grid grid-cols-3 gap-2 sm:gap-3">
                       <button
                         type="button"
                         onClick={() => setCustTargetMode("all")}
-                        className={`p-3.5 rounded-xl border text-left transition-all ${
+                        className={`p-2.5 sm:p-3.5 rounded-xl border text-left transition-all ${
                           custTargetMode === "all"
                             ? "border-blue-600 bg-blue-500/10 ring-2 ring-blue-500/20"
                             : "border-border hover:bg-muted/40"
                         }`}
                       >
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="font-semibold text-sm">{lang === "bn" ? "সকল কাস্টমার" : "All Customers"}</span>
-                          <Users className="w-4 h-4 text-blue-600" />
+                        <div className="flex items-center justify-between mb-0.5 sm:mb-1">
+                          <span className="font-semibold text-xs sm:text-sm truncate">{lang === "bn" ? "সকল কাস্টমার" : "All Customers"}</span>
+                          <Users className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-blue-600 shrink-0" />
                         </div>
-                        <span className="text-xs text-muted-foreground font-num">
-                          {validCustomers.length} {lang === "bn" ? "জন প্রাপক" : "recipients"}
+                        <span className="text-[10px] sm:text-xs text-muted-foreground font-num block">
+                          {validCustomers.length} {lang === "bn" ? "জন" : "recipients"}
                         </span>
                       </button>
 
                       <button
                         type="button"
                         onClick={() => setCustTargetMode("dues")}
-                        className={`p-3.5 rounded-xl border text-left transition-all ${
+                        className={`p-2.5 sm:p-3.5 rounded-xl border text-left transition-all ${
                           custTargetMode === "dues"
                             ? "border-amber-600 bg-amber-500/10 ring-2 ring-amber-500/20"
                             : "border-border hover:bg-muted/40"
                         }`}
                       >
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="font-semibold text-sm">{lang === "bn" ? "বকেয়াদার কাস্টমার" : "Customers with Dues"}</span>
-                          <PhoneCall className="w-4 h-4 text-amber-600" />
+                        <div className="flex items-center justify-between mb-0.5 sm:mb-1">
+                          <span className="font-semibold text-xs sm:text-sm truncate">{lang === "bn" ? "বকেয়াদার" : "With Dues"}</span>
+                          <PhoneCall className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-600 shrink-0" />
                         </div>
-                        <span className="text-xs text-muted-foreground font-num">
-                          {customersWithDues.length} {lang === "bn" ? "জন প্রাপক" : "recipients"}
+                        <span className="text-[10px] sm:text-xs text-muted-foreground font-num block">
+                          {customersWithDues.length} {lang === "bn" ? "জন" : "recipients"}
                         </span>
                       </button>
 
                       <button
                         type="button"
                         onClick={() => setCustTargetMode("selected")}
-                        className={`p-3.5 rounded-xl border text-left transition-all ${
+                        className={`p-2.5 sm:p-3.5 rounded-xl border text-left transition-all ${
                           custTargetMode === "selected"
                             ? "border-purple-600 bg-purple-500/10 ring-2 ring-purple-500/20"
                             : "border-border hover:bg-muted/40"
                         }`}
                       >
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="font-semibold text-sm">{lang === "bn" ? "বাছাইকৃত কাস্টমার" : "Custom Selected"}</span>
-                          <UserCheck className="w-4 h-4 text-purple-600" />
+                        <div className="flex items-center justify-between mb-0.5 sm:mb-1">
+                          <span className="font-semibold text-xs sm:text-sm truncate">{lang === "bn" ? "বাছাইকৃত" : "Custom"}</span>
+                          <UserCheck className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-purple-600 shrink-0" />
                         </div>
-                        <span className="text-xs text-muted-foreground font-num">
-                          {selectedCustIds.length} {lang === "bn" ? "জন নির্বাচিত" : "selected"}
+                        <span className="text-[10px] sm:text-xs text-muted-foreground font-num block">
+                          {selectedCustIds.length} {lang === "bn" ? "জন" : "selected"}
                         </span>
                       </button>
                     </div>
@@ -1085,40 +1165,40 @@ export default function SmsPage() {
                     <Label className="font-semibold text-sm">
                       {lang === "bn" ? "প্রাপক সাপ্লায়ার নির্বাচন করুন:" : "Target Suppliers:"}
                     </Label>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="grid grid-cols-2 gap-2 sm:gap-3">
                       <button
                         type="button"
                         onClick={() => setSuppTargetMode("all")}
-                        className={`p-3.5 rounded-xl border text-left transition-all ${
+                        className={`p-2.5 sm:p-3.5 rounded-xl border text-left transition-all ${
                           suppTargetMode === "all"
                             ? "border-purple-600 bg-purple-500/10 ring-2 ring-purple-500/20"
                             : "border-border hover:bg-muted/40"
                         }`}
                       >
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="font-semibold text-sm">{lang === "bn" ? "সকল সাপ্লায়ার" : "All Suppliers"}</span>
-                          <Truck className="w-4 h-4 text-purple-600" />
+                        <div className="flex items-center justify-between mb-0.5 sm:mb-1">
+                          <span className="font-semibold text-xs sm:text-sm truncate">{lang === "bn" ? "সকল সাপ্লায়ার" : "All Suppliers"}</span>
+                          <Truck className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-purple-600 shrink-0" />
                         </div>
-                        <span className="text-xs text-muted-foreground font-num">
-                          {validParties.length} {lang === "bn" ? "জন সাপ্লায়ার" : "suppliers"}
+                        <span className="text-[10px] sm:text-xs text-muted-foreground font-num block">
+                          {validParties.length} {lang === "bn" ? "জন" : "suppliers"}
                         </span>
                       </button>
 
                       <button
                         type="button"
                         onClick={() => setSuppTargetMode("selected")}
-                        className={`p-3.5 rounded-xl border text-left transition-all ${
+                        className={`p-2.5 sm:p-3.5 rounded-xl border text-left transition-all ${
                           suppTargetMode === "selected"
                             ? "border-purple-600 bg-purple-500/10 ring-2 ring-purple-500/20"
                             : "border-border hover:bg-muted/40"
                         }`}
                       >
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="font-semibold text-sm">{lang === "bn" ? "বাছাইকৃত সাপ্লায়ার" : "Selected Suppliers"}</span>
-                          <UserCheck className="w-4 h-4 text-purple-600" />
+                        <div className="flex items-center justify-between mb-0.5 sm:mb-1">
+                          <span className="font-semibold text-xs sm:text-sm truncate">{lang === "bn" ? "বাছাইকৃত" : "Selected"}</span>
+                          <UserCheck className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-purple-600 shrink-0" />
                         </div>
-                        <span className="text-xs text-muted-foreground font-num">
-                          {selectedSuppIds.length} {lang === "bn" ? "জন নির্বাচিত" : "selected"}
+                        <span className="text-[10px] sm:text-xs text-muted-foreground font-num block">
+                          {selectedSuppIds.length} {lang === "bn" ? "জন" : "selected"}
                         </span>
                       </button>
                     </div>

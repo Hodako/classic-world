@@ -13,6 +13,7 @@ export const metadata: Metadata = {
   },
   manifest: "/manifest.json",
   appleWebApp: {
+    capable: true,
     title: "Dream Fashion",
     statusBarStyle: "black-translucent",
   },
@@ -45,14 +46,6 @@ export default function RootLayout({
         <link href="https://banglawebfonts.pages.dev/css/baloo-da-2.css" rel="stylesheet" />
         <link href="https://banglawebfonts.pages.dev/css/charukola.css" rel="stylesheet" />
         <link href="https://banglawebfonts.pages.dev/css/bensen-handwriting.css" rel="stylesheet" />
-        {/* PWA meta — mobile-web-app-capable is the modern standard (replaces deprecated apple- version) */}
-        <meta name="mobile-web-app-capable" content="yes" />
-        {/* Keep apple- variant for iOS Safari compatibility */}
-        <meta name="apple-mobile-web-app-capable" content="yes" />
-        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-        <meta name="apple-mobile-web-app-title" content="Dream Fashion" />
-        <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
-        <link rel="manifest" href="/manifest.json" />
         <script
           dangerouslySetInnerHTML={{
             __html: `

@@ -2114,20 +2114,63 @@ export async function getCustomersFn() {
   const session = await requireSession();
   const db = await getDb();
   
-  // Automatically migrate existing parties to customers if customers collection is empty
-  const count = await db.collection("customers").countDocuments({ owner_id: session.ownerId });
-  if (count === 0) {
-    const allParties = await db.collection("parties").find({ owner_id: session.ownerId }).toArray();
-    if (allParties.length > 0) {
-      await db.collection("customers").insertMany(allParties.map(p => ({
-        ...p,
+  const [customerDocs, partyDocs, saleDocs] = await Promise.all([
+    db.collection("customers").find({ owner_id: session.ownerId }).toArray(),
+    db.collection("parties").find({ owner_id: session.ownerId }).toArray(),
+    db.collection("sales").find({ owner_id: session.ownerId }).project({ customer_name: 1, customer_phone: 1, party_id: 1, party_name: 1, party_phone: 1, created_at: 1 }).toArray(),
+  ]);
+
+  const map = new Map<string, any>();
+
+  // 1. Add all from customers collection
+  for (const c of customerDocs) {
+    const id = c._id.toString();
+    const phone = (c.phone || "").trim();
+    const key = phone ? phone.replace(/[^0-9]/g, "") : `id_${id}`;
+    map.set(key, { ...c, id });
+  }
+
+  // 2. Add all customer parties from parties collection
+  for (const p of partyDocs) {
+    if (p.type === "supplier") continue;
+    const id = p._id.toString();
+    const phone = (p.phone || "").trim();
+    const key = phone ? phone.replace(/[^0-9]/g, "") : `id_${id}`;
+    if (!map.has(key)) {
+      map.set(key, {
         _id: p._id,
-      })) as any[]);
+        id,
+        owner_id: p.owner_id,
+        name: p.name,
+        phone: p.phone || null,
+        address: p.address || null,
+        created_at: p.created_at || new Date().toISOString(),
+      });
     }
   }
 
-  const items = await db.collection("customers").find({ owner_id: session.ownerId }).sort({ name: 1 }).toArray();
-  return items.map((c) => ({ ...c, id: c._id as any as string }));
+  // 3. Add all buyers from historical sales
+  for (const s of saleDocs) {
+    const phone = (s.customer_phone || s.party_phone || "").trim();
+    const cleanPhone = phone.replace(/[^0-9]/g, "");
+    if (cleanPhone.length >= 10 && !map.has(cleanPhone)) {
+      const name = (s.customer_name || s.party_name || "Customer").trim();
+      const fakeId = s.party_id || crypto.randomUUID();
+      map.set(cleanPhone, {
+        _id: fakeId,
+        id: fakeId,
+        owner_id: session.ownerId,
+        name,
+        phone,
+        address: null,
+        created_at: s.created_at || new Date().toISOString(),
+      });
+    }
+  }
+
+  const result = Array.from(map.values());
+  result.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+  return result;
 }
 
 export async function getCustomerFn(input: { data: { id: string } }) {

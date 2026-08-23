@@ -241,15 +241,69 @@ export default function SmsPage() {
   const [checkingDlr, setCheckingDlr] = useState(false);
   const [logSearch, setLogSearch] = useState("");
 
-  // Filtered lists
+  // Comprehensive All Customers List
   const validCustomers = useMemo(() => {
-    return customers.filter(c => c.phone && c.phone.trim().length >= 10);
-  }, [customers]);
+    const map = new Map<string, { id: string; name: string; phone: string; address?: string | null; total_due?: number }>();
+
+    // 1. Add all from customers query
+    customers.forEach((c: any) => {
+      const rawPhone = (c.phone || "").trim();
+      const cleanPhone = rawPhone.replace(/[^0-9]/g, "");
+      if (cleanPhone.length >= 10) {
+        map.set(cleanPhone, {
+          id: c.id || c._id || cleanPhone,
+          name: c.name || "Customer",
+          phone: rawPhone,
+          address: c.address || null,
+        });
+      }
+    });
+
+    // 2. Add all customer parties
+    parties.forEach((p: any) => {
+      if (p.type !== "supplier") {
+        const rawPhone = (p.phone || "").trim();
+        const cleanPhone = rawPhone.replace(/[^0-9]/g, "");
+        if (cleanPhone.length >= 10 && !map.has(cleanPhone)) {
+          map.set(cleanPhone, {
+            id: p.id || p._id || cleanPhone,
+            name: p.name || "Party Customer",
+            phone: rawPhone,
+            address: p.address || null,
+          });
+        }
+      }
+    });
+
+    // 3. Add all buyers from sales
+    sales.forEach((s: any) => {
+      const rawPhone = ((s as any).customer_phone || (s as any).party_phone || "").trim();
+      const cleanPhone = rawPhone.replace(/[^0-9]/g, "");
+      if (cleanPhone.length >= 10 && !map.has(cleanPhone)) {
+        const name = ((s as any).customer_name || (s as any).party_name || s.parties?.name || "Customer").trim();
+        map.set(cleanPhone, {
+          id: s.party_id || s.id || cleanPhone,
+          name,
+          phone: rawPhone,
+          address: null,
+        });
+      }
+    });
+
+    const list = Array.from(map.values());
+    list.sort((a, b) => a.name.localeCompare(b.name));
+    return list;
+  }, [customers, parties, sales]);
 
   const customersWithDues = useMemo(() => {
     // Collect customers with remaining dues
     const duePartyIds = new Set(sales.filter(s => (Number(s.due_amount) || 0) > 0 && s.party_id).map(s => s.party_id));
-    return validCustomers.filter(c => duePartyIds.has(c.id));
+    const duePhones = new Set(
+      sales
+        .filter(s => (Number(s.due_amount) || 0) > 0 && ((s as any).customer_phone || (s as any).party_phone))
+        .map(s => (((s as any).customer_phone || (s as any).party_phone || "") as string).trim().replace(/[^0-9]/g, ""))
+    );
+    return validCustomers.filter(c => duePartyIds.has(c.id) || duePhones.has(c.phone.replace(/[^0-9]/g, "")));
   }, [validCustomers, sales]);
 
   const validParties = useMemo(() => {

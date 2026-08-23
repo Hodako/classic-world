@@ -55,8 +55,8 @@ export default function BankPage() {
   const accountsQuery = useQuery({ queryKey: ["bank-accounts"], queryFn: getBankAccountsFn });
   const loansQuery = useQuery({ queryKey: ["bank-loans"], queryFn: getBankLoansFn });
 
-  const accounts = accountsQuery.data ?? [];
-  const loans = loansQuery.data ?? [];
+  const accounts: any[] = (accountsQuery.data as any[]) ?? [];
+  const loans: any[] = (loansQuery.data as any[]) ?? [];
 
   // Dialog States
   const [accountDialogOpen, setAccountDialogOpen] = useState(false);
@@ -356,6 +356,7 @@ export default function BankPage() {
                 loan_title: "",
                 principal_amount: "",
                 total_repayable: "",
+                has_installments: true,
                 total_installments: "12",
                 installment_amount: "",
                 receive_to_cashbox: true,
@@ -454,6 +455,7 @@ export default function BankPage() {
                   loan_title: "",
                   principal_amount: "",
                   total_repayable: "",
+                  has_installments: true,
                   total_installments: "12",
                   installment_amount: "",
                   receive_to_cashbox: true,
@@ -890,7 +892,9 @@ export default function BankPage() {
 
             <DialogFooter className="pt-2">
               <Button type="button" variant="ghost" onClick={() => setTxDialogOpen(false)}>{t("cancel")}</Button>
-              <Button type="submit" disabled={busy} className="bg-primary font-bold">{t("confirm")}</Button>
+              <Button type="submit" disabled={busy} className="bg-primary font-bold">
+                {lang === "bn" ? "নিশ্চিত করুন" : "Confirm"}
+              </Button>
             </DialogFooter>
           </form>
         </DialogContent>

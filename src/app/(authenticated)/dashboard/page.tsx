@@ -789,7 +789,7 @@ export default function Dashboard() {
   const totalSalesToday = filteredSales.reduce((a, s) => a + (s.returned ? 0 : Number(s.sell_price) * s.qty), 0);
   const cashToday    = filteredSales.filter(s => s.type === "cash").reduce((a, s) => a + Number(s.sell_price) * s.qty, 0);
   const bkashToday   = filteredSales.filter(s => s.type === "bkash").reduce((a, s) => a + Number(s.sell_price) * s.qty, 0);
-  const bankToday    = filteredSales.filter(s => s.type === "bank").reduce((a, s) => a + Number(s.sell_price) * s.qty, 0);
+  const bankToday    = filteredSales.filter(s => (s.type as string) === "bank").reduce((a, s) => a + Number(s.sell_price) * s.qty, 0);
   const creditToday  = filteredSales.filter(s => s.type === "credit").reduce((a, s) => a + Number(s.due_amount), 0);
   const onlineToday  = filteredSales.filter(s => s.type === "online").reduce((a, s) => a + Number(s.sell_price) * s.qty, 0);
   const onlinePendingToday = filteredSales.filter(s => s.type === "online" && (s as any).courier_status !== "collected" && (s as any).courier_status !== "cancelled").reduce((a, s) => a + Number(s.sell_price) * s.qty, 0);

@@ -245,6 +245,23 @@ const dict = {
   add_bank_account: { bn: "নতুন ব্যাংক একাউন্ট", en: "Add Bank Account" },
   take_loan: { bn: "ঋণ গ্রহণ", en: "Take Loan" },
   pay_installment: { bn: "কিস্তি পরিশোধ", en: "Pay Installment" },
+  sms: { bn: "এসএমএস", en: "SMS" },
+  sms_management: { bn: "এসএমএস প্যানেল", en: "SMS Panel" },
+  sms_desc: { bn: "সাপ্লায়ার, কাস্টমার ও বাল্ক মেসেজ পাঠান এবং ক্রয়ের পর অটো এসএমএস", en: "Send bulk SMS to suppliers, customers, offers & auto-SMS triggers" },
+  send_sms: { bn: "এসএমএস পাঠান", en: "Send SMS" },
+  sms_balance: { bn: "এসএমএস ব্যালেন্স", en: "SMS Balance" },
+  sms_settings: { bn: "এসএমএস সেটিংস", en: "SMS Settings" },
+  sms_history: { bn: "মেসেজ হিস্টোরি", en: "SMS Logs" },
+  suppliers_sms: { bn: "সাপ্লায়ার এসএমএস", en: "Suppliers SMS" },
+  customers_sms: { bn: "কাস্টমার এসএমএস", en: "Customer SMS" },
+  auto_sms_purchase: { bn: "ক্রয়ের পর অটো এসএমএস", en: "Auto SMS After Purchase" },
+  product_analytics: { bn: "পণ্য অ্যানালিটিক্স", en: "Product Analytics" },
+  product_analytics_desc: { bn: "শীর্ষ বিক্রিত, ট্রেন্ডিং, স্টক ও বিক্রির প্রবৃদ্ধি বিশ্লেষণ", en: "Top sellers, trending, stock & growth intelligence" },
+  trending_products: { bn: "ট্রেন্ডিং পণ্য", en: "Trending Products" },
+  sales_growth: { bn: "বিক্রির প্রবৃদ্ধি", en: "Sales Growth" },
+  pieces_sold: { bn: "বিক্রিত পিস", en: "Pieces Sold" },
+  remaining_stock: { bn: "অবশিষ্ট স্টক", en: "Remaining Stock" },
+  dead_stock: { bn: "অচল স্টক", en: "Slow / Dead Stock" },
 } as const;
 
 export type DictKey = keyof typeof dict;

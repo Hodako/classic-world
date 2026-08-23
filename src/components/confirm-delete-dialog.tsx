@@ -10,6 +10,7 @@ interface ConfirmDeleteDialogProps {
   description: string;
   onConfirm: () => void;
   busy?: boolean;
+  loading?: boolean;
 }
 
 export function ConfirmDeleteDialog({
@@ -19,7 +20,9 @@ export function ConfirmDeleteDialog({
   description,
   onConfirm,
   busy = false,
+  loading = false,
 }: ConfirmDeleteDialogProps) {
+  const isBusy = busy || loading;
   const [clickCount, setClickCount] = React.useState(0);
 
   React.useEffect(() => {
@@ -59,7 +62,7 @@ export function ConfirmDeleteDialog({
             variant="outline"
             className="flex-1 h-9 text-xs beveled-button"
             onClick={() => onOpenChange(false)}
-            disabled={busy}
+            disabled={isBusy}
           >
             Cancel
           </Button>
@@ -70,9 +73,9 @@ export function ConfirmDeleteDialog({
               clickCount > 0 ? "bg-red-700 hover:bg-red-800 scale-105 border border-red-500 shadow-lg animate-pulse" : ""
             }`}
             onClick={handleConfirmClick}
-            disabled={busy}
+            disabled={isBusy}
           >
-            {busy
+            {isBusy
               ? "Deleting..."
               : clickCount === 0
               ? "Confirm Delete"

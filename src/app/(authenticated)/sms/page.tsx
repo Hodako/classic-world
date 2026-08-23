@@ -35,7 +35,7 @@ import {
 } from "@/lib/rpc";
 import { calculateSmsParts, sanitizeBdPhoneNumber } from "@/lib/mimsms";
 
-export function SmsCharacterCounter({
+function SmsCharacterCounter({
   message,
   maxLength = 1000,
 }: {

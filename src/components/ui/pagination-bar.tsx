@@ -4,20 +4,21 @@ import { Button } from "@/components/ui/button";
 interface PaginationBarProps {
   page: number;
   totalPages: number;
-  total: number;
-  pageSize: number;
+  total?: number;
+  pageSize?: number;
   onPageChange: (page: number) => void;
 }
 
 /** Compact pagination controls for mobile lists. */
 export function PaginationBar({ page, totalPages, total, pageSize, onPageChange }: PaginationBarProps) {
   if (totalPages <= 1) return null;
-  const from = (page - 1) * pageSize + 1;
-  const to = Math.min(page * pageSize, total);
+  const showSummary = typeof total === "number" && typeof pageSize === "number";
+  const from = showSummary ? (page - 1) * pageSize + 1 : page;
+  const to = showSummary ? Math.min(page * pageSize, total) : totalPages;
 
   return (
     <div className="flex items-center justify-between gap-2 py-3 pr-14 pb-16 md:pr-0 md:pb-3 text-xs text-muted-foreground">
-      <span>{from}–{to} / {total}</span>
+      {showSummary ? <span>{from}–{to} / {total}</span> : <span />}
       <div className="flex items-center gap-1">
         <Button
           type="button"

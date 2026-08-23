@@ -206,6 +206,7 @@ export function SaleDialog({
   }
 
   const sellTotal = cart.reduce((a, l) => a + lineTotal(l), 0);
+  const discTotal = cart.reduce((a, l) => a + ((Number(l.discount) || 0) * (Number(l.qty) || 1)), 0);
   const profitTotal = cart.reduce((a, l) => {
     const p = products.find(x => x.id === l.productId);
     const sell = Number(l.sellPrice) || (p ? p.sell_price : 0) || 0;

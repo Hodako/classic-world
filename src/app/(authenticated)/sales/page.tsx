@@ -855,9 +855,9 @@ function SalesTab({
             {expanded && (
               <div className="px-3 pb-3 pt-1 border-t-[0.5px] border-black/40 dark:border-white/20 space-y-2.5 bg-muted/10 rounded-b-xl animate-in fade-in-50 duration-150 font-balooda">
                 {/* Note / Remarks if any */}
-                {s.note && (
+                {(s as any).note && (
                   <p className="text-[11px] text-muted-foreground bg-muted/40 px-2.5 py-1 rounded border-[0.5px] border-black/20 dark:border-white/20">
-                    <strong className="text-foreground">{lang === "bn" ? "নোট:" : "Note:"}</strong> {s.note}
+                    <strong className="text-foreground">{lang === "bn" ? "নোট:" : "Note:"}</strong> {(s as any).note}
                   </p>
                 )}
 

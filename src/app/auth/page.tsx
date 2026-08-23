@@ -608,34 +608,37 @@ export default function AuthPage() {
 
       {/* ─── FIREBASE FORGOT PASSWORD MODAL ──────────────────────────────── */}
       <Dialog open={forgotModalOpen} onOpenChange={setForgotModalOpen}>
-        <DialogContent className="max-w-md rounded-2xl sm:rounded-3xl p-6 border-primary/20 shadow-2xl">
+        <DialogContent
+          className="max-w-md rounded-2xl sm:rounded-3xl p-6 bg-white border border-slate-200 shadow-2xl text-slate-900"
+          style={{ backgroundColor: "#FFFFFF" }}
+        >
           <DialogHeader className="space-y-2">
             <div className="flex items-center gap-3">
               <div className="p-2.5 rounded-2xl bg-primary/10 text-primary border border-primary/20">
                 <KeyRound className="size-6 text-primary animate-pulse" />
               </div>
               <div>
-                <DialogTitle className="text-lg sm:text-xl font-bold">
+                <DialogTitle className="text-lg sm:text-xl font-bold text-slate-900">
                   {lang === "bn" ? "পাসওয়ার্ড রিসেট করুন" : "Reset Account Password"}
                 </DialogTitle>
-                <DialogDescription className="text-xs text-muted-foreground">
+                <DialogDescription className="text-xs text-slate-500">
                   {lang === "bn"
-                    ? "ফায়ারবেস অথেন্টিকেশনের মাধ্যমে পাসওয়ার্ড পরিবর্তনের নিরাপদ লিংক আপনার ইমেইলে পাঠানো হবে।"
-                    : "Enter your account email address to receive a secure Firebase password reset link."}
+                    ? "পাসওয়ার্ড পরিবর্তনের নিরাপদ লিংক আপনার ইমেইলে পাঠানো হবে।"
+                    : "Enter your account email address to receive a secure password reset link."}
                 </DialogDescription>
               </div>
             </div>
           </DialogHeader>
 
           {forgotSent ? (
-            <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-800 dark:text-emerald-200 space-y-3">
+            <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-900 space-y-3">
               <div className="flex items-start gap-2.5">
                 <CheckCircle2 className="size-5 text-emerald-600 shrink-0 mt-0.5" />
                 <div className="space-y-1">
-                  <p className="text-sm font-bold">
+                  <p className="text-sm font-bold text-emerald-950">
                     {lang === "bn" ? "ইমেইল সফলভাবে পাঠানো হয়েছে!" : "Password Reset Email Sent!"}
                   </p>
-                  <p className="text-xs leading-relaxed text-emerald-900/90 dark:text-emerald-200/90">
+                  <p className="text-xs leading-relaxed text-emerald-800">
                     {lang === "bn"
                       ? `${forgotEmail} ঠিকানায় পাসওয়ার্ড রিসেটের লিংক পাঠানো হয়েছে। দয়া করে আপনার ইনবক্স অথবা স্প্যাম ফোল্ডার চেক করুন।`
                       : `A password reset link has been dispatched to ${forgotEmail}. Please check your inbox or spam folder.`}
@@ -653,29 +656,29 @@ export default function AuthPage() {
           ) : (
             <form onSubmit={handleForgotPassword} className="space-y-4 pt-1">
               <div className="space-y-1.5">
-                <Label className="text-xs font-semibold">
+                <Label className="text-xs font-semibold text-slate-700">
                   {lang === "bn" ? "নিবন্ধিত ইমেইল এড্রেস" : "Registered Email Address"}
                 </Label>
                 <div className="relative">
-                  <Mail className="size-4 absolute left-3 top-3 text-muted-foreground" />
+                  <Mail className="size-4 absolute left-3 top-3 text-slate-400" />
                   <Input
                     type="email"
                     required
                     placeholder="e.g. name@store.com"
                     value={forgotEmail}
                     onChange={(e) => setForgotEmail(e.target.value)}
-                    className="pl-9 rounded-xl text-xs h-10 font-mono"
+                    className="pl-9 rounded-xl text-xs h-10 font-mono bg-white border-slate-200 text-slate-900 placeholder:text-slate-400"
                   />
                 </div>
               </div>
 
-              <DialogFooter className="flex-row items-center justify-end gap-2 pt-2">
+              <DialogFooter className="flex-row items-center justify-end gap-2 pt-2 border-t border-slate-100">
                 <Button
                   type="button"
                   variant="outline"
                   size="sm"
                   onClick={() => setForgotModalOpen(false)}
-                  className="rounded-xl text-xs"
+                  className="rounded-xl text-xs border-slate-200 text-slate-700 hover:bg-slate-50"
                 >
                   {lang === "bn" ? "বাতিল" : "Cancel"}
                 </Button>
@@ -683,7 +686,7 @@ export default function AuthPage() {
                   type="submit"
                   disabled={forgotBusy}
                   size="sm"
-                  className="rounded-xl beveled-button text-xs gap-1.5"
+                  className="rounded-xl bg-primary text-primary-foreground font-bold text-xs gap-1.5 shadow-sm"
                 >
                   {forgotBusy ? (
                     <RefreshCw className="size-3.5 animate-spin" />

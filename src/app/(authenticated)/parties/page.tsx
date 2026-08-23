@@ -157,8 +157,13 @@ export default function PartiesPage() {
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-          <Button size="sm" onClick={() => setAddOpen(true)}>
-            <UserPlus className="size-4 mr-1" />
+          <Button
+            size="sm"
+            onClick={() => setAddOpen(true)}
+            className="bg-[#228B22] hover:bg-[#1C741C] text-white font-bold border-0 shadow-sm transition-all"
+            style={{ backgroundColor: "#228B22", color: "#FFFFFF" }}
+          >
+            <UserPlus className="size-4 mr-1 text-white" />
             {t("add_party")}
           </Button>
         </div>
@@ -201,8 +206,12 @@ export default function PartiesPage() {
         <Card className="p-10 text-center">
           <Users className="size-10 text-muted-foreground mx-auto mb-3" />
           <p className="text-sm text-muted-foreground">{t("no_parties")}</p>
-          <Button className="mt-4" onClick={() => setAddOpen(true)}>
-            <UserPlus className="size-4 mr-1" /> {t("add_party")}
+          <Button
+            className="mt-4 bg-[#228B22] hover:bg-[#1C741C] text-white font-bold border-0 shadow-sm transition-all"
+            style={{ backgroundColor: "#228B22", color: "#FFFFFF" }}
+            onClick={() => setAddOpen(true)}
+          >
+            <UserPlus className="size-4 mr-1 text-white" /> {t("add_party")}
           </Button>
         </Card>
       )}
@@ -289,7 +298,7 @@ export default function PartiesPage() {
 }
 
 function AddPartyDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
-  const { t } = useT();
+  const { t, lang } = useT();
   const qc = useQueryClient();
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
@@ -332,28 +341,45 @@ function AddPartyDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <UserPlus className="size-5" /> {t("add_party")}
-          </DialogTitle>
-        </DialogHeader>
-        <form onSubmit={submit} className="space-y-3">
+      <DialogContent className="max-w-md overflow-hidden p-0 rounded-2xl border border-slate-200 dark:border-zinc-800 shadow-2xl">
+        <div
+          className="p-4 bg-[#228B22] text-white flex items-center gap-3"
+          style={{ backgroundColor: "#228B22", color: "#FFFFFF" }}
+        >
+          <div className="size-9 rounded-xl bg-white/20 grid place-items-center shrink-0">
+            <UserPlus className="size-5 text-white" />
+          </div>
+          <div>
+            <h3 className="font-bold text-base text-white">{t("add_party")}</h3>
+            <p className="text-xs text-white/80 font-balooda">
+              {lang === "bn" ? "নতুন সাপ্লায়ার ও ব্যবসায়িক পার্টনার যুক্ত করুন" : "Add a new supplier or partner"}
+            </p>
+          </div>
+        </div>
+
+        <form onSubmit={submit} className="p-5 space-y-3.5 bg-card">
           <div className="space-y-1">
-            <Label className="text-xs text-muted-foreground">{t("party_name")} *</Label>
-            <Input required placeholder={t("party_name")} value={name} onChange={e => setName(e.target.value)} />
+            <Label className="text-xs font-semibold text-foreground">{t("party_name")} *</Label>
+            <Input required placeholder={lang === "bn" ? "সাপ্লায়ার / পার্টনারের নাম লিখুন" : t("party_name")} value={name} onChange={e => setName(e.target.value)} className="h-10 rounded-xl" />
           </div>
           <div className="space-y-1">
-            <Label className="text-xs text-muted-foreground">{t("phone")}</Label>
-            <Input inputMode="tel" placeholder={t("phone")} value={phone} onChange={e => setPhone(e.target.value)} />
+            <Label className="text-xs font-semibold text-foreground">{t("phone")}</Label>
+            <Input inputMode="tel" placeholder={lang === "bn" ? "মোবাইল নম্বর (যেমন: 017XXXXXXXX)" : t("phone")} value={phone} onChange={e => setPhone(e.target.value)} className="h-10 rounded-xl" />
           </div>
           <div className="space-y-1">
-            <Label className="text-xs text-muted-foreground">Address (ঠিকানা)</Label>
-            <Input placeholder="Address" value={address} onChange={e => setAddress(e.target.value)} />
+            <Label className="text-xs font-semibold text-foreground">{lang === "bn" ? "ঠিকানা" : "Address"}</Label>
+            <Input placeholder={lang === "bn" ? "দোকান বা গোডাউনের ঠিকানা" : "Store or Warehouse Address"} value={address} onChange={e => setAddress(e.target.value)} className="h-10 rounded-xl" />
           </div>
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>{t("cancel")}</Button>
-            <Button type="submit" disabled={busy}>{busy ? "…" : t("save")}</Button>
+          <DialogFooter className="pt-2 gap-2">
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} className="rounded-xl">{t("cancel")}</Button>
+            <Button
+              type="submit"
+              disabled={busy}
+              className="bg-[#228B22] hover:bg-[#1C741C] text-white font-bold rounded-xl border-0 shadow-sm transition-all"
+              style={{ backgroundColor: "#228B22", color: "#FFFFFF" }}
+            >
+              {busy ? "…" : t("save")}
+            </Button>
           </DialogFooter>
         </form>
       </DialogContent>

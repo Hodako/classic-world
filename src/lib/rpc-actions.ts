@@ -180,17 +180,42 @@ export async function getMeFn() {
   }
 }
 
-export async function loginFn(input: { data: { email: string; password: string } }) {
+export async function loginFn(input: { data: { email?: string; phone?: string; identifier?: string; password: string } }) {
   const { data } = input;
+  const rawId = (data.identifier || data.email || data.phone || "").trim();
+  if (!rawId || !data.password) {
+    const err = new Error("Email/Phone number and password are required");
+    (err as any).statusCode = 400;
+    throw err;
+  }
+
   const db = await getDb();
-  const cleanEmail = (data.email || "").trim().toLowerCase();
-  const user = await db.collection("users").findOne({ email: cleanEmail });
+  const cleanId = rawId.toLowerCase();
+  const cleanPhone = rawId.replace(/[^0-9]/g, "");
+
+  // Search by email, username, phone, or normalized phone numbers
+  const user = await db.collection("users").findOne({
+    $or: [
+      { email: cleanId },
+      { username: cleanId },
+      ...(cleanPhone.length >= 10
+        ? [
+            { phone: cleanId },
+            { phone: cleanPhone },
+            { phone: cleanPhone.startsWith("88") ? cleanPhone : `88${cleanPhone}` },
+            { phone: cleanPhone.startsWith("880") ? cleanPhone.slice(2) : cleanPhone },
+          ]
+        : [{ phone: cleanId }]),
+    ],
+  });
+
   if (!user || !(await comparePassword(data.password, user.password as string, user.plain_password as string))) {
-    const err = new Error("Invalid email or password");
+    const err = new Error("Invalid email/phone number or password");
     (err as any).statusCode = 401;
     throw err;
   }
-  const token = await signToken({ userId: user._id as any as string, email: user.email as string });
+
+  const token = await signToken({ userId: user._id as any as string, email: (user.email as string) || cleanId, role: (user.role as string) || "owner" });
   const cookieStore = await cookies();
   cookieStore.set("token", token, { maxAge: 30 * 24 * 60 * 60, httpOnly: true, sameSite: "lax", path: "/" });
   const mapped = await mapUser(db, user._id as any as string);
@@ -224,17 +249,49 @@ function validateEmail(email: string) {
   }
 }
 
-export async function registerFn(input: { data: { email: string; password: string; fullName?: string } }) {
+export async function registerFn(input: { data: { email?: string; phone?: string; identifier?: string; password: string; fullName?: string; role?: "owner" | "employee" } }) {
   const { data } = input;
-  validateEmail(data.email);
+  const rawId = (data.identifier || data.email || data.phone || "").trim();
+  if (!rawId) {
+    throw new Error("Email or Phone number is required for registration");
+  }
+  if (!data.password || data.password.length < 6) {
+    throw new Error("Password must be at least 6 characters");
+  }
+
+  const isEmail = rawId.includes("@");
+  let cleanEmail = "";
+  let cleanPhone = "";
+
+  if (isEmail) {
+    validateEmail(rawId);
+    cleanEmail = rawId.toLowerCase();
+  } else {
+    const digits = rawId.replace(/[^0-9]/g, "");
+    if (digits.length < 10) {
+      throw new Error("Please enter a valid phone number (at least 10 digits)");
+    }
+    cleanPhone = rawId;
+    cleanEmail = `${digits}@hakimqzz.internal`;
+  }
+
   const db = await getDb();
-  const existing = await db.collection("users").findOne({ email: data.email.toLowerCase().trim() });
-  if (existing) throw new Error("User already exists");
+  
+  // Check existing user by email or phone
+  const existing = await db.collection("users").findOne({
+    $or: [
+      ...(cleanEmail ? [{ email: cleanEmail }] : []),
+      ...(cleanPhone ? [{ phone: cleanPhone }, { phone: cleanPhone.replace(/[^0-9]/g, "") }] : []),
+    ],
+  });
+  if (existing) {
+    throw new Error(isEmail ? "An account with this email already exists" : "An account with this phone number already exists");
+  }
   
   const userId = crypto.randomUUID();
   const businessId = crypto.randomUUID();
   const now = new Date().toISOString();
-  const shopName = sanitizeInput(data.fullName ? `${data.fullName}'s Shop` : "Dream Fashion");
+  const shopName = sanitizeInput(data.fullName ? `${data.fullName}'s Shop` : "HakimQzz Store");
 
   // Create default business for new user with starter 0 SMS credits
   await db.collection("businesses").insertOne({
@@ -245,28 +302,31 @@ export async function registerFn(input: { data: { email: string; password: strin
     business_type: "retail",
     theme: "green",
     status: "active",
-    sms_credits: 0, // No free starter credits
+    sms_credits: 0,
     max_products: 500,
     max_invoices: 10000,
     employee_limit: 5,
     created_at: now,
+    updated_at: now,
   });
 
   await db.collection("users").insertOne({
     _id: userId as any,
-    email: data.email.toLowerCase().trim(),
+    email: cleanEmail,
+    phone: cleanPhone || null,
     password: await hashPassword(data.password),
     plain_password: data.password,
     full_name: sanitizeInput(data.fullName || ""),
-    role: "owner",
+    role: data.role || "owner",
     business_id: businessId,
     owner_id: userId,
     activated: true,
     status: "active",
     created_at: now,
+    updated_at: now,
   });
 
-  const token = await signToken({ userId, email: data.email.toLowerCase().trim() });
+  const token = await signToken({ userId, email: cleanEmail, role: data.role || "owner" });
   const cookieStore = await cookies();
   cookieStore.set("token", token, { maxAge: 30 * 24 * 60 * 60, httpOnly: true, sameSite: "lax", path: "/" });
   const mapped = await mapUser(db, userId);

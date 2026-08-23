@@ -61,29 +61,31 @@ export default function AuthPage() {
     router.replace("/dashboard");
   }
 
-  // ─── Email Sign-In (Firebase Auth + DB Sync) ───────────────────────────────
+  // ─── Sign-In (Phone or Email) ───────────────────────────────
   async function signIn(e: React.FormEvent) {
     e.preventDefault();
+    const cleanId = email.trim();
+    if (!cleanId || !password) {
+      toast.error(lang === "bn" ? "মোবাইল নম্বর/ইমেইল ও পাসওয়ার্ড দিন" : "Please enter phone/email and password");
+      return;
+    }
+
     setBusy(true);
     try {
-      const cleanEmail = email.trim().toLowerCase();
-
-      // Authenticate with Firebase Auth
-      try {
-        await signInWithEmailAndPassword(auth, cleanEmail, password);
-      } catch (fbErr: any) {
-        // If user doesn't exist in Firebase yet (legacy user), attempt creation in Firebase
-        if (fbErr.code === "auth/user-not-found" || fbErr.code === "auth/invalid-credential") {
-          try {
-            await createUserWithEmailAndPassword(auth, cleanEmail, password);
-          } catch {
-            // fallback to database password check
+      if (cleanId.includes("@")) {
+        try {
+          await signInWithEmailAndPassword(auth, cleanId.toLowerCase(), password);
+        } catch (fbErr: any) {
+          if (fbErr.code === "auth/user-not-found" || fbErr.code === "auth/invalid-credential") {
+            try {
+              await createUserWithEmailAndPassword(auth, cleanId.toLowerCase(), password);
+            } catch {}
           }
         }
       }
 
       // Backend database verification & token issue
-      const data = await loginFn({ data: { email: cleanEmail, password } });
+      const data = await loginFn({ data: { identifier: cleanId, password } });
       afterAuth(data.user as AuthUser);
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Login failed. Please check your credentials.");
@@ -92,27 +94,32 @@ export default function AuthPage() {
     }
   }
 
-  // ─── Email Sign-Up (Firebase Auth + DB Creation) ───────────────────────────
+  // ─── Sign-Up (Phone or Email) ───────────────────────────
   async function signUp(e: React.FormEvent) {
     e.preventDefault();
+    const cleanId = email.trim();
+    if (!cleanId || !password) {
+      toast.error(lang === "bn" ? "মোবাইল নম্বর/ইমেইল ও পাসওয়ার্ড দিন" : "Please enter phone/email and password");
+      return;
+    }
+
     setBusy(true);
     try {
-      const cleanEmail = email.trim().toLowerCase();
-
-      // 1. Create Firebase Auth user
-      try {
-        const userCred = await createUserWithEmailAndPassword(auth, cleanEmail, password);
-        if (fullName && userCred.user) {
-          await updateProfile(userCred.user, { displayName: fullName });
-        }
-      } catch (fbErr: any) {
-        if (fbErr.code !== "auth/email-already-in-use") {
-          console.warn("Firebase Auth registration notice:", fbErr.message);
+      if (cleanId.includes("@")) {
+        try {
+          const userCred = await createUserWithEmailAndPassword(auth, cleanId.toLowerCase(), password);
+          if (fullName && userCred.user) {
+            await updateProfile(userCred.user, { displayName: fullName });
+          }
+        } catch (fbErr: any) {
+          if (fbErr.code !== "auth/email-already-in-use") {
+            console.warn("Firebase Auth notice:", fbErr.message);
+          }
         }
       }
 
       // 2. Register in system database
-      const data = await registerFn({ data: { email: cleanEmail, password, fullName } });
+      const data = await registerFn({ data: { identifier: cleanId, password, fullName, role: "owner" } });
       toast.success(lang === "bn" ? "একাউন্ট সফলভাবে তৈরি হয়েছে!" : "Account created successfully!");
       afterAuth(data.user as AuthUser);
     } catch (err: unknown) {
@@ -486,9 +493,9 @@ export default function AuthPage() {
               </>
             )}
 
-            {/* Field: Email */}
+            {/* Field: Phone or Email */}
             <div className="flex-column">
-              <label>{t("email")}</label>
+              <label>{lang === "bn" ? "মোবাইল নম্বর অথবা ইমেইল" : "Phone or Email"}</label>
             </div>
             <div className="inputForm">
               <svg height="15" viewBox="0 0 32 32" width="15" xmlns="http://www.w3.org/2000/svg">
@@ -497,10 +504,10 @@ export default function AuthPage() {
                 </g>
               </svg>
               <input 
-                type="email" 
+                type="text" 
                 required
                 className="input" 
-                placeholder="Enter your Email" 
+                placeholder={lang === "bn" ? "যেমন: 017XXXXXXXX অথবা user@gmail.com" : "e.g. 017XXXXXXXX or user@gmail.com"} 
                 value={email} 
                 onChange={e => setEmail(e.target.value)} 
               />

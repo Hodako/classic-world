@@ -507,39 +507,39 @@ export default function SalesPage() {
         </div>
       </Card>
 
-      <div className="grid grid-cols-3 gap-2 text-center">
+      <div className="grid grid-cols-3 gap-2 sm:gap-3 text-center">
         <Card
-          className="p-2.5 sm:p-3 rounded-xl border-[0.5px] border-black/75 shadow-xs transition-all text-zinc-950"
-          style={{ backgroundColor: "#ADD8E6" }}
+          className="p-2.5 sm:p-3.5 rounded-xl border border-slate-200 bg-white shadow-sm transition-all"
+          style={{ backgroundColor: "#FFFFFF", borderColor: "#E2E8F0", boxShadow: "0 2px 4px rgba(0,0,0,0.06)" }}
         >
-          <span className="text-[11px] sm:text-xs font-bold font-balooda text-zinc-900 uppercase tracking-tight block">
+          <span className="text-[11px] sm:text-xs font-semibold font-balooda text-[#64748B] uppercase tracking-tight block" style={{ color: "#64748B" }}>
             {lang === "bn" ? "মোট বিক্রি" : "Total Sales"}
           </span>
-          <p className="text-base sm:text-lg font-extrabold font-serif text-zinc-950 mt-0.5">
+          <p className="text-base sm:text-lg font-extrabold font-serif text-[#0F172A] mt-0.5" style={{ color: "#0F172A" }}>
             {fmtMoney(filteredTotalSales)}
           </p>
         </Card>
 
         <Card
-          className="p-2.5 sm:p-3 rounded-xl border-[0.5px] border-black/75 shadow-xs transition-all text-zinc-950"
-          style={{ backgroundColor: "#ADD8E6" }}
+          className="p-2.5 sm:p-3.5 rounded-xl border border-slate-200 bg-white shadow-sm transition-all"
+          style={{ backgroundColor: "#FFFFFF", borderColor: "#E2E8F0", boxShadow: "0 2px 4px rgba(0,0,0,0.06)" }}
         >
-          <span className="text-[11px] sm:text-xs font-bold font-balooda text-zinc-900 uppercase tracking-tight block">
+          <span className="text-[11px] sm:text-xs font-semibold font-balooda text-[#64748B] uppercase tracking-tight block" style={{ color: "#64748B" }}>
             {lang === "bn" ? "মোট লাভ" : "Total Profit"}
           </span>
-          <p className="text-base sm:text-lg font-extrabold font-serif text-zinc-950 mt-0.5">
+          <p className="text-base sm:text-lg font-extrabold font-serif text-[#0F172A] mt-0.5" style={{ color: "#0F172A" }}>
             {fmtMoney(filteredTotalProfit)}
           </p>
         </Card>
 
         <Card
-          className="p-2.5 sm:p-3 rounded-xl border-[0.5px] border-black/75 shadow-xs transition-all text-zinc-950"
-          style={{ backgroundColor: "#ADD8E6" }}
+          className="p-2.5 sm:p-3.5 rounded-xl border border-slate-200 bg-white shadow-sm transition-all"
+          style={{ backgroundColor: "#FFFFFF", borderColor: "#E2E8F0", boxShadow: "0 2px 4px rgba(0,0,0,0.06)" }}
         >
-          <span className="text-[11px] sm:text-xs font-bold font-balooda text-zinc-900 uppercase tracking-tight block">
+          <span className="text-[11px] sm:text-xs font-semibold font-balooda text-[#64748B] uppercase tracking-tight block" style={{ color: "#64748B" }}>
             {lang === "bn" ? "মোট বাকী" : "Total Due"}
           </span>
-          <p className="text-base sm:text-lg font-extrabold font-serif text-zinc-950 mt-0.5">
+          <p className="text-base sm:text-lg font-extrabold font-serif text-[#0F172A] mt-0.5" style={{ color: "#0F172A" }}>
             {fmtMoney(filteredTotalDue)}
           </p>
         </Card>

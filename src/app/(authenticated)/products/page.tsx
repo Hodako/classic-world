@@ -345,7 +345,7 @@ export default function ProductsPage() {
           <Button
             size="sm"
             variant={showCartPanel ? "default" : "outline"}
-            className="h-8 text-[10px] sm:text-xs relative"
+            className="hidden md:inline-flex h-8 text-[10px] sm:text-xs relative"
             onClick={() => setShowCartPanel(prev => !prev)}
           >
             <ShoppingCart className="size-3.5 mr-1" />

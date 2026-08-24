@@ -258,6 +258,7 @@ const dict = {
   product_analytics: { bn: "পণ্য অ্যানালিটিক্স", en: "Product Analytics" },
   product_analytics_desc: { bn: "শীর্ষ বিক্রিত, ট্রেন্ডিং, স্টক ও বিক্রির প্রবৃদ্ধি বিশ্লেষণ", en: "Top sellers, trending, stock & growth intelligence" },
   trending_products: { bn: "ট্রেন্ডিং পণ্য", en: "Trending Products" },
+  shop_profile: { bn: "দোকান প্রোফাইল", en: "Shop Profile" },
   sales_growth: { bn: "বিক্রির প্রবৃদ্ধি", en: "Sales Growth" },
   pieces_sold: { bn: "বিক্রিত পিস", en: "Pieces Sold" },
   remaining_stock: { bn: "অবশিষ্ট স্টক", en: "Remaining Stock" },

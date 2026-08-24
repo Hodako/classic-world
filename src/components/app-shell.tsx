@@ -224,8 +224,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     items: group.items.filter(item => !(isEmployee && (item.to === "/somiti" || item.to === "/parties" || item.to === "/dues" || item.to === "/customers")))
   })).filter(group => group.items.length > 0);
   const bottomNav = filterNav(mobileNav, perms).filter(item => !(isEmployee && (item.to === "/somiti" || item.to === "/parties" || item.to === "/dues" || item.to === "/customers")));
-  const brandName = user.business_name || "HakimQzz";
-  const userInitials = user.email?.slice(0, 2).toUpperCase() ?? "HZ";
+  const brandName = user.business_name || "Classic World";
+  const userInitials = user.email?.slice(0, 2).toUpperCase() ?? "CW";
 
   async function handleSignOut() {
     await logout();
@@ -348,6 +348,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <div className="flex items-center gap-1 shrink-0">
               <PWAInstallButton variant="outline" className="hidden sm:inline-flex h-8 px-2.5 text-xs" />
               <UniversalSearch role={user.role} permissions={user.permissions} />
+              <Link href="/more" title={lang === "bn" ? "হেল্প ও সাপোর্ট" : "Help & Support"}>
+                <Button variant="ghost" size="icon" className="size-8 text-muted-foreground hover:text-foreground">
+                  <HelpCircle className="icon-sm" />
+                </Button>
+              </Link>
               <Button variant="ghost" size="icon" className="size-8" onClick={toggle} aria-label="Theme">
                 {resolved === "dark" ? <Sun className="icon-sm" /> : <Moon className="icon-sm" />}
               </Button>

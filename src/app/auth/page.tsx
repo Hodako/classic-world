@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { AppLogo } from "@/components/app-logo";
 import { SpeedLoader } from "@/components/speed-loader";
 import { useAuth } from "@/hooks/use-auth";
@@ -18,7 +19,6 @@ import {
   signInWithPopup,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
-  sendPasswordResetEmail,
   updateProfile,
 } from "firebase/auth";
 import { KeyRound, Mail, CheckCircle2, RefreshCw } from "lucide-react";
@@ -34,12 +34,6 @@ export default function AuthPage() {
   const [busy, setBusy] = useState(false);
   const [googleBusy, setGoogleBusy] = useState(false);
   const [activeTab, setActiveTab] = useState<"signin" | "signup">("signin");
-
-  // Forgot Password State
-  const [forgotModalOpen, setForgotModalOpen] = useState(false);
-  const [forgotEmail, setForgotEmail] = useState("");
-  const [forgotBusy, setForgotBusy] = useState(false);
-  const [forgotSent, setForgotSent] = useState(false);
 
   useEffect(() => {
     setMounted(true);
@@ -158,36 +152,6 @@ export default function AuthPage() {
       toast.error(err.message || "Google sign-in failed. Please try again.");
     } finally {
       setGoogleBusy(false);
-    }
-  }
-
-  // ─── Forgot Password (Firebase Auth Reset) ─────────────────────────────────
-  async function handleForgotPassword(e: React.FormEvent) {
-    e.preventDefault();
-    if (!forgotEmail || !forgotEmail.trim()) {
-      toast.error(lang === "bn" ? "আপনার ইমেইল এড্রেস প্রদান করুন" : "Please enter your email address");
-      return;
-    }
-
-    setForgotBusy(true);
-    try {
-      await sendPasswordResetEmail(auth, forgotEmail.trim().toLowerCase());
-      setForgotSent(true);
-      toast.success(
-        lang === "bn"
-          ? "পাসওয়ার্ড রিসেট লিংক আপনার ইমেইলে পাঠানো হয়েছে!"
-          : "Password reset link sent to your email!"
-      );
-    } catch (err: any) {
-      if (err.code === "auth/user-not-found") {
-        toast.error(lang === "bn" ? "এই ইমেইলে কোনো একাউন্ট পাওয়া যায়নি" : "No user found with this email address");
-      } else if (err.code === "auth/invalid-email") {
-        toast.error(lang === "bn" ? "সঠিক ইমেইল এড্রেস লিখুন" : "Invalid email address format");
-      } else {
-        toast.error(err.message || "Failed to send reset email");
-      }
-    } finally {
-      setForgotBusy(false);
     }
   }
 
@@ -415,17 +379,10 @@ export default function AuthPage() {
           </p>
         </div>
 
-        {/* Bottom copyright & developer info footer (PC view) */}
-        <div className="space-y-0.5 relative z-10 text-xs text-zinc-400 border-t border-white/10 pt-3 font-balooda shrink-0">
-          <p className="text-zinc-200 font-semibold text-xs">
-            made with love by <span className="font-bold text-white">Azizul Hakim Khan</span>.
-          </p>
+        {/* Bottom copyright footer (PC view) */}
+        <div className="space-y-0.5 relative z-10 text-xs text-zinc-400 border-t border-white/10 pt-3 shrink-0">
           <p className="text-[11px] text-zinc-400">
-            @2026 - infinite all rights reserved by <span className="font-bold text-zinc-200">Hakim Qzz</span>.
-          </p>
-          <p className="text-xs font-mono font-bold text-emerald-400 flex items-center gap-1">
-            <span>Whatsapp Number :</span>
-            <a href="https://wa.me/8801783501427" target="_blank" rel="noopener noreferrer" className="hover:underline text-emerald-400">+8801783501427</a>
+            © 2026 Classic World. All rights reserved.
           </p>
         </div>
       </div>
@@ -436,8 +393,8 @@ export default function AuthPage() {
         {/* Top Row: Language switcher */}
         <div className="flex items-center justify-between shrink-0">
           <div className="flex items-center gap-2 md:hidden">
-            <AppLogo size="sm" alt="HakimQzz" />
-            <span className="font-serif text-base font-bold">HakimQzz</span>
+            <AppLogo size="sm" alt="Classic World" />
+            <span className="font-serif text-base font-bold">Classic World</span>
           </div>
           <div className="flex gap-1 rounded-full bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800 p-0.5 text-[10px] ml-auto">
             <button 
@@ -539,17 +496,12 @@ export default function AuthPage() {
                 <input id="remember" type="checkbox" defaultChecked className="rounded accent-primary cursor-pointer" />
                 <label htmlFor="remember" className="select-none cursor-pointer text-[11px]">Remember me</label>
               </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setForgotEmail(email || "");
-                  setForgotSent(false);
-                  setForgotModalOpen(true);
-                }}
-                className="span text-[11px] bg-transparent border-0 p-0 text-primary hover:underline cursor-pointer"
+              <Link
+                href="/forgot-password"
+                className="span text-[11px] bg-transparent border-0 p-0 text-slate-600 dark:text-slate-400 hover:text-foreground hover:underline cursor-pointer font-medium"
               >
                 {lang === "bn" ? "পাসওয়ার্ড ভুলে গেছেন?" : "Forgot password?"}
-              </button>
+              </Link>
             </div>
 
             <button type="submit" disabled={busy} className="button-submit">
@@ -593,117 +545,12 @@ export default function AuthPage() {
         </div>
 
         {/* Footer info (Mobile & Desktop right bottom) */}
-        <div className="text-center text-[10.5px] text-zinc-500 dark:text-zinc-400 py-1.5 border-t border-border/40 space-y-0.5 shrink-0 mt-auto font-balooda">
-          <p className="font-semibold text-zinc-700 dark:text-zinc-300">
-            made with love by <span className="font-bold text-foreground">Azizul Hakim Khan</span>.
-          </p>
-          <p className="text-[9.5px] text-muted-foreground">
-            @2026 - infinite all rights reserved by <span className="font-bold text-foreground">Hakim Qzz</span>.
-          </p>
-          <p className="text-[10px] font-mono font-bold text-emerald-600 dark:text-emerald-400">
-            Whatsapp Number : <a href="https://wa.me/8801783501427" target="_blank" rel="noopener noreferrer" className="hover:underline">+8801783501427</a>
+        <div className="text-center text-[10.5px] text-zinc-500 dark:text-zinc-400 py-1.5 border-t border-border/40 space-y-0.5 shrink-0 mt-auto">
+          <p className="text-[10px] text-muted-foreground">
+            © 2026 Classic World. All rights reserved.
           </p>
         </div>
       </div>
-
-      {/* ─── FIREBASE FORGOT PASSWORD MODAL ──────────────────────────────── */}
-      <Dialog open={forgotModalOpen} onOpenChange={setForgotModalOpen}>
-        <DialogContent
-          className="max-w-md rounded-2xl sm:rounded-3xl p-6 bg-white border border-slate-200 shadow-2xl text-slate-900"
-          style={{ backgroundColor: "#FFFFFF" }}
-        >
-          <DialogHeader className="space-y-2">
-            <div className="flex items-center gap-3">
-              <div className="p-2.5 rounded-2xl bg-primary/10 text-primary border border-primary/20">
-                <KeyRound className="size-6 text-primary animate-pulse" />
-              </div>
-              <div>
-                <DialogTitle className="text-lg sm:text-xl font-bold text-slate-900">
-                  {lang === "bn" ? "পাসওয়ার্ড রিসেট করুন" : "Reset Account Password"}
-                </DialogTitle>
-                <DialogDescription className="text-xs text-slate-500">
-                  {lang === "bn"
-                    ? "পাসওয়ার্ড পরিবর্তনের নিরাপদ লিংক আপনার ইমেইলে পাঠানো হবে।"
-                    : "Enter your account email address to receive a secure password reset link."}
-                </DialogDescription>
-              </div>
-            </div>
-          </DialogHeader>
-
-          {forgotSent ? (
-            <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-900 space-y-3">
-              <div className="flex items-start gap-2.5">
-                <CheckCircle2 className="size-5 text-emerald-600 shrink-0 mt-0.5" />
-                <div className="space-y-1">
-                  <p className="text-sm font-bold text-emerald-950">
-                    {lang === "bn" ? "ইমেইল সফলভাবে পাঠানো হয়েছে!" : "Password Reset Email Sent!"}
-                  </p>
-                  <p className="text-xs leading-relaxed text-emerald-800">
-                    {lang === "bn"
-                      ? `${forgotEmail} ঠিকানায় পাসওয়ার্ড রিসেটের লিংক পাঠানো হয়েছে। দয়া করে আপনার ইনবক্স অথবা স্প্যাম ফোল্ডার চেক করুন।`
-                      : `A password reset link has been dispatched to ${forgotEmail}. Please check your inbox or spam folder.`}
-                  </p>
-                </div>
-              </div>
-
-              <Button
-                onClick={() => setForgotModalOpen(false)}
-                className="w-full rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-xs h-9"
-              >
-                {lang === "bn" ? "ঠিক আছে" : "Got It"}
-              </Button>
-            </div>
-          ) : (
-            <form onSubmit={handleForgotPassword} className="space-y-4 pt-1">
-              <div className="space-y-1.5">
-                <Label className="text-xs font-semibold text-slate-700">
-                  {lang === "bn" ? "নিবন্ধিত ইমেইল এড্রেস" : "Registered Email Address"}
-                </Label>
-                <div className="relative">
-                  <Mail className="size-4 absolute left-3 top-3 text-slate-400" />
-                  <Input
-                    type="email"
-                    required
-                    placeholder="e.g. name@store.com"
-                    value={forgotEmail}
-                    onChange={(e) => setForgotEmail(e.target.value)}
-                    className="pl-9 rounded-xl text-xs h-10 font-mono bg-white border-slate-200 text-slate-900 placeholder:text-slate-400"
-                  />
-                </div>
-              </div>
-
-              <DialogFooter className="flex-row items-center justify-end gap-2 pt-2 border-t border-slate-100">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setForgotModalOpen(false)}
-                  className="rounded-xl text-xs border-slate-200 text-slate-700 hover:bg-slate-50"
-                >
-                  {lang === "bn" ? "বাতিল" : "Cancel"}
-                </Button>
-                <Button
-                  type="submit"
-                  disabled={forgotBusy}
-                  size="sm"
-                  className="rounded-xl bg-primary text-primary-foreground font-bold text-xs gap-1.5 shadow-sm"
-                >
-                  {forgotBusy ? (
-                    <RefreshCw className="size-3.5 animate-spin" />
-                  ) : (
-                    <Mail className="size-3.5" />
-                  )}
-                  <span>
-                    {forgotBusy
-                      ? (lang === "bn" ? "পাঠানো হচ্ছে..." : "Sending...")
-                      : (lang === "bn" ? "রিসেট লিংক পাঠান" : "Send Reset Link")}
-                  </span>
-                </Button>
-              </DialogFooter>
-            </form>
-          )}
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

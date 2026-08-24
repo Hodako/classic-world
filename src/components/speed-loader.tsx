@@ -360,13 +360,18 @@ export function SpeedLoader({ fullScreen = true }: { fullScreen?: boolean }) {
           animation: hakimStitch 2.4s ease-in-out infinite;
         }
         .hakim-loader-stage .brand span:nth-child(1)::after { animation-delay: 0.00s; }
-        .hakim-loader-stage .brand span:nth-child(2)::after { animation-delay: 0.10s; }
-        .hakim-loader-stage .brand span:nth-child(3)::after { animation-delay: 0.20s; }
-        .hakim-loader-stage .brand span:nth-child(4)::after { animation-delay: 0.30s; }
-        .hakim-loader-stage .brand span:nth-child(5)::after { animation-delay: 0.40s; }
-        .hakim-loader-stage .brand span:nth-child(6)::after { animation-delay: 0.50s; }
-        .hakim-loader-stage .brand span:nth-child(7)::after { animation-delay: 0.60s; }
-        .hakim-loader-stage .brand span:nth-child(8)::after { animation-delay: 0.70s; }
+        .hakim-loader-stage .brand span:nth-child(2)::after { animation-delay: 0.07s; }
+        .hakim-loader-stage .brand span:nth-child(3)::after { animation-delay: 0.14s; }
+        .hakim-loader-stage .brand span:nth-child(4)::after { animation-delay: 0.21s; }
+        .hakim-loader-stage .brand span:nth-child(5)::after { animation-delay: 0.28s; }
+        .hakim-loader-stage .brand span:nth-child(6)::after { animation-delay: 0.35s; }
+        .hakim-loader-stage .brand span:nth-child(7)::after { animation-delay: 0.42s; }
+        .hakim-loader-stage .brand span:nth-child(8)::after { animation-delay: 0.49s; }
+        .hakim-loader-stage .brand span:nth-child(9)::after { animation-delay: 0.56s; }
+        .hakim-loader-stage .brand span:nth-child(10)::after { animation-delay: 0.63s; }
+        .hakim-loader-stage .brand span:nth-child(11)::after { animation-delay: 0.70s; }
+        .hakim-loader-stage .brand span:nth-child(12)::after { animation-delay: 0.77s; }
+        .hakim-loader-stage .brand span:nth-child(13)::after { animation-delay: 0.84s; }
 
         @keyframes hakimStitch {
           0%   { transform: scaleX(0); opacity: 0.2; }
@@ -471,19 +476,24 @@ export function SpeedLoader({ fullScreen = true }: { fullScreen?: boolean }) {
 
       {/* Branding & Counter */}
       <div className="mark">
-        <div className="brand" aria-label="HakimEzy">
-          <span>H</span>
+        <div className="brand" aria-label="Classic World">
+          <span>C</span>
+          <span>l</span>
           <span>a</span>
-          <span>k</span>
+          <span>s</span>
+          <span>s</span>
           <span>i</span>
-          <span>m</span>
-          <span>E</span>
-          <span>z</span>
-          <span>y</span>
+          <span>c</span>
+          <span style={{ width: "0.28em" }}>&nbsp;</span>
+          <span>W</span>
+          <span>o</span>
+          <span>r</span>
+          <span>l</span>
+          <span>d</span>
         </div>
         <div className="divider"></div>
         <div className="tagline">
-          powered by <span className="accent">dream fashion</span>
+          <span className="accent">Smart POS</span> & Billing Software
         </div>
         <div className="counter">
           <span className="digits" ref={digitsRef}>

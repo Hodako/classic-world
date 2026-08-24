@@ -34,26 +34,27 @@ export function Providers({ children }: { children: React.ReactNode }) {
       if (
         msg.includes("ChunkLoadError") ||
         msg.includes("Loading chunk") ||
-        msg.includes("Failed to fetch") ||
-        msg.includes("400") ||
-        msg.includes("503")
+        msg.includes("dynamically imported module") ||
+        msg.includes("Cannot find module")
       ) {
-        console.warn("[AutoRecovery] Stale chunk/cache detected. Clearing ServiceWorker caches...");
-        if ("serviceWorker" in navigator) {
-          navigator.serviceWorker.getRegistrations().then((regs) => {
-            regs.forEach((reg) => reg.unregister());
-          });
-        }
-        if (typeof caches !== "undefined") {
-          caches.keys().then((keys) => {
-            keys.forEach((key) => caches.delete(key));
-          });
-        }
+        console.warn("[AutoRecovery] Stale chunk detected. Clearing ServiceWorker caches...");
         const lastReload = sessionStorage.getItem("last_chunk_reload");
         const now = Date.now();
         if (!lastReload || now - Number(lastReload) > 8000) {
           sessionStorage.setItem("last_chunk_reload", String(now));
-          window.location.reload();
+          (async () => {
+            try {
+              if ("serviceWorker" in navigator) {
+                const regs = await navigator.serviceWorker.getRegistrations();
+                await Promise.allSettled(regs.map((reg) => reg.unregister()));
+              }
+              if (typeof caches !== "undefined") {
+                const keys = await caches.keys();
+                await Promise.allSettled(keys.map((key) => caches.delete(key)));
+              }
+            } catch (_) {}
+            window.location.reload();
+          })();
         }
       }
     };

@@ -1711,13 +1711,41 @@ export async function deleteCashboxFn(input: { data: { id: string } }) {
 
 // ─── Upload ───────────────────────────────────────────────────────────────────
 
-export async function uploadImageFn(input: { data: { base64: string; fileName?: string } }) {
-  const { data } = input;
+export async function uploadImageFn(input: any) {
   await requireSession();
   const apiKey = process.env.IMGBB_API_KEY;
   if (!apiKey) throw new Error("IMGBB_API_KEY is not configured");
+
+  let raw = "";
+  if (typeof input === "string") {
+    raw = input;
+  } else if (input?.data?.base64) {
+    raw = input.data.base64;
+  } else if (input?.data?.image) {
+    raw = input.data.image;
+  } else if (input?.data?.image_url) {
+    raw = input.data.image_url;
+  } else if (typeof input?.data === "string") {
+    raw = input.data;
+  } else if (input?.base64) {
+    raw = input.base64;
+  } else if (input?.image) {
+    raw = input.image;
+  }
+
+  if (raw && raw.includes(";base64,")) {
+    raw = raw.split(";base64,")[1];
+  } else if (raw && raw.startsWith("data:")) {
+    const commaIdx = raw.indexOf(",");
+    if (commaIdx !== -1) raw = raw.slice(commaIdx + 1);
+  }
+
+  if (!raw || !raw.trim()) {
+    throw new Error("No image data provided for upload");
+  }
+
   const form = new FormData();
-  form.append("image", data.base64);
+  form.append("image", raw.trim());
   const res = await fetch(`https://api.imgbb.com/1/upload?key=${apiKey}`, { method: "POST", body: form });
   if (!res.ok) throw new Error("Image upload failed");
   const json = await res.json();

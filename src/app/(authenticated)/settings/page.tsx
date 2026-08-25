@@ -418,14 +418,18 @@ export default function SettingsPage() {
     reader.onload = async () => {
       try {
         const base64 = (reader.result as string).split(",")[1];
-        const { url } = await uploadImageFn({ data: { base64, fileName: file.name } });
-        // Immediately update the logo in auth context so AppLogo re-renders right away
-        updateUser({ logo_url: url });
-        setLogoUrl(url);
-        await updateBusinessSettingsFn({ data: { logo_url: url } });
-        await refresh();
-        qc.invalidateQueries({ queryKey: ["business-settings"] });
-        toast.success(t("save"));
+        const res: any = await uploadImageFn({ data: { base64, fileName: file.name } });
+        const url = res?.url || res?.data?.url;
+        if (url) {
+          updateUser({ logo_url: url });
+          setLogoUrl(url);
+          await updateBusinessSettingsFn({ data: { logo_url: url } });
+          await refresh();
+          qc.invalidateQueries({ queryKey: ["business-settings"] });
+          toast.success(t("save"));
+        } else {
+          toast.error("Upload failed");
+        }
       } catch (err: unknown) {
         toast.error(err instanceof Error ? err.message : String(err));
       }

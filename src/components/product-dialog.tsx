@@ -82,8 +82,8 @@ export function ProductDialog({
           reader.onerror = reject;
           reader.readAsDataURL(file);
         });
-        const upData = await uploadImageFn({ data: { base64, fileName: file.name } });
-        image_url = upData.url;
+        const upData: any = await uploadImageFn({ data: { base64, fileName: file.name } });
+        image_url = upData?.url || upData?.data?.url || null;
       }
 
       const attributesObj: Record<string, string> = {};

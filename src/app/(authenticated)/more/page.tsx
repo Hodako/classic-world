@@ -990,8 +990,8 @@ export default function MorePage() {
         name: user?.business_name || prev.name,
       }));
       getBusinessSettingsFn().then((res: any) => {
-        if (res?.data) {
-          const b = res.data;
+        const b = res?.business || res?.data?.business || res?.data;
+        if (b) {
           setShopProfileData({
             name: b.name || user?.business_name || "",
             tagline: b.tagline || "",
@@ -1018,8 +1018,8 @@ export default function MorePage() {
           name: shopProfileData.name,
           tagline: shopProfileData.tagline,
           address: shopProfileData.address,
-          phone_numbers: phonesArr,
-          emails: emailsArr,
+          phone_numbers: phonesArr.join(", "),
+          emails: emailsArr.join(", "),
           logo_url: shopProfileData.logoUrl,
           currency: shopProfileData.currency,
           invoice_terms: shopProfileData.invoiceTerms,
@@ -1039,20 +1039,38 @@ export default function MorePage() {
   const handleShopLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.size > 2 * 1024 * 1024) {
-      toast.error(lang === "bn" ? "লোগো সাইজ ২ মেগাবাইট এর কম হতে হবে" : "Logo must be under 2MB");
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error(lang === "bn" ? "লোগো সাইজ ৫ মেগাবাইট এর কম হতে হবে" : "Logo must be under 5MB");
       return;
     }
     setShopLogoUploading(true);
+    const loadId = toast.loading(lang === "bn" ? "লোগো আপলোড হচ্ছে..." : "Uploading logo...");
     try {
-      const res = await uploadImageFn(file);
-      if (res.data?.url) {
-        setShopProfileData(prev => ({ ...prev, logoUrl: res.data.url }));
-        toast.success(lang === "bn" ? "লোগো আপলোড সম্পন্ন!" : "Logo uploaded!");
-      }
+      const reader = new FileReader();
+      reader.onload = async () => {
+        try {
+          const base64 = reader.result as string;
+          const res: any = await uploadImageFn({ data: { base64, fileName: file.name } });
+          const url = res?.url || res?.data?.url;
+          if (url) {
+            setShopProfileData(prev => ({ ...prev, logoUrl: url }));
+            toast.success(lang === "bn" ? "লোগো আপলোড সম্পন্ন!" : "Logo uploaded!", { id: loadId });
+          } else {
+            toast.error(lang === "bn" ? "লোগো আপলোড ব্যর্থ হয়েছে" : "Upload failed", { id: loadId });
+          }
+        } catch (err: any) {
+          toast.error(err.message || "Upload failed", { id: loadId });
+        } finally {
+          setShopLogoUploading(false);
+        }
+      };
+      reader.onerror = () => {
+        toast.error("Failed to read image file", { id: loadId });
+        setShopLogoUploading(false);
+      };
+      reader.readAsDataURL(file);
     } catch (err: any) {
-      toast.error(err.message || "Upload failed");
-    } finally {
+      toast.error(err.message || "Upload failed", { id: loadId });
       setShopLogoUploading(false);
     }
   };

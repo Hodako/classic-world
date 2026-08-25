@@ -4,34 +4,15 @@ import { dirname } from "path";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-const isStatic = process.env.EXPORT_STATIC === "true";
+const isStatic = process.env.EXPORT_STATIC !== "false";
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  ...(isStatic
-    ? {
-        output: "export",
-        images: {
-          unoptimized: true,
-        },
-      }
-    : {
-        // Allow camera access via HTTP headers for mobile WebView + browsers
-        async headers() {
-          return [
-            {
-              source: "/:path*",
-              headers: [
-                {
-                  key: "Permissions-Policy",
-                  value: "camera=*, microphone=(), geolocation=()",
-                },
-              ],
-            },
-          ];
-        },
-      }),
+  output: "export",
+  images: {
+    unoptimized: true,
+  },
   // Allow MongoDB server-side code to build properly
   serverExternalPackages: ["mongodb"],
   eslint: {

@@ -1,14 +1,20 @@
 import { queueOfflineAction, startBackgroundSync } from "./offline-sync";
 
-// Detect if we are running inside the Capacitor Android/iOS native app
-const isCapacitor = typeof window !== "undefined" && (
+// Detect if we are running inside the Capacitor Android/iOS native app or static hosting
+const isStaticOrNative = typeof window !== "undefined" && (
   !!(window as any).Capacitor ||
   window.location.origin.startsWith("capacitor:") ||
-  window.location.origin.startsWith("file:")
+  window.location.origin.startsWith("file:") ||
+  window.location.hostname.includes("firebaseapp.com") ||
+  window.location.hostname.includes("web.app")
 );
 
-// For Capacitor/native apps use the absolute public URL, for web use relative path
-const API_BASE = (typeof window !== "undefined" && isCapacitor) ? (process.env.NEXT_PUBLIC_APP_URL || "https://hakim.qzz.io") : "";
+// For Classic-World static SPA (Firebase Hosting) & native apps, point to the live Next.js backend server
+export const API_BASE = (
+  process.env.NEXT_PUBLIC_APP_URL ||
+  (isStaticOrNative ? "https://hakim.qzz.io" : "https://hakim.qzz.io")
+).replace(/\/$/, "");
+
 
 async function callRemoteRpc(actionName: string, args: any) {
   const url = `${API_BASE}/api/rpc`;
@@ -221,13 +227,7 @@ if (typeof window !== "undefined") {
 }
 
 export async function callAiChat(messages: any[], lang: string) {
-  const isNativeApp = typeof window !== "undefined" && (
-    !!(window as any).Capacitor ||
-    window.location.origin.startsWith("capacitor:") ||
-    window.location.origin.startsWith("file:")
-  );
-  const base = isNativeApp ? (process.env.NEXT_PUBLIC_APP_URL || "https://hakim.qzz.io") : "";
-  const url = `${base}/api/ai-chat`;
+  const url = `${API_BASE}/api/ai-chat`;
   
   const token = typeof window !== "undefined" ? window.localStorage.getItem("auth_token") : null;
   const headers: Record<string, string> = {

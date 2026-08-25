@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
-import { getMeFn, logoutFn, updateUserAvatarFn } from "@/lib/rpc";
+import { getMeFn, logoutFn, updateUserAvatarFn, API_BASE } from "@/lib/rpc";
 import type { PermissionSet } from "@/lib/permissions";
 import { clearAuthProfile, readAuthProfile, writeAuthProfile, writeBrand } from "@/lib/local-cache";
 import { toast } from "sonner";
@@ -203,7 +203,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           reject(new Error("Network error during upload"));
         });
 
-        xhr.open("POST", "/api/upload");
+        xhr.open("POST", `${API_BASE}/api/upload`);
+        const token = typeof window !== "undefined" ? window.localStorage.getItem("auth_token") : null;
+        if (token) {
+          xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+        }
         xhr.send(formData);
       });
 

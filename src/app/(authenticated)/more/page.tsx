@@ -926,21 +926,11 @@ export default function MorePage() {
       const formData = new FormData();
       formData.append("image", file);
 
-      const isCap = typeof window !== "undefined" && (
-        !!(window as any).Capacitor ||
-        window.location.hostname === "localhost" ||
-        window.location.origin.includes("localhost") ||
-        window.location.origin.startsWith("capacitor:") ||
-        window.location.origin.startsWith("file:")
-      );
-      const uploadUrl = isCap ? "https://hakim.qzz.io/api/upload" : "/api/upload";
-
+      const uploadUrl = "https://hakim.qzz.io/api/upload";
       const headers: Record<string, string> = {};
-      if (isCap) {
-        const token = localStorage.getItem("auth_token");
-        if (token) {
-          headers["Authorization"] = `Bearer ${token}`;
-        }
+      const token = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
+      if (token) {
+        headers["Authorization"] = `Bearer ${token}`;
       }
 
       const res = await fetch(uploadUrl, {

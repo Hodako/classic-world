@@ -1,14 +1,5 @@
-// Detect if we are running inside the Capacitor Android/iOS native app
-const isCapacitor = typeof window !== "undefined" && (
-  !!(window as any).Capacitor ||
-  window.location.hostname === "localhost" ||
-  window.location.origin.includes("localhost") ||
-  window.location.origin.startsWith("capacitor:") ||
-  window.location.origin.startsWith("file:")
-);
-
-// Point to hosted endpoint when in Capacitor or during SSR to prevent ERR_INVALID_URL, otherwise use relative path
-const API_BASE = (typeof window === "undefined" || isCapacitor) ? "https://hakim.qzz.io" : "";
+// Point to hosted endpoint for Classic-World static SPA & Capacitor apps
+const API_BASE = (process.env.NEXT_PUBLIC_APP_URL || "https://hakim.qzz.io").replace(/\/$/, "");
 
 async function callRemoteRpc(actionName: string, args: any) {
   const url = `${API_BASE}/api/rpc`;

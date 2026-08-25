@@ -6,7 +6,7 @@ import { hashPassword, comparePassword, signToken, verifyToken } from "@/lib/aut
 import { requireSession, generateLicenseKey } from "@/lib/session";
 import { DEFAULT_EMPLOYEE_PERMISSIONS, OWNER_PERMISSIONS, type PermissionSet } from "@/lib/permissions";
 
-const DEFAULT_COMPANY = "HakimQzz";
+const DEFAULT_COMPANY = "Classic World";
 
 async function ensureSuperAdmin() {
   const db = await getDb();
@@ -40,7 +40,7 @@ export async function superAdminLoginFn(input: { data: { username: string; passw
   if (!admin || !(await comparePassword(data.password, admin.password as string, admin.plain_password as string))) {
     throw new Error("Invalid credentials");
   }
-  const token = await signToken({ userId: "superadmin", email: "superadmin@hakimqzz.local" });
+  const token = await signToken({ userId: "superadmin", email: "superadmin@classicworld.local" });
   const cookieStore = await cookies();
   cookieStore.set("super_token", token, { maxAge: 8 * 60 * 60, httpOnly: true, sameSite: "lax", path: "/" });
   return { success: true };

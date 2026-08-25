@@ -358,19 +358,19 @@ export default function AuthPage() {
 
         {/* Top brand header */}
         <div className="flex items-center gap-3 relative z-10 shrink-0">
-          <AppLogo size="md" alt="HakimQzz" />
-          <span className="font-serif text-2xl font-bold tracking-tight bg-gradient-to-r from-emerald-400 to-indigo-300 bg-clip-text text-transparent">HakimQzz</span>
+          <AppLogo size="md" alt="Classic World" />
+          <span className="font-serif text-2xl font-bold tracking-tight bg-gradient-to-r from-emerald-400 to-indigo-300 bg-clip-text text-transparent">Classic World</span>
         </div>
 
         {/* Middle minimalist description */}
         <div className="space-y-4 lg:space-y-5 relative z-10 max-w-lg my-auto">
           <span className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs px-3 py-1 rounded-full font-semibold uppercase tracking-wider">
-            {lang === "bn" ? "যেকোনো ব্যবসার আস্থার প্রতীক" : "Automated System for Any Shop"}
+            {lang === "bn" ? "যেকোনো ব্যবসার আস্থার প্রতীক" : "Smart POS & Billing System"}
           </span>
           <h2 className="text-3xl lg:text-4xl font-bold font-serif leading-tight">
             {lang === "bn" 
-              ? `"HakimQzz" ইনভেন্টরি ম্যানেজমেন্ট এবং প্রোডাক্টস সলিউশন`
-              : `"HakimQzz" inventory management and products solutions`}
+              ? `"ক্লাসিক ওয়ার্ল্ড" ইনভেন্টরি ম্যানেজমেন্ট এবং প্রোডাক্টস সলিউশন`
+              : `"Classic World" inventory management and products solutions`}
           </h2>
           <p className="text-xs lg:text-sm text-zinc-300 leading-relaxed max-w-md">
             {lang === "bn" 

@@ -418,7 +418,7 @@ export default function MorePage() {
               </div>
               <div className="space-y-1">
                 <h4 className="font-bold text-xs text-foreground">
-                  {lang === "bn" ? "হাকিম কিউজেডজেড অডিট এজেন্টের সাথে চ্যাট করুন" : "Chat with HakimQzz Audit Agent"}
+                  {lang === "bn" ? "ক্লাসিক ওয়ার্ল্ড অডিট এজেন্টের সাথে চ্যাট করুন" : "Chat with Classic World Audit Agent"}
                 </h4>
                 <p className="text-[10px] text-muted-foreground leading-normal max-w-[240px] mx-auto">
                   {lang === "bn"

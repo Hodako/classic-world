@@ -3,8 +3,8 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from "
 export type Lang = "bn" | "en";
 
 const dict = {
-  app_name: { bn: "হাকিম কিউজেডজেড", en: "HakimQzz" },
-  tagline: { bn: "ইনভেন্টরি ও বিক্রয় ব্যবস্থাপনা", en: "Inventory & Sales" },
+  app_name: { bn: "ক্লাসিক ওয়ার্ল্ড", en: "Classic World" },
+  tagline: { bn: "স্মার্ট পিওএস ও ইনভেন্টরি সফটওয়্যার", en: "Smart POS & Billing Software" },
   version: { bn: "v1.0", en: "v1.0" },
   navigation: { bn: "নেভিগেশন", en: "Navigation" },
   // nav

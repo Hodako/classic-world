@@ -431,7 +431,7 @@ export default function InvoicePage() {
     return `INV-${Date.now().toString().slice(-6)}`;
   }, [invoiceItems.length === 0]);
 
-  const businessName = user?.business_name || "HakimQzz";
+  const businessName = user?.business_name || "Classic World";
   const userEmail = user?.email || "";
   const tagline = t("tagline") || "Quality Products & Service";
   const invoiceDate = fmtDateTime(new Date().toISOString());

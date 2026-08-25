@@ -1,10 +1,10 @@
 {
-  "name": "HakimQzz POS software",
-  "short_name": "HakimQzz",
+  "name": "Classic World POS & Billing",
+  "short_name": "Classic World",
   "id": "/",
   "start_url": "/",
   "scope": "/",
-  "description": "HakimQzz POS software — Automated inventory, sales, accounting, and store management system for any shop.",
+  "description": "Classic World POS software — Automated inventory, sales, accounting, and store management system.",
   "display": "standalone",
   "display_override": ["window-controls-overlay", "standalone", "minimal-ui"],
   "background_color": "#ffffff",

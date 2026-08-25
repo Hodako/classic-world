@@ -4,13 +4,13 @@ import { getFirestore } from "firebase/firestore";
 import { getAnalytics, isSupported } from "firebase/analytics";
 
 const firebaseConfig = {
-  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || "AIzaSyB3PKOE71r3ZYtK5QCBIu8c20R3Rw8CBmY",
-  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN || "hakimqzz.firebaseapp.com",
-  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "hakimqzz",
-  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || "hakimqzz.firebasestorage.app",
-  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || "315397432564",
-  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID || "1:315397432564:web:73de45daa0383293c8aaa1",
-  measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID || "G-5Y2YNWYESG",
+  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || "AIzaSyAZ0uwpS0CRqv-xRA9ZgDglY4KNAHIpyHc",
+  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN || "classicworld-pos.firebaseapp.com",
+  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "classicworld-pos",
+  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || "classicworld-pos.firebasestorage.app",
+  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || "173117682786",
+  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID || "1:173117682786:web:dd32dad2ca345a1e36cd3b",
+  measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID || "G-56JLQY2N4Y",
 };
 
 // Initialize Firebase safely for SSR & Client

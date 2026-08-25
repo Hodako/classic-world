@@ -272,7 +272,7 @@ export async function registerFn(input: { data: { email?: string; phone?: string
       throw new Error("Please enter a valid phone number (at least 10 digits)");
     }
     cleanPhone = rawId;
-    cleanEmail = `${digits}@hakimqzz.internal`;
+    cleanEmail = `${digits}@classicworld.internal`;
   }
 
   const db = await getDb();
@@ -291,7 +291,7 @@ export async function registerFn(input: { data: { email?: string; phone?: string
   const userId = crypto.randomUUID();
   const businessId = crypto.randomUUID();
   const now = new Date().toISOString();
-  const shopName = sanitizeInput(data.fullName ? `${data.fullName}'s Shop` : "HakimQzz Store");
+  const shopName = sanitizeInput(data.fullName ? `${data.fullName}'s Shop` : "Classic World Store");
 
   // Create default business for new user with starter 0 SMS credits
   await db.collection("businesses").insertOne({
@@ -357,7 +357,7 @@ export async function firebaseAuthSyncFn(input: { data: { email: string; fullNam
     userId = crypto.randomUUID();
     const businessId = crypto.randomUUID();
     const now = new Date().toISOString();
-    const shopName = sanitizeInput(data.fullName ? `${data.fullName}'s Shop` : "HakimQzz Store");
+    const shopName = sanitizeInput(data.fullName ? `${data.fullName}'s Shop` : "Classic World Store");
 
     await db.collection("businesses").insertOne({
       _id: businessId as any,

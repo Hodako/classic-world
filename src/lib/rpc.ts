@@ -271,3 +271,11 @@ export const deleteSmsLogFn = makeWriteAction("deleteSmsLogFn");
 // ── Admin Popups & Announcements ──────────────────────────────────────────
 export const getActiveAdminPopupsFn = makeReadAction("getActiveAdminPopupsFn");
 export const dismissAdminPopupFn = makeWriteAction("dismissAdminPopupFn");
+
+// ── Employee Email Invitations & Joining ───────────────────────────────────
+export const inviteEmployeeByEmailFn = makeWriteAction("inviteEmployeeByEmailFn");
+export const sendEmployeeInvitationFn = makeWriteAction("sendEmployeeInvitationFn");
+export const listEmployeeInvitationsFn = makeReadAction("listEmployeeInvitationsFn");
+export const cancelEmployeeInvitationFn = makeWriteAction("cancelEmployeeInvitationFn");
+export const getMyPendingEmployeeInvitationsFn = makeReadAction("getMyPendingEmployeeInvitationsFn");
+export const respondToEmployeeInvitationFn = makeWriteAction("respondToEmployeeInvitationFn");

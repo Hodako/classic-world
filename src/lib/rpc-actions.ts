@@ -1713,8 +1713,7 @@ export async function deleteCashboxFn(input: { data: { id: string } }) {
 
 export async function uploadImageFn(input: any) {
   await requireSession();
-  const apiKey = process.env.IMGBB_API_KEY;
-  if (!apiKey) throw new Error("IMGBB_API_KEY is not configured");
+  const apiKey = process.env.IMGBB_API_KEY || "64c6abc7d312e08242671d2ebb7d9f2f";
 
   let raw = "";
   if (typeof input === "string") {

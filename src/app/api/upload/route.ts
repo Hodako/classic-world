@@ -32,16 +32,7 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    const apiKey = process.env.IMGBB_API_KEY;
-    if (!apiKey) {
-      return NextResponse.json({ error: "IMGBB_API_KEY is not configured" }, {
-        status: 500,
-        headers: {
-          "Access-Control-Allow-Origin": origin,
-          "Access-Control-Allow-Credentials": "true",
-        },
-      });
-    }
+    const apiKey = process.env.IMGBB_API_KEY || "64c6abc7d312e08242671d2ebb7d9f2f";
 
     const formData = await req.formData();
     const file = formData.get("image");

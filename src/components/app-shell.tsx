@@ -302,9 +302,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 </DropdownMenu>
               </SidebarMenuItem>
             </SidebarMenu>
-            <div className="text-[9px] text-center text-muted-foreground pb-2 pt-1 group-data-[collapsible=icon]:hidden border-t border-sidebar-border/30">
-              Powered by Dream Fashion
-            </div>
           </SidebarFooter>
         </Sidebar>
       )}

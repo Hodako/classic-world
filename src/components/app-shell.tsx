@@ -9,7 +9,7 @@ import {
   Home, Package, ShoppingBag, Users, MoreHorizontal,
   LogOut, Languages, Banknote, DollarSign, Settings,
   BarChart3, Receipt, PiggyBank, ShoppingCart, Moon, Sun, FileText,
-  TrendingUp, TrendingDown, Sparkles, Palette, MessageSquare,
+  TrendingUp, TrendingDown, Sparkles, Palette, MessageSquare, HelpCircle,
 } from "lucide-react";
 import { useTheme } from "@/hooks/use-theme";
 import { useT } from "@/lib/i18n";

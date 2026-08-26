@@ -1725,7 +1725,7 @@ export default function Dashboard() {
                       </div>
                       <div className="text-right shrink-0">
                         <div className="font-semibold">{fmtMoney(Number(s.sell_price) * s.qty)}</div>
-                        <div className="text-[10px] text-emerald-600">+{fmtMoney(s.profit)}</div>
+                        <div className="text-[10px] text-muted-foreground">{s.qty} {lang === "bn" ? "টি" : "pcs"}</div>
                       </div>
                     </div>
                   ))}
@@ -2232,7 +2232,7 @@ export default function Dashboard() {
                           </div>
                           <div className="text-right shrink-0">
                             <div className="font-semibold">{fmtMoney(Number(s.sell_price) * s.qty)}</div>
-                            <div className="text-[10px] text-emerald-600">+{fmtMoney(s.profit)}</div>
+                            <div className="text-[10px] text-muted-foreground">{s.qty} {lang === "bn" ? "টি" : "pcs"}</div>
                           </div>
                         </div>
                       ))}

@@ -15,6 +15,7 @@ import {
   getBusinessSettingsFn,
   updateBusinessSettingsFn,
   removeEmployeeFn,
+  updateEmployeePermissionsFn,
 } from "@/lib/rpc-admin";
 import Link from "next/link";
 import {
@@ -49,6 +50,7 @@ import {
   resetPurchasesFn,
   resetAllDataFn,
   bulkExportToGoogleSheetsFn,
+  toggleGoogleSheetsSyncFn,
   resetSomitiFn,
   resetExpensesFn,
   resetPartiesFn,
@@ -146,6 +148,11 @@ export default function SettingsPage() {
   const [unlockPassword, setUnlockPassword] = useState("");
   const [unlockLoading, setUnlockLoading] = useState(false);
 
+  // Employee permissions editing state
+  const [editingPermissionsEmp, setEditingPermissionsEmp] = useState<any | null>(null);
+  const [empPermissions, setEmpPermissions] = useState<PermissionSet>(DEFAULT_EMPLOYEE_PERMISSIONS);
+  const [isUpdatingPerms, setIsUpdatingPerms] = useState(false);
+
   // Sheets sync states
   const [isSheetsSaving, setIsSheetsSaving] = useState(false);
   const [isBulkExporting, setIsBulkExporting] = useState(false);
@@ -159,6 +166,7 @@ export default function SettingsPage() {
 
   const biz = settings.data?.business;
   const isOwner = settings.data?.role === "owner";
+  const hasDangerZoneAccess = isOwner || settings.data?.permissions?.danger_zone === true;
 
   const [logoUrl, setLogoUrl] = useState("");
   const [fontSize, setFontSize] = useState("22px");
@@ -393,11 +401,56 @@ export default function SettingsPage() {
       setIsUnlocked(true);
       setIsUnlockDialogOpen(false);
       setUnlockPassword("");
-      toast.success("Safety settings unlocked successfully!");
+      toast.success(lang === "bn" ? "নিরাপত্তা ও ডেঞ্জার জোন আনলক হয়েছে!" : "Safety settings unlocked successfully!");
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : "Incorrect owner password.");
+      toast.error(err instanceof Error ? err.message : "Incorrect password or access denied.");
     } finally {
       setUnlockLoading(false);
+    }
+  }
+
+  async function handleVerifyWithGoogle() {
+    setUnlockLoading(true);
+    try {
+      const provider = new GoogleAuthProvider();
+      provider.setCustomParameters({ prompt: "select_account" });
+      const result = await signInWithPopup(auth, provider);
+      const googleEmail = result.user?.email;
+      if (!googleEmail) throw new Error("Could not retrieve Google account email.");
+      await verifyOwnerPasswordFn({ data: { googleVerifiedEmail: googleEmail } });
+      setIsUnlocked(true);
+      setIsUnlockDialogOpen(false);
+      setUnlockPassword("");
+      toast.success(lang === "bn" ? "গুগল ভেরিফিকেশনের মাধ্যমে ডেঞ্জার জোন আনলক হয়েছে!" : "Danger Zone unlocked via Google verification!");
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Google authentication failed.");
+    } finally {
+      setUnlockLoading(false);
+    }
+  }
+
+  function openPermissionsModal(emp: any) {
+    setEditingPermissionsEmp(emp);
+    setEmpPermissions(emp.permissions || DEFAULT_EMPLOYEE_PERMISSIONS);
+  }
+
+  async function handleSaveEmployeePermissions() {
+    if (!editingPermissionsEmp) return;
+    setIsUpdatingPerms(true);
+    try {
+      await updateEmployeePermissionsFn({
+        data: {
+          employeeId: editingPermissionsEmp.id,
+          permissions: empPermissions,
+        },
+      });
+      toast.success(lang === "bn" ? "কর্মচারীর পারমিশন সফলভাবে সংরক্ষিত হয়েছে!" : "Employee permissions updated successfully!");
+      setEditingPermissionsEmp(null);
+      qc.invalidateQueries({ queryKey: ["business-settings"] });
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to update permissions");
+    } finally {
+      setIsUpdatingPerms(false);
     }
   }
 
@@ -550,7 +603,7 @@ export default function SettingsPage() {
   }
 
   async function handleResetAction() {
-    if (!resetType || !isOwner) return;
+    if (!resetType || !hasDangerZoneAccess) return;
     if (confirmText !== "CONFIRM") {
       toast.error("Please type CONFIRM to authorize the reset.");
       return;
@@ -686,7 +739,7 @@ export default function SettingsPage() {
         })}
       </div>
 
-      {isOwner && biz && (
+      {(isOwner || hasDangerZoneAccess) && biz && (
         <div className="space-y-6">
           {/* ── TAB 1: SHOP PROFILE & BRANDING ──────────────────────────────── */}
           {settingsTab === "profile" && (
@@ -956,11 +1009,39 @@ export default function SettingsPage() {
                         </p>
                       </div>
                     </div>
-                    {biz.google_sheets_spreadsheet_id && (
-                      <Badge variant="outline" className="bg-emerald-500/15 text-emerald-600 border-emerald-500/30 text-xs font-semibold">
-                        {lang === "bn" ? "🟢 সক্রিয়" : "🟢 Active"}
-                      </Badge>
-                    )}
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <div className="flex items-center gap-1.5 bg-muted/60 px-2.5 py-1 rounded-xl border border-border/60">
+                        <span className="text-[11px] font-semibold text-muted-foreground">
+                          {lang === "bn" ? "অটো-সিঙ্ক:" : "Auto-Sync:"}
+                        </span>
+                        <Switch
+                          checked={biz.google_sheets_sync_enabled !== false}
+                          onCheckedChange={async (val) => {
+                            try {
+                              await toggleGoogleSheetsSyncFn({ data: { enabled: val } });
+                              qc.invalidateQueries({ queryKey: ["business-settings"] });
+                              toast.success(
+                                val
+                                  ? (lang === "bn" ? "অটো-সিঙ্ক চালু করা হয়েছে" : "Auto-Sync enabled")
+                                  : (lang === "bn" ? "অটো-সিঙ্ক বন্ধ করা হয়েছে" : "Auto-Sync disabled")
+                              );
+                            } catch (e: any) {
+                              toast.error(e.message || "Failed to toggle auto-sync");
+                            }
+                          }}
+                        />
+                        <span className={`text-[11px] font-bold ${
+                          biz.google_sheets_sync_enabled !== false ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground"
+                        }`}>
+                          {biz.google_sheets_sync_enabled !== false ? "ON" : "OFF"}
+                        </span>
+                      </div>
+                      {biz.google_sheets_spreadsheet_id && (
+                        <Badge variant="outline" className="bg-emerald-500/15 text-emerald-600 border-emerald-500/30 text-xs font-semibold">
+                          {lang === "bn" ? "🟢 সক্রিয়" : "🟢 Active"}
+                        </Badge>
+                      )}
+                    </div>
                   </div>
 
                   {/* Google OAuth One-Click Integration Box */}
@@ -1281,37 +1362,55 @@ export default function SettingsPage() {
                 </div>
 
                 {activeEmployees.length > 0 ? (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                    {activeEmployees.map((emp: any) => (
-                      <div
-                        key={emp.id}
-                        className="p-3.5 rounded-2xl bg-muted/40 border border-border/80 flex items-center justify-between gap-3 text-xs"
-                      >
-                        <div className="space-y-1 min-w-0">
-                          <div className="flex items-center gap-1.5">
-                            <span className="font-bold text-foreground truncate">
-                              {emp.full_name || emp.email.split("@")[0]}
-                            </span>
-                            <Badge variant="outline" className="text-[10px] bg-emerald-500/10 text-emerald-600 border-emerald-500/30 px-1.5 py-0 h-4">
-                              Active
-                            </Badge>
-                          </div>
-                          <p className="text-[11px] text-muted-foreground truncate">{emp.email}</p>
-                        </div>
-
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleRemoveEmployee(emp.id)}
-                          className="h-8 px-2 text-destructive hover:bg-destructive/10 rounded-xl shrink-0"
-                          title="Remove Staff Access"
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                      {activeEmployees.map((emp: any) => (
+                        <div
+                          key={emp.id}
+                          className="p-3.5 rounded-2xl bg-muted/40 border border-border/80 flex flex-col justify-between gap-3 text-xs"
                         >
-                          <Trash2 className="size-3.5" />
-                        </Button>
-                      </div>
-                    ))}
-                  </div>
+                          <div className="space-y-1 min-w-0">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="font-bold text-foreground truncate">
+                                {emp.full_name || emp.email.split("@")[0]}
+                              </span>
+                              <Badge variant="outline" className="text-[10px] bg-emerald-500/10 text-emerald-600 border-emerald-500/30 px-1.5 py-0 h-4">
+                                Active
+                              </Badge>
+                              {emp.permissions?.danger_zone && (
+                                <Badge variant="outline" className="text-[10px] bg-red-500/10 text-red-600 border-red-500/30 px-1.5 py-0 h-4 font-bold">
+                                  Danger Zone
+                                </Badge>
+                              )}
+                            </div>
+                            <p className="text-[11px] text-muted-foreground truncate">{emp.email}</p>
+                          </div>
+
+                          <div className="flex items-center justify-between gap-2 pt-2 border-t border-border/50">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => openPermissionsModal(emp)}
+                              className="h-8 px-2.5 rounded-xl border-primary/30 hover:bg-primary/10 text-primary text-xs font-semibold gap-1.5 cursor-pointer"
+                              title="Manage Access & Permissions"
+                            >
+                              <Shield className="size-3.5" />
+                              <span>{lang === "bn" ? "পারমিশন কন্ট্রোল" : "Access & Permissions"}</span>
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleRemoveEmployee(emp.id)}
+                              className="h-8 px-2 text-destructive hover:bg-destructive/10 rounded-xl shrink-0 cursor-pointer"
+                              title="Remove Staff Access"
+                            >
+                              <Trash2 className="size-3.5" />
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                 ) : (
                   <div className="text-center py-8 space-y-1.5 border border-dashed border-border/80 rounded-2xl">
                     <Users className="size-7 text-muted-foreground mx-auto opacity-50" />
@@ -1572,7 +1671,7 @@ export default function SettingsPage() {
         </div>
       )}
 
-      {!isOwner && (
+      {!isOwner && !hasDangerZoneAccess && (
         <Card className="p-6 rounded-3xl bg-card border border-border/80 shadow-xs text-sm text-muted-foreground max-w-xl">
           {lang === "bn"
             ? "কর্মচারী একাউন্ট — সেটিংস পরিবর্তনের জন্য আপনার দোকান মালিকের সাথে যোগাযোগ করুন।"
@@ -1580,39 +1679,161 @@ export default function SettingsPage() {
         </Card>
       )}
 
-      {/* Password Verification Dialog */}
-      <Dialog open={isUnlockDialogOpen} onOpenChange={setIsUnlockDialogOpen}>
-        <DialogContent className="max-w-md">
+      {/* Employee Permissions Management Modal */}
+      <Dialog open={editingPermissionsEmp !== null} onOpenChange={open => !open && setEditingPermissionsEmp(null)}>
+        <DialogContent className="max-w-lg font-hind">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Unlock className="size-5 text-amber-500" />
-              Verify Owner Password
+            <DialogTitle className="flex items-center gap-2 text-base font-bold font-balooda">
+              <Shield className="size-5 text-primary" />
+              <span>{lang === "bn" ? "কর্মচারী পারমিশন ও এক্সেস নিয়ন্ত্রণ" : "Staff Permissions & Access Control"}</span>
             </DialogTitle>
-            <DialogDescription>
-              Please enter your login password to unlock Safety & Reset settings.
+            <DialogDescription className="text-xs">
+              {editingPermissionsEmp?.full_name || editingPermissionsEmp?.email} {lang === "bn" ? "এর জন্য কোন কোন পেজ ও ফিচার উন্মুক্ত থাকবে তা নির্ধারণ করুন।" : "Configure which modules and tools this employee is allowed to access."}
             </DialogDescription>
           </DialogHeader>
-          <form onSubmit={handleVerifyPassword} className="space-y-4 py-2">
-            <div className="space-y-1">
-              <Label className="text-xs font-medium">Password</Label>
-              <Input
-                type="password"
-                required
-                value={unlockPassword}
-                onChange={e => setUnlockPassword(e.target.value)}
-                placeholder="Enter owner password"
-                className="text-sm"
-              />
+
+          <div className="space-y-2.5 py-2 max-h-[60vh] overflow-y-auto pr-1">
+            {[
+              { id: "dashboard", label: lang === "bn" ? "ড্যাশবোর্ড ও লাইভ হিসেব" : "Dashboard & Live KPIs", desc: "View store performance metrics" },
+              { id: "products", label: lang === "bn" ? "পণ্য ও স্টক ব্যবস্থাপনা" : "Products & Inventory", desc: "Create, edit, and view product catalog" },
+              { id: "sales", label: lang === "bn" ? "বিক্রয় ও ইনভয়েস" : "Sales & Invoicing", desc: "Make sales, view orders, and print invoices" },
+              { id: "parties", label: lang === "bn" ? "ক্রেতা ও বাকির হিসেব" : "Customers & Dues", desc: "Manage customer profiles and collect dues" },
+              { id: "purchases", label: lang === "bn" ? "ক্রয় ও সাপ্লায়ার" : "Purchases & Stock In", desc: "Log purchase orders and restocks" },
+              { id: "expenses", label: lang === "bn" ? "খরচ ও সমিতি" : "Expenses & Samity", desc: "Record daily operational costs" },
+              { id: "cashbox", label: lang === "bn" ? "ক্যাশ ম্যানেজমেন্ট" : "Cashbox Management", desc: "Manage cash inflow, outflow, and balances" },
+              { id: "settings", label: lang === "bn" ? "দোকান সেটিংস" : "Shop Settings", desc: "Manage shop details and print configurations" },
+              { id: "reports", label: lang === "bn" ? "রিপোর্ট ও ট্র্যাকিং" : "Reports & Tracking", desc: "Detailed business analytics and history" },
+              {
+                id: "danger_zone",
+                label: lang === "bn" ? "⚠️ ডেঞ্জার জোন ও ডাটা রিসেট" : "⚠️ Danger Zone & Data Reset",
+                desc: lang === "bn" ? "সতর্কতা: এই কর্মচারীকে ডেঞ্জার জোন আনলক ও ডাটা রিসেট করার পূর্ণ এক্সেস প্রদান করুন।" : "Caution: Grants permission to unlock Danger Zone and reset store data.",
+                isDanger: true
+              },
+            ].map((item) => (
+              <div
+                key={item.id}
+                className={`p-3 rounded-2xl border flex items-center justify-between gap-3 ${
+                  item.isDanger
+                    ? "bg-red-500/5 border-red-500/30"
+                    : "bg-muted/30 border-border/80"
+                }`}
+              >
+                <div className="space-y-0.5 min-w-0 pr-2">
+                  <p className={`text-xs font-bold font-balooda ${item.isDanger ? "text-red-600 dark:text-red-400" : "text-foreground"}`}>
+                    {item.label}
+                  </p>
+                  <p className="text-[10px] text-muted-foreground">{item.desc}</p>
+                </div>
+                <Switch
+                  checked={Boolean((empPermissions as any)[item.id])}
+                  onCheckedChange={(val) => {
+                    setEmpPermissions(prev => ({
+                      ...prev,
+                      [item.id]: val,
+                    }));
+                  }}
+                />
+              </div>
+            ))}
+          </div>
+
+          <DialogFooter className="gap-2 sm:gap-0 border-t border-border/60 pt-3">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setEditingPermissionsEmp(null)}
+              disabled={isUpdatingPerms}
+              className="rounded-xl text-xs"
+            >
+              {lang === "bn" ? "বাতিল" : "Cancel"}
+            </Button>
+            <Button
+              type="button"
+              onClick={handleSaveEmployeePermissions}
+              disabled={isUpdatingPerms}
+              className="rounded-xl bg-primary text-primary-foreground text-xs font-bold gap-2"
+            >
+              {isUpdatingPerms ? (
+                <>
+                  <RefreshCw className="size-3.5 animate-spin" />
+                  <span>Saving...</span>
+                </>
+              ) : (
+                <span>{lang === "bn" ? "পারমিশন সংরক্ষণ করুন" : "Save Permissions"}</span>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Password & Google Verification Dialog */}
+      <Dialog open={isUnlockDialogOpen} onOpenChange={setIsUnlockDialogOpen}>
+        <DialogContent className="max-w-md font-hind">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base font-bold font-balooda">
+              <Unlock className="size-5 text-amber-500" />
+              <span>{lang === "bn" ? "ডেঞ্জার জোন আনলক করুন" : "Unlock Danger Zone"}</span>
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              {lang === "bn"
+                ? "দোকানের ডাটা নিরাপত্তা নিশ্চিত করতে গুগল দিয়ে পরিচয় নিশ্চিত করুন অথবা পাসওয়ার্ড দিন।"
+                : "Verify your identity using Google authentication or your account password to unlock."}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            {/* Google Re-authentication */}
+            <div className="space-y-2 p-3.5 rounded-2xl bg-muted/40 border border-border/80">
+              <p className="text-xs font-semibold text-foreground">
+                {lang === "bn" ? "গুগল সাইন-ইন দিয়ে দ্রুত আনলক করুন:" : "Quick Unlock with Google:"}
+              </p>
+              <Button
+                type="button"
+                onClick={handleVerifyWithGoogle}
+                disabled={unlockLoading}
+                className="w-full h-10 rounded-xl bg-white hover:bg-gray-50 text-gray-900 border border-gray-300 font-bold text-xs gap-2.5 shadow-xs cursor-pointer"
+              >
+                {unlockLoading ? (
+                  <RefreshCw className="size-3.5 animate-spin text-primary" />
+                ) : (
+                  <svg className="size-4" viewBox="0 0 24 24">
+                    <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                    <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                    <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
+                    <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
+                  </svg>
+                )}
+                <span>{lang === "bn" ? "গুগল দিয়ে আনলক করুন" : "Continue with Google to Unlock"}</span>
+              </Button>
             </div>
-            <DialogFooter className="gap-2 sm:gap-0">
-              <Button type="button" variant="outline" onClick={() => setIsUnlockDialogOpen(false)} disabled={unlockLoading}>
-                Cancel
-              </Button>
-              <Button type="submit" disabled={unlockLoading}>
-                {unlockLoading ? "Verifying..." : "Verify & Unlock"}
-              </Button>
-            </DialogFooter>
-          </form>
+
+            <div className="relative flex items-center justify-center">
+              <span className="bg-background px-2 text-[10px] text-muted-foreground uppercase font-bold tracking-wider">
+                {lang === "bn" ? "অথবা পাসওয়ার্ড দিন" : "Or use password"}
+              </span>
+            </div>
+
+            <form onSubmit={handleVerifyPassword} className="space-y-3">
+              <div className="space-y-1">
+                <Label className="text-xs font-medium">{lang === "bn" ? "পাসওয়ার্ড" : "Account Password"}</Label>
+                <Input
+                  type="password"
+                  value={unlockPassword}
+                  onChange={e => setUnlockPassword(e.target.value)}
+                  placeholder={lang === "bn" ? "পাসওয়ার্ড লিখুন..." : "Enter password"}
+                  className="h-10 rounded-xl text-xs"
+                />
+              </div>
+              <DialogFooter className="gap-2 sm:gap-0 pt-2">
+                <Button type="button" variant="outline" onClick={() => setIsUnlockDialogOpen(false)} disabled={unlockLoading} className="rounded-xl text-xs">
+                  {lang === "bn" ? "বাতিল" : "Cancel"}
+                </Button>
+                <Button type="submit" disabled={unlockLoading || !unlockPassword.trim()} className="rounded-xl bg-primary text-primary-foreground font-bold text-xs">
+                  {unlockLoading ? "Verifying..." : (lang === "bn" ? "পাসওয়ার্ড দিয়ে আনলক" : "Verify & Unlock")}
+                </Button>
+              </DialogFooter>
+            </form>
+          </div>
         </DialogContent>
       </Dialog>
 

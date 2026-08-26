@@ -8,6 +8,7 @@ export type PermissionSet = {
   cashbox: boolean;
   settings: boolean;
   reports: boolean;
+  danger_zone: boolean;
 };
 
 export const OWNER_PERMISSIONS: PermissionSet = {
@@ -20,6 +21,7 @@ export const OWNER_PERMISSIONS: PermissionSet = {
   cashbox: true,
   settings: true,
   reports: true,
+  danger_zone: true,
 };
 
 export const DEFAULT_EMPLOYEE_PERMISSIONS: PermissionSet = {
@@ -32,6 +34,7 @@ export const DEFAULT_EMPLOYEE_PERMISSIONS: PermissionSet = {
   cashbox: false,
   settings: false,
   reports: false,
+  danger_zone: false,
 };
 
 /** Resolve effective permissions for the current user. */

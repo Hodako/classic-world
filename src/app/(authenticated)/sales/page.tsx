@@ -41,9 +41,12 @@ import {
   XCircle,
   ShoppingBag,
   Download,
+  Loader2,
+  CloudUpload,
+  RefreshCw,
 } from "lucide-react";
 import { toast } from "sonner";
-import { createReturnFn, deleteSaleFn, approveCourierPaymentFn, cancelCourierOrderFn } from "@/lib/rpc";
+import { createReturnFn, deleteSaleFn, approveCourierPaymentFn, cancelCourierOrderFn, toggleGoogleSheetsSyncFn, bulkExportToGoogleSheetsFn } from "@/lib/rpc";
 import { ConfirmDeleteDialog } from "@/components/confirm-delete-dialog";
 import { printPwaInvoice, downloadPwaInvoicePdf } from "@/lib/invoice-printer";
 import { useAuth } from "@/hooks/use-auth";
@@ -148,8 +151,10 @@ function groupSales(sales: Sale[]): GroupedSale[] {
 export default function SalesPage() {
   const { lang, t } = useT();
   const isMobile = useIsMobile();
+  const qc = useQueryClient();
   const { data: rawSales = [] } = useCachedQuery(["sales"], getSales);
   const { data: products = [] } = useCachedQuery(["products"], getProducts);
+  const { data: biz, refetch: refetchBiz } = useCachedQuery(["business-settings"], getBusinessSettingsFn);
 
   const [open, setOpen] = useState(false);
   const [editSale, setEditSale] = useState<Sale | null>(null);
@@ -162,7 +167,41 @@ export default function SalesPage() {
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
   const [page, setPage] = useState(1);
+  const [isSyncingSheets, setIsSyncingSheets] = useState(false);
   const pageSize = isMobile ? 12 : 20;
+
+  const handleSyncGoogleSheets = async () => {
+    setIsSyncingSheets(true);
+    const loadId = toast.loading(lang === "bn" ? "গুগল শিটে বিক্রয় ডাটা আপলোড হচ্ছে..." : "Syncing sales data to Google Sheets...");
+    try {
+      await bulkExportToGoogleSheetsFn();
+      toast.success(
+        lang === "bn"
+          ? "সকল বিক্রয় ডাটা সফলভাবে গুগল শিটে আপলোড হয়েছে!"
+          : "All sales data successfully synced to Google Sheets!",
+        { id: loadId }
+      );
+      refetchBiz();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to sync with Google Sheets", { id: loadId });
+    } finally {
+      setIsSyncingSheets(false);
+    }
+  };
+
+  const handleToggleAutoSync = async (enabled: boolean) => {
+    try {
+      await toggleGoogleSheetsSyncFn({ data: { enabled } });
+      qc.invalidateQueries({ queryKey: ["business-settings"] });
+      toast.success(
+        enabled
+          ? (lang === "bn" ? "গুগল শিট অটো-সিঙ্ক চালু করা হয়েছে" : "Google Sheets Auto-Sync enabled")
+          : (lang === "bn" ? "গুগল শিট অটো-সিঙ্ক বন্ধ করা হয়েছে" : "Google Sheets Auto-Sync disabled")
+      );
+    } catch (err: any) {
+      toast.error(err.message || "Failed to toggle auto-sync");
+    }
+  };
 
   // Build product to category lookup
   const productCategoryMap = useMemo(() => {
@@ -360,6 +399,70 @@ export default function SalesPage() {
               onChange={e => { setSearch(e.target.value); setPage(1); }}
             />
           </div>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={isSyncingSheets}
+                className="h-8.5 px-2.5 text-xs font-bold font-balooda rounded-xl gap-1.5 cursor-pointer bg-card hover:bg-muted/80 border-[0.5px] border-emerald-600/40 text-emerald-700 dark:text-emerald-400"
+              >
+                {isSyncingSheets ? (
+                  <Loader2 className="size-4 animate-spin text-emerald-600" />
+                ) : (
+                  <CloudUpload className="size-4 text-emerald-600 dark:text-emerald-400" />
+                )}
+                <span>{isMobile ? "Sheets" : (lang === "bn" ? "গুগল শিট সিঙ্ক" : "Google Sheets")}</span>
+                <ChevronDown className="size-3 opacity-60 ml-0.5" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-64 p-2 space-y-1 font-balooda">
+              <div className="px-2 py-1 text-xs font-bold text-muted-foreground border-b border-border flex items-center justify-between">
+                <span>{lang === "bn" ? "গুগল শিট ইন্টিগ্রেশন" : "Google Sheets Sync"}</span>
+                <span className={`text-[10px] px-1.5 py-0.5 rounded font-mono ${
+                  biz?.google_sheets_sync_enabled !== false ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" : "bg-muted text-muted-foreground"
+                }`}>
+                  {biz?.google_sheets_sync_enabled !== false ? (lang === "bn" ? "অটো: চালু" : "Auto: ON") : (lang === "bn" ? "অটো: বন্ধ" : "Auto: OFF")}
+                </span>
+              </div>
+
+              <DropdownMenuItem
+                onClick={handleSyncGoogleSheets}
+                disabled={isSyncingSheets}
+                className="text-xs font-medium cursor-pointer py-1.5 flex items-center gap-2"
+              >
+                <RefreshCw className={`size-3.5 text-emerald-600 ${isSyncingSheets ? "animate-spin" : ""}`} />
+                <span>{lang === "bn" ? "এখনই সব বিক্রি সিঙ্ক করুন" : "Sync All Sales Now"}</span>
+              </DropdownMenuItem>
+
+              <DropdownMenuItem
+                onClick={() => handleToggleAutoSync(biz?.google_sheets_sync_enabled === false)}
+                className="text-xs font-medium cursor-pointer py-1.5 flex items-center gap-2"
+              >
+                <CheckCircle2 className="size-3.5 text-primary" />
+                <span>
+                  {biz?.google_sheets_sync_enabled === false
+                    ? (lang === "bn" ? "অটো-সিঙ্ক চালু করুন (Turn ON)" : "Turn ON Auto-Sync")
+                    : (lang === "bn" ? "অটো-সিঙ্ক বন্ধ করুন (Turn OFF)" : "Turn OFF Auto-Sync")}
+                </span>
+              </DropdownMenuItem>
+
+              {biz?.google_sheets_spreadsheet_id && (
+                <DropdownMenuItem asChild>
+                  <a
+                    href={`https://docs.google.com/spreadsheets/d/${biz.google_sheets_spreadsheet_id}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs font-medium cursor-pointer py-1.5 flex items-center gap-2 text-primary"
+                  >
+                    <FileSpreadsheet className="size-3.5 text-emerald-600" />
+                    <span>{lang === "bn" ? "গুগল শিট খুলুন ↗" : "Open Google Sheet ↗"}</span>
+                  </a>
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -840,8 +943,8 @@ function SalesTab({
                       {lang === "bn" ? "বাকী:" : "Due:"} {fmtMoney(s.due_amount)}
                     </span>
                   ) : (
-                    <span className="text-[10.5px] font-bold font-balooda text-emerald-600 dark:text-emerald-400">
-                      +{isCancelled ? "৳০" : fmtMoney(s.profit)}
+                    <span className="text-[10.5px] font-bold font-balooda text-muted-foreground bg-muted/60 px-1.5 py-0.5 rounded">
+                      {isCancelled ? (lang === "bn" ? "বাতিল" : "Cancelled") : (s.type ? s.type.toUpperCase() : "PAID")}
                     </span>
                   )}
                   <span className="p-0.5 rounded text-muted-foreground/70 hover:text-foreground">

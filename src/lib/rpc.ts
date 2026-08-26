@@ -179,6 +179,7 @@ export const changeMyPasswordFn = makeReadAction("changeMyPasswordFn");
 export const verifyOwnerPasswordFn = makeReadAction("verifyOwnerPasswordFn");
 export const uploadImageFn = makeReadAction("uploadImageFn");
 export const bulkExportToGoogleSheetsFn = makeReadAction("bulkExportToGoogleSheetsFn");
+export const toggleGoogleSheetsSyncFn = makeWriteAction("toggleGoogleSheetsSyncFn");
 export const createProfileFn = makeReadAction("createProfileFn");
 export const switchProfileFn = makeReadAction("switchProfileFn");
 export const importProfileModuleFn = makeReadAction("importProfileModuleFn");

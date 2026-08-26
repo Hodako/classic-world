@@ -2001,20 +2001,50 @@ export async function deletePayableSettlementFn(input: { data: { id: string } })
   return { success: true };
 }
 
-export async function verifyOwnerPasswordFn(input: { data: { password: string } }) {
+async function requireDangerZoneAccess(session: { userId: string; ownerId: string; role: string }) {
+  if (session.role === "owner" || session.role === "superadmin") return;
+  const db = await getDb();
+  const user = await db.collection("users").findOne({ _id: session.userId as any });
+  if (user?.permissions?.danger_zone === true) {
+    return;
+  }
+  throw new Error("Access denied: You do not have Danger Zone permissions");
+}
+
+export async function verifyOwnerPasswordFn(input: { data: { password?: string; googleVerifiedEmail?: string } }) {
   const session = await requireSession();
   const db = await getDb();
   const user = await db.collection("users").findOne({ _id: session.userId as any });
   if (!user) throw new Error("User not found");
-  if (!user.password) throw new Error("No password set for this account");
-  const match = await comparePassword(input.data.password, user.password as string, user.plain_password as string);
-  if (!match) throw new Error("Incorrect password");
-  return { success: true };
+
+  if (session.role !== "owner" && session.role !== "superadmin" && user?.permissions?.danger_zone !== true) {
+    throw new Error("Access denied: Danger Zone permissions required. Please contact shop owner.");
+  }
+
+  if (input.data.googleVerifiedEmail) {
+    const emailA = input.data.googleVerifiedEmail.trim().toLowerCase();
+    const emailB = (user.email || "").trim().toLowerCase();
+    if (emailA !== emailB) {
+      throw new Error(`Google account mismatch. Please sign in with ${user.email}`);
+    }
+    return { success: true, method: "google" };
+  }
+
+  if (input.data.password) {
+    if (!user.password) {
+      throw new Error("No password set for this account. Please use Google verification.");
+    }
+    const match = await comparePassword(input.data.password, user.password as string, user.plain_password as string);
+    if (!match) throw new Error("Incorrect password");
+    return { success: true, method: "password" };
+  }
+
+  throw new Error("Password or Google re-authentication is required");
 }
 
 export async function emptyCashboxFn() {
   const session = await requireSession();
-  if (session.role !== "owner") throw new Error("Only owner can reset data");
+  await requireDangerZoneAccess(session);
   const db = await getDb();
   await db.collection("cashbox_entries").deleteMany({ owner_id: session.ownerId });
   return { success: true };
@@ -2022,7 +2052,7 @@ export async function emptyCashboxFn() {
 
 export async function resetProductsFn() {
   const session = await requireSession();
-  if (session.role !== "owner") throw new Error("Only owner can reset data");
+  await requireDangerZoneAccess(session);
   const db = await getDb();
   await db.collection("products").deleteMany({ owner_id: session.ownerId });
   return { success: true };
@@ -2030,7 +2060,7 @@ export async function resetProductsFn() {
 
 export async function resetSalesFn() {
   const session = await requireSession();
-  if (session.role !== "owner") throw new Error("Only owner can reset data");
+  await requireDangerZoneAccess(session);
   const db = await getDb();
   await db.collection("sales").deleteMany({ owner_id: session.ownerId });
   await db.collection("returns").deleteMany({ owner_id: session.ownerId });
@@ -2039,7 +2069,7 @@ export async function resetSalesFn() {
 
 export async function resetPurchasesFn() {
   const session = await requireSession();
-  if (session.role !== "owner") throw new Error("Only owner can reset data");
+  await requireDangerZoneAccess(session);
   const db = await getDb();
   await db.collection("purchases").deleteMany({ owner_id: session.ownerId });
   return { success: true };
@@ -2047,7 +2077,7 @@ export async function resetPurchasesFn() {
 
 export async function resetSomitiFn() {
   const session = await requireSession();
-  if (session.role !== "owner") throw new Error("Only owner can reset data");
+  await requireDangerZoneAccess(session);
   const db = await getDb();
   await db.collection("somiti_entries").deleteMany({ owner_id: session.ownerId });
   return { success: true };
@@ -2055,7 +2085,7 @@ export async function resetSomitiFn() {
 
 export async function resetExpensesFn() {
   const session = await requireSession();
-  if (session.role !== "owner") throw new Error("Only owner can reset data");
+  await requireDangerZoneAccess(session);
   const db = await getDb();
   await db.collection("expenses").deleteMany({ owner_id: session.ownerId });
   return { success: true };
@@ -2063,7 +2093,7 @@ export async function resetExpensesFn() {
 
 export async function resetPartiesFn() {
   const session = await requireSession();
-  if (session.role !== "owner") throw new Error("Only owner can reset data");
+  await requireDangerZoneAccess(session);
   const db = await getDb();
   const ownerId = session.ownerId;
   await db.collection("customers").deleteMany({ owner_id: ownerId });
@@ -2078,7 +2108,7 @@ export async function resetPartiesFn() {
 
 export async function resetAllDataFn() {
   const session = await requireSession();
-  if (session.role !== "owner") throw new Error("Only owner can reset data");
+  await requireDangerZoneAccess(session);
   const db = await getDb();
   const ownerId = session.ownerId;
   await db.collection("products").deleteMany({ owner_id: ownerId });
@@ -2099,11 +2129,21 @@ export async function resetAllDataFn() {
   return { success: true };
 }
 
+export async function toggleGoogleSheetsSyncFn(input: { data: { enabled: boolean } }) {
+  const { data } = input;
+  const session = await requireSession();
+  const db = await getDb();
+  await db.collection("businesses").updateOne(
+    { owner_id: session.ownerId },
+    { $set: { google_sheets_sync_enabled: Boolean(data.enabled), updated_at: new Date().toISOString() } }
+  );
+  return { success: true, enabled: Boolean(data.enabled) };
+}
+
 export async function bulkExportToGoogleSheetsFn() {
   const session = await requireSession();
-  if (session.role !== "owner") throw new Error("Only owner can export data");
-  await bulkExportToGoogleSheets(session.ownerId);
-  return { success: true };
+  const res = await bulkExportToGoogleSheets(session.ownerId);
+  return { success: true, ...res };
 }
 
 export async function changeMyPasswordFn(input: { data: { currentPassword?: string; newPassword: string } }) {

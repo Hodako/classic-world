@@ -28,46 +28,59 @@ async function callRemoteRpc(actionName: string, args: any) {
     headers["Authorization"] = `Bearer ${token}`;
   }
 
-  const res = await fetch(url, {
-    method: "POST",
-    headers,
-    credentials: "include",
-    body: JSON.stringify({ actionName, args, token, activeProfile }),
-  });
-
-  const txt = await res.text();
-  if (!res.ok) {
-    let errorMsg = txt;
-    try {
-      const parsed = JSON.parse(txt);
-      if (parsed?.error) errorMsg = parsed.error;
-    } catch (_) {}
-    throw new Error(errorMsg || `RPC Request failed with status ${res.status}`);
-  }
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 15000);
 
   try {
-    const result = JSON.parse(txt);
-    if ((actionName === "loginFn" || actionName === "registerFn") && result?.token) {
-      if (typeof window !== "undefined") {
-        window.localStorage.setItem("auth_token", result.token);
-      }
+    const res = await fetch(url, {
+      method: "POST",
+      headers,
+      credentials: "include",
+      body: JSON.stringify({ actionName, args, token, activeProfile }),
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+
+    const txt = await res.text();
+    if (!res.ok) {
+      let errorMsg = txt;
+      try {
+        const parsed = JSON.parse(txt);
+        if (parsed?.error) errorMsg = parsed.error;
+      } catch (_) {}
+      throw new Error(errorMsg || `RPC Request failed with status ${res.status}`);
     }
-    if (actionName === "switchProfileFn" && args?.data?.profileId) {
-      if (typeof window !== "undefined") {
-        window.localStorage.setItem("active_profile", args.data.profileId);
+
+    try {
+      const result = JSON.parse(txt);
+      if ((actionName === "loginFn" || actionName === "registerFn") && result?.token) {
+        if (typeof window !== "undefined") {
+          window.localStorage.setItem("auth_token", result.token);
+        }
       }
-    }
-    if (actionName === "logoutFn") {
-      if (typeof window !== "undefined") {
-        window.localStorage.removeItem("auth_token");
-        window.localStorage.removeItem("active_profile");
+      if (actionName === "switchProfileFn" && args?.data?.profileId) {
+        if (typeof window !== "undefined") {
+          window.localStorage.setItem("active_profile", args.data.profileId);
+        }
       }
+      if (actionName === "logoutFn") {
+        if (typeof window !== "undefined") {
+          window.localStorage.removeItem("auth_token");
+          window.localStorage.removeItem("active_profile");
+        }
+      }
+      return result;
+    } catch (err) {
+      console.error("Failed to parse RPC response as JSON. Server returned:", txt);
+      const snippet = txt.slice(0, 150) + (txt.length > 150 ? "..." : "");
+      throw new Error(`Server returned invalid response for ${actionName}. Response snippet: "${snippet}". Please check your server status.`);
     }
-    return result;
-  } catch (err) {
-    console.error("Failed to parse RPC response as JSON. Server returned:", txt);
-    const snippet = txt.slice(0, 150) + (txt.length > 150 ? "..." : "");
-    throw new Error(`Server returned invalid response for ${actionName}. Response snippet: "${snippet}". Please check your server status.`);
+  } catch (err: any) {
+    clearTimeout(timeoutId);
+    if (err?.name === "AbortError") {
+      throw new Error("Request timed out. Please check your internet connection.");
+    }
+    throw err;
   }
 }
 

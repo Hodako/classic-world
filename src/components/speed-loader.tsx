@@ -176,8 +176,6 @@ export function SpeedLoader({ fullScreen = true }: { fullScreen?: boolean }) {
   const content = (
     <div className={`hakim-loader-stage ${fullScreen ? "fullscreen" : "inline"}`}>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600&family=Cinzel:wght@600;700&family=Share+Tech+Mono&display=swap');
-
         .hakim-loader-stage {
           --loader-bg: #d1e2ea;
           --loader-ink: #201C16;

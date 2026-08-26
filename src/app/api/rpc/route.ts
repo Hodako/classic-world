@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { requestStore } from "@/lib/request-store";
+import { checkRateLimit, getClientIp } from "@/lib/rate-limit";
 import * as actions from "@/lib/rpc-actions";
 import * as adminActions from "@/lib/rpc-admin-actions";
 
@@ -9,6 +10,8 @@ const allActions: Record<string, Function> = {
   ...actions,
   ...adminActions,
 };
+
+const MAX_BODY_BYTES = 10 * 1024 * 1024; // 10MB payload limit
 
 // CORS preflight handler
 export async function OPTIONS(req: NextRequest) {
@@ -20,6 +23,7 @@ export async function OPTIONS(req: NextRequest) {
       "Access-Control-Allow-Methods": "POST, OPTIONS, GET",
       "Access-Control-Allow-Headers": "Content-Type, Cookie, Authorization, Accept, X-Requested-With",
       "Access-Control-Allow-Credentials": "true",
+      "Access-Control-Max-Age": "86400",
     },
   });
 }
@@ -27,7 +31,34 @@ export async function OPTIONS(req: NextRequest) {
 // Main RPC handler
 export async function POST(req: NextRequest) {
   const origin = req.headers.get("origin") || "*";
+  const ip = getClientIp(req);
+
+  // Anti-DDoS Rate Limiting Guard
+  const rateCheck = checkRateLimit(ip, { limit: 250, windowMs: 60 * 1000 });
+  if (!rateCheck.success) {
+    return new NextResponse(
+      JSON.stringify({ error: rateCheck.blocked ? "IP temporarily blocked due to excessive requests" : "Too Many Requests" }),
+      {
+        status: 429,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": origin,
+          "Access-Control-Allow-Credentials": "true",
+          "Retry-After": String(rateCheck.resetInSeconds),
+        },
+      }
+    );
+  }
+
   try {
+    const contentLength = Number(req.headers.get("content-length") || 0);
+    if (contentLength > MAX_BODY_BYTES) {
+      return new NextResponse(JSON.stringify({ error: "Payload too large" }), {
+        status: 413,
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": origin },
+      });
+    }
+
     let bodyText = "";
     try {
       bodyText = await req.text();

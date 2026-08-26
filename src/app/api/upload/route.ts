@@ -1,8 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireSession } from "@/lib/session";
+import { checkRateLimit, getClientIp } from "@/lib/rate-limit";
 
 export async function POST(req: NextRequest) {
   const origin = req.headers.get("origin") || "*";
+  const ip = getClientIp(req);
+
+  const rateCheck = checkRateLimit(`upload_${ip}`, { limit: 40, windowMs: 60 * 1000 });
+  if (!rateCheck.success) {
+    return NextResponse.json({ error: "Upload rate limit exceeded. Please wait a moment." }, {
+      status: 429,
+      headers: {
+        "Access-Control-Allow-Origin": origin,
+        "Access-Control-Allow-Credentials": "true",
+        "Retry-After": String(rateCheck.resetInSeconds),
+      },
+    });
+  }
+
   try {
     let session: any = null;
     try {

@@ -6,18 +6,20 @@ import { useAuth } from "@/hooks/use-auth";
 import { SpeedLoader } from "@/components/speed-loader";
 
 export default function IndexPage() {
-  const { user, loading } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
-    if (!loading) {
-      if (!user) {
-        router.replace("/auth");
-      } else {
+    try {
+      const hasToken = typeof window !== "undefined" && !!window.localStorage.getItem("auth_token");
+      if (hasToken) {
         router.replace("/dashboard");
+      } else {
+        router.replace("/auth");
       }
+    } catch {
+      router.replace("/auth");
     }
-  }, [user, loading, router]);
+  }, [router]);
 
   return <SpeedLoader />;
 }

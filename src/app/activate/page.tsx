@@ -54,7 +54,7 @@ export default function ActivatePage() {
     <div className="min-h-screen flex items-center justify-center p-4">
       <Card className="glass-card w-full max-w-md p-6 space-y-4">
         <div className="flex flex-col items-center gap-2 text-center">
-          <AppLogo size="lg" />
+          <AppLogo size="lg" className="h-12 max-w-[260px]" />
           <h1 className="text-xl font-serif font-bold">Activate License</h1>
           <p className="text-sm text-muted-foreground">
             Enter your business or employee license key to activate Classic World.

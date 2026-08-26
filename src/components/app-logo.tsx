@@ -6,12 +6,17 @@ import { useState, useEffect } from "react";
 
 interface AppLogoProps {
   className?: string;
-  size?: "sm" | "md" | "lg";
+  size?: "sm" | "md" | "lg" | "xl";
   src?: string;
   alt?: string;
 }
 
-const sizes = { sm: "h-8 max-w-[100px]", md: "h-10 max-w-[130px]", lg: "h-14 max-w-[160px]" };
+const sizes = {
+  sm: "h-8 max-w-[170px]",
+  md: "h-11 max-w-[240px]",
+  lg: "h-14 max-w-[320px]",
+  xl: "h-20 max-w-[420px]",
+};
 
 /** Business logo from settings or default. Can toggle fullscreen on triple click. */
 export function AppLogo({ className, size = "md", src, alt }: AppLogoProps) {
@@ -58,7 +63,7 @@ export function AppLogo({ className, size = "md", src, alt }: AppLogoProps) {
     }
   };
 
-  let logoSrc = src ?? user?.logo_url ?? "/logo.svg";
+  let logoSrc = src ?? user?.logo_url ?? "/logo.png";
 
   const logoAlt = alt ?? user?.business_name ?? "Classic World";
 
@@ -69,7 +74,7 @@ export function AppLogo({ className, size = "md", src, alt }: AppLogoProps) {
       onClick={handleClick}
       className={cn("w-auto object-contain cursor-pointer select-none", sizes[size], className)}
       onError={(e) => { 
-        (e.target as HTMLImageElement).src = "/logo.svg"; 
+        (e.target as HTMLImageElement).src = "/logo.png"; 
       }}
     />
   );

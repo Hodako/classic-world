@@ -110,8 +110,8 @@ export default function ForgotPasswordPage() {
       {/* Main Card */}
       <div className="w-full max-w-md mx-auto my-auto py-6">
         <div className="p-6 sm:p-8 rounded-3xl bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 shadow-xl space-y-6">
-          <div className="flex flex-col items-center text-center space-y-2">
-            <AppLogo size="md" alt="Classic World" />
+          <div className="flex flex-col items-center text-center space-y-3">
+            <AppLogo size="lg" className="h-12 max-w-[240px]" alt="Classic World" />
             <h1 className="text-xl sm:text-2xl font-bold font-serif text-slate-900 dark:text-zinc-100 tracking-tight">
               {lang === "bn" ? "পাসওয়ার্ড রিসেট করুন" : "Reset Password"}
             </h1>

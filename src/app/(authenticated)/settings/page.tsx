@@ -378,7 +378,7 @@ export default function SettingsPage() {
           invoice_page_size: String(fd.get("invoice_page_size") || "80mm"),
           invoice_page_width: String(fd.get("invoice_page_width") || ""),
           invoice_page_height: String(fd.get("invoice_page_height") || ""),
-          logo_url: logoUrl || "/logo.svg",
+          logo_url: logoUrl || "/logo.png",
           business_type: String(fd.get("business_type") || "retail"),
           theme: "green",
           employee_limit: Number(fd.get("employee_limit")) || 5,
@@ -526,7 +526,7 @@ export default function SettingsPage() {
             </div>
             <div className="space-y-1">
               <Label className="text-xs">Logo URL</Label>
-              <Input name="logo_url" value={logoUrl} onChange={e => setLogoUrl(e.target.value)} placeholder="/logo.svg" />
+              <Input name="logo_url" value={logoUrl} onChange={e => setLogoUrl(e.target.value)} placeholder="/logo.png" />
             </div>
             <div className="space-y-1">
               <Label className="text-xs">Upload Logo</Label>

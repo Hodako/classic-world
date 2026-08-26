@@ -356,10 +356,9 @@ export default function AuthPage() {
         <div className="absolute top-0 right-0 w-80 h-80 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
         <div className="absolute bottom-0 left-0 w-80 h-80 bg-primary/10 rounded-full blur-3xl pointer-events-none" />
 
-        {/* Top brand header */}
-        <div className="flex items-center gap-3 relative z-10 shrink-0">
-          <AppLogo size="md" alt="Classic World" />
-          <span className="font-serif text-2xl font-bold tracking-tight bg-gradient-to-r from-emerald-400 to-indigo-300 bg-clip-text text-transparent">Classic World</span>
+        {/* Top brand header with horizontal logo */}
+        <div className="flex items-center relative z-10 shrink-0">
+          <AppLogo size="lg" className="h-12 sm:h-14 max-w-[280px]" alt="Classic World" />
         </div>
 
         {/* Middle minimalist description */}
@@ -392,9 +391,8 @@ export default function AuthPage() {
         
         {/* Top Row: Language switcher */}
         <div className="flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-2 md:hidden">
-            <AppLogo size="sm" alt="Classic World" />
-            <span className="font-serif text-base font-bold">Classic World</span>
+          <div className="flex items-center md:hidden">
+            <AppLogo size="sm" className="h-8 max-w-[160px]" alt="Classic World" />
           </div>
           <div className="flex gap-1 rounded-full bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800 p-0.5 text-[10px] ml-auto">
             <button 

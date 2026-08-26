@@ -240,14 +240,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     <div className="min-h-screen min-h-dvh bg-transparent flex w-full app-shell">
       {!isMobile && (
         <Sidebar collapsible="icon" style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}>
-          <SidebarHeader className="border-b border-sidebar-border px-2 py-3">
-            <div className="flex items-center gap-2 overflow-hidden">
-              <AppLogo size="sm" />
-              <div className="min-w-0 group-data-[collapsible=icon]:hidden">
-                <p className="font-serif font-semibold text-sm truncate leading-tight">{brandName}</p>
-                <p className="text-[10px] text-muted-foreground truncate">{t("tagline")}</p>
-                <p className="text-[8px] text-muted-foreground/80 truncate mt-0.5 font-medium">Powered by Dream Fashion</p>
-              </div>
+          <SidebarHeader className="border-b border-sidebar-border px-3 py-3">
+            <div className="flex items-center overflow-hidden group-data-[collapsible=icon]:justify-center">
+              <AppLogo size="md" className="h-9 max-w-[180px]" />
             </div>
           </SidebarHeader>
 
@@ -327,19 +322,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <div className="flex items-center h-12 px-3 gap-2">
             <div className="flex items-center gap-2 min-w-0 flex-1">
               {isMobile ? (
-                <>
-                  <AppLogo size="sm" />
-                  <div className="min-w-0 flex flex-col justify-center">
-                    <h1 className="font-serif font-semibold text-sm truncate leading-none">{brandName}</h1>
-                    <span className="text-[8px] text-muted-foreground mt-0.5 leading-none">Powered by Dream Fashion</span>
-                  </div>
-                </>
+                <div className="flex items-center min-w-0">
+                  <AppLogo size="sm" className="h-8 max-w-[150px]" />
+                </div>
               ) : (
                 <>
                   <SidebarTrigger className="size-7 shrink-0" />
                   <div className="min-w-0 flex flex-col justify-center">
                     <h1 className="font-serif font-semibold text-base truncate leading-none hidden sm:block">{brandName}</h1>
-                    <span className="text-[8px] text-muted-foreground mt-0.5 leading-none hidden sm:block">Powered by Dream Fashion</span>
                   </div>
                 </>
               )}

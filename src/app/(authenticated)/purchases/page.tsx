@@ -2,7 +2,7 @@
 
 import { useQueryClient } from "@tanstack/react-query";
 import { useState, useMemo } from "react";
-import { Trash2, Download, ShoppingBag, DollarSign, Tag, Info, Plus, Search } from "lucide-react";
+import { Trash2, Pencil, Download, ShoppingBag, DollarSign, Tag, Info, Plus, Search } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -14,6 +14,7 @@ import { useT } from "@/lib/i18n";
 import { fmtMoney, fmtDateTime } from "@/lib/format";
 import { FAB } from "@/components/ui/fab";
 import { PurchaseDialog } from "@/components/purchase-dialog";
+import { EditPurchaseDialog } from "@/components/edit-purchase-dialog";
 import { deletePurchaseFn } from "@/lib/rpc";
 import { toast } from "sonner";
 import { setCachedData, refreshQueries } from "@/lib/optimistic-cache";
@@ -31,6 +32,7 @@ export default function PurchasesPage() {
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [purchaseToDelete, setPurchaseToDelete] = useState<Purchase | null>(null);
+  const [purchaseToEdit, setPurchaseToEdit] = useState<Purchase | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
   const pageSize = isMobile ? 12 : 20;
@@ -302,15 +304,26 @@ export default function PurchasesPage() {
                 </div>
               </div>
 
-              <Button
-                size="sm"
-                variant="ghost"
-                className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10 shrink-0 rounded-lg cursor-pointer"
-                onClick={() => handleDelete(p)}
-                title={lang === "bn" ? "মুছে ফেলুন" : "Delete"}
-              >
-                <Trash2 className="size-3.5" />
-              </Button>
+              <div className="flex items-center gap-1 shrink-0">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 w-7 p-0 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-lg cursor-pointer"
+                  onClick={() => setPurchaseToEdit(p)}
+                  title={lang === "bn" ? "সম্পাদনা করুন" : "Edit"}
+                >
+                  <Pencil className="size-3.5" />
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg cursor-pointer"
+                  onClick={() => handleDelete(p)}
+                  title={lang === "bn" ? "মুছে ফেলুন" : "Delete"}
+                >
+                  <Trash2 className="size-3.5" />
+                </Button>
+              </div>
             </div>
           ))}
         </Card>
@@ -331,6 +344,14 @@ export default function PurchasesPage() {
       <FAB onClick={() => setOpen(true)} />
 
       <PurchaseDialog open={open} onOpenChange={setOpen} />
+
+      <EditPurchaseDialog
+        purchase={purchaseToEdit}
+        open={purchaseToEdit !== null}
+        onOpenChange={(v) => {
+          if (!v) setPurchaseToEdit(null);
+        }}
+      />
 
       <ConfirmDeleteDialog
         open={purchaseToDelete !== null}

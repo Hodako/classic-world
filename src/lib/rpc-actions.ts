@@ -1560,6 +1560,79 @@ export async function deletePurchaseFn(input: { data: { id: string } }) {
   return { success: true };
 }
 
+export async function editPurchaseFn(input: {
+  data: {
+    id: string;
+    product_id?: string | null;
+    product_name: string;
+    qty: number;
+    unit_cost: number;
+    total: number;
+    note?: string | null;
+    payment_type?: "cash" | "credit" | null;
+    party_id?: string | null;
+  };
+}) {
+  const { data } = input;
+  const session = await requireSession();
+  const db = await getDb();
+
+  const oldPurchase = await db.collection("purchases").findOne({ _id: data.id as any, owner_id: session.ownerId });
+  if (!oldPurchase) throw new Error("Purchase record not found");
+
+  const oldQty = Number(oldPurchase.qty) || 0;
+  const newQty = Number(data.qty) || 0;
+  const qtyDiff = newQty - oldQty;
+
+  // 1. Adjust product stock if linked to a product
+  const productId = data.product_id || oldPurchase.product_id;
+  if (productId) {
+    const product = await db.collection("products").findOne({ _id: productId as any });
+    if (product) {
+      const newStock = Math.max(((product.stock as number) ?? 0) + qtyDiff, 0);
+      await db.collection("products").updateOne(
+        { _id: productId as any },
+        { $set: { stock: newStock, buy_price: data.unit_cost } }
+      );
+    }
+  }
+
+  // 2. Update purchase document
+  await db.collection("purchases").updateOne(
+    { _id: data.id as any, owner_id: session.ownerId },
+    {
+      $set: {
+        product_name: data.product_name,
+        qty: data.qty,
+        unit_cost: data.unit_cost,
+        total: data.total,
+        note: data.note || null,
+        payment_type: data.payment_type || "cash",
+        party_id: data.party_id || null,
+        updated_at: new Date().toISOString(),
+      },
+    }
+  );
+
+  // 3. Update related cashbox & expense entry if payment_type is cash
+  if (data.payment_type !== "credit") {
+    // Update or insert cashbox entry
+    const existingCashbox = await db.collection("cashbox_entries").findOne({ owner_id: session.ownerId, ref_id: data.id });
+    if (existingCashbox) {
+      await db.collection("cashbox_entries").updateOne(
+        { _id: existingCashbox._id },
+        { $set: { amount: data.total, note: `Product Purchase: ${data.product_name}` } }
+      );
+    }
+    await db.collection("expenses").updateMany(
+      { owner_id: session.ownerId, note: { $regex: data.id } },
+      { $set: { amount: data.total, title: `Product Purchase: ${data.product_name}` } }
+    );
+  }
+
+  return { success: true };
+}
+
 // ─── Expenses ─────────────────────────────────────────────────────────────────
 
 export async function getExpensesFn() {
@@ -1682,7 +1755,7 @@ export async function getSomitiFn() {
   return items.map((s) => ({ ...s, id: s._id as any as string }));
 }
 
-export async function createSomitiFn(input: { data: { kind: string; amount: number; note?: string | null } }) {
+export async function createSomitiFn(input: { data: { kind: string; amount: number; note?: string | null; skipCashbox?: boolean; is_initial?: boolean } }) {
   const { data } = input;
   const session = await requireSession();
   const db = await getDb();
@@ -1690,15 +1763,17 @@ export async function createSomitiFn(input: { data: { kind: string; amount: numb
   const doc = { _id: id, owner_id: session.ownerId, ...data, created_at: new Date().toISOString() };
   await db.collection("somiti_entries").insertOne(doc as any);
 
-  // Sync to cashbox — Samity is a savings asset, not an operational expense (does NOT cut from net profit)
-  // Depositing into Samity reduces cash in cashbox (withdraw); withdrawing from Samity returns cash to cashbox (deposit)
-  const cashboxKind = data.kind === "withdraw" ? "deposit" : "withdraw";
-  await insertCashboxEntry(db, session.ownerId, {
-    kind: cashboxKind,
-    amount: Number(data.amount),
-    note: data.note ? `Samity (${data.kind}): ${data.note}` : `Samity ${data.kind}`,
-    ref_id: id,
-  });
+  // Sync to cashbox ONLY IF NOT skipCashbox / NOT initial opening balance!
+  // When a user creates a samity, the initial balance was money added earlier before using software, so it must not cut from current cashbox.
+  if (!data.skipCashbox && !data.is_initial) {
+    const cashboxKind = data.kind === "withdraw" ? "deposit" : "withdraw";
+    await insertCashboxEntry(db, session.ownerId, {
+      kind: cashboxKind,
+      amount: Number(data.amount),
+      note: data.note ? `Samity (${data.kind}): ${data.note}` : `Samity ${data.kind}`,
+      ref_id: id,
+    });
+  }
 
   return { ...doc, id };
 }

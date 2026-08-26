@@ -503,8 +503,8 @@ function AddPartyEquivalentDialog({ open, onOpenChange, onSuccess }: { open: boo
       const cleanName = name.trim();
       const initAmt = Number(amount) || 0;
       if (initAmt > 0) {
-        const finalNote = note.trim() ? `[${cleanName}] ${note.trim()}` : `[${cleanName}] ${lang === "bn" ? "প্রাথমিক জমা" : "Opening deposit"}`;
-        await createSomitiFn({ data: { kind: "deposit", amount: initAmt, note: finalNote } });
+        const finalNote = note.trim() ? `[${cleanName}] ${note.trim()}` : `[${cleanName}] ${lang === "bn" ? "প্রাথমিক জমা (পূর্বের স্থিতি)" : "Opening deposit (Previous Balance)"}`;
+        await createSomitiFn({ data: { kind: "deposit", amount: initAmt, note: finalNote, skipCashbox: true, is_initial: true } });
       }
       toast.success(lang === "bn" ? `সমিতি "${cleanName}" তৈরি হয়েছে` : `Samity "${cleanName}" created`);
       onOpenChange(false);
@@ -513,13 +513,19 @@ function AddPartyEquivalentDialog({ open, onOpenChange, onSuccess }: { open: boo
   }
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
-        <DialogHeader><DialogTitle>{lang === "bn" ? "নতুন সমিতি তৈরি করুন" : "Add New Samity"}</DialogTitle></DialogHeader>
-        <form onSubmit={submit} className="space-y-3">
-          <div className="space-y-1"><Label className="text-xs text-muted-foreground">{lang === "bn" ? "সমিতির নাম" : "Samity Name"}</Label><Input required value={name} onChange={e => setName(e.target.value)} placeholder={lang === "bn" ? "যেমন: আশা সমিতি, গ্রামীণ ব্যাংক" : "e.g. Asha Samity, Grameen Bank"} autoFocus /></div>
-          <div className="space-y-1"><Label className="text-xs text-muted-foreground">{lang === "bn" ? "প্রাথমিক জমা টাকা (ঐচ্ছিক)" : "Opening Deposit (Optional)"}</Label><Input type="number" step="any" inputMode="decimal" pattern="[0-9.]*" value={amount} onChange={e => setAmount(e.target.value)} placeholder="0.00" /></div>
-          <div className="space-y-1"><Label className="text-xs text-muted-foreground">{t("note")}</Label><Input value={note} onChange={e => setNote(e.target.value)} placeholder={lang === "bn" ? "সদস্য নম্বর বা সংক্ষিপ্ত বিবরণ" : "Notes or description"} /></div>
-          <DialogFooter><Button type="button" variant="outline" onClick={() => onOpenChange(false)}>{t("cancel")}</Button><Button type="submit" disabled={busy}>{busy ? "…" : t("save")}</Button></DialogFooter>
+      <DialogContent className="max-w-md font-hind">
+        <DialogHeader><DialogTitle className="font-balooda text-base font-bold">{lang === "bn" ? "নতুন সমিতি তৈরি করুন" : "Add New Samity"}</DialogTitle></DialogHeader>
+        <form onSubmit={submit} className="space-y-3.5">
+          <div className="space-y-1"><Label className="text-xs font-semibold text-foreground">{lang === "bn" ? "সমিতির নাম" : "Samity Name"}</Label><Input required value={name} onChange={e => setName(e.target.value)} placeholder={lang === "bn" ? "যেমন: আশা সমিতি, গ্রামীণ ব্যাংক" : "e.g. Asha Samity, Grameen Bank"} autoFocus className="h-10 rounded-xl text-xs" /></div>
+          <div className="space-y-1">
+            <Label className="text-xs font-semibold text-foreground">{lang === "bn" ? "পূর্বে জমা করা টাকা / প্রারম্ভিক স্থিতি (ঐচ্ছিক)" : "Opening Deposit / Previous Balance (Optional)"}</Label>
+            <Input type="number" step="any" inputMode="decimal" pattern="[0-9.]*" value={amount} onChange={e => setAmount(e.target.value)} placeholder="0.00" className="h-10 rounded-xl text-xs font-mono font-bold" />
+            <p className="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium">
+              {lang === "bn" ? "ℹ️ এই প্রারম্ভিক টাকা বর্তমান ক্যাশ থেকে কাটা হবে না (কারণ এটি সফটওয়্যার ব্যবহারের পূর্বে জমা করা হতে পারে)।" : "ℹ️ This opening deposit will NOT be deducted from current cashbox (for pre-existing balances)."}
+            </p>
+          </div>
+          <div className="space-y-1"><Label className="text-xs font-semibold text-foreground">{t("note")}</Label><Input value={note} onChange={e => setNote(e.target.value)} placeholder={lang === "bn" ? "সদস্য নম্বর বা সংক্ষিপ্ত বিবরণ" : "Notes or description"} className="h-10 rounded-xl text-xs" /></div>
+          <DialogFooter className="gap-2 sm:gap-0 pt-2 border-t border-border/60"><Button type="button" variant="outline" onClick={() => onOpenChange(false)} className="rounded-xl text-xs">{t("cancel")}</Button><Button type="submit" disabled={busy} className="rounded-xl bg-primary text-primary-foreground font-bold text-xs">{busy ? "…" : t("save")}</Button></DialogFooter>
         </form>
       </DialogContent>
     </Dialog>

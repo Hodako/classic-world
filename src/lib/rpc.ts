@@ -64,7 +64,7 @@ async function callRemoteRpc(actionName: string, args: any): Promise<any> {
   const timeoutId = setTimeout(() => controller.abort(), 15000);
 
   try {
-    const res = await fetch(url, {
+    let res = await fetch(url, {
       method: "POST",
       headers,
       credentials: "include",
@@ -72,6 +72,45 @@ async function callRemoteRpc(actionName: string, args: any): Promise<any> {
       signal: controller.signal,
     });
     clearTimeout(timeoutId);
+
+    // Auto-refresh token and retry on 401 Unauthorized
+    if (res.status === 401 && typeof window !== "undefined" && actionName !== "firebaseAuthSyncFn" && actionName !== "loginFn") {
+      try {
+        const { auth } = await import("@/lib/firebase");
+        if (auth.currentUser?.email) {
+          const retrySync = await fetch(url, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "Accept": "application/json" },
+            body: JSON.stringify({
+              actionName: "firebaseAuthSyncFn",
+              args: {
+                data: {
+                  email: auth.currentUser.email,
+                  fullName: auth.currentUser.displayName || undefined,
+                  photoUrl: auth.currentUser.photoURL || undefined,
+                  firebaseUid: auth.currentUser.uid,
+                },
+              },
+            }),
+          });
+          if (retrySync.ok) {
+            const syncJson = await retrySync.json();
+            if (syncJson?.token) {
+              token = syncJson.token;
+              window.localStorage.setItem("auth_token", syncJson.token);
+              headers["Authorization"] = `Bearer ${token}`;
+              // Retry the original RPC with the refreshed token
+              res = await fetch(url, {
+                method: "POST",
+                headers,
+                credentials: "include",
+                body: JSON.stringify({ actionName, args, token, activeProfile }),
+              });
+            }
+          }
+        }
+      } catch (_) {}
+    }
 
     const txt = await res.text();
     if (!res.ok) {
@@ -221,6 +260,7 @@ export const createPartyReturnFn = makeWriteAction("createPartyReturnFn");
 export const deleteReturnFn = makeWriteAction("deleteReturnFn");
 
 export const createPurchaseFn = makeWriteAction("createPurchaseFn");
+export const editPurchaseFn = makeWriteAction("editPurchaseFn");
 export const deletePurchaseFn = makeWriteAction("deletePurchaseFn");
 
 export const createExpenseFn = makeWriteAction("createExpenseFn");

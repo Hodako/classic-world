@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Download, BarChart3, TrendingUp, ArrowUpRight, ShoppingCart, Calendar, Search } from "lucide-react";
+import { Download, BarChart3, TrendingUp, ArrowUpRight, ShoppingCart, Calendar, Search, Pencil, Trash2 } from "lucide-react";
 import { AreaChart, Area, BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -10,9 +10,14 @@ import { Label } from "@/components/ui/label";
 import { useT } from "@/lib/i18n";
 import { useCachedQuery } from "@/hooks/use-cached-query";
 import { getPurchases } from "@/lib/queries";
+import type { Purchase } from "@/lib/queries";
 import { fmtMoney, fmtDateTime } from "@/lib/format";
 import { downloadCsv, exportDateStamp } from "@/lib/export";
 import { PaginationBar, paginate } from "@/components/ui/pagination-bar";
+import { EditPurchaseDialog } from "@/components/edit-purchase-dialog";
+import { ConfirmDeleteDialog } from "@/components/confirm-delete-dialog";
+import { deletePurchaseFn } from "@/lib/rpc";
+import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
   DropdownMenu,
@@ -41,12 +46,16 @@ function inRange(dateStr: string, range: Range, from?: string, to?: string) {
 
 export default function PurchaseReportsPage() {
   const { lang, t } = useT();
+  const qc = useQueryClient();
   const [range, setRange] = useState<Range>("today");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [chartType, setChartType] = useState<"area" | "bar" | "line">("area");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
+  const [purchaseToEdit, setPurchaseToEdit] = useState<Purchase | null>(null);
+  const [purchaseToDelete, setPurchaseToDelete] = useState<Purchase | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
   const pageSize = 15;
 
   const purchases = useCachedQuery(["purchases"], getPurchases);
@@ -114,13 +123,31 @@ export default function PurchaseReportsPage() {
     toast.success(langCode === "bn" ? "CSV ফাইল ডাউনলোড সফল হয়েছে!" : "CSV exported successfully!");
   };
 
+  async function performDelete() {
+    if (!purchaseToDelete) return;
+    setIsDeleting(true);
+    try {
+      await deletePurchaseFn({ data: { id: purchaseToDelete.id } });
+      toast.success(lang === "bn" ? "ক্রয় রেকর্ড সফলভাবে মুছে ফেলা হয়েছে" : "Purchase record deleted successfully");
+      setPurchaseToDelete(null);
+      qc.invalidateQueries({ queryKey: ["purchases"] });
+      qc.invalidateQueries({ queryKey: ["products"] });
+      qc.invalidateQueries({ queryKey: ["cashbox"] });
+      qc.invalidateQueries({ queryKey: ["expenses"] });
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to delete purchase");
+    } finally {
+      setIsDeleting(false);
+    }
+  }
+
   const chartColor = "#3b82f6"; // Blue color for purchases
 
   return (
-    <div className="space-y-4 pb-6">
+    <div className="space-y-4 pb-6 font-hind">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-xl font-bold tracking-tight font-serif">{lang === "bn" ? "ক্রয় রিপোর্ট ও বিশ্লেষণ" : "Purchase Reports & Analytics"}</h1>
+          <h1 className="text-xl font-bold tracking-tight font-balooda text-foreground">{lang === "bn" ? "ক্রয় রিপোর্ট ও বিশ্লেষণ" : "Purchase Reports & Analytics"}</h1>
           <p className="text-xs text-muted-foreground mt-0.5">
             {lang === "bn" ? "পণ্যের মোট ক্রয়মূল্য, ক্রয়ের পরিমাণ এবং ক্রয়ের গতিধারা" : "Overview of product purchase cost, quantity purchased, and purchase trends"}
           </p>
@@ -305,9 +332,30 @@ export default function PurchaseReportsPage() {
                     </div>
                   </div>
                   <div className="text-right shrink-0">
-                    <div className="font-bold text-zinc-900 dark:text-zinc-50">
+                    <div className="font-bold text-zinc-900 dark:text-zinc-50 font-serif">
                       {fmtMoney(p.total)}
                     </div>
+                  </div>
+
+                  <div className="flex items-center gap-1 shrink-0">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 w-7 p-0 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-lg cursor-pointer"
+                      onClick={() => setPurchaseToEdit(p)}
+                      title={lang === "bn" ? "সম্পাদনা করুন" : "Edit"}
+                    >
+                      <Pencil className="size-3.5" />
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg cursor-pointer"
+                      onClick={() => setPurchaseToDelete(p)}
+                      title={lang === "bn" ? "মুছে ফেলুন" : "Delete"}
+                    >
+                      <Trash2 className="size-3.5" />
+                    </Button>
                   </div>
                 </div>
               ))}
@@ -317,6 +365,29 @@ export default function PurchaseReportsPage() {
           </>
         )}
       </div>
+
+      <EditPurchaseDialog
+        purchase={purchaseToEdit}
+        open={purchaseToEdit !== null}
+        onOpenChange={(v) => {
+          if (!v) setPurchaseToEdit(null);
+        }}
+      />
+
+      <ConfirmDeleteDialog
+        open={purchaseToDelete !== null}
+        onOpenChange={(v) => {
+          if (!v) setPurchaseToDelete(null);
+        }}
+        title={lang === "bn" ? "মাল ক্রয় হিসেব মুছুন" : "Delete Purchase Record"}
+        description={
+          lang === "bn"
+            ? `আপনি কি নিশ্চিত যে "${purchaseToDelete?.product_name}" পণ্যটির ক্রয় হিসাব মুছে ফেলতে চান? এটি স্থায়ীভাবে মুছে যাবে।`
+            : `Are you sure you want to delete purchase "${purchaseToDelete?.product_name}"? This action is permanent and cannot be undone.`
+        }
+        onConfirm={performDelete}
+        busy={isDeleting}
+      />
     </div>
   );
 }

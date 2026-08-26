@@ -1,6 +1,6 @@
 const CACHE_PREFIX = "df-cache:";
 const CACHE_META_KEY = "df-cache-meta";
-const MAX_AGE_MS = 60 * 60 * 1000;
+const MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000; // 30 days persistent local cache for instant zero-lag metrics
 
 interface CacheEntry {
   data: unknown;
@@ -27,10 +27,6 @@ export function readQueryCache<T>(queryKey: readonly unknown[]): T | undefined {
     const raw = localStorage.getItem(storageKey(queryKey));
     if (!raw) return undefined;
     const entry = JSON.parse(raw) as CacheEntry;
-    if (Date.now() - entry.updatedAt > MAX_AGE_MS) {
-      localStorage.removeItem(storageKey(queryKey));
-      return undefined;
-    }
     return entry.data as T;
   } catch {
     return undefined;

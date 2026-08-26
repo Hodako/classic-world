@@ -807,21 +807,6 @@ export function SaleDialog({
                     <span>{t("total")}</span>
                     <span className="text-base font-serif text-foreground">৳{sellTotal}</span>
                   </div>
-                  {cart.length > 0 && (
-                    <div className={`text-[11px] font-bold text-right ${
-                      profitTotal > 0
-                        ? "text-emerald-600 dark:text-emerald-400"
-                        : profitTotal < 0
-                        ? "text-rose-600 dark:text-rose-400"
-                        : "text-muted-foreground"
-                    }`}>
-                      {profitTotal > 0
-                        ? `+${fmtMoney(profitTotal)} ${lang === "bn" ? "লাভ" : "Profit"}`
-                        : profitTotal < 0
-                        ? `-${fmtMoney(Math.abs(profitTotal))} ${lang === "bn" ? "ক্ষতি" : "Loss"}`
-                        : `৳0 ${lang === "bn" ? "লাভ/ক্ষতিহীন" : "Breakeven"}`}
-                    </div>
-                  )}
                 </div>
               </div>
             </form>
@@ -831,21 +816,6 @@ export function SaleDialog({
             <div className="text-xs flex items-center gap-1.5 flex-wrap">
               <span className="text-muted-foreground">{t("total")}: </span>
               <span className="font-bold text-base font-serif text-foreground">৳{sellTotal}</span>
-              {cart.length > 0 && (
-                <span className={`text-[11px] font-bold ${
-                  profitTotal > 0
-                    ? "text-emerald-600 dark:text-emerald-400"
-                    : profitTotal < 0
-                    ? "text-rose-600 dark:text-rose-400"
-                    : "text-muted-foreground"
-                }`}>
-                  ({profitTotal > 0
-                    ? `+${fmtMoney(profitTotal)} ${lang === "bn" ? "লাভ" : "Profit"}`
-                    : profitTotal < 0
-                    ? `-${fmtMoney(Math.abs(profitTotal))} ${lang === "bn" ? "ক্ষতি" : "Loss"}`
-                    : `৳0`})
-                </span>
-              )}
             </div>
             <div className="flex items-center gap-1.5 flex-wrap">
               <Button

@@ -56,7 +56,7 @@ export function printPwaInvoice(data: PrintInvoiceParams) {
       (item, idx) => `
     <tr>
       <td style="padding: 4px 0; text-align: left; vertical-align: top; font-weight: 700; font-size: 8pt; color: #000000; width: 55%; word-break: break-word; line-height: 1.25;">
-        ${item.product.name}
+        ${idx + 1}. ${item.product.name}
       </td>
       <td style="padding: 4px 2px; text-align: center; vertical-align: top; font-family: monospace; font-size: 8pt; font-weight: 500; color: #000000; width: 18%;">
         ${item.qty}
@@ -403,8 +403,8 @@ export async function downloadPwaInvoicePdf(data: PrintInvoiceParams, openInNewT
     }
 
     // Items
-    const tableRows = data.items.map((item) => [
-      item.product.name,
+    const tableRows = data.items.map((item, idx) => [
+      `${idx + 1}. ${item.product.name}`,
       String(item.qty),
       `Tk ${(item.qty * item.sellPrice).toLocaleString()}`,
     ]);

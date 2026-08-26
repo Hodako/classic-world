@@ -174,7 +174,7 @@ function InvoiceDocumentView({
               items.map((item, index) => (
                 <tr key={`${item.product.id}-${index}`} className="border-b border-dotted border-zinc-300">
                   <td className="py-1.5 pr-1 font-bold text-black break-words leading-tight" style={{ wordBreak: "normal", overflowWrap: "break-word" }}>
-                    {item.product.name}
+                    {index + 1}. {item.product.name}
                   </td>
                   <td className="py-1.5 px-1 text-center font-mono font-medium text-black">
                     {item.qty}

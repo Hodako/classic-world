@@ -179,9 +179,160 @@ async function runWriteAction<T>(actionName: string, args: any): Promise<T | any
   }
 }
 
+import * as fs from "./firestore-service";
+
+// Direct Firestore Action Map for 100% Reliable Client Execution
+const fsActionMap: Record<string, (args?: any) => Promise<any>> = {
+  // Reads
+  getProductsFn: async () => fs.fsGetProducts(),
+  getStorefrontBySlug: async () => fs.fsGetProducts(),
+  getPartiesFn: async () => fs.fsGetParties(),
+  getPartyFn: async (args: any) => {
+    const list = await fs.fsGetParties();
+    return list.find((p: any) => p.id === (args?.data?.id || args?.id)) || null;
+  },
+  getCustomersFn: async () => fs.fsGetCustomers(),
+  getCustomerFn: async (args: any) => {
+    const list = await fs.fsGetCustomers();
+    return list.find((c: any) => c.id === (args?.data?.id || args?.id)) || null;
+  },
+  getAllPartyReceivablesFn: async () => fs.fsGetAllPartyReceivables(),
+  getPartyReceivablesFn: async (args: any) => {
+    const list = await fs.fsGetAllPartyReceivables();
+    const pid = args?.data?.partyId || args?.partyId;
+    return list.filter((r: any) => r.party_id === pid);
+  },
+  getAllPartyPayablesFn: async () => fs.fsGetAllPartyPayables(),
+  getPartyPayablesFn: async (args: any) => {
+    const list = await fs.fsGetAllPartyPayables();
+    const pid = args?.data?.partyId || args?.partyId;
+    return list.filter((p: any) => p.party_id === pid);
+  },
+  getAllPayableSettlementsFn: async () => fs.fsGetAllPayableSettlements(),
+  getPayableSettlementsFn: async (args: any) => {
+    const list = await fs.fsGetAllPayableSettlements();
+    const pid = args?.data?.partyId || args?.partyId;
+    return list.filter((s: any) => s.party_id === pid);
+  },
+  getSalesFn: async () => fs.fsGetSales(),
+  getSalesForPartyFn: async (args: any) => {
+    const list = await fs.fsGetSales();
+    const pid = args?.data?.partyId || args?.partyId;
+    return list.filter((s: any) => s.party_id === pid);
+  },
+  getReturnsFn: async () => fs.fsGetReturns(),
+  getPurchasesFn: async () => fs.fsGetPurchases(),
+  getExpensesFn: async () => fs.fsGetExpenses(),
+  getAllPaymentsFn: async () => fs.fsGetAllPayments(),
+  getPaymentsForPartyFn: async (args: any) => {
+    const list = await fs.fsGetAllPayments();
+    const pid = args?.data?.partyId || args?.partyId;
+    return list.filter((p: any) => p.party_id === pid);
+  },
+  getSomitiFn: async () => fs.fsGetSomiti(),
+  getWithdrawalsFn: async () => fs.fsGetWithdrawals(),
+  getCashboxFn: async () => fs.fsGetCashbox(),
+  getRemindersFn: async () => fs.fsGetReminders(),
+  getBankAccountsFn: async () => fs.fsGetBankAccounts(),
+  getBankLoansFn: async () => fs.fsGetBankLoans(),
+
+  // Writes
+  createProductFn: async (args: any) => fs.fsCreateProduct(args?.data || args),
+  updateProductFn: async (args: any) => fs.fsUpdateProduct(args?.data?.id || args?.id, args?.data || args),
+  deleteProductFn: async (args: any) => fs.fsDeleteProduct(args?.data?.id || args?.id),
+  archiveProductFn: async (args: any) => fs.fsUpdateProduct(args?.data?.id || args?.id, { archived: args?.data?.archived ?? true }),
+
+  createPartyFn: async (args: any) => fs.fsCreateParty(args?.data || args),
+  updatePartyFn: async (args: any) => fs.fsUpdateParty(args?.data?.id || args?.id, args?.data || args),
+  deletePartyFn: async (args: any) => fs.fsDeleteParty(args?.data?.id || args?.id),
+  archivePartyFn: async (args: any) => fs.fsUpdateParty(args?.data?.id || args?.id, { archived: args?.data?.archived ?? true }),
+
+  createCustomerFn: async (args: any) => fs.fsCreateCustomer(args?.data || args),
+  updateCustomerFn: async (args: any) => fs.fsUpdateCustomer(args?.data?.id || args?.id, args?.data || args),
+  deleteCustomerFn: async (args: any) => fs.fsDeleteCustomer(args?.data?.id || args?.id),
+  archiveCustomerFn: async (args: any) => fs.fsUpdateCustomer(args?.data?.id || args?.id, { archived: args?.data?.archived ?? true }),
+
+  createPartyReceivableFn: async (args: any) => fs.fsCreatePartyReceivable(args?.data || args),
+  createPartyPayableFn: async (args: any) => fs.fsCreatePartyPayable(args?.data || args),
+  createPayableSettlementFn: async (args: any) => fs.fsCreatePayableSettlement(args?.data || args),
+
+  createSaleFn: async (args: any) => fs.fsCreateSale(args?.data || args),
+  editSaleFn: async (args: any) => fs.fsEditSale(args?.data?.id || args?.id, args?.data || args),
+  deleteSaleFn: async (args: any) => fs.fsDeleteSale(args?.data?.id || args?.id),
+  approveCourierPaymentFn: async (args: any) => fs.fsApproveCourierPayment(args?.data?.id || args?.id),
+  cancelCourierOrderFn: async (args: any) => fs.fsCancelCourierOrder(args?.data?.id || args?.id),
+
+  createReturnFn: async (args: any) => fs.fsCreateReturn(args?.data || args),
+  createDirectProductReturnFn: async (args: any) => fs.fsCreateReturn(args?.data || args),
+  createPartyReturnFn: async (args: any) => fs.fsCreateReturn(args?.data || args),
+  deleteReturnFn: async (args: any) => fs.fsDeleteReturn(args?.data?.id || args?.id),
+
+  createPurchaseFn: async (args: any) => fs.fsCreatePurchase(args?.data || args),
+  editPurchaseFn: async (args: any) => fs.fsEditPurchase(args?.data?.id || args?.id, args?.data || args),
+  deletePurchaseFn: async (args: any) => fs.fsDeletePurchase(args?.data?.id || args?.id),
+
+  createExpenseFn: async (args: any) => fs.fsCreateExpense(args?.data || args),
+  deleteExpenseFn: async (args: any) => fs.fsDeleteExpense(args?.data?.id || args?.id),
+
+  createPaymentFn: async (args: any) => fs.fsCreatePayment(args?.data || args),
+  deletePaymentFn: async (args: any) => fs.fsDeletePayment(args?.data?.id || args?.id),
+
+  createSomitiFn: async (args: any) => fs.fsCreateSomiti(args?.data || args),
+  updateSomitiFn: async (args: any) => fs.fsUpdateSomiti(args?.data?.id || args?.id, args?.data || args),
+  deleteSomitiFn: async (args: any) => fs.fsDeleteSomiti(args?.data?.id || args?.id),
+
+  createWithdrawalFn: async (args: any) => fs.fsCreateWithdrawal(args?.data || args),
+
+  createCashboxFn: async (args: any) => fs.fsCreateCashbox(args?.data || args),
+  updateCashboxFn: async (args: any) => fs.fsUpdateCashbox(args?.data?.id || args?.id, args?.data || args),
+  deleteCashboxFn: async (args: any) => fs.fsDeleteCashbox(args?.data?.id || args?.id),
+  emptyCashboxFn: async () => fs.fsEmptyCashbox(),
+
+  createReminderFn: async (args: any) => fs.fsCreateReminder(args?.data || args),
+  toggleReminderFn: async (args: any) => fs.fsToggleReminder(args?.data?.id || args?.id, args?.data || args),
+  deleteReminderFn: async (args: any) => fs.fsDeleteReminder(args?.data?.id || args?.id),
+
+  createBankAccountFn: async (args: any) => fs.fsCreateBankAccount(args?.data || args),
+  updateBankAccountFn: async (args: any) => fs.fsUpdateBankAccount(args?.data?.id || args?.id, args?.data || args),
+  deleteBankAccountFn: async (args: any) => fs.fsDeleteBankAccount(args?.data?.id || args?.id),
+  createBankTransactionFn: async (args: any) => fs.fsCreateBankTransaction(args?.data || args),
+  createBankLoanFn: async (args: any) => fs.fsCreateBankLoan(args?.data || args),
+  payBankLoanInstallmentFn: async (args: any) => fs.fsPayBankLoanInstallment(args?.data || args),
+  deleteBankLoanFn: async (args: any) => fs.fsDeleteBankLoan(args?.data?.id || args?.id),
+
+  resetProductsFn: async () => fs.fsResetProducts(),
+  resetSalesFn: async () => fs.fsResetSales(),
+  resetPurchasesFn: async () => fs.fsResetPurchases(),
+  resetSomitiFn: async () => fs.fsResetSomiti(),
+  resetExpensesFn: async () => fs.fsResetExpenses(),
+  resetPartiesFn: async () => fs.fsResetParties(),
+  resetAllDataFn: async () => fs.fsResetAllData(),
+};
+
+async function executeAction(name: string, args: any): Promise<any> {
+  const handler = fsActionMap[name];
+  if (handler) {
+    try {
+      return await handler(args);
+    } catch (fsErr) {
+      console.warn(`Firestore action ${name} error, attempting remote fallback:`, fsErr);
+    }
+  }
+  return await callRemoteRpc(name, args);
+}
+
 // Action factories
-const makeReadAction = (name: string) => (args?: any) => callRemoteRpc(name, args);
-const makeWriteAction = (name: string) => (args?: any) => runWriteAction(name, args);
+const makeReadAction = (name: string) => (args?: any) => executeAction(name, args);
+const makeWriteAction = (name: string) => (args?: any) => {
+  const handler = fsActionMap[name];
+  if (handler) {
+    return handler(args).catch((err: any) => {
+      console.warn(`Firestore write ${name} caught error, queuing/retrying:`, err);
+      return runWriteAction(name, args);
+    });
+  }
+  return runWriteAction(name, args);
+};
 
 // ─── Export READS ────────────────────────────────────────────────────────────
 export const getMeFn = makeReadAction("getMeFn");

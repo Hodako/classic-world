@@ -28,6 +28,7 @@ function docToData<T = any>(docSnap: any): T {
 
   return {
     id: docSnap.id,
+    _id: docSnap.id,
     ...data,
     created_at: createdAtStr,
   } as T;
@@ -182,7 +183,7 @@ export async function fsCreateSale(data: any) {
     }
   }
 
-  return { success: true, id: saleId };
+  return { success: true, id: saleId, _id: saleId, ...saleDoc, created_at: new Date().toISOString() };
 }
 
 export async function fsApproveCourierPayment(id: string) {
@@ -342,6 +343,65 @@ export async function fsDeletePurchase(id: string) {
   return { success: true, id };
 }
 
+export async function fsEditPurchase(id: string, data: any) {
+  const docRef = doc(db, "purchases", id);
+  const oldSnap = await getDoc(docRef);
+  if (!oldSnap.exists()) throw new Error("Purchase not found");
+  const oldPurchase = oldSnap.data();
+
+  const oldQty = Number(oldPurchase.qty) || 0;
+  const newQty = data.qty !== undefined ? Number(data.qty) || 0 : oldQty;
+  const qtyDiff = newQty - oldQty;
+
+  const oldTotal = Number(oldPurchase.total) || 0;
+  const newTotal = data.total !== undefined ? Number(data.total) || 0 : (newQty * (Number(data.unit_cost) || Number(oldPurchase.unit_cost) || 0));
+  const totalDiff = newTotal - oldTotal;
+
+  const updatePayload: any = {
+    ...data,
+    qty: newQty,
+    total: newTotal,
+    updated_at: Timestamp.now(),
+  };
+  if (data.unit_cost !== undefined) updatePayload.unit_cost = Number(data.unit_cost) || 0;
+
+  await updateDoc(docRef, updatePayload);
+
+  // 1. Adjust product stock if linked
+  const prodId = data.product_id || oldPurchase.product_id;
+  if (prodId && qtyDiff !== 0) {
+    try {
+      await updateDoc(doc(db, "products", prodId), {
+        stock: increment(qtyDiff),
+        buy_price: (Number(data.unit_cost) || 0) > 0 ? Number(data.unit_cost) : undefined,
+      });
+    } catch (err) {
+      console.warn("Product stock adjustment warning:", err);
+    }
+  }
+
+  // 2. Adjust cashbox if cash purchase
+  const paymentType = data.payment_type || oldPurchase.payment_type;
+  if (paymentType !== "credit" && totalDiff !== 0) {
+    try {
+      const q = query(collection(db, "cashbox_logs"), where("ref_id", "==", id));
+      const snap = await getDocs(q);
+      if (!snap.empty) {
+        for (const logDoc of snap.docs) {
+          await updateDoc(doc(db, "cashbox_logs", logDoc.id), {
+            amount: newTotal,
+            note: `Purchase: ${data.product_name || oldPurchase.product_name} (x${newQty})`,
+          });
+        }
+      }
+    } catch (err) {
+      console.warn("Cashbox log adjustment warning:", err);
+    }
+  }
+
+  return { success: true, id };
+}
+
 // ── Expenses ─────────────────────────────────────────────────────────────────
 export async function fsGetExpenses() {
   try {
@@ -484,7 +544,9 @@ export async function fsCreateSomiti(data: any) {
     created_at: Timestamp.now(),
   });
 
-  if (amount > 0) {
+  const shouldSkipCashbox = Boolean(data.skipCashbox || data.is_initial);
+
+  if (amount > 0 && !shouldSkipCashbox) {
     try {
       // Depositing into Samity reduces cash from cashbox (withdraw); withdrawing from Samity returns cash to cashbox (deposit)
       // Samity is savings/DPS and is NOT deducted from business net profit
@@ -997,4 +1059,79 @@ export async function fsDeleteBankLoan(id: string) {
   await deleteDoc(doc(db, "bank_loans", id));
   return { success: true, id };
 }
+
+// ── Data Resets ──────────────────────────────────────────────────────────────
+export async function fsEmptyCashbox() {
+  const snap = await getDocs(collection(db, "cashbox_logs"));
+  for (const d of snap.docs) {
+    await deleteDoc(doc(db, "cashbox_logs", d.id));
+  }
+  return { success: true };
+}
+
+export async function fsResetProducts() {
+  const snap = await getDocs(collection(db, "products"));
+  for (const d of snap.docs) {
+    await deleteDoc(doc(db, "products", d.id));
+  }
+  return { success: true };
+}
+
+export async function fsResetSales() {
+  const snap = await getDocs(collection(db, "sales"));
+  for (const d of snap.docs) {
+    await deleteDoc(doc(db, "sales", d.id));
+  }
+  return { success: true };
+}
+
+export async function fsResetPurchases() {
+  const snap = await getDocs(collection(db, "purchases"));
+  for (const d of snap.docs) {
+    await deleteDoc(doc(db, "purchases", d.id));
+  }
+  return { success: true };
+}
+
+export async function fsResetSomiti() {
+  const snap = await getDocs(collection(db, "somiti"));
+  for (const d of snap.docs) {
+    await deleteDoc(doc(db, "somiti", d.id));
+  }
+  return { success: true };
+}
+
+export async function fsResetExpenses() {
+  const snap = await getDocs(collection(db, "expenses"));
+  for (const d of snap.docs) {
+    await deleteDoc(doc(db, "expenses", d.id));
+  }
+  return { success: true };
+}
+
+export async function fsResetParties() {
+  const snap = await getDocs(collection(db, "parties"));
+  for (const d of snap.docs) {
+    await deleteDoc(doc(db, "parties", d.id));
+  }
+  const custSnap = await getDocs(collection(db, "customers"));
+  for (const d of custSnap.docs) {
+    await deleteDoc(doc(db, "customers", d.id));
+  }
+  return { success: true };
+}
+
+export async function fsResetAllData() {
+  await Promise.all([
+    fsEmptyCashbox(),
+    fsResetProducts(),
+    fsResetSales(),
+    fsResetPurchases(),
+    fsResetSomiti(),
+    fsResetExpenses(),
+    fsResetParties(),
+  ]);
+  return { success: true };
+}
+
 

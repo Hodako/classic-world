@@ -822,10 +822,21 @@ export default function Dashboard() {
   const tomorrow = new Date(today);
   tomorrow.setDate(today.getDate() + 1);
 
-  // Robust date boundary matcher
-  const isDateInRange = (dateInput: string | Date | null | undefined) => {
+  // Robust date boundary matcher supporting ISO strings, Firestore Timestamps, and Date objects
+  const isDateInRange = (dateInput: any) => {
     if (!dateInput) return false;
-    const d = new Date(dateInput);
+    let d: Date;
+    if (typeof dateInput?.toDate === "function") {
+      d = dateInput.toDate();
+    } else if (dateInput?.seconds !== undefined) {
+      d = new Date(dateInput.seconds * 1000);
+    } else if (typeof dateInput === "string" || typeof dateInput === "number") {
+      d = new Date(dateInput);
+    } else if (dateInput instanceof Date) {
+      d = dateInput;
+    } else {
+      d = new Date(dateInput);
+    }
     if (isNaN(d.getTime())) return false;
 
     // Default to today if no custom filter set
@@ -853,14 +864,30 @@ export default function Dashboard() {
   const filteredPurchases = (purchases.data ?? []).filter(p => isDateInRange(p.created_at));
 
   // KPIs
-  const totalSalesToday = filteredSales.reduce((a, s) => a + (s.returned ? 0 : Number(s.sell_price) * s.qty), 0);
-  const cashToday    = filteredSales.filter(s => s.type === "cash").reduce((a, s) => a + Number(s.sell_price) * s.qty, 0);
-  const bkashToday   = filteredSales.filter(s => s.type === "bkash").reduce((a, s) => a + Number(s.sell_price) * s.qty, 0);
-  const bankToday    = filteredSales.filter(s => (s.type as string) === "bank").reduce((a, s) => a + Number(s.sell_price) * s.qty, 0);
-  const creditToday  = filteredSales.filter(s => s.type === "credit").reduce((a, s) => a + Number(s.due_amount), 0);
-  const onlineToday  = filteredSales.filter(s => s.type === "online").reduce((a, s) => a + Number(s.sell_price) * s.qty, 0);
-  const onlinePendingToday = filteredSales.filter(s => s.type === "online" && (s as any).courier_status !== "collected" && (s as any).courier_status !== "cancelled").reduce((a, s) => a + Number(s.sell_price) * s.qty, 0);
-  const onlineCollectedToday = filteredSales.filter(s => s.type === "online" && (s as any).courier_status === "collected").reduce((a, s) => a + Number(s.sell_price) * s.qty, 0);
+  const totalSalesToday = filteredSales.reduce((a, s) => {
+    if (s.returned) return a;
+    const lineTotal = (Number(s.sell_price) || 0) * (Number(s.qty) || 1) - (Number(s.discount) || 0);
+    return a + Math.max(lineTotal, 0);
+  }, 0);
+
+  const cashToday = filteredSales
+    .filter(s => s.type === "cash" || (s.type as string) === "nagad" || (s.type as string) === "hand_cash" || (s.type as string) === "pos")
+    .reduce((a, s) => {
+      const lineTotal = (Number(s.sell_price) || 0) * (Number(s.qty) || 1) - (Number(s.discount) || 0);
+      const paid = Number(s.paid_amount);
+      return a + (!isNaN(paid) && paid > 0 ? paid : lineTotal);
+    }, 0);
+
+  const bkashToday   = filteredSales.filter(s => s.type === "bkash").reduce((a, s) => a + ((Number(s.sell_price) || 0) * (Number(s.qty) || 1) - (Number(s.discount) || 0)), 0);
+  const bankToday    = filteredSales.filter(s => (s.type as string) === "bank").reduce((a, s) => a + ((Number(s.sell_price) || 0) * (Number(s.qty) || 1) - (Number(s.discount) || 0)), 0);
+  const creditToday  = filteredSales.filter(s => s.type === "credit").reduce((a, s) => {
+    const lineTotal = (Number(s.sell_price) || 0) * (Number(s.qty) || 1) - (Number(s.discount) || 0);
+    const due = Number(s.due_amount);
+    return a + (!isNaN(due) && due > 0 ? due : lineTotal);
+  }, 0);
+  const onlineToday  = filteredSales.filter(s => s.type === "online").reduce((a, s) => a + ((Number(s.sell_price) || 0) * (Number(s.qty) || 1) - (Number(s.discount) || 0)), 0);
+  const onlinePendingToday = filteredSales.filter(s => s.type === "online" && (s as any).courier_status !== "collected" && (s as any).courier_status !== "cancelled").reduce((a, s) => a + ((Number(s.sell_price) || 0) * (Number(s.qty) || 1) - (Number(s.discount) || 0)), 0);
+  const onlineCollectedToday = filteredSales.filter(s => s.type === "online" && (s as any).courier_status === "collected").reduce((a, s) => a + ((Number(s.sell_price) || 0) * (Number(s.qty) || 1) - (Number(s.discount) || 0)), 0);
   const cashboxDepositedToday = cashToday + bkashToday + bankToday + onlineCollectedToday;
   const purchasesToday = filteredPurchases.reduce((a, p) => a + (Number(p.total) || 0), 0);
   const validFilteredSales = filteredSales.filter(s => !s.returned && (s as any).courier_status !== "cancelled");
@@ -871,7 +898,8 @@ export default function Dashboard() {
     const sell = Number(s.sell_price) || 0;
     const buy = Number(s.buy_price) || 0;
     const qty = Number(s.qty) || 1;
-    return (sell - buy) * qty;
+    const discount = Number(s.discount) || 0;
+    return (sell - buy) * qty - discount;
   };
   const profitToday  = validFilteredSales.reduce((a, s) => a + calcSaleProfit(s), 0);
   

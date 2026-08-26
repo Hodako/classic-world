@@ -139,9 +139,52 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  useEffect(() => { void checkUser(); }, []);
+  useEffect(() => {
+    void checkUser();
 
-  const login = (newUser: AuthUser) => {
+    // Listen to Firebase Auth state to seamlessly restore auth_token
+    let unsubscribe: (() => void) | null = null;
+    (async () => {
+      try {
+        const { auth } = await import("@/lib/firebase");
+        const { onAuthStateChanged } = await import("firebase/auth");
+        unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
+          if (fbUser && fbUser.email && !window.localStorage.getItem("auth_token")) {
+            try {
+              const { firebaseAuthSyncFn } = await import("@/lib/rpc");
+              const res = await firebaseAuthSyncFn({
+                data: {
+                  email: fbUser.email,
+                  fullName: fbUser.displayName || undefined,
+                  photoUrl: fbUser.photoURL || undefined,
+                  firebaseUid: fbUser.uid,
+                },
+              });
+              if (res?.token) {
+                window.localStorage.setItem("auth_token", res.token);
+                if (res.user) {
+                  setUser(res.user as AuthUser);
+                  cacheUser(res.user as AuthUser);
+                  writeBrand({ name: res.user.business_name, logo_url: res.user.logo_url });
+                }
+              }
+            } catch (syncErr) {
+              console.warn("Firebase auto-sync on auth state changed failed:", syncErr);
+            }
+          }
+        });
+      } catch (_) {}
+    })();
+
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
+  }, []);
+
+  const login = (newUser: AuthUser, token?: string) => {
+    if (token && typeof window !== "undefined") {
+      window.localStorage.setItem("auth_token", token);
+    }
     setUser(newUser);
     cacheUser(newUser);
     writeBrand({ name: newUser.business_name, logo_url: newUser.logo_url });
@@ -159,6 +202,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = async () => {
     try { await logoutFn(); } catch { /* ignore */ }
+    try {
+      const { auth } = await import("@/lib/firebase");
+      const { signOut } = await import("firebase/auth");
+      await signOut(auth);
+    } catch (_) {}
+    if (typeof window !== "undefined") {
+      window.localStorage.removeItem("auth_token");
+      window.localStorage.removeItem("active_profile");
+    }
     setUser(null);
     clearAuthProfile();
     setLoading(false);

@@ -16,9 +16,41 @@ export const API_BASE = (
 ).replace(/\/$/, "");
 
 
-async function callRemoteRpc(actionName: string, args: any) {
+async function callRemoteRpc(actionName: string, args: any): Promise<any> {
   const url = `${API_BASE}/api/rpc`;
-  const token = typeof window !== "undefined" ? window.localStorage.getItem("auth_token") : null;
+  let token = typeof window !== "undefined" ? window.localStorage.getItem("auth_token") : null;
+
+  // Auto-sync token with Firebase Auth if token is missing
+  if (!token && typeof window !== "undefined" && actionName !== "firebaseAuthSyncFn" && actionName !== "loginFn" && actionName !== "registerFn") {
+    try {
+      const { auth } = await import("@/lib/firebase");
+      if (auth.currentUser?.email) {
+        const syncRes = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Accept": "application/json" },
+          body: JSON.stringify({
+            actionName: "firebaseAuthSyncFn",
+            args: {
+              data: {
+                email: auth.currentUser.email,
+                fullName: auth.currentUser.displayName || undefined,
+                photoUrl: auth.currentUser.photoURL || undefined,
+                firebaseUid: auth.currentUser.uid,
+              },
+            },
+          }),
+        });
+        if (syncRes.ok) {
+          const syncJson = await syncRes.json();
+          if (syncJson?.token) {
+            token = syncJson.token;
+            window.localStorage.setItem("auth_token", syncJson.token);
+          }
+        }
+      }
+    } catch (_) {}
+  }
+
   const activeProfile = typeof window !== "undefined" ? window.localStorage.getItem("active_profile") : null;
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -53,10 +85,8 @@ async function callRemoteRpc(actionName: string, args: any) {
 
     try {
       const result = JSON.parse(txt);
-      if ((actionName === "loginFn" || actionName === "registerFn") && result?.token) {
-        if (typeof window !== "undefined") {
-          window.localStorage.setItem("auth_token", result.token);
-        }
+      if (result?.token && typeof window !== "undefined") {
+        window.localStorage.setItem("auth_token", result.token);
       }
       if (actionName === "switchProfileFn" && args?.data?.profileId) {
         if (typeof window !== "undefined") {
@@ -92,11 +122,19 @@ async function runWriteAction<T>(actionName: string, args: any): Promise<T | any
   }
   try {
     return await callRemoteRpc(actionName, args);
-  } catch (err) {
+  } catch (err: any) {
     if (typeof window !== "undefined") {
-      console.warn(`Write action ${actionName} failed, queuing offline:`, err);
-      queueOfflineAction(actionName, args);
-      return { success: true, offline: true, id: crypto.randomUUID() };
+      const isNetworkError =
+        !navigator.onLine ||
+        err?.message?.includes("timed out") ||
+        err?.message?.includes("Failed to fetch") ||
+        err?.message?.includes("NetworkError");
+
+      if (isNetworkError) {
+        console.warn(`Write action ${actionName} failed due to network error, queuing offline:`, err);
+        queueOfflineAction(actionName, args);
+        return { success: true, offline: true, id: crypto.randomUUID() };
+      }
     }
     throw err;
   }

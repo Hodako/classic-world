@@ -10,6 +10,7 @@ import { SpeedLoader } from "@/components/speed-loader";
 import { CustomThemeManager } from "@/components/custom-theme-manager";
 import { AutoCameraTrigger } from "@/components/auto-camera-trigger";
 import { CameraPermissionChecker } from "@/components/camera-permission-checker";
+import { EmployeeInvitationModal } from "@/components/employee-invitation-modal";
 
 export function Providers({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(
@@ -176,6 +177,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
         <I18nProvider>
           <AuthProvider>
             <CustomThemeManager />
+            <EmployeeInvitationModal />
             {children}
             <Toaster richColors position="top-center" />
           </AuthProvider>

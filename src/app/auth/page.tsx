@@ -49,9 +49,12 @@ export default function AuthPage() {
 
   if (!mounted || user) return <SpeedLoader />;
 
-  function afterAuth(u: AuthUser | null) {
+  function afterAuth(u: AuthUser | null, token?: string) {
     if (!u) return;
-    login(u);
+    if (token && typeof window !== "undefined") {
+      window.localStorage.setItem("auth_token", token);
+    }
+    login(u, token);
     router.replace("/dashboard");
   }
 
@@ -80,7 +83,7 @@ export default function AuthPage() {
 
       // Backend database verification & token issue
       const data = await loginFn({ data: { identifier: cleanId, password } });
-      afterAuth(data.user as AuthUser);
+      afterAuth(data.user as AuthUser, data.token);
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Login failed. Please check your credentials.");
     } finally {
@@ -115,7 +118,7 @@ export default function AuthPage() {
       // 2. Register in system database
       const data = await registerFn({ data: { identifier: cleanId, password, fullName, role: "owner" } });
       toast.success(lang === "bn" ? "একাউন্ট সফলভাবে তৈরি হয়েছে!" : "Account created successfully!");
-      afterAuth(data.user as AuthUser);
+      afterAuth(data.user as AuthUser, data.token);
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Registration failed");
     } finally {
@@ -144,7 +147,7 @@ export default function AuthPage() {
       });
 
       toast.success(lang === "bn" ? "গুগল দিয়ে সফলভাবে লগইন হয়েছে!" : "Google sign-in successful!");
-      afterAuth(data.user as AuthUser);
+      afterAuth(data.user as AuthUser, data.token);
     } catch (err: any) {
       if (err.code === "auth/popup-closed-by-user" || err.code === "auth/cancelled-popup-request") {
         return;

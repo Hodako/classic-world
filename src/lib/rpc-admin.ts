@@ -12,34 +12,51 @@ async function callRemoteRpc(actionName: string, args: any) {
     headers["Authorization"] = `Bearer ${token}`;
   }
 
-  const res = await fetch(url, {
-    method: "POST",
-    headers,
-    body: JSON.stringify({ actionName, args, token }),
-  });
-
-  const txt = await res.text();
-  if (!res.ok) {
-    throw new Error(txt || `RPC Request failed with status ${res.status}`);
-  }
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 15000);
 
   try {
-    const result = JSON.parse(txt);
-    if ((actionName === "superAdminLoginFn" || actionName === "loginFn") && result?.token) {
-      if (typeof window !== "undefined") {
+    const res = await fetch(url, {
+      method: "POST",
+      headers,
+      credentials: "include",
+      body: JSON.stringify({ actionName, args, token }),
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+
+    const txt = await res.text();
+    if (!res.ok) {
+      let errorMsg = txt;
+      try {
+        const parsed = JSON.parse(txt);
+        if (parsed?.error) errorMsg = parsed.error;
+      } catch (_) {}
+      throw new Error(errorMsg || `RPC Request failed with status ${res.status}`);
+    }
+
+    try {
+      const result = JSON.parse(txt);
+      if (result?.token && typeof window !== "undefined") {
         window.localStorage.setItem("auth_token", result.token);
       }
-    }
-    if (actionName === "superAdminLogoutFn" || actionName === "logoutFn") {
-      if (typeof window !== "undefined") {
-        window.localStorage.removeItem("auth_token");
+      if (actionName === "superAdminLogoutFn" || actionName === "logoutFn") {
+        if (typeof window !== "undefined") {
+          window.localStorage.removeItem("auth_token");
+        }
       }
+      return result;
+    } catch (err) {
+      console.error("Failed to parse RPC response as JSON. Server returned:", txt);
+      const snippet = txt.slice(0, 150) + (txt.length > 150 ? "..." : "");
+      throw new Error(`Server returned invalid response for ${actionName}. Response snippet: "${snippet}". Please check your server status.`);
     }
-    return result;
-  } catch (err) {
-    console.error("Failed to parse RPC response as JSON. Server returned:", txt);
-    const snippet = txt.slice(0, 150) + (txt.length > 150 ? "..." : "");
-    throw new Error(`Server returned invalid response for ${actionName}. Response snippet: "${snippet}". Please check your server status.`);
+  } catch (err: any) {
+    clearTimeout(timeoutId);
+    if (err?.name === "AbortError") {
+      throw new Error("Request timed out. Please check your internet connection.");
+    }
+    throw err;
   }
 }
 

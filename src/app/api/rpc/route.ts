@@ -68,10 +68,24 @@ export async function POST(req: NextRequest) {
     }
     const { actionName, args, token, activeProfile } = JSON.parse(bodyText);
 
-    return await requestStore.run({ token, activeProfile }, async () => {
-      if (token) {
+    const authHeader = req.headers.get("authorization");
+    let effectiveToken = token;
+    if (!effectiveToken && authHeader && authHeader.startsWith("Bearer ")) {
+      effectiveToken = authHeader.substring(7);
+    }
+    if (!effectiveToken) {
+      try {
         const cookieStore = await cookies();
-        cookieStore.set("token", token, { maxAge: 30 * 24 * 60 * 60, httpOnly: true, sameSite: "lax", path: "/" });
+        effectiveToken = cookieStore.get("token")?.value;
+      } catch (_) {}
+    }
+
+    return await requestStore.run({ token: effectiveToken, activeProfile }, async () => {
+      if (effectiveToken) {
+        try {
+          const cookieStore = await cookies();
+          cookieStore.set("token", effectiveToken, { maxAge: 30 * 24 * 60 * 60, httpOnly: true, sameSite: "lax", path: "/" });
+        } catch (_) {}
       }
       if (activeProfile) {
         const cookieStore = await cookies();

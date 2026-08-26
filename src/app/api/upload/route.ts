@@ -19,9 +19,23 @@ export async function POST(req: NextRequest) {
   }
 
   try {
+    const authHeader = req.headers.get("authorization");
+    let effectiveToken = null;
+    if (authHeader && authHeader.startsWith("Bearer ")) {
+      effectiveToken = authHeader.substring(7);
+    }
+    if (!effectiveToken) {
+      try {
+        const cookieStore = await cookies();
+        effectiveToken = cookieStore.get("token")?.value;
+      } catch (_) {}
+    }
+
     let session: any = null;
     try {
-      session = await requireSession();
+      session = await requestStore.run({ token: effectiveToken }, async () => {
+        return await requireSession();
+      });
     } catch {
       return NextResponse.json({ error: "Unauthorized" }, {
         status: 401,

@@ -524,6 +524,114 @@ export async function fsCreateWithdrawal(data: any) {
   return { success: true, id: docRef.id };
 }
 
+// ── Owners Wallet (Personal & Family Expenses) ──────────────────────────────
+export async function fsGetOwnerWallet() {
+  try {
+    const snap = await getDocs(collection(db, "owner_wallet"));
+    return snap.docs.map(docToData);
+  } catch (err) {
+    return [];
+  }
+}
+
+export async function fsCreateOwnerWalletEntry(data: any) {
+  const amount = Number(data.amount) || 0;
+  const category = data.category || "personal";
+  const note = data.note || "";
+  const catLabel = category === "family" ? "পরিবার খরচ" : category === "bazar" ? "বাজার খরচ" : category === "home_rent" ? "বাসা ভাড়া" : category === "medical" ? "চিকিৎসা" : "ব্যক্তিগত";
+  const title = `[মালিকের খরচ] ${catLabel}: ${note || "ব্যক্তিগত উত্তোলন"}`;
+
+  const docRef = await addDoc(collection(db, "owner_wallet"), {
+    amount,
+    category,
+    note: note || null,
+    created_at: Timestamp.now(),
+  });
+
+  // 1. Log in cashbox as withdrawal to reduce cash balance
+  if (amount > 0) {
+    try {
+      await addDoc(collection(db, "cashbox_logs"), {
+        kind: "withdraw",
+        amount,
+        note: title,
+        ref_id: docRef.id,
+        created_at: Timestamp.now(),
+      });
+    } catch (err) {
+      console.warn("Cashbox owner wallet log skipped:", err);
+    }
+
+    // 2. Log in expenses under owner_personal category to deduct from profit
+    try {
+      await addDoc(collection(db, "expenses"), {
+        title,
+        amount,
+        category: "owner_personal",
+        note: `Owner Wallet ID: ${docRef.id} - ${note}`,
+        created_at: Timestamp.now(),
+      });
+    } catch (err) {
+      console.warn("Expense owner wallet log skipped:", err);
+    }
+  }
+
+  return { success: true, id: docRef.id };
+}
+
+export async function fsDeleteOwnerWalletEntry(id: string) {
+  await deleteDoc(doc(db, "owner_wallet", id));
+  try {
+    const cbSnap = await getDocs(query(collection(db, "cashbox_logs"), where("ref_id", "==", id)));
+    for (const d of cbSnap.docs) {
+      await deleteDoc(d.ref);
+    }
+  } catch (_) {}
+  try {
+    const expSnap = await getDocs(query(collection(db, "expenses"), where("category", "==", "owner_personal")));
+    for (const d of expSnap.docs) {
+      const data = d.data();
+      if (data.note?.includes(id)) {
+        await deleteDoc(d.ref);
+      }
+    }
+  } catch (_) {}
+  return { success: true };
+}
+
+export async function fsUpdateOwnerWalletEntry(id: string, data: any) {
+  const amount = Number(data.amount) || 0;
+  const category = data.category || "personal";
+  const note = data.note || "";
+  const catLabel = category === "family" ? "পরিবার খরচ" : category === "bazar" ? "বাজার খরচ" : category === "home_rent" ? "বাসা ভাড়া" : category === "medical" ? "চিকিৎসা" : "ব্যক্তিগত";
+  const title = `[মালিকের খরচ] ${catLabel}: ${note || "ব্যক্তিগত উত্তোলন"}`;
+
+  await updateDoc(doc(db, "owner_wallet", id), {
+    amount,
+    category,
+    note: note || null,
+    updated_at: Timestamp.now(),
+  });
+
+  try {
+    const cbSnap = await getDocs(query(collection(db, "cashbox_logs"), where("ref_id", "==", id)));
+    for (const d of cbSnap.docs) {
+      await updateDoc(d.ref, { amount, note: title });
+    }
+  } catch (_) {}
+  try {
+    const expSnap = await getDocs(query(collection(db, "expenses"), where("category", "==", "owner_personal")));
+    for (const d of expSnap.docs) {
+      const dData = d.data();
+      if (dData.note?.includes(id)) {
+        await updateDoc(d.ref, { amount, title, note: `Owner Wallet ID: ${id} - ${note}` });
+      }
+    }
+  } catch (_) {}
+
+  return { success: true };
+}
+
 // ── Somiti ───────────────────────────────────────────────────────────────────
 export async function fsGetSomiti() {
   try {

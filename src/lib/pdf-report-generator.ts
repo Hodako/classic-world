@@ -32,6 +32,10 @@ export interface ReportPdfData {
   netBusinessProfit: number;
   somitiNetVal: number;
   somitiCount: number;
+  somitiDepositTotal?: number;
+  somitiWithdrawTotal?: number;
+  ownerWalletTotal?: number;
+  ownerWalletCount?: number;
   cashboxIn: number;
   cashboxOut: number;
 }
@@ -298,18 +302,18 @@ export async function generateBanglaReportPdf(data: ReportPdfData, openInNewTab 
         </div>
       ` : ""}
 
-      <!-- 6. Cashbox & Somiti -->
+      <!-- 6. Cashbox, Somiti & Owners Wallet Money Flow -->
       <div style="margin-bottom: 28px;">
         <h2 style="font-size: 13px; font-weight: 700; color: #0f172a; margin: 0 0 8px 0; border-bottom: 1.5px solid #cbd5e1; padding-bottom: 4px;">
-          ৬. ক্যাশব্যাক্স ও সমিতি ফান্ড হিসাব
+          ৬. ক্যাশবাক্স, সমিতি ও মালিকের ওয়ালেট অর্থপ্রবাহ (Money Flow)
         </h2>
         <table style="width: 100%; border-collapse: collapse; font-size: 11px; text-align: left;">
           <thead>
             <tr style="background-color: #0f766e; color: #ffffff;">
-              <th style="padding: 6px 8px; border: 1px solid #0f766e;">ফান্ড খাত</th>
+              <th style="padding: 6px 8px; border: 1px solid #0f766e;">ফান্ড / অর্থপ্রবাহ খাত</th>
               <th style="padding: 6px 8px; border: 1px solid #0f766e;">জমা / ক্যাশ ইন</th>
-              <th style="padding: 6px 8px; border: 1px solid #0f766e;">খরচ / ক্যাশ আউট</th>
-              <th style="padding: 6px 8px; border: 1px solid #0f766e; text-align: right;">নিট স্থিতি (৳)</th>
+              <th style="padding: 6px 8px; border: 1px solid #0f766e;">খরচ / উত্তোলন</th>
+              <th style="padding: 6px 8px; border: 1px solid #0f766e; text-align: right;">নিট স্থিতি / প্রভাব (৳)</th>
             </tr>
           </thead>
           <tbody>
@@ -320,10 +324,16 @@ export async function generateBanglaReportPdf(data: ReportPdfData, openInNewTab 
               <td style="padding: 5px 8px; text-align: right; font-weight: 700; border: 1px solid #e2e8f0;">৳${(data.cashboxIn - data.cashboxOut).toLocaleString()}</td>
             </tr>
             <tr style="border-bottom: 1px solid #e2e8f0; background-color: #f8fafc;">
-              <td style="padding: 5px 8px; font-weight: 600; border: 1px solid #e2e8f0;">সমিতি সঞ্চয় ফান্ড (Somiti)</td>
-              <td style="padding: 5px 8px; border: 1px solid #e2e8f0;">মোট ${data.somitiCount} টি সঞ্চয় হিসাব</td>
-              <td style="padding: 5px 8px; border: 1px solid #e2e8f0;">-</td>
+              <td style="padding: 5px 8px; font-weight: 600; border: 1px solid #e2e8f0;">সমিতি ফান্ড (Samity Savings & DPS)</td>
+              <td style="padding: 5px 8px; border: 1px solid #e2e8f0;">জমা: ৳${(data.somitiDepositTotal || 0).toLocaleString()}</td>
+              <td style="padding: 5px 8px; border: 1px solid #e2e8f0;">উত্তোলন: -৳${(data.somitiWithdrawTotal || 0).toLocaleString()}</td>
               <td style="padding: 5px 8px; text-align: right; font-weight: 700; color: #059669; border: 1px solid #e2e8f0;">৳${data.somitiNetVal.toLocaleString()}</td>
+            </tr>
+            <tr style="border-bottom: 1px solid #e2e8f0;">
+              <td style="padding: 5px 8px; font-weight: 600; border: 1px solid #e2e8f0;">মালিকের ওয়ালেট (Owner Personal Wallet)</td>
+              <td style="padding: 5px 8px; border: 1px solid #e2e8f0;">${data.ownerWalletCount || 0} টি এন্ট্রি</td>
+              <td style="padding: 5px 8px; border: 1px solid #e2e8f0;">ব্যক্তিগত উত্তোলন: -৳${(data.ownerWalletTotal || 0).toLocaleString()}</td>
+              <td style="padding: 5px 8px; text-align: right; font-weight: 700; color: #e11d48; border: 1px solid #e2e8f0;">-৳${(data.ownerWalletTotal || 0).toLocaleString()}</td>
             </tr>
           </tbody>
         </table>
@@ -738,7 +748,7 @@ export function generateEnglishReportPdf(data: ReportPdfData, openInNewTab = fal
     currentY = (doc as any).lastAutoTable.finalY + 8;
   }
 
-  // ── 6. Cashbox & Fund Summary ───────────────────────────────────────────────
+  // ── 6. Cashbox, Somiti & Owners Wallet Money Flow ──────────────────────────
   if (currentY > pageHeight - 45) {
     doc.addPage();
     currentY = 18;
@@ -747,12 +757,13 @@ export function generateEnglishReportPdf(data: ReportPdfData, openInNewTab = fal
   doc.setFont("helvetica", "bold");
   doc.setFontSize(11);
   doc.setTextColor(15, 23, 42);
-  doc.text("6. CASHBOX & SOMITI FUND MOVEMENT", 14, currentY);
+  doc.text("6. CASHBOX, SOMITI & OWNER'S WALLET MONEY FLOW", 14, currentY);
   currentY += 2;
 
   const fundBody = [
     ["Cashbox Flow (Cash In / Out)", `In: ${fmtCurrency(data.cashboxIn)}`, `Out: -${fmtCurrency(data.cashboxOut)}`, `Net Movement: ${fmtCurrency(data.cashboxIn - data.cashboxOut)}`],
-    ["Somiti Fund (Savings Reserve)", `${data.somitiCount} transactions`, "-", `Net Savings: ${fmtCurrency(data.somitiNetVal)}`],
+    ["Somiti Fund (Savings Reserve)", `Deposited: ${fmtCurrency(data.somitiDepositTotal || 0)}`, `Withdrawn: -${fmtCurrency(data.somitiWithdrawTotal || 0)}`, `Net Savings: ${fmtCurrency(data.somitiNetVal)}`],
+    ["Owner's Wallet (Personal)", `${data.ownerWalletCount || 0} entries`, `Withdrawn: -${fmtCurrency(data.ownerWalletTotal || 0)}`, `Cash Impact: -${fmtCurrency(data.ownerWalletTotal || 0)}`],
   ];
 
   autoTable(doc, {

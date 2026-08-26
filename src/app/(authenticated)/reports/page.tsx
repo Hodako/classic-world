@@ -6,7 +6,7 @@ import {
   Calendar, Printer, ArrowLeft,
   TrendingUp, ShoppingCart, Receipt, PiggyBank,
   Banknote, Users, CheckCircle2, DollarSign,
-  FileSpreadsheet, Sparkles, Filter, ChevronRight
+  FileSpreadsheet, Sparkles, Filter, ChevronRight, Wallet
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
@@ -19,8 +19,8 @@ import { useCachedQuery } from "@/hooks/use-cached-query";
 import { useCashboxQuery } from "@/hooks/use-cashbox-query";
 import {
   getSales, getPurchases, getExpenses,
-  getSomiti, getParties,
-  type Expense, type Purchase, type Sale, type Customer, type Somiti, type CashboxEntry
+  getSomiti, getParties, getOwnerWallet,
+  type Expense, type Purchase, type Sale, type Customer, type Somiti, type CashboxEntry, type OwnerWalletEntry
 } from "@/lib/queries";
 import { getBusinessSettingsFn } from "@/lib/rpc-admin";
 import { fmtMoney, fmtDateTime } from "@/lib/format";
@@ -84,6 +84,7 @@ export default function ReportsGeneratorPage() {
   const purchasesQuery = useCachedQuery(["purchases"], getPurchases);
   const expensesQuery = useCachedQuery(["expenses"], getExpenses);
   const somitiQuery = useCachedQuery(["somiti"], getSomiti);
+  const ownerWalletQuery = useCachedQuery(["owner_wallet"], getOwnerWallet);
   const cashboxQuery = useCashboxQuery();
   const partiesQuery = useCachedQuery(["parties"], getParties);
 
@@ -148,6 +149,7 @@ export default function ReportsGeneratorPage() {
   const filteredExpenses = useMemo(() => (expensesQuery.data ?? []).filter(e => inDateRange(e.created_at)), [expensesQuery.data, from, to]);
   const filteredCashbox = useMemo(() => (cashboxQuery.data ?? []).filter(c => inDateRange(c.created_at)), [cashboxQuery.data, from, to]);
   const filteredSomiti = useMemo(() => (somitiQuery.data ?? []).filter(s => inDateRange(s.created_at)), [somitiQuery.data, from, to]);
+  const filteredOwnerWallet = useMemo(() => (ownerWalletQuery.data ?? []).filter(w => inDateRange(w.created_at)), [ownerWalletQuery.data, from, to]);
 
   // Totals calculations
   const totalSalesVal = useMemo(() => filteredSales.reduce((a, s) => {
@@ -201,10 +203,21 @@ export default function ReportsGeneratorPage() {
     return Object.values(map).sort((a, b) => b.total - a.total);
   }, [filteredExpenses, lang]);
 
-  // Somiti net
-  const somitiNetVal = useMemo(() => {
-    return filteredSomiti.reduce((a, s) => (s.kind === "deposit" ? a + Number(s.amount) : a - Number(s.amount)), 0);
+  // Somiti totals & breakdowns
+  const somitiDepositTotal = useMemo(() => {
+    return filteredSomiti.filter(s => s.kind === "deposit").reduce((a, s) => a + Number(s.amount || 0), 0);
   }, [filteredSomiti]);
+
+  const somitiWithdrawTotal = useMemo(() => {
+    return filteredSomiti.filter(s => s.kind === "withdraw").reduce((a, s) => a + Number(s.amount || 0), 0);
+  }, [filteredSomiti]);
+
+  const somitiNetVal = somitiDepositTotal - somitiWithdrawTotal;
+
+  // Owner's Wallet personal withdrawals
+  const ownerWalletTotal = useMemo(() => {
+    return filteredOwnerWallet.reduce((a, w) => a + Number(w.amount || 0), 0);
+  }, [filteredOwnerWallet]);
 
   // Cashbox net movement
   const cashboxIn = useMemo(() => {
@@ -268,6 +281,10 @@ export default function ReportsGeneratorPage() {
         netBusinessProfit,
         somitiNetVal,
         somitiCount: filteredSomiti.length,
+        somitiDepositTotal,
+        somitiWithdrawTotal,
+        ownerWalletTotal,
+        ownerWalletCount: filteredOwnerWallet.length,
         cashboxIn,
         cashboxOut,
       }, openInNewTab, targetLang);
@@ -358,6 +375,14 @@ export default function ReportsGeneratorPage() {
         Number(s.due_amount || 0)
       ]);
     });
+
+    // 6. Cashbox, Somiti & Owners Wallet Money Flow
+    rows.push([isBn ? "--- ৬. ক্যাশবাক্স, সমিতি ও মালিকের ওয়ালেট অর্থপ্রবাহ ---" : "--- 6. CASHBOX, SOMITI & OWNER'S WALLET MONEY FLOW ---"]);
+    rows.push([isBn ? "খাত" : "Fund Metric", isBn ? "জমা / ক্যাশ ইন" : "Inflow", isBn ? "খরচ / উত্তোলন" : "Outflow", isBn ? "নিট প্রভাব (টাকা)" : "Net Impact (BDT)"]);
+    rows.push([isBn ? "ক্যাশবাক্স নগদ প্রবাহ" : "Cashbox Movement", cashboxIn, cashboxOut, cashboxIn - cashboxOut]);
+    rows.push([isBn ? "সমিতি সঞ্চয় ও কিস্তি" : "Samity Fund", somitiDepositTotal, somitiWithdrawTotal, somitiNetVal]);
+    rows.push([isBn ? "মালিকের ব্যক্তিগত ওয়ালেট" : "Owner Personal Wallet", 0, ownerWalletTotal, -ownerWalletTotal]);
+    rows.push([]);
 
     const headers = [
       isBn ? "বিবরণী খাত / কলাম" : "Section / Column",
@@ -707,6 +732,18 @@ export default function ReportsGeneratorPage() {
                     <td className="p-2.5 text-muted-foreground print:text-gray-600 border border-zinc-300 dark:border-zinc-700 print:border-black">{totalPurchaseQty} {lang === "bn" ? "পিস নতুন পণ্য সংযোজন" : "units restocked"}</td>
                   </tr>
                   <tr className="hover:bg-muted/20 border-b border-zinc-300 dark:border-zinc-700 print:border-black">
+                    <td className="p-2.5 font-bold text-foreground print:text-black border border-zinc-300 dark:border-zinc-700 print:border-black">{lang === "bn" ? "সমিতিতে সঞ্চয় ও কিস্তি জমা" : "Samity Deposits (Savings)"}</td>
+                    <td className="p-2.5 text-center font-medium border border-zinc-300 dark:border-zinc-700 print:border-black">{filteredSomiti.filter(s => s.kind === "deposit").length} {lang === "bn" ? "টি" : "entries"}</td>
+                    <td className="p-2.5 text-right font-serif font-bold text-sky-600 dark:text-sky-400 print:text-black border border-zinc-300 dark:border-zinc-700 print:border-black">৳{fmtMoney(somitiDepositTotal)}</td>
+                    <td className="p-2.5 text-muted-foreground print:text-gray-600 border border-zinc-300 dark:border-zinc-700 print:border-black">{lang === "bn" ? "সমিতি সঞ্চয় ফান্ড জমা" : "Savings deposits into Somiti"}</td>
+                  </tr>
+                  <tr className="hover:bg-muted/20 border-b border-zinc-300 dark:border-zinc-700 print:border-black">
+                    <td className="p-2.5 font-bold text-foreground print:text-black border border-zinc-300 dark:border-zinc-700 print:border-black">{lang === "bn" ? "মালিকের ব্যক্তিগত ওয়ালেট খরচ" : "Owner's Personal Wallet"}</td>
+                    <td className="p-2.5 text-center font-medium border border-zinc-300 dark:border-zinc-700 print:border-black">{filteredOwnerWallet.length} {lang === "bn" ? "টি" : "entries"}</td>
+                    <td className="p-2.5 text-right font-serif font-bold text-rose-600 dark:text-rose-400 print:text-black border border-zinc-300 dark:border-zinc-700 print:border-black">−৳{fmtMoney(ownerWalletTotal)}</td>
+                    <td className="p-2.5 text-muted-foreground print:text-gray-600 border border-zinc-300 dark:border-zinc-700 print:border-black">{lang === "bn" ? "পরিবার ও ব্যক্তিগত খরচ (ক্যাশ ও লাভ কর্তিত)" : "Personal withdrawals (cash & profit deducted)"}</td>
+                  </tr>
+                  <tr className="hover:bg-muted/20 border-b border-zinc-300 dark:border-zinc-700 print:border-black">
                     <td className="p-2.5 font-bold text-foreground print:text-black border border-zinc-300 dark:border-zinc-700 print:border-black">{lang === "bn" ? "এই সময়ের নতুন বকেয়া বাকী" : "Period Sales Dues"}</td>
                     <td className="p-2.5 text-center font-medium border border-zinc-300 dark:border-zinc-700 print:border-black">{creditSales.length} {lang === "bn" ? "টি" : "due sales"}</td>
                     <td className="p-2.5 text-right font-serif font-bold text-amber-600 dark:text-amber-400 print:text-black border border-zinc-300 dark:border-zinc-700 print:border-black">{fmtMoney(totalSalesDueVal)}</td>
@@ -718,7 +755,7 @@ export default function ReportsGeneratorPage() {
                     <td className={`p-3 text-sm text-right font-extrabold font-serif border border-zinc-300 dark:border-zinc-700 print:border-black ${netBusinessProfit >= 0 ? "text-emerald-600 dark:text-emerald-400 print:text-black" : "text-rose-600 dark:text-rose-400 print:text-black"}`}>
                       {fmtMoney(netBusinessProfit)}
                     </td>
-                    <td className="p-3 text-xs text-muted-foreground dark:text-muted-foreground print:text-gray-800 border border-zinc-300 dark:border-zinc-700 print:border-black">{lang === "bn" ? "মোট লাভ − দোকান খরচ" : "Gross Profit − Expenses"}</td>
+                    <td className="p-3 text-xs text-muted-foreground dark:text-muted-foreground print:text-gray-800 border border-zinc-300 dark:border-zinc-700 print:border-black">{lang === "bn" ? "মোট লাভ − দোকান ও ব্যক্তিগত খরচ" : "Gross Profit − Expenses"}</td>
                   </tr>
                 </tbody>
               </table>
@@ -1058,46 +1095,69 @@ export default function ReportsGeneratorPage() {
           </div>
         )}
 
-        {/* ── Section 6: Cashbox & Somiti Movement ── */}
+        {/* ── Section 6: Cashbox, Somiti & Owner Wallet Movement ── */}
         {(activeTab === "cashbox" || typeof window !== "undefined") && (
           <div className={`space-y-3 ${activeTab !== "cashbox" ? "hidden print:block" : ""}`}>
             <div className="flex items-center justify-between border-b border-border/60 pb-1.5">
               <div className="flex items-center gap-2">
                 <span className="size-2 rounded-full bg-teal-500 print:bg-black" />
                 <h3 className="text-sm font-bold uppercase tracking-wider text-foreground print:text-black">
-                  {lang === "bn" ? "৬. ক্যাশবক্স ও সমিতি তহবিল বিবরণী" : "6. Cashbox & Somiti Fund"}
+                  {lang === "bn" ? "৬. ক্যাশবাক্স, সমিতি ও মালিকের ওয়ালেট তহবিল বিবরণী" : "6. Cashbox, Samity & Owner's Wallet Movement"}
                 </h3>
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div className="p-3.5 rounded-lg border border-border/80 print:border-gray-500 bg-muted/20 space-y-2">
                 <div className="text-xs font-bold uppercase text-foreground print:text-black flex items-center gap-1.5 border-b border-border/60 pb-1">
                   <Banknote className="size-4 text-emerald-600" />
-                  {lang === "bn" ? "ক্যাশবক্স নগদ প্রবাহ হিসাব" : "Cashbox Flow"}
+                  {lang === "bn" ? "ক্যাশবাক্স নগদ প্রবাহ" : "Cashbox Flow"}
                 </div>
                 <div className="flex justify-between text-xs py-1 border-b border-border/40">
-                  <span className="text-muted-foreground">{lang === "bn" ? "নগদ জমা / ক্যাশ বিক্রি:" : "Cash In:"}</span>
+                  <span className="text-muted-foreground">{lang === "bn" ? "নগদ জমা / বিক্রি:" : "Cash In:"}</span>
                   <span className="font-bold text-emerald-600 font-serif">+{fmtMoney(cashboxIn)}</span>
                 </div>
-                <div className="flex justify-between text-xs py-1">
+                <div className="flex justify-between text-xs py-1 border-b border-border/40">
                   <span className="text-muted-foreground">{lang === "bn" ? "নগদ খরচ / উত্তোলন:" : "Cash Out:"}</span>
                   <span className="font-bold text-rose-600 font-serif">−{fmtMoney(cashboxOut)}</span>
+                </div>
+                <div className="flex justify-between text-xs py-1">
+                  <span className="text-muted-foreground">{lang === "bn" ? "নিট নগদ পরিবর্তন:" : "Net Flow:"}</span>
+                  <span className="font-bold text-foreground font-serif">{fmtMoney(cashboxIn - cashboxOut)}</span>
                 </div>
               </div>
 
               <div className="p-3.5 rounded-lg border border-border/80 print:border-gray-500 bg-muted/20 space-y-2">
                 <div className="text-xs font-bold uppercase text-foreground print:text-black flex items-center gap-1.5 border-b border-border/60 pb-1">
                   <PiggyBank className="size-4 text-sky-600" />
-                  {lang === "bn" ? "সমিতি সঞ্চয় তহবিল হিসাব" : "Somiti Fund"}
+                  {lang === "bn" ? "সমিতি সঞ্চয় ও কিস্তি" : "Samity Fund"}
                 </div>
                 <div className="flex justify-between text-xs py-1 border-b border-border/40">
-                  <span className="text-muted-foreground">{lang === "bn" ? "সমিতিতে মোট লেনদেন:" : "Transactions:"}</span>
-                  <span className="font-bold text-foreground font-serif">{filteredSomiti.length} {lang === "bn" ? "টি" : ""}</span>
+                  <span className="text-muted-foreground">{lang === "bn" ? "মোট সমিতি জমা:" : "Deposited:"}</span>
+                  <span className="font-bold text-sky-600 font-serif">+{fmtMoney(somitiDepositTotal)}</span>
+                </div>
+                <div className="flex justify-between text-xs py-1 border-b border-border/40">
+                  <span className="text-muted-foreground">{lang === "bn" ? "সমিতি হতে উত্তোলন:" : "Withdrawn:"}</span>
+                  <span className="font-bold text-amber-600 font-serif">−{fmtMoney(somitiWithdrawTotal)}</span>
                 </div>
                 <div className="flex justify-between text-xs py-1">
-                  <span className="text-muted-foreground">{lang === "bn" ? "নিট সঞ্চয় ব্যালেন্স:" : "Net Savings:"}</span>
+                  <span className="text-muted-foreground">{lang === "bn" ? "নিট সঞ্চয় স্থিতি:" : "Net Balance:"}</span>
                   <span className="font-bold text-sky-600 font-serif">{fmtMoney(somitiNetVal)}</span>
+                </div>
+              </div>
+
+              <div className="p-3.5 rounded-lg border border-border/80 print:border-gray-500 bg-muted/20 space-y-2">
+                <div className="text-xs font-bold uppercase text-foreground print:text-black flex items-center gap-1.5 border-b border-border/60 pb-1">
+                  <Wallet className="size-4 text-amber-600" />
+                  {lang === "bn" ? "মালিকের ব্যক্তিগত ওয়ালেট" : "Owner's Wallet"}
+                </div>
+                <div className="flex justify-between text-xs py-1 border-b border-border/40">
+                  <span className="text-muted-foreground">{lang === "bn" ? "ব্যক্তিগত খরচ সংখ্যা:" : "Entries:"}</span>
+                  <span className="font-bold text-foreground font-serif">{filteredOwnerWallet.length} {lang === "bn" ? "টি" : ""}</span>
+                </div>
+                <div className="flex justify-between text-xs py-1">
+                  <span className="text-muted-foreground">{lang === "bn" ? "মোট ব্যক্তিগত উত্তোলন:" : "Total Personal:"}</span>
+                  <span className="font-bold text-rose-600 font-serif">−{fmtMoney(ownerWalletTotal)}</span>
                 </div>
               </div>
             </div>

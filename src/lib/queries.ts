@@ -7,6 +7,7 @@ import {
   getExpensesFn,
   getSomitiFn,
   getWithdrawalsFn,
+  getOwnerWalletFn,
   getPaymentsForPartyFn,
   getAllPaymentsFn,
   getAllPartyReceivablesFn,
@@ -64,6 +65,7 @@ export type Purchase = {
 export type Expense = { id: string; title: string; amount: number; category?: string | null; note: string | null; created_at: string };
 export type Somiti = { id: string; kind: "deposit" | "withdraw"; amount: number; note: string | null; created_at: string };
 export type Withdrawal = { id: string; amount: number; note: string | null; created_at: string };
+export type OwnerWalletEntry = { id: string; amount: number; category?: string | null; note: string | null; created_at: string };
 export type CashboxEntry = {
   id: string;
   kind: "deposit" | "withdraw" | "sale" | "expense";
@@ -93,6 +95,7 @@ export const getPurchases = () => getPurchasesFn() as unknown as Promise<Purchas
 export const getExpenses = () => getExpensesFn() as unknown as Promise<Expense[]>;
 export const getSomiti = () => getSomitiFn() as unknown as Promise<Somiti[]>;
 export const getWithdrawals = () => getWithdrawalsFn() as unknown as Promise<Withdrawal[]>;
+export const getOwnerWallet = () => getOwnerWalletFn() as unknown as Promise<OwnerWalletEntry[]>;
 export const getCashbox = () => getCashboxFn() as unknown as Promise<CashboxEntry[]>;
 export const getSalesForParty = (partyId: string) => getSalesForPartyFn({ data: { partyId } }) as unknown as Promise<Sale[]>;
 export const getPaymentsForParty = (partyId: string) => getPaymentsForPartyFn({ data: { partyId } }) as unknown as Promise<Payment[]>;

@@ -3,7 +3,7 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useCachedQuery } from "@/hooks/use-cached-query";
-import { getProducts, getParties, type Product } from "@/lib/queries";
+import { getProducts, getCustomers, type Product, type Customer } from "@/lib/queries";
 import { useT } from "@/lib/i18n";
 import { useAuth } from "@/hooks/use-auth";
 import { fmtMoney, fmtDateTime } from "@/lib/format";
@@ -264,10 +264,10 @@ export default function InvoicePage() {
   const { user } = useAuth();
 
   const { data: products = [] } = useCachedQuery(["products"], getProducts);
-  const { data: parties = [] } = useCachedQuery(["parties"], getParties);
+  const { data: customers = [] } = useCachedQuery(["customers"], getCustomers);
 
   // Form State
-  const [selectedPartyId, setSelectedPartyId] = useState<string>("walk-in");
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string>("walk-in");
   const [customName, setCustomName] = useState("");
   const [customPhone, setCustomPhone] = useState("");
 
@@ -416,16 +416,16 @@ export default function InvoicePage() {
   }, [colorTheme]);
 
   const activeCustomerName = useMemo(() => {
-    if (selectedPartyId === "walk-in") return customName.trim() || t("walk_in_customer");
-    const p = parties.find((x) => x.id === selectedPartyId);
-    return p ? p.name : t("walk_in_customer");
-  }, [selectedPartyId, customName, parties, t]);
+    if (selectedCustomerId === "walk-in") return customName.trim() || t("walk_in_customer");
+    const c = customers.find((x) => x.id === selectedCustomerId);
+    return c ? c.name : (customName.trim() || t("walk_in_customer"));
+  }, [selectedCustomerId, customName, customers, t]);
 
   const activeCustomerPhone = useMemo(() => {
-    if (selectedPartyId === "walk-in") return customPhone.trim() || "—";
-    const p = parties.find((x) => x.id === selectedPartyId);
-    return p ? p.phone || "—" : "—";
-  }, [selectedPartyId, customPhone, parties]);
+    if (selectedCustomerId === "walk-in") return customPhone.trim() || "—";
+    const c = customers.find((x) => x.id === selectedCustomerId);
+    return c ? c.phone || "—" : (customPhone.trim() || "—");
+  }, [selectedCustomerId, customPhone, customers]);
 
   const invoiceNo = useMemo(() => {
     return `INV-${Date.now().toString().slice(-6)}`;
@@ -459,7 +459,7 @@ export default function InvoicePage() {
             sell_price: item.sellPrice,
             profit,
             type: due > 0 ? "credit" : "cash",
-            party_id: selectedPartyId !== "walk-in" ? selectedPartyId : null,
+            party_id: selectedCustomerId !== "walk-in" ? selectedCustomerId : null,
             paid_amount: due > 0 ? paidPerItem : lineSell,
             due_amount: due > 0 ? duePerItem : 0,
             cart_id: cartId,
@@ -567,7 +567,7 @@ export default function InvoicePage() {
 
   function handleReset() {
     setInvoiceItems([]);
-    setSelectedPartyId("walk-in");
+    setSelectedCustomerId("walk-in");
     setCustomName("");
     setCustomPhone("");
     setDiscount("0");
@@ -652,30 +652,29 @@ export default function InvoicePage() {
               size="sm"
               onClick={handleDownloadPdf}
               disabled={invoiceItems.length === 0 || isDownloadingPdf}
-              className="h-8 px-3 text-xs font-semibold bg-sky-500/10 hover:bg-sky-500/20 text-sky-800 dark:text-sky-300 border-sky-500/30 shadow-xs"
+              className="h-8 px-2.5 text-xs"
             >
-              {isDownloadingPdf ? <Loader2 className="size-3.5 mr-1.5 animate-spin" /> : <FileDown className="size-3.5 mr-1.5" />}
+              {isDownloadingPdf ? (
+                <Loader2 className="size-3.5 mr-1 animate-spin" />
+              ) : (
+                <Download className="size-3.5 mr-1" />
+              )}
               {isDownloadingPdf ? (lang === "bn" ? "ডাউনলোড..." : "Downloading...") : (lang === "bn" ? "PDF ডাউনলোড" : "Download PDF")}
             </Button>
 
-            <Button
-              size="sm"
-              onClick={handlePrint}
-              disabled={invoiceItems.length === 0}
-              className="h-8 px-3.5 text-xs font-semibold bg-primary hover:bg-primary/90 text-primary-foreground shadow-xs"
-            >
+            <Button size="sm" onClick={handlePrint} disabled={invoiceItems.length === 0} className="h-8 px-3 text-xs bg-primary text-primary-foreground font-bold shadow-xs">
               <Printer className="size-3.5 mr-1.5" />
-              {t("print")}
+              {t("print_invoice")}
             </Button>
           </div>
         </div>
       </div>
 
       {/* ────────────────────────────────────────────────────────────────────── */}
-      {/* Main Single Page Workspace Grid                                        */}
+      {/* Main Grid: Form Left (Col 5) | Live Preview Right (Col 7)             */}
       {/* ────────────────────────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 no-print items-start">
-        {/* ── LEFT COLUMN: Input Form & Cart Controls ── */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+        {/* ── Left Column: Inputs & Product Picker ─────────────────────────── */}
         <div
           className={`lg:col-span-6 xl:col-span-5 space-y-4 ${
             mobileTab === "preview" ? "hidden lg:block" : "block"
@@ -696,24 +695,24 @@ export default function InvoicePage() {
             <div className="space-y-3">
               <div className="space-y-1">
                 <Label className="text-xs font-medium text-muted-foreground">{t("select_customer")}</Label>
-                <Select value={selectedPartyId} onValueChange={setSelectedPartyId}>
+                <Select value={selectedCustomerId} onValueChange={setSelectedCustomerId}>
                   <SelectTrigger className="h-9 text-xs">
                     <SelectValue placeholder={t("walk_in_customer")} />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="walk-in">{t("walk_in_customer")}</SelectItem>
-                    {parties
-                      .filter((p) => !p.archived)
-                      .map((p) => (
-                        <SelectItem key={p.id} value={p.id}>
-                          {p.name} ({p.phone || "No phone"})
+                    {customers
+                      .filter((c) => !(c as any).archived)
+                      .map((c) => (
+                        <SelectItem key={c.id} value={c.id}>
+                          {c.name} ({c.phone || "No phone"})
                         </SelectItem>
                       ))}
                   </SelectContent>
                 </Select>
               </div>
 
-              {selectedPartyId === "walk-in" ? (
+              {selectedCustomerId === "walk-in" ? (
                 <div className="grid grid-cols-2 gap-2.5">
                   <div className="space-y-1">
                     <Label className="text-[11px] text-muted-foreground">{t("full_name")}</Label>

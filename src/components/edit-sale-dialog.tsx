@@ -11,7 +11,7 @@ import { ProductSearchSelect } from "@/components/product-search";
 import { useCachedQuery } from "@/hooks/use-cached-query";
 import { useT } from "@/lib/i18n";
 import { toast } from "sonner";
-import { getParties, getProducts, type Sale } from "@/lib/queries";
+import { getCustomers, getProducts, type Sale } from "@/lib/queries";
 import { editSaleFn } from "@/lib/rpc";
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
@@ -33,7 +33,7 @@ export function EditSaleDialog({
   const { lang, t } = useT();
   const qc = useQueryClient();
   const { data: products = [] } = useCachedQuery(["products"], getProducts);
-  const { data: parties = [] } = useCachedQuery(["parties"], getParties);
+  const { data: customers = [] } = useCachedQuery(["customers"], getCustomers);
 
   const [productId, setProductId] = useState("");
   const [qty, setQty] = useState("");
@@ -72,7 +72,7 @@ export function EditSaleDialog({
     if (!productId) return toast.error(t("select_product"));
     if (qtyNum <= 0) return toast.error("Quantity must be greater than 0");
     if (sellPriceNum <= 0) return toast.error("Sell price must be greater than 0");
-    if (type === "credit" && !partyId) return toast.error(t("party") + " " + t("required"));
+    if (type === "credit" && !partyId) return toast.error(t("customer") + " " + t("required"));
 
     setBusy(true);
     try {
@@ -99,6 +99,7 @@ export function EditSaleDialog({
       toast.success(lang === "bn" ? "বিক্রি আপডেট করা হয়েছে" : "Sale updated");
       qc.invalidateQueries({ queryKey: ["sales"] });
       qc.invalidateQueries({ queryKey: ["products"] });
+      qc.invalidateQueries({ queryKey: ["customers"] });
       qc.invalidateQueries({ queryKey: ["parties"] });
       qc.invalidateQueries({ queryKey: ["cashbox"] });
       onOpenChange(false);
@@ -144,14 +145,14 @@ export function EditSaleDialog({
 
           {type === "credit" && (
             <>
-              <Field label={t("party")}>
+              <Field label={t("select_customer")}>
                 <Select value={partyId} onValueChange={setPartyId}>
                   <SelectTrigger>
-                    <SelectValue placeholder="Select Party" />
+                    <SelectValue placeholder={t("select_customer")} />
                   </SelectTrigger>
                   <SelectContent>
-                    {parties.map(p => (
-                      <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                    {customers.filter(c => !(c as any).archived).map(c => (
+                      <SelectItem key={c.id} value={c.id}>{c.name} {c.phone ? `(${c.phone})` : ""}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>

@@ -231,6 +231,7 @@ const fsActionMap: Record<string, (args?: any) => Promise<any>> = {
   },
   getSomitiFn: async () => fs.fsGetSomiti(),
   getWithdrawalsFn: async () => fs.fsGetWithdrawals(),
+  getOwnerWalletFn: async () => fs.fsGetOwnerWallet(),
   getCashboxFn: async () => fs.fsGetCashbox(),
   getRemindersFn: async () => fs.fsGetReminders(),
   getBankAccountsFn: async () => fs.fsGetBankAccounts(),
@@ -282,6 +283,10 @@ const fsActionMap: Record<string, (args?: any) => Promise<any>> = {
   deleteSomitiFn: async (args: any) => fs.fsDeleteSomiti(args?.data?.id || args?.id),
 
   createWithdrawalFn: async (args: any) => fs.fsCreateWithdrawal(args?.data || args),
+
+  createOwnerWalletEntryFn: async (args: any) => fs.fsCreateOwnerWalletEntry(args?.data || args),
+  updateOwnerWalletEntryFn: async (args: any) => fs.fsUpdateOwnerWalletEntry(args?.data?.id || args?.id, args?.data || args),
+  deleteOwnerWalletEntryFn: async (args: any) => fs.fsDeleteOwnerWalletEntry(args?.data?.id || args?.id),
 
   createCashboxFn: async (args: any) => fs.fsCreateCashbox(args?.data || args),
   updateCashboxFn: async (args: any) => fs.fsUpdateCashbox(args?.data?.id || args?.id, args?.data || args),
@@ -433,6 +438,11 @@ export const updateSomitiFn = makeWriteAction("updateSomitiFn");
 export const deleteSomitiFn = makeWriteAction("deleteSomitiFn");
 export const renameSomitiFn = makeWriteAction("renameSomitiFn");
 export const deleteSomitiFnByName = makeWriteAction("deleteSomitiFnByName");
+
+export const getOwnerWalletFn = makeReadAction("getOwnerWalletFn");
+export const createOwnerWalletEntryFn = makeWriteAction("createOwnerWalletEntryFn");
+export const updateOwnerWalletEntryFn = makeWriteAction("updateOwnerWalletEntryFn");
+export const deleteOwnerWalletEntryFn = makeWriteAction("deleteOwnerWalletEntryFn");
 
 export const createWithdrawalFn = makeWriteAction("createWithdrawalFn");
 export const createCashboxFn = makeReadAction("createCashboxFn");

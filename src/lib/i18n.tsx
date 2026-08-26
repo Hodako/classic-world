@@ -107,6 +107,7 @@ const dict = {
   note: { bn: "মন্তব্য", en: "Note" },
   // somiti
   somiti: { bn: "সমিতি", en: "Samity" },
+  owners_wallet: { bn: "মালিকের ওয়ালেট", en: "Owner's Wallet" },
   deposit: { bn: "জমা", en: "Deposit" },
   withdraw: { bn: "উত্তোলন", en: "Withdraw" },
   add_somiti: { bn: "সমিতি এন্ট্রি", en: "Samity entry" },

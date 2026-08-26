@@ -34,10 +34,15 @@ import {
   Plus,
   Mail,
   UserPlus,
-  Users,
   Shield,
   Clock,
   CheckCircle,
+  GripVertical,
+  ChevronUp,
+  ChevronDown,
+  RotateCcw,
+  ArrowUpDown,
+  LayoutGrid,
 } from "lucide-react";
 import { getPosPaperConfig, savePosPaperConfig, DEFAULT_POS_CONFIG, type PosPaperSettings } from "@/lib/pos-print";
 import { DEFAULT_EMPLOYEE_PERMISSIONS, type PermissionSet } from "@/lib/permissions";
@@ -99,8 +104,147 @@ export default function SettingsPage() {
   const [inviteDesignation, setInviteDesignation] = useState("Sales Staff");
   const [inviteSending, setInviteSending] = useState(false);
 
+  // KPI Reordering & Configuration Constants
+  const DEFAULT_KPI_ORDER = [
+    "total_sales",
+    "cash_sale",
+    "credit_sale",
+    "online_sell",
+    "purchases",
+    "profit",
+    "loss",
+    "expense",
+    "due",
+    "cashbox",
+    "somiti",
+  ];
+
+  const KPI_METADATA: Record<
+    string,
+    { nameEn: string; nameBn: string; descEn: string; descBn: string; badge: string; color: string; bg: string }
+  > = {
+    total_sales: {
+      nameEn: "Total Sales",
+      nameBn: "আজকের মোট বিক্রয়",
+      descEn: "Combined total of all sales orders",
+      descBn: "সকল ক্যাশ, বাকি ও অনলাইন বিক্রির মোট যোগফল",
+      badge: "Total",
+      color: "text-blue-500",
+      bg: "bg-blue-500/10 border-blue-500/30 text-blue-600 dark:text-blue-400",
+    },
+    cash_sale: {
+      nameEn: "Cash Sale",
+      nameBn: "নগদ বিক্রয়",
+      descEn: "Instant cash payments received",
+      descBn: "নগদে সংগৃহীত মোট বিক্রয়",
+      badge: "Cash",
+      color: "text-emerald-500",
+      bg: "bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-400",
+    },
+    credit_sale: {
+      nameEn: "Credit Sale",
+      nameBn: "বাকি বিক্রয়",
+      descEn: "Sales made on store credit / dues",
+      descBn: "বাকিতে করা বিক্রয়",
+      badge: "Credit",
+      color: "text-amber-500",
+      bg: "bg-amber-500/10 border-amber-500/30 text-amber-600 dark:text-amber-400",
+    },
+    online_sell: {
+      nameEn: "Online Sale",
+      nameBn: "অনলাইন বিক্রয়",
+      descEn: "Web orders & courier deliveries",
+      descBn: "কুরিয়ার ও অনলাইন অর্ডারের হিসাব",
+      badge: "Online",
+      color: "text-purple-500",
+      bg: "bg-purple-500/10 border-purple-500/30 text-purple-600 dark:text-purple-400",
+    },
+    purchases: {
+      nameEn: "Purchases (BUY)",
+      nameBn: "মাল ক্রয় (BUY)",
+      descEn: "Total spent on restock & buying stock",
+      descBn: "দোকানের জন্য পাইকারি মাল কেনার খরচ",
+      badge: "Buy",
+      color: "text-indigo-500",
+      bg: "bg-indigo-500/10 border-indigo-500/30 text-indigo-600 dark:text-indigo-400",
+    },
+    profit: {
+      nameEn: "Total Profit",
+      nameBn: "মোট লাভ",
+      descEn: "Net gross profit earned from sales",
+      descBn: "পণ্য বিক্রির পর অর্জিত মোট নিট লাভ",
+      badge: "Profit",
+      color: "text-emerald-600",
+      bg: "bg-emerald-600/10 border-emerald-600/30 text-emerald-600 dark:text-emerald-400",
+    },
+    loss: {
+      nameEn: "Total Loss",
+      nameBn: "মোট ক্ষতি",
+      descEn: "Loss incurred from discounts or returns",
+      descBn: "ছাড় বা লস জনিত মোট ক্ষতি",
+      badge: "Loss",
+      color: "text-rose-500",
+      bg: "bg-rose-500/10 border-rose-500/30 text-rose-600 dark:text-rose-400",
+    },
+    expense: {
+      nameEn: "Total Expenses",
+      nameBn: "মোট খরচ",
+      descEn: "Daily operational & shop expenses",
+      descBn: "দোকানের দৈনন্দিন খরচ ও বিল",
+      badge: "Expense",
+      color: "text-red-500",
+      bg: "bg-red-500/10 border-red-500/30 text-red-600 dark:text-red-400",
+    },
+    due: {
+      nameEn: "Customer Due",
+      nameBn: "ক্রেতার বাকি",
+      descEn: "Outstanding money owed by parties",
+      descBn: "কাস্টমার ও পার্টির কাছে বকেয়া পাওনা",
+      badge: "Due",
+      color: "text-orange-500",
+      bg: "bg-orange-500/10 border-orange-500/30 text-orange-600 dark:text-orange-400",
+    },
+    cashbox: {
+      nameEn: "Cashbox Balance",
+      nameBn: "ক্যাশবক্স ব্যালেন্স",
+      descEn: "Real-time physical money inside cashbox",
+      descBn: "ক্যাশবক্সে উপস্থিত মোট নগদ টাকা",
+      badge: "Cashbox",
+      color: "text-teal-500",
+      bg: "bg-teal-500/10 border-teal-500/30 text-teal-600 dark:text-teal-400",
+    },
+    somiti: {
+      nameEn: "Samity Savings",
+      nameBn: "সমিতি ও সঞ্চয়",
+      descEn: "Total deposits saved in samity funds",
+      descBn: "সমিতিতে জমা ও সঞ্চয়ের মোট ব্যালেন্স",
+      badge: "Samity",
+      color: "text-cyan-500",
+      bg: "bg-cyan-500/10 border-cyan-500/30 text-cyan-600 dark:text-cyan-400",
+    },
+  };
+
+  const normalizeKpiOrderList = (order?: string[]) => {
+    const defaultList = [...DEFAULT_KPI_ORDER];
+    if (!order || !Array.isArray(order) || order.length === 0) return defaultList;
+    const list = [...order];
+    for (const key of defaultList) {
+      if (!list.includes(key)) list.push(key);
+    }
+    return list.filter(k => defaultList.includes(k));
+  };
+
   // KPI Configuration state
-  const [kpiConfig, setKpiConfig] = useState({
+  const [kpiConfig, setKpiConfig] = useState<{
+    align: string;
+    size: string;
+    columns: number;
+    variant: string;
+    shadow: string;
+    borderStyle: string;
+    curve: string;
+    order: string[];
+  }>({
     align: "left",
     size: "small",
     columns: 2,
@@ -108,13 +252,21 @@ export default function SettingsPage() {
     shadow: "glow",
     borderStyle: "subtle",
     curve: "none",
+    order: DEFAULT_KPI_ORDER,
   });
+
+  const [draggedKpiIdx, setDraggedKpiIdx] = useState<number | null>(null);
 
   useEffect(() => {
     const saved = localStorage.getItem("hz_kpi_config");
     if (saved) {
       try {
-        setKpiConfig(JSON.parse(saved));
+        const parsed = JSON.parse(saved);
+        setKpiConfig(prev => ({
+          ...prev,
+          ...parsed,
+          order: normalizeKpiOrderList(parsed.order),
+        }));
       } catch (e) {}
     }
   }, []);
@@ -134,12 +286,53 @@ export default function SettingsPage() {
 
   const updateKpiConfig = (newSettings: Partial<typeof kpiConfig>) => {
     setKpiConfig(prev => {
-      const updated = { ...prev, ...newSettings };
+      const updated = {
+        ...prev,
+        ...newSettings,
+        order: newSettings.order ? normalizeKpiOrderList(newSettings.order) : prev.order,
+      };
       localStorage.setItem("hz_kpi_config", JSON.stringify(updated));
       window.dispatchEvent(new Event("hz-kpi-config-updated"));
-      toast.success(t("save") || "Saved!");
       return updated;
     });
+  };
+
+  const moveKpiPosition = (fromIdx: number, toIdx: number) => {
+    const currentOrder = normalizeKpiOrderList(kpiConfig.order);
+    if (toIdx < 0 || toIdx >= currentOrder.length) return;
+    const list = [...currentOrder];
+    const [movedItem] = list.splice(fromIdx, 1);
+    list.splice(toIdx, 0, movedItem);
+    updateKpiConfig({ order: list });
+    toast.success(lang === "bn" ? "KPI পজিশন সফলভাবে পরিবর্তন করা হয়েছে" : "KPI position updated");
+  };
+
+  const handleKpiDragStart = (idx: number) => {
+    setDraggedKpiIdx(idx);
+  };
+
+  const handleKpiDragOver = (e: React.DragEvent, idx: number) => {
+    e.preventDefault();
+    if (draggedKpiIdx === null || draggedKpiIdx === idx) return;
+    const currentOrder = normalizeKpiOrderList(kpiConfig.order);
+    const list = [...currentOrder];
+    const item = list[draggedKpiIdx];
+    list.splice(draggedKpiIdx, 1);
+    list.splice(idx, 0, item);
+    setDraggedKpiIdx(idx);
+    setKpiConfig(prev => ({ ...prev, order: list }));
+  };
+
+  const handleKpiDragEnd = () => {
+    setDraggedKpiIdx(null);
+    localStorage.setItem("hz_kpi_config", JSON.stringify(kpiConfig));
+    window.dispatchEvent(new Event("hz-kpi-config-updated"));
+    toast.success(lang === "bn" ? "KPI পজিশন সফলভাবে সাজানো হয়েছে!" : "KPI layout order updated!");
+  };
+
+  const resetKpiToDefault = () => {
+    updateKpiConfig({ order: DEFAULT_KPI_ORDER });
+    toast.success(lang === "bn" ? "KPI ক্রম ডিফল্ট আকারে রিসেট করা হয়েছে" : "KPI layout reset to default");
   };
 
   // Safety settings states
@@ -1505,65 +1698,178 @@ export default function SettingsPage() {
                 </div>
               </Card>
 
-              {/* KPI Configuration */}
-              <Card className="lg:col-span-6 p-5 sm:p-6 rounded-3xl bg-card border-border/80 shadow-xs space-y-5">
-                <div className="border-b border-border/60 pb-3">
-                  <h2 className="text-base font-bold text-foreground">Dashboard KPI Summary Cards</h2>
-                  <p className="text-xs text-muted-foreground mt-0.5">Customize metric card grid layout and visual styling</p>
+              {/* KPI Configuration & Drag-and-Drop Card Position Manager */}
+              <Card className="lg:col-span-12 p-5 sm:p-6 rounded-3xl bg-card border-border/80 shadow-xs space-y-6">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-border/60 pb-4">
+                  <div>
+                    <h2 className="text-base sm:text-lg font-bold text-foreground flex items-center gap-2">
+                      <LayoutGrid className="size-5 text-primary" />
+                      <span>{lang === "bn" ? "ড্যাশবোর্ড কেপিআই কার্ড লেআউট ও পজিশন নিয়ন্ত্রণ" : "Dashboard KPI Summary Cards & Positioning"}</span>
+                    </h2>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {lang === "bn"
+                        ? "কার্ডগুলো ড্র্যাগ-অ্যান্ড-ড্রপ করে বা তীর চিহ্নে ক্লিক করে ড্যাশবোর্ডে পছন্দের ক্রমানুসারে সাজান"
+                        : "Drag and drop or use arrows to change KPI card sequence and positions on your dashboard"}
+                    </p>
+                  </div>
+
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={resetKpiToDefault}
+                    className="h-8 rounded-xl text-xs font-semibold gap-1.5 self-start sm:self-auto cursor-pointer"
+                  >
+                    <RotateCcw className="size-3.5" />
+                    <span>{lang === "bn" ? "ডিফল্ট ক্রম রিসেট" : "Reset Default Order"}</span>
+                  </Button>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
+                {/* Grid Visual & Sizing Controls */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-muted/25 p-3.5 rounded-2xl border border-border/60">
                   <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold">Grid Columns</Label>
+                    <Label className="text-xs font-semibold">{lang === "bn" ? "গ্রিড কলাম সংখ্যা" : "Grid Columns"}</Label>
                     <select
                       value={kpiConfig.columns}
                       onChange={e => updateKpiConfig({ columns: parseInt(e.target.value) })}
-                      className="w-full h-9 rounded-xl border border-input bg-input px-2 text-xs"
+                      className="w-full h-9 rounded-xl border border-input bg-input px-2 text-xs font-medium"
                     >
-                      <option value={1}>1 Column</option>
-                      <option value={2}>2 Columns</option>
-                      <option value={3}>3 Columns</option>
-                      <option value={4}>4 Columns</option>
+                      <option value={1}>1 {lang === "bn" ? "কলাম" : "Column"}</option>
+                      <option value={2}>2 {lang === "bn" ? "কলাম" : "Columns"}</option>
+                      <option value={3}>3 {lang === "bn" ? "কলাম" : "Columns"}</option>
+                      <option value={4}>4 {lang === "bn" ? "কলাম" : "Columns"}</option>
                     </select>
                   </div>
 
                   <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold">Card Size</Label>
+                    <Label className="text-xs font-semibold">{lang === "bn" ? "কার্ড সাইজ" : "Card Size"}</Label>
                     <select
                       value={kpiConfig.size}
                       onChange={e => updateKpiConfig({ size: e.target.value })}
-                      className="w-full h-9 rounded-xl border border-input bg-input px-2 text-xs"
+                      className="w-full h-9 rounded-xl border border-input bg-input px-2 text-xs font-medium"
                     >
-                      <option value="small">Compact</option>
-                      <option value="medium">Standard</option>
-                      <option value="large">Spacious</option>
+                      <option value="small">{lang === "bn" ? "কম্প্যাক্ট (Compact)" : "Compact"}</option>
+                      <option value="medium">{lang === "bn" ? "স্ট্যান্ডার্ড (Standard)" : "Standard"}</option>
+                      <option value="large">{lang === "bn" ? "বড় (Large)" : "Large"}</option>
                     </select>
                   </div>
 
                   <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold">Surface Style</Label>
+                    <Label className="text-xs font-semibold">{lang === "bn" ? "কার্ড স্টাইল" : "Surface Style"}</Label>
                     <select
                       value={kpiConfig.variant}
                       onChange={e => updateKpiConfig({ variant: e.target.value })}
-                      className="w-full h-9 rounded-xl border border-input bg-input px-2 text-xs"
+                      className="w-full h-9 rounded-xl border border-input bg-input px-2 text-xs font-medium"
                     >
-                      <option value="solid">Solid</option>
-                      <option value="glass">Glass / Frosted</option>
-                      <option value="outline">Outlined</option>
+                      <option value="solid">{lang === "bn" ? "সলিড (Solid)" : "Solid"}</option>
+                      <option value="glass">{lang === "bn" ? "গ্লাস (Glass)" : "Glass / Frosted"}</option>
+                      <option value="outline">{lang === "bn" ? "আউটলাইন (Outline)" : "Outlined"}</option>
                     </select>
                   </div>
 
                   <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold">Corner Curvature</Label>
+                    <Label className="text-xs font-semibold">{lang === "bn" ? "কর্নার কার্ভ" : "Corner Curvature"}</Label>
                     <select
                       value={kpiConfig.curve}
                       onChange={e => updateKpiConfig({ curve: e.target.value })}
-                      className="w-full h-9 rounded-xl border border-input bg-input px-2 text-xs"
+                      className="w-full h-9 rounded-xl border border-input bg-input px-2 text-xs font-medium"
                     >
-                      <option value="none">Rounded</option>
-                      <option value="soft">Soft</option>
-                      <option value="pill">Pill</option>
+                      <option value="none">{lang === "bn" ? "রাউন্ডেড (Rounded)" : "Rounded"}</option>
+                      <option value="soft">{lang === "bn" ? "সফট (Soft)" : "Soft"}</option>
+                      <option value="pill">{lang === "bn" ? "পিল (Pill)" : "Pill"}</option>
                     </select>
+                  </div>
+                </div>
+
+                {/* Drag and Drop KPI Position Reorder List */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5 text-xs font-bold text-foreground">
+                      <ArrowUpDown className="size-3.5 text-primary" />
+                      <span>{lang === "bn" ? "কেপিআই কার্ডের অবস্থান ক্রম (ড্র্যাগ ও ড্রপ করুন)" : "KPI Card Sequence (Drag & Drop or use arrows)"}</span>
+                    </div>
+                    <span className="text-[11px] text-muted-foreground">
+                      {lang === "bn" ? "মোট ১১টি কেপিআই কার্ড" : "11 Total Metric Cards"}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                    {normalizeKpiOrderList(kpiConfig.order).map((kpiKey, idx) => {
+                      const meta = KPI_METADATA[kpiKey] || {
+                        nameEn: kpiKey,
+                        nameBn: kpiKey,
+                        descEn: "",
+                        descBn: "",
+                        badge: "KPI",
+                        color: "text-primary",
+                        bg: "bg-primary/10 border-primary/20 text-primary",
+                      };
+                      const isBeingDragged = draggedKpiIdx === idx;
+
+                      return (
+                        <div
+                          key={kpiKey}
+                          draggable
+                          onDragStart={() => handleKpiDragStart(idx)}
+                          onDragOver={(e) => handleKpiDragOver(e, idx)}
+                          onDragEnd={handleKpiDragEnd}
+                          className={`group flex items-center justify-between gap-2.5 p-3 rounded-2xl border transition-all select-none cursor-grab active:cursor-grabbing ${
+                            isBeingDragged
+                              ? "opacity-50 border-primary bg-primary/15 shadow-md scale-[0.98]"
+                              : "bg-card/90 hover:bg-card border-border/80 hover:border-primary/50 shadow-xs hover:shadow-sm"
+                          }`}
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                            <div className="p-1 text-muted-foreground group-hover:text-primary transition-colors shrink-0">
+                              <GripVertical className="size-4" />
+                            </div>
+
+                            <span className="flex items-center justify-center size-6 rounded-lg bg-muted text-[11px] font-bold font-mono text-muted-foreground shrink-0">
+                              {idx + 1}
+                            </span>
+
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-1.5">
+                                <p className="text-xs font-bold truncate text-foreground">
+                                  {lang === "bn" ? meta.nameBn : meta.nameEn}
+                                </p>
+                                <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-md border shrink-0 ${meta.bg}`}>
+                                  {meta.badge}
+                                </span>
+                              </div>
+                              <p className="text-[10px] text-muted-foreground truncate mt-0.5">
+                                {lang === "bn" ? meta.descBn : meta.descEn}
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-0.5 shrink-0">
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="ghost"
+                              disabled={idx === 0}
+                              onClick={() => moveKpiPosition(idx, idx - 1)}
+                              className="size-7 p-0 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg disabled:opacity-30 cursor-pointer"
+                              title={lang === "bn" ? "উপরে নিন" : "Move Up"}
+                            >
+                              <ChevronUp className="size-3.5" />
+                            </Button>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="ghost"
+                              disabled={idx === normalizeKpiOrderList(kpiConfig.order).length - 1}
+                              onClick={() => moveKpiPosition(idx, idx + 1)}
+                              className="size-7 p-0 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg disabled:opacity-30 cursor-pointer"
+                              title={lang === "bn" ? "নিচে নিন" : "Move Down"}
+                            >
+                              <ChevronDown className="size-3.5" />
+                            </Button>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               </Card>

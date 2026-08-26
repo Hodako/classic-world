@@ -9,7 +9,7 @@ import {
   DollarSign, Banknote, Users, Search, ChevronDown, ChevronUp, ArrowUpDown,
   Trash2, Plus, Calendar, BarChart3, LineChart as LineChartIcon, AreaChart as AreaChartIcon, CheckSquare, Square,
   Palette, Sparkles, LayoutGrid, SlidersHorizontal, Layers, Eye, EyeOff,
-  Truck, PackageCheck, CheckCircle2, XCircle, Clock
+  Truck, PackageCheck, CheckCircle2, XCircle, Clock, GripVertical, RotateCcw
 } from "lucide-react";
 import { useT } from "@/lib/i18n";
 import { getExpenses, getSales, getWithdrawals, getProducts, getParties, getReminders, getAllPayments, getAllPartyReceivables, getAllPartyPayables, getAllPayableSettlements, getPurchases, getSomiti } from "@/lib/queries";
@@ -466,23 +466,46 @@ export default function Dashboard() {
   // Best Selling Limit state
   const [bestSellingLimit, setBestSellingLimit] = useState(5);
 
-  // Helper to ensure total_sales, purchases and somiti exist in kpi order
+  // Helper to ensure all KPIs exist in kpi order
+  const DEFAULT_KPI_ORDER = [
+    "total_sales",
+    "cash_sale",
+    "credit_sale",
+    "online_sell",
+    "purchases",
+    "profit",
+    "loss",
+    "expense",
+    "due",
+    "cashbox",
+    "somiti",
+  ];
+
+  const KPI_METADATA: Record<
+    string,
+    { nameEn: string; nameBn: string; badge: string; bg: string }
+  > = {
+    total_sales: { nameEn: "Total Sales", nameBn: "আজকের মোট বিক্রয়", badge: "Total", bg: "bg-blue-500/10 border-blue-500/30 text-blue-600 dark:text-blue-400" },
+    cash_sale: { nameEn: "Cash Sale", nameBn: "নগদ বিক্রয়", badge: "Cash", bg: "bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-400" },
+    credit_sale: { nameEn: "Credit Sale", nameBn: "বাকি বিক্রয়", badge: "Credit", bg: "bg-amber-500/10 border-amber-500/30 text-amber-600 dark:text-amber-400" },
+    online_sell: { nameEn: "Online Sale", nameBn: "অনলাইন বিক্রয়", badge: "Online", bg: "bg-purple-500/10 border-purple-500/30 text-purple-600 dark:text-purple-400" },
+    purchases: { nameEn: "Purchases (BUY)", nameBn: "মাল ক্রয় (BUY)", badge: "Buy", bg: "bg-indigo-500/10 border-indigo-500/30 text-indigo-600 dark:text-indigo-400" },
+    profit: { nameEn: "Total Profit", nameBn: "মোট লাভ", badge: "Profit", bg: "bg-emerald-600/10 border-emerald-600/30 text-emerald-600 dark:text-emerald-400" },
+    loss: { nameEn: "Total Loss", nameBn: "মোট ক্ষতি", badge: "Loss", bg: "bg-rose-500/10 border-rose-500/30 text-rose-600 dark:text-rose-400" },
+    expense: { nameEn: "Total Expenses", nameBn: "মোট খরচ", badge: "Expense", bg: "bg-red-500/10 border-red-500/30 text-red-600 dark:text-red-400" },
+    due: { nameEn: "Customer Due", nameBn: "ক্রেতার বাকি", badge: "Due", bg: "bg-orange-500/10 border-orange-500/30 text-orange-600 dark:text-orange-400" },
+    cashbox: { nameEn: "Cashbox Balance", nameBn: "ক্যাশবক্স ব্যালেন্স", badge: "Cashbox", bg: "bg-teal-500/10 border-teal-500/30 text-teal-600 dark:text-teal-400" },
+    somiti: { nameEn: "Samity Savings", nameBn: "সমিতি ও সঞ্চয়", badge: "Samity", bg: "bg-cyan-500/10 border-cyan-500/30 text-cyan-600 dark:text-cyan-400" },
+  };
+
   const normalizeKpiOrder = (order?: string[]) => {
-    const defaultList = ["total_sales", "cash_sale", "credit_sale", "online_sell", "purchases", "profit", "loss", "expense", "due", "cashbox", "somiti"];
-    if (!order || !Array.isArray(order)) return defaultList;
+    const defaultList = [...DEFAULT_KPI_ORDER];
+    if (!order || !Array.isArray(order) || order.length === 0) return defaultList;
     const list = [...order];
-    if (!list.includes("total_sales")) list.unshift("total_sales");
-    if (!list.includes("purchases")) {
-      const idx = list.indexOf("online_sell");
-      if (idx !== -1) list.splice(idx + 1, 0, "purchases");
-      else list.push("purchases");
+    for (const key of defaultList) {
+      if (!list.includes(key)) list.push(key);
     }
-    if (!list.includes("somiti")) {
-      const idx = list.indexOf("cashbox");
-      if (idx !== -1) list.splice(idx + 1, 0, "somiti");
-      else list.push("somiti");
-    }
-    return list;
+    return list.filter(k => defaultList.includes(k));
   };
 
   // KPI Configuration state
@@ -495,18 +518,62 @@ export default function Dashboard() {
     borderStyle: "subtle",
     curve: "none",
     bentoGrid: true,
-    order: ["total_sales", "cash_sale", "credit_sale", "online_sell", "purchases", "profit", "loss", "expense", "due", "cashbox", "somiti"]
+    order: DEFAULT_KPI_ORDER,
   });
+
+  const [draggedKpiIdx, setDraggedKpiIdx] = useState<number | null>(null);
 
   const [bentoCustomizerOpen, setBentoCustomizerOpen] = useState(false);
 
   const updateKpiConfig = (newSettings: Partial<typeof kpiConfig>) => {
     setKpiConfig(prev => {
-      const updated = { ...prev, ...newSettings };
+      const updated = {
+        ...prev,
+        ...newSettings,
+        order: newSettings.order ? normalizeKpiOrder(newSettings.order) : prev.order,
+      };
       localStorage.setItem("hz_kpi_config", JSON.stringify(updated));
       window.dispatchEvent(new Event("hz-kpi-config-updated"));
       return updated;
     });
+  };
+
+  const moveKpiPosition = (fromIdx: number, toIdx: number) => {
+    const currentOrder = normalizeKpiOrder(kpiConfig.order);
+    if (toIdx < 0 || toIdx >= currentOrder.length) return;
+    const list = [...currentOrder];
+    const [movedItem] = list.splice(fromIdx, 1);
+    list.splice(toIdx, 0, movedItem);
+    updateKpiConfig({ order: list });
+    toast.success(lang === "bn" ? "KPI পজিশন সফলভাবে সাজানো হয়েছে" : "KPI position updated");
+  };
+
+  const handleKpiDragStart = (idx: number) => {
+    setDraggedKpiIdx(idx);
+  };
+
+  const handleKpiDragOver = (e: React.DragEvent, idx: number) => {
+    e.preventDefault();
+    if (draggedKpiIdx === null || draggedKpiIdx === idx) return;
+    const currentOrder = normalizeKpiOrder(kpiConfig.order);
+    const list = [...currentOrder];
+    const item = list[draggedKpiIdx];
+    list.splice(draggedKpiIdx, 1);
+    list.splice(idx, 0, item);
+    setDraggedKpiIdx(idx);
+    setKpiConfig(prev => ({ ...prev, order: list }));
+  };
+
+  const handleKpiDragEnd = () => {
+    setDraggedKpiIdx(null);
+    localStorage.setItem("hz_kpi_config", JSON.stringify(kpiConfig));
+    window.dispatchEvent(new Event("hz-kpi-config-updated"));
+    toast.success(lang === "bn" ? "KPI পজিশন সফলভাবে সাজানো হয়েছে!" : "KPI positions updated!");
+  };
+
+  const resetKpiToDefault = () => {
+    updateKpiConfig({ order: DEFAULT_KPI_ORDER });
+    toast.success(lang === "bn" ? "KPI ক্রম ডিফল্টে রিসেট করা হয়েছে" : "KPI order reset to default");
   };
 
   const sizesList = ["xxs", "xs", "small", "standard", "large", "xl"] as const;
@@ -2853,6 +2920,91 @@ export default function Dashboard() {
                     {sz.label}
                   </button>
                 ))}
+              </div>
+            </div>
+
+            {/* KPI Drag and Drop Reordering */}
+            <div className="space-y-2.5 pt-2 border-t border-border/50">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5 text-xs font-bold text-foreground">
+                  <ArrowUpDown className="size-3.5 text-primary" />
+                  <span>{lang === "bn" ? "কেপিআই কার্ডের অবস্থান ক্রম (ড্র্যাগ ও ড্রপ)" : "KPI Card Sequence (Drag & Drop)"}</span>
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  onClick={resetKpiToDefault}
+                  className="h-6 px-2 text-[10px] font-bold text-muted-foreground hover:text-foreground gap-1"
+                >
+                  <RotateCcw className="size-3" />
+                  <span>{lang === "bn" ? "ডিফল্ট ক্রম" : "Reset"}</span>
+                </Button>
+              </div>
+
+              <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
+                {normalizeKpiOrder(kpiConfig.order).map((kpiKey, idx) => {
+                  const meta = KPI_METADATA[kpiKey] || {
+                    nameEn: kpiKey,
+                    nameBn: kpiKey,
+                    badge: "KPI",
+                    bg: "bg-primary/10 border-primary/20 text-primary",
+                  };
+                  const isBeingDragged = draggedKpiIdx === idx;
+
+                  return (
+                    <div
+                      key={kpiKey}
+                      draggable
+                      onDragStart={() => handleKpiDragStart(idx)}
+                      onDragOver={(e) => handleKpiDragOver(e, idx)}
+                      onDragEnd={handleKpiDragEnd}
+                      className={`group flex items-center justify-between gap-2 p-2 rounded-xl border text-xs select-none transition-all cursor-grab active:cursor-grabbing ${
+                        isBeingDragged
+                          ? "opacity-50 border-primary bg-primary/15 shadow-sm"
+                          : "bg-background/70 hover:bg-background border-border/80 hover:border-primary/40 shadow-2xs"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 min-w-0 flex-1">
+                        <GripVertical className="size-3.5 text-muted-foreground group-hover:text-primary shrink-0" />
+                        <span className="size-5 rounded-md bg-muted text-[10px] font-bold font-mono flex items-center justify-center text-muted-foreground shrink-0">
+                          {idx + 1}
+                        </span>
+                        <span className="font-bold truncate text-foreground text-[11px]">
+                          {lang === "bn" ? meta.nameBn : meta.nameEn}
+                        </span>
+                        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border shrink-0 ${meta.bg}`}>
+                          {meta.badge}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-0.5 shrink-0">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          disabled={idx === 0}
+                          onClick={() => moveKpiPosition(idx, idx - 1)}
+                          className="size-6 p-0 text-muted-foreground hover:text-foreground rounded disabled:opacity-20 cursor-pointer"
+                          title={lang === "bn" ? "উপরে নিন" : "Move Up"}
+                        >
+                          <ChevronUp className="size-3.5" />
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          disabled={idx === normalizeKpiOrder(kpiConfig.order).length - 1}
+                          onClick={() => moveKpiPosition(idx, idx + 1)}
+                          className="size-6 p-0 text-muted-foreground hover:text-foreground rounded disabled:opacity-20 cursor-pointer"
+                          title={lang === "bn" ? "নিচে নিন" : "Move Down"}
+                        >
+                          <ChevronDown className="size-3.5" />
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           </div>

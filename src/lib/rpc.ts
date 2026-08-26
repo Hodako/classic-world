@@ -362,6 +362,7 @@ export const getRemindersFn = makeReadAction("getRemindersFn");
 
 // ─── Export Network-Only Auth/Writes ─────────────────────────────────────────
 export const loginFn = makeReadAction("loginFn");
+export const employeeLoginFn = makeReadAction("employeeLoginFn");
 export const registerFn = makeReadAction("registerFn");
 export const firebaseAuthSyncFn = makeReadAction("firebaseAuthSyncFn");
 export const logoutFn = makeReadAction("logoutFn");
@@ -374,11 +375,18 @@ export const createProfileFn = makeReadAction("createProfileFn");
 export const switchProfileFn = makeReadAction("switchProfileFn");
 export const importProfileModuleFn = makeReadAction("importProfileModuleFn");
 
+// Employee Management Actions
+export const listShopEmployeesFn = makeReadAction("listShopEmployeesFn");
+export const createShopEmployeeFn = makeWriteAction("createShopEmployeeFn");
+export const updateShopEmployeeFn = makeWriteAction("updateShopEmployeeFn");
+export const deleteShopEmployeeFn = makeWriteAction("deleteShopEmployeeFn");
+
 // ─── Export Offline-Supported Writes ─────────────────────────────────────────
 export const createProductFn = makeWriteAction("createProductFn");
 export const updateProductFn = makeWriteAction("updateProductFn");
 export const deleteProductFn = makeWriteAction("deleteProductFn");
 export const archiveProductFn = makeWriteAction("archiveProductFn");
+export const exchangeProductsFn = makeWriteAction("exchangeProductsFn");
 
 export const createPartyFn = makeWriteAction("createPartyFn");
 export const updatePartyFn = makeWriteAction("updatePartyFn");

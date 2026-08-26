@@ -49,8 +49,27 @@ export default function LossesPage() {
     }
   }
 
+  const parseDate = (dateInput: any): Date => {
+    if (!dateInput) return new Date(0);
+    if (typeof dateInput?.toDate === "function") return dateInput.toDate();
+    if (dateInput?.seconds !== undefined) return new Date(dateInput.seconds * 1000);
+    const d = new Date(dateInput);
+    return !isNaN(d.getTime()) ? d : new Date(0);
+  };
+
+  const calcLoss = (s: any) => {
+    if (s.profit !== undefined && s.profit !== null && !isNaN(Number(s.profit))) {
+      return Number(s.profit);
+    }
+    const sell = Number(s.sell_price) || 0;
+    const buy = Number(s.buy_price) || 0;
+    const qty = Number(s.qty) || 1;
+    const discount = Number(s.discount) || 0;
+    return (sell - buy) * qty - discount;
+  };
+
   const lostSales = useMemo(() => {
-    return data.filter(s => !s.returned && Number(s.profit) < 0);
+    return data.filter(s => !s.returned && calcLoss(s) < 0);
   }, [data]);
 
   const filteredLostSales = useMemo(() => {
@@ -66,24 +85,24 @@ export default function LossesPage() {
       } else if (range === "month") {
         limit = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
       }
-      result = result.filter(s => new Date(s.created_at) >= limit);
+      result = result.filter(s => parseDate(s.created_at) >= limit);
     }
 
     if (from) {
       const fromLimit = new Date(from);
-      result = result.filter(s => new Date(s.created_at) >= fromLimit);
+      result = result.filter(s => parseDate(s.created_at) >= fromLimit);
     }
     if (to) {
       const toLimit = new Date(to);
       toLimit.setHours(23, 59, 59, 999);
-      result = result.filter(s => new Date(s.created_at) <= toLimit);
+      result = result.filter(s => parseDate(s.created_at) <= toLimit);
     }
 
-    return result.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    return result.sort((a, b) => parseDate(b.created_at).getTime() - parseDate(a.created_at).getTime());
   }, [lostSales, range, from, to]);
 
   const totalLoss = useMemo(() => {
-    return filteredLostSales.reduce((a, s) => a + Math.abs(Number(s.profit)), 0);
+    return filteredLostSales.reduce((a, s) => a + Math.abs(calcLoss(s)), 0);
   }, [filteredLostSales]);
 
   const { items: paged, totalPages, safePage } = paginate(filteredLostSales, page, pageSize);

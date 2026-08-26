@@ -1,14 +1,13 @@
-const CACHE_NAME = "dreamfashion-v13";
+const CACHE_NAME = "classicworld-pwa-v30";
 
 const PRECACHE_ASSETS = [
-  "/",
   "/manifest.json",
   "/logo.png",
   "/icon-512.png",
   "/apple-touch-icon.png",
 ];
 
-// ── Install: Pre-cache core shell & images ───────────────────────────
+// ── Install: Pre-cache static assets & skip waiting ──────────────────────────
 self.addEventListener("install", (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then(async (cache) => {
@@ -27,13 +26,14 @@ self.addEventListener("install", (event) => {
   self.skipWaiting();
 });
 
-// ── Activate: Clean up old caches ────────────────────────────────────
+// ── Activate: Clean up all obsolete caches and claim clients immediately ─────
 self.addEventListener("activate", (event) => {
   event.waitUntil(
     caches.keys().then((keys) =>
       Promise.all(
         keys.map((key) => {
           if (key !== CACHE_NAME) {
+            console.log("[PWA SW] Clearing obsolete cache:", key);
             return caches.delete(key);
           }
         })
@@ -43,13 +43,20 @@ self.addEventListener("activate", (event) => {
   self.clients.claim();
 });
 
-// ── Fetch: Cache-First for static assets, Network-First for pages ───
+// ── Message Listener: Handle SKIP_WAITING from client ────────────────────────
+self.addEventListener("message", (event) => {
+  if (event.data && (event.data.type === "SKIP_WAITING" || event.data === "skipWaiting")) {
+    self.skipWaiting();
+  }
+});
+
+// ── Fetch Handler ────────────────────────────────────────────────────────────
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
 
   const url = new URL(event.request.url);
 
-  // Skip non-http, WebSockets, HMR and API routes
+  // Skip non-http, WebSockets, HMR and API RPC routes
   if (
     !url.protocol.startsWith("http") ||
     url.pathname.includes("/_next/webpack-hmr") ||
@@ -58,64 +65,85 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // Cache fonts, images, and static chunks Cache-First for instant loads
-  const isStaticAsset = (
-    url.pathname.startsWith("/_next/static/") ||
-    url.pathname.endsWith(".svg") ||
-    url.pathname.endsWith(".png") ||
-    url.pathname.endsWith(".jpg") ||
-    url.pathname.endsWith(".webp") ||
-    url.pathname.endsWith(".woff2") ||
-    url.pathname.endsWith(".woff") ||
-    url.pathname.endsWith(".ttf") ||
-    url.hostname.includes("fonts.googleapis.com") ||
-    url.hostname.includes("fonts.gstatic.com") ||
-    url.hostname.includes("banglawebfonts.pages.dev")
-  );
-
-  if (isStaticAsset) {
+  // 1. Navigation / HTML pages -> Always Network-First to get fresh chunk hashes
+  if (event.request.mode === "navigate") {
     event.respondWith(
-      caches.open(CACHE_NAME).then(async (cache) => {
-        try {
-          const cached = await cache.match(event.request);
-          if (cached) return cached;
-
-          const networkRes = await fetch(event.request);
+      fetch(event.request)
+        .then((networkRes) => {
           if (networkRes && networkRes.status === 200) {
-            cache.put(event.request, networkRes.clone());
+            const copy = networkRes.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
           }
           return networkRes;
-        } catch (_) {
-          return new Response("", { status: 408, statusText: "Request Timeout" });
-        }
+        })
+        .catch(async () => {
+          const cached = await caches.match(event.request);
+          if (cached) return cached;
+          return new Response("Offline", {
+            status: 503,
+            statusText: "Offline",
+            headers: { "Content-Type": "text/plain" },
+          });
+        })
+    );
+    return;
+  }
+
+  // 2. Next.js Static JS Chunks -> Fetch directly with network fallback
+  if (url.pathname.startsWith("/_next/static/")) {
+    event.respondWith(
+      fetch(event.request).catch(async () => {
+        const cached = await caches.match(event.request);
+        if (cached) return cached;
+        throw new Error("Chunk load failed from network");
       })
     );
     return;
   }
 
-  // Network-First with Cache fallback for pages & navigation
+  // 3. Static Media (Fonts, Images, Icons) -> Cache-First
+  const isMediaAsset =
+    url.pathname.endsWith(".svg") ||
+    url.pathname.endsWith(".png") ||
+    url.pathname.endsWith(".jpg") ||
+    url.pathname.endsWith(".jpeg") ||
+    url.pathname.endsWith(".webp") ||
+    url.pathname.endsWith(".ico") ||
+    url.pathname.endsWith(".woff2") ||
+    url.pathname.endsWith(".woff") ||
+    url.pathname.endsWith(".ttf") ||
+    url.hostname.includes("fonts.googleapis.com") ||
+    url.hostname.includes("fonts.gstatic.com") ||
+    url.hostname.includes("banglawebfonts.pages.dev");
+
+  if (isMediaAsset) {
+    event.respondWith(
+      caches.match(event.request).then((cached) => {
+        if (cached) return cached;
+        return fetch(event.request)
+          .then((networkRes) => {
+            if (networkRes && networkRes.status === 200) {
+              const copy = networkRes.clone();
+              caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+            }
+            return networkRes;
+          })
+          .catch(() => new Response("", { status: 408, statusText: "Offline" }));
+      })
+    );
+    return;
+  }
+
+  // 4. Default: Network-First
   event.respondWith(
     fetch(event.request)
       .then((networkRes) => {
         if (networkRes && networkRes.status === 200) {
-          const clone = networkRes.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+          const copy = networkRes.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
         }
         return networkRes;
       })
-      .catch(async () => {
-        try {
-          const cache = await caches.open(CACHE_NAME);
-          const cached = await cache.match(event.request);
-          if (cached) return cached;
-          const fallback = await cache.match("/");
-          if (fallback) return fallback;
-        } catch (_) {}
-        return new Response("Offline", {
-          status: 503,
-          statusText: "Service Unavailable",
-          headers: { "Content-Type": "text/plain" }
-        });
-      })
+      .catch(() => caches.match(event.request))
   );
 });

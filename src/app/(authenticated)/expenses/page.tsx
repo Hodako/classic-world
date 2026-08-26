@@ -157,9 +157,17 @@ export default function ExpensesPage() {
   const pageSize = isMobile ? 12 : 20;
 
   // Date Filtering logic
-  const inDateRange = (dateStr: string) => {
-    if (!dateStr) return false;
-    const d = new Date(dateStr);
+  const inDateRange = (dateInput: any) => {
+    if (!dateInput) return false;
+    let d: Date;
+    if (typeof dateInput?.toDate === "function") {
+      d = dateInput.toDate();
+    } else if (dateInput?.seconds !== undefined) {
+      d = new Date(dateInput.seconds * 1000);
+    } else {
+      d = new Date(dateInput);
+    }
+    if (isNaN(d.getTime())) return false;
     const now = new Date();
 
     if (range === "today") {
@@ -180,7 +188,7 @@ export default function ExpensesPage() {
       return d >= monthStart;
     }
     if (range === "custom") {
-      const ds = dateStr.slice(0, 10);
+      const ds = d.toLocaleDateString("en-CA");
       return ds >= customFrom && ds <= customTo;
     }
     return true; // all

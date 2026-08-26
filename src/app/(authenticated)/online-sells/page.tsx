@@ -110,7 +110,15 @@ export default function OnlineSellsPage() {
       }),
     ];
 
-    result.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    const parseDate = (dateInput: any): Date => {
+      if (!dateInput) return new Date(0);
+      if (typeof dateInput?.toDate === "function") return dateInput.toDate();
+      if (dateInput?.seconds !== undefined) return new Date(dateInput.seconds * 1000);
+      const d = new Date(dateInput);
+      return !isNaN(d.getTime()) ? d : new Date(0);
+    };
+
+    result.sort((a, b) => parseDate(b.created_at).getTime() - parseDate(a.created_at).getTime());
     return result;
   }, [onlineSales]);
 

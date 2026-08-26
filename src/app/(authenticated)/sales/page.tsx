@@ -144,7 +144,15 @@ function groupSales(sales: Sale[]): GroupedSale[] {
     });
   });
 
-  grouped.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  function parseSaleDate(dateInput: any): Date {
+    if (!dateInput) return new Date(0);
+    if (typeof dateInput?.toDate === "function") return dateInput.toDate();
+    if (dateInput?.seconds !== undefined) return new Date(dateInput.seconds * 1000);
+    const d = new Date(dateInput);
+    return !isNaN(d.getTime()) ? d : new Date(0);
+  }
+
+  grouped.sort((a, b) => parseSaleDate(b.created_at).getTime() - parseSaleDate(a.created_at).getTime());
   return grouped;
 }
 
@@ -227,9 +235,17 @@ export default function SalesPage() {
   }, [rawSales]);
 
   // Date Filtering Logic
-  const inDateRange = (dateStr: string) => {
-    if (!dateStr) return false;
-    const d = new Date(dateStr);
+  const inDateRange = (dateInput: any) => {
+    if (!dateInput) return false;
+    let d: Date;
+    if (typeof dateInput?.toDate === "function") {
+      d = dateInput.toDate();
+    } else if (dateInput?.seconds !== undefined) {
+      d = new Date(dateInput.seconds * 1000);
+    } else {
+      d = new Date(dateInput);
+    }
+    if (isNaN(d.getTime())) return false;
     const now = new Date();
 
     if (dateRange === "today") {

@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Providers } from "./providers";
 import { PwaInstallPrompt } from "@/components/pwa-install-prompt";
+import { PwaAutoUpdater } from "@/components/pwa-auto-updater";
 import "../styles.css";
 
 export const metadata: Metadata = {
@@ -128,6 +129,7 @@ export default function RootLayout({
           <Providers>
             {children}
             <PwaInstallPrompt />
+            <PwaAutoUpdater />
           </Providers>
         </div>
       </body>

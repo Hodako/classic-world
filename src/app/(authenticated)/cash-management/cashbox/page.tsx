@@ -113,15 +113,23 @@ export default function CashboxDetailsPage() {
     return { from: start, to: end };
   }, [range, startDate, endDate]);
 
+  const parseEntryDate = (dateInput: any): Date => {
+    if (!dateInput) return new Date(0);
+    if (typeof dateInput?.toDate === "function") return dateInput.toDate();
+    if (dateInput?.seconds !== undefined) return new Date(dateInput.seconds * 1000);
+    const d = new Date(dateInput);
+    return !isNaN(d.getTime()) ? d : new Date(0);
+  };
+
   const filtered = useMemo(() => {
     return entries
       .filter(e => {
-        const dt = new Date(e.created_at);
+        const dt = parseEntryDate(e.created_at);
         if (dt < from || dt > to) return false;
         if (filterKind !== "all" && e.kind !== filterKind) return false;
         return true;
       })
-      .sort((a, b) => +new Date(b.created_at) - +new Date(a.created_at));
+      .sort((a, b) => +parseEntryDate(b.created_at) - +parseEntryDate(a.created_at));
   }, [entries, from, to, filterKind]);
 
   const periodIn = filtered.filter(e => e.kind === "deposit" || e.kind === "sale").reduce((a, e) => a + Number(e.amount), 0);

@@ -37,8 +37,17 @@ function startOfRange(range: Range) {
   return d;
 }
 
-function inRange(dateStr: string, range: Range, from?: string, to?: string) {
-  const d = new Date(dateStr);
+function inRange(dateInput: any, range: Range, from?: string, to?: string) {
+  if (!dateInput) return false;
+  let d: Date;
+  if (typeof dateInput?.toDate === "function") {
+    d = dateInput.toDate();
+  } else if (dateInput?.seconds !== undefined) {
+    d = new Date(dateInput.seconds * 1000);
+  } else {
+    d = new Date(dateInput);
+  }
+  if (isNaN(d.getTime())) return false;
   if (from && d < new Date(from)) return false;
   if (to && d > new Date(to + "T23:59:59")) return false;
   return d >= startOfRange(range);

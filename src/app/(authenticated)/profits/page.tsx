@@ -23,9 +23,16 @@ import {
 
 type Range = "today" | "yesterday" | "week" | "this_month" | "last_month" | "month" | "all";
 
-function inRange(dateStr: string, range: Range, from?: string, to?: string) {
-  if (!dateStr) return false;
-  const d = new Date(dateStr);
+function inRange(dateInput: any, range: Range, from?: string, to?: string) {
+  if (!dateInput) return false;
+  let d: Date;
+  if (typeof dateInput?.toDate === "function") {
+    d = dateInput.toDate();
+  } else if (dateInput?.seconds !== undefined) {
+    d = new Date(dateInput.seconds * 1000);
+  } else {
+    d = new Date(dateInput);
+  }
   if (isNaN(d.getTime())) return false;
 
   if (from) {

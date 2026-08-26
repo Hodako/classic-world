@@ -47,7 +47,7 @@ export default function AuthPage() {
     }
   }, [user, loading, router, mounted]);
 
-  if (!mounted || loading || user) return <SpeedLoader />;
+  if (!mounted || user) return <SpeedLoader />;
 
   function afterAuth(u: AuthUser | null) {
     if (!u) return;

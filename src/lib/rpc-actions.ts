@@ -8,7 +8,23 @@ import { requestStore } from "@/lib/request-store";
 import type { PermissionSet } from "@/lib/permissions";
 import { DEFAULT_EMPLOYEE_PERMISSIONS, OWNER_PERMISSIONS } from "@/lib/permissions";
 import { appendRowToGoogleSheet, bulkExportToGoogleSheets } from "@/lib/google-sheets";
-import { sendSingleSms, sendBroadcastSms, sendDynamicSms, checkSmsBalance, lookupDlrStatus, calculateSmsParts, type MiMSMSResponse } from "@/lib/mimsms";
+import {
+  sendSingleSms,
+  sendBroadcastSms,
+  sendDynamicSms,
+  checkSmsBalance,
+  lookupDlrStatus,
+  calculateSmsParts,
+  sanitizeBdPhoneNumber,
+  type MiMSMSResponse
+} from "@/lib/mimsms";
+import {
+  getWhatsAppStatus,
+  startWhatsAppSession,
+  disconnectWhatsAppSession,
+  sendWhatsAppMessage,
+  sendWhatsAppCampaign,
+} from "@/lib/whatsapp-baileys";
 
 type CashboxKind = "deposit" | "withdraw" | "sale" | "expense";
 
@@ -204,6 +220,7 @@ export async function loginFn(input: { data: { email?: string; phone?: string; i
             { phone: cleanPhone },
             { phone: cleanPhone.startsWith("88") ? cleanPhone : `88${cleanPhone}` },
             { phone: cleanPhone.startsWith("880") ? cleanPhone.slice(2) : cleanPhone },
+            { phone: cleanPhone.startsWith("88") ? cleanPhone.slice(2) : cleanPhone },
           ]
         : [{ phone: cleanId }]),
     ],
@@ -216,6 +233,60 @@ export async function loginFn(input: { data: { email?: string; phone?: string; i
   }
 
   const token = await signToken({ userId: user._id as any as string, email: (user.email as string) || cleanId, role: (user.role as string) || "owner" });
+  const cookieStore = await cookies();
+  cookieStore.set("token", token, { maxAge: 30 * 24 * 60 * 60, httpOnly: true, sameSite: "lax", path: "/" });
+  const mapped = await mapUser(db, user._id as any as string);
+  return { user: mapped, token };
+}
+
+export async function employeeLoginFn(input: { data: { username: string; password: string } }) {
+  const { data } = input;
+  const db = await getDb();
+  const identifier = (data.username || "").trim().toLowerCase();
+  if (!identifier || !data.password) {
+    const err = new Error("Employee username/phone/email and password are required");
+    (err as any).statusCode = 400;
+    throw err;
+  }
+
+  const cleanPhone = identifier.replace(/[^0-9]/g, "");
+
+  // Support login via username, phone, or email
+  const user = await db.collection("users").findOne({
+    role: "employee",
+    $or: [
+      { username: identifier },
+      { phone: identifier },
+      { email: identifier },
+      ...(cleanPhone.length >= 10
+        ? [
+            { phone: cleanPhone },
+            { phone: cleanPhone.startsWith("88") ? cleanPhone : `88${cleanPhone}` },
+            { phone: cleanPhone.startsWith("880") ? cleanPhone.slice(2) : cleanPhone },
+          ]
+        : []),
+    ],
+  });
+
+  if (!user || !(await comparePassword(data.password, user.password as string, user.plain_password as string))) {
+    const err = new Error("Invalid employee username, phone or password");
+    (err as any).statusCode = 401;
+    throw err;
+  }
+
+  if (user.is_active === false || user.status === "frozen" || user.status === "suspended") {
+    const err = new Error("Employee account is currently inactive. Please contact your shop owner.");
+    (err as any).statusCode = 403;
+    throw err;
+  }
+
+  // Update last login timestamp
+  await db.collection("users").updateOne(
+    { _id: user._id as any },
+    { $set: { last_login_at: new Date().toISOString() } }
+  );
+
+  const token = await signToken({ userId: user._id as any as string, email: (user.email as string) || identifier, role: "employee" });
   const cookieStore = await cookies();
   cookieStore.set("token", token, { maxAge: 30 * 24 * 60 * 60, httpOnly: true, sameSite: "lax", path: "/" });
   const mapped = await mapUser(db, user._id as any as string);
@@ -272,7 +343,7 @@ export async function registerFn(input: { data: { email?: string; phone?: string
       throw new Error("Please enter a valid phone number (at least 10 digits)");
     }
     cleanPhone = rawId;
-    cleanEmail = `${digits}@classicworld.internal`;
+    cleanEmail = `${digits}@hakimqzz.internal`;
   }
 
   const db = await getDb();
@@ -291,7 +362,7 @@ export async function registerFn(input: { data: { email?: string; phone?: string
   const userId = crypto.randomUUID();
   const businessId = crypto.randomUUID();
   const now = new Date().toISOString();
-  const shopName = sanitizeInput(data.fullName ? `${data.fullName}'s Shop` : "Classic World Store");
+  const shopName = sanitizeInput(data.fullName ? `${data.fullName}'s Shop` : "HakimQzz Store");
 
   // Create default business for new user with starter 0 SMS credits
   await db.collection("businesses").insertOne({
@@ -357,7 +428,7 @@ export async function firebaseAuthSyncFn(input: { data: { email: string; fullNam
     userId = crypto.randomUUID();
     const businessId = crypto.randomUUID();
     const now = new Date().toISOString();
-    const shopName = sanitizeInput(data.fullName ? `${data.fullName}'s Shop` : "Classic World Store");
+    const shopName = sanitizeInput(data.fullName ? `${data.fullName}'s Shop` : "HakimQzz Store");
 
     await db.collection("businesses").insertOne({
       _id: businessId as any,
@@ -823,6 +894,7 @@ export async function cancelCourierOrderFn(input: { data: { id: string } }) {
         $set: {
           courier_status: "cancelled",
           returned: true,
+          profit: 0,
           cancelled_at: nowStr,
           updated_at: nowStr,
         }
@@ -1240,6 +1312,130 @@ export async function deleteReturnFn(input: { data: { id: string } }) {
     console.error("Error in deleteReturnFn:", err);
     return { success: false, error: err.message || String(err) };
   }
+}
+
+export async function exchangeProductsFn(input: {
+  data: {
+    returned_product_id: string;
+    returned_qty: number;
+    returned_price: number;
+    new_product_id: string;
+    new_qty: number;
+    new_sell_price: number;
+    party_id?: string | null;
+    customer_name?: string | null;
+    note?: string | null;
+  };
+}) {
+  const { data } = input;
+  const session = await requireSession();
+  const db = await getDb();
+
+  const returnedProduct = await db.collection("products").findOne({ _id: data.returned_product_id as any, owner_id: session.ownerId });
+  if (!returnedProduct) throw new Error("Returned product not found");
+
+  const newProduct = await db.collection("products").findOne({ _id: data.new_product_id as any, owner_id: session.ownerId });
+  if (!newProduct) throw new Error("New product chosen for exchange not found");
+
+  const retQty = Number(data.returned_qty) || 1;
+  const newQty = Number(data.new_qty) || 1;
+  const retPrice = Number(data.returned_price) || Number(returnedProduct.sell_price) || 0;
+  const newPrice = Number(data.new_sell_price) || Number(newProduct.sell_price) || 0;
+
+  // Check if new product has sufficient stock
+  const currentNewStock = (newProduct.stock as number) ?? 0;
+  if (currentNewStock < newQty) {
+    throw new Error(`Insufficient stock for ${newProduct.name}. Available: ${currentNewStock}`);
+  }
+
+  // 1. Restock the returned product
+  await db.collection("products").updateOne(
+    { _id: returnedProduct._id },
+    { $inc: { stock: retQty } }
+  );
+
+  // 2. Reduce stock of the newly taken product
+  await db.collection("products").updateOne(
+    { _id: newProduct._id },
+    { $inc: { stock: -newQty } }
+  );
+
+  const totalReturnedValue = retPrice * retQty;
+  const totalNewValue = newPrice * newQty;
+  const cashDifference = totalNewValue - totalReturnedValue;
+
+  const now = new Date().toISOString();
+  const exchangeId = crypto.randomUUID();
+
+  // 3. Record the exchange transaction in "returns" and "sales"
+  const returnRecord = {
+    _id: `ex_ret_${exchangeId}` as any,
+    owner_id: session.ownerId,
+    exchange_id: exchangeId,
+    product_id: returnedProduct._id,
+    product_name: returnedProduct.name,
+    qty: retQty,
+    return_price: retPrice,
+    amount: totalReturnedValue,
+    note: `Exchange for ${newProduct.name}${data.note ? ` (${data.note})` : ""}`,
+    created_at: now,
+  };
+  await db.collection("returns").insertOne(returnRecord as any);
+
+  // Profit calculation for the newly taken item:
+  const newBuyPrice = Number(newProduct.buy_price) || 0;
+  const newProfit = (newPrice - newBuyPrice) * newQty;
+
+  const saleRecord = {
+    _id: `ex_sale_${exchangeId}` as any,
+    owner_id: session.ownerId,
+    exchange_id: exchangeId,
+    product_id: newProduct._id,
+    product_name: `${newProduct.name} [Exchanged with ${returnedProduct.name}]`,
+    qty: newQty,
+    buy_price: newBuyPrice,
+    sell_price: newPrice,
+    profit: newProfit,
+    type: "exchange",
+    party_id: data.party_id || null,
+    paid_amount: totalNewValue,
+    due_amount: 0,
+    note: `Exchange adjustment: Returned ${returnedProduct.name} (Value: ৳${totalReturnedValue}). Cash diff: ৳${cashDifference >= 0 ? `+${cashDifference}` : cashDifference}`,
+    created_at: now,
+  };
+  await db.collection("sales").insertOne(saleRecord as any);
+
+  // 4. Adjust Cashbox
+  if (cashDifference > 0) {
+    // Customer pays the difference -> Inflow
+    await insertCashboxEntry(db, session.ownerId, {
+      kind: "deposit",
+      amount: cashDifference,
+      note: `Product Exchange Cash Inflow: Returned ${returnedProduct.name}, Took ${newProduct.name} (INV-${exchangeId.slice(-6).toUpperCase()})`,
+      ref_id: exchangeId,
+      created_at: now,
+    });
+  } else if (cashDifference < 0) {
+    // Shop refunds difference to customer -> Outflow
+    const refundAmt = Math.abs(cashDifference);
+    await insertCashboxEntry(db, session.ownerId, {
+      kind: "withdraw",
+      amount: refundAmt,
+      note: `Product Exchange Refund Outflow: Returned ${returnedProduct.name}, Took ${newProduct.name} (INV-${exchangeId.slice(-6).toUpperCase()})`,
+      ref_id: exchangeId,
+      created_at: now,
+    });
+  }
+
+  return {
+    success: true,
+    exchangeId,
+    returnedProduct: returnedProduct.name,
+    newProduct: newProduct.name,
+    cashDifference,
+    totalReturnedValue,
+    totalNewValue,
+  };
 }
 
 // ─── Purchases ───────────────────────────────────────────────────────────────
@@ -2819,13 +3015,10 @@ async function triggerAutoPurchaseSms(
   try {
     if (!sale.party_id) return;
     const smsSettings = await db.collection("sms_settings").findOne({ owner_id: ownerId });
-    if (
-      !smsSettings ||
-      !smsSettings.customer_sms_after_purchase ||
-      !smsSettings.apiKey ||
-      !smsSettings.userName ||
-      !smsSettings.senderName
-    ) {
+    const business = await db.collection("businesses").findOne({ owner_id: ownerId });
+    
+    const isAutoSmsEnabled = Boolean(smsSettings?.customer_sms_after_purchase ?? business?.customer_sms_after_purchase);
+    if (!isAutoSmsEnabled) {
       return;
     }
 
@@ -2836,7 +3029,6 @@ async function triggerAutoPurchaseSms(
     }
     if (!party || !party.phone) return;
 
-    const business = await db.collection("businesses").findOne({ owner_id: ownerId });
     const shopName = business?.name || "Dream Fashion";
 
     const platform = await db.collection("platform_settings").findOne({ _id: "global" as any });
@@ -2857,7 +3049,7 @@ async function triggerAutoPurchaseSms(
     const invoiceId = sale.id.slice(0, 8).toUpperCase();
 
     const template =
-      smsSettings.purchase_sms_template ||
+      smsSettings?.purchase_sms_template ||
       business?.purchase_sms_template ||
       "Dear {customer_name}, thanks for shopping with {shop_name}! Items: {product_name} x{qty}, Total: Tk {total_amount}, Paid: Tk {paid_amount}, Due: Tk {due_amount}. Inv #{invoice_id}.";
 
@@ -2871,7 +3063,13 @@ async function triggerAutoPurchaseSms(
       .replace(/{due_amount}/g, String(dueAmount))
       .replace(/{invoice_id}/g, invoiceId);
 
-    let result: MiMSMSResponse = { statusCode: "200", status: "Success" };
+    let result: MiMSMSResponse = {
+      statusCode: "400",
+      status: "Failed",
+      responseResult: "Master SMS Gateway credentials are not configured.",
+      isSuccess: false,
+    };
+
     if (apiKey && userName) {
       result = await sendSingleSms({
         apiKey,
@@ -2884,7 +3082,9 @@ async function triggerAutoPurchaseSms(
       });
     }
 
-    if (result.status === "Success" || result.statusCode === "200") {
+    const isDelivered = Boolean(result.isSuccess && (result.status === "Success" || result.statusCode === "200"));
+
+    if (isDelivered) {
       await db.collection("businesses").updateOne(
         { owner_id: ownerId },
         { $inc: { sms_credits: -1 } }
@@ -2897,12 +3097,12 @@ async function triggerAutoPurchaseSms(
       owner_id: ownerId,
       recipient_type: "auto_purchase",
       recipient_count: 1,
-      credits_deducted: 1,
-      remaining_credits: Math.max(0, currentCredits - 1),
+      credits_deducted: isDelivered ? 1 : 0,
+      remaining_credits: isDelivered ? Math.max(0, currentCredits - 1) : currentCredits,
       recipients_summary: `${customerName} (${party.phone})`,
       message,
       trxn_ids: result.trxnId ? [result.trxnId] : [],
-      status: result.status === "Success" || result.statusCode === "200" ? "Success" : "Failed",
+      status: isDelivered ? "Success" : "Failed",
       response_summary: result.responseResult || result.status,
       created_at: new Date().toISOString(),
     } as any);
@@ -3090,53 +3290,49 @@ export async function sendSmsCampaignFn(input: {
   }
 
   const transactionType = data.transactionType || "T";
+
+  if (!apiKey || !userName) {
+    throw new Error(
+      "SMS Gateway is not configured. Please configure your MiMSMS API Key and Username in Master Gateway settings."
+    );
+  }
+
   let results: MiMSMSResponse[] = [];
   const trxnIds: string[] = [];
 
-  if (apiKey && userName) {
-    if (data.isPersonalized) {
-      const dynamicData = recipients.map((r) => {
-        const personalMsg = data.message
-          .replace(/{name}/g, r.name)
-          .replace(/{customer_name}/g, r.name)
-          .replace(/{supplier_name}/g, r.name)
-          .replace(/{shop_name}/g, shopName);
-        return {
-          mobileNumber: r.phone,
-          message: personalMsg,
-        };
-      });
+  if (data.isPersonalized) {
+    const dynamicData = recipients.map((r) => {
+      const personalMsg = data.message
+        .replace(/{name}/g, r.name)
+        .replace(/{customer_name}/g, r.name)
+        .replace(/{supplier_name}/g, r.name)
+        .replace(/{shop_name}/g, shopName);
+      return {
+        mobileNumber: r.phone,
+        message: personalMsg,
+      };
+    });
 
-      results = await sendDynamicSms({
-        apiKey,
-        userName,
-        senderName,
-        smsData: dynamicData,
-        transactionType,
-      });
-    } else {
-      const numbers = recipients.map((r) => r.phone);
-      const finalMsg = data.message.replace(/{shop_name}/g, shopName);
-
-      results = await sendBroadcastSms({
-        apiKey,
-        userName,
-        senderName,
-        numbers,
-        message: finalMsg,
-        transactionType,
-        campaignId: data.campaignTitle || "campaign",
-      });
-    }
+    results = await sendDynamicSms({
+      apiKey,
+      userName,
+      senderName,
+      smsData: dynamicData,
+      transactionType,
+    });
   } else {
-    // Simulated delivery when master key not yet entered
-    results = [
-      {
-        statusCode: "200",
-        status: "Success",
-        responseResult: "Simulated Dispatch (Gateway active)",
-      },
-    ];
+    const numbers = recipients.map((r) => r.phone);
+    const finalMsg = data.message.replace(/{shop_name}/g, shopName);
+
+    results = await sendBroadcastSms({
+      apiKey,
+      userName,
+      senderName,
+      numbers,
+      message: finalMsg,
+      transactionType,
+      campaignId: data.campaignTitle || "campaign",
+    });
   }
 
   let successCount = 0;
@@ -3144,7 +3340,7 @@ export async function sendSmsCampaignFn(input: {
   let summary = "";
 
   for (const res of results) {
-    if (res.status === "Success" || res.statusCode === "200") {
+    if (res.isSuccess && (res.status === "Success" || res.status === "Scheduled" || res.statusCode === "200")) {
       successCount++;
       if (res.trxnId) trxnIds.push(res.trxnId);
     } else {
@@ -3157,10 +3353,11 @@ export async function sendSmsCampaignFn(input: {
 
   const finalStatus = failCount === 0 ? "Success" : successCount > 0 ? "Partial" : "Failed";
 
-  // Deduct credits if sent
+  // Only deduct credits if SMS was actually accepted by MiMSMS
   let remainingCredits = currentCredits;
   if (finalStatus !== "Failed") {
-    remainingCredits = Math.max(0, currentCredits - requiredCredits);
+    const actualDeducted = Math.min(requiredCredits, successCount * Math.max(1, parts));
+    remainingCredits = Math.max(0, currentCredits - actualDeducted);
     await db.collection("businesses").updateOne(
       { owner_id: session.ownerId },
       { $set: { sms_credits: remainingCredits } }
@@ -3173,7 +3370,7 @@ export async function sendSmsCampaignFn(input: {
     owner_id: session.ownerId,
     recipient_type: data.recipientType,
     recipient_count: recipients.length,
-    credits_deducted: requiredCredits,
+    credits_deducted: finalStatus !== "Failed" ? requiredCredits : 0,
     remaining_credits: remainingCredits,
     recipients_summary:
       recipients.length <= 3
@@ -3188,8 +3385,12 @@ export async function sendSmsCampaignFn(input: {
     created_at: new Date().toISOString(),
   } as any);
 
+  if (finalStatus === "Failed") {
+    throw new Error(summary || "MiMSMS rejected the request. Please check recipient number or gateway settings.");
+  }
+
   return {
-    success: finalStatus !== "Failed",
+    success: true,
     status: finalStatus,
     recipientCount: recipients.length,
     creditsDeducted: requiredCredits,
@@ -3288,6 +3489,201 @@ export async function dismissAdminPopupFn(input: { data: { popupId: string } }) 
   return { success: true };
 }
 
+// ─── Shop-Level Employee Management ──────────────────────────────────────────
+
+export async function listShopEmployeesFn() {
+  const session = await requireSession();
+  if (session.role === "employee") {
+    throw new Error("Access denied: Employees cannot manage employee accounts");
+  }
+  const db = await getDb();
+  const employees = await db
+    .collection("users")
+    .find({ owner_id: session.ownerId, role: "employee" })
+    .sort({ created_at: -1 })
+    .toArray();
+
+  return employees.map((emp) => ({
+    id: emp._id as any as string,
+    full_name: (emp.full_name as string) || "",
+    username: (emp.username as string) || "",
+    phone: (emp.phone as string) || "",
+    email: (emp.email as string) || "",
+    designation: (emp.designation as string) || "Sales Staff",
+    permissions: (emp.permissions as PermissionSet) || DEFAULT_EMPLOYEE_PERMISSIONS,
+    is_active: emp.is_active !== false,
+    created_at: (emp.created_at as string) || "",
+    last_login_at: (emp.last_login_at as string) || "",
+  }));
+}
+
+export async function createShopEmployeeFn(input: {
+  data: {
+    fullName: string;
+    username: string;
+    phone?: string;
+    email?: string;
+    password: string;
+    designation?: string;
+    permissions?: PermissionSet;
+  };
+}) {
+  const { data } = input;
+  const session = await requireSession();
+  if (session.role === "employee") {
+    throw new Error("Access denied: Only shop owners can create employee accounts");
+  }
+  const db = await getDb();
+
+  const fullName = (data.fullName || "").trim();
+  const username = (data.username || "").trim().toLowerCase().replace(/\s+/g, "");
+  const phone = (data.phone || data.username || "").trim();
+  const password = (data.password || "").trim();
+  const designation = (data.designation || "").trim() || "Sales Staff";
+
+  if (!fullName) {
+    throw new Error("Employee full name is required");
+  }
+  if (!username || username.length < 3) {
+    throw new Error("Username/phone must be at least 3 characters");
+  }
+  if (!password || password.length < 4) {
+    throw new Error("Password must be at least 4 characters");
+  }
+
+  // Check unique username or phone within this shop (or globally)
+  const existing = await db.collection("users").findOne({
+    $or: [
+      { username: username },
+      { email: `${username}@employee.local` },
+      ...(data.email ? [{ email: data.email.trim().toLowerCase() }] : []),
+    ],
+  });
+
+  if (existing) {
+    throw new Error(`An account with username '${username}' already exists. Please choose a different username.`);
+  }
+
+  const passwordHash = await hashPassword(password);
+  const employeeId = crypto.randomUUID();
+
+  const ownerUser = await db.collection("users").findOne({ _id: session.userId as any });
+  const biz = await db.collection("businesses").findOne({ owner_id: session.ownerId });
+
+  const employeeDoc = {
+    _id: employeeId as any,
+    owner_id: session.ownerId,
+    business_id: (biz?._id as any as string) || session.businessId,
+    business_name: biz?.name || ownerUser?.business_name || "Dream Fashion",
+    role: "employee",
+    full_name: fullName,
+    username: username,
+    phone: phone,
+    email: data.email?.trim().toLowerCase() || `${username}@employee.local`,
+    designation: designation,
+    password_hash: passwordHash,
+    password: passwordHash,
+    permissions: data.permissions || DEFAULT_EMPLOYEE_PERMISSIONS,
+    is_active: true,
+    activated: true,
+    status: "active",
+    created_at: new Date().toISOString(),
+  };
+
+  await db.collection("users").insertOne(employeeDoc as any);
+
+  return {
+    success: true,
+    employee: {
+      id: employeeId,
+      full_name: fullName,
+      username: username,
+      phone: phone,
+      email: employeeDoc.email,
+      designation: designation,
+      permissions: employeeDoc.permissions,
+      is_active: true,
+      created_at: employeeDoc.created_at,
+    },
+  };
+}
+
+export async function updateShopEmployeeFn(input: {
+  data: {
+    employeeId: string;
+    fullName?: string;
+    phone?: string;
+    designation?: string;
+    password?: string;
+    permissions?: PermissionSet;
+    isActive?: boolean;
+  };
+}) {
+  const { data } = input;
+  const session = await requireSession();
+  if (session.role === "employee") {
+    throw new Error("Access denied: Only shop owners can update employee accounts");
+  }
+  const db = await getDb();
+
+  const employee = await db.collection("users").findOne({
+    _id: data.employeeId as any,
+    owner_id: session.ownerId,
+    role: "employee",
+  });
+
+  if (!employee) {
+    throw new Error("Employee not found in your business");
+  }
+
+  const updateFields: any = {
+    updated_at: new Date().toISOString(),
+  };
+
+  if (data.fullName !== undefined) updateFields.full_name = data.fullName.trim();
+  if (data.phone !== undefined) updateFields.phone = data.phone.trim();
+  if (data.designation !== undefined) updateFields.designation = data.designation.trim();
+  if (data.permissions !== undefined) updateFields.permissions = data.permissions;
+  if (data.isActive !== undefined) {
+    updateFields.is_active = Boolean(data.isActive);
+    updateFields.status = data.isActive ? "active" : "frozen";
+  }
+
+  if (data.password && data.password.trim().length >= 4) {
+    const newHash = await hashPassword(data.password.trim());
+    updateFields.password_hash = newHash;
+    updateFields.password = newHash;
+  }
+
+  await db.collection("users").updateOne(
+    { _id: data.employeeId as any },
+    { $set: updateFields }
+  );
+
+  return { success: true };
+}
+
+export async function deleteShopEmployeeFn(input: { data: { employeeId: string } }) {
+  const { data } = input;
+  const session = await requireSession();
+  if (session.role === "employee") {
+    throw new Error("Access denied: Only shop owners can delete employee accounts");
+  }
+  const db = await getDb();
+
+  const res = await db.collection("users").deleteOne({
+    _id: data.employeeId as any,
+    owner_id: session.ownerId,
+    role: "employee",
+  });
+
+  if (res.deletedCount === 0) {
+    throw new Error("Employee not found or already removed");
+  }
+
+  return { success: true };
+}
+
 // ─── Employee Email Invitations & Joining System ──────────────────────────────
 
 export async function inviteEmployeeByEmailFn(input: {
@@ -3318,9 +3714,10 @@ export async function inviteEmployeeByEmailFn(input: {
 
   const ownerUser = await db.collection("users").findOne({ _id: session.userId as any });
   const biz = await db.collection("businesses").findOne({ owner_id: session.ownerId });
-  const businessName = biz?.name || ownerUser?.business_name || "Classic World";
+  const businessName = biz?.name || ownerUser?.business_name || "Dream Fashion";
   const businessId = (biz?._id as any as string) || session.businessId || session.ownerId;
 
+  // Check if this email is already an active employee in this business
   const existingEmployee = await db.collection("users").findOne({
     $or: [
       { email: cleanEmail },
@@ -3335,6 +3732,7 @@ export async function inviteEmployeeByEmailFn(input: {
     throw new Error(`User '${cleanEmail}' is already an employee of ${businessName}`);
   }
 
+  // Cancel any existing pending invitation for this email and business
   await db.collection("employee_invitations").deleteMany({
     $or: [
       { employee_email: cleanEmail },
@@ -3366,6 +3764,7 @@ export async function inviteEmployeeByEmailFn(input: {
 
   await db.collection("employee_invitations").insertOne(invitationDoc as any);
 
+  // If user already exists in the system, link a pending notification
   const existingUser = await db.collection("users").findOne({
     $or: [
       { email: cleanEmail },
@@ -3456,12 +3855,16 @@ export async function getMyPendingEmployeeInvitationsFn() {
   const cleanPhone = (user?.phone || "").trim();
 
   const orConditions: any[] = [];
-  if (cleanEmail) orConditions.push({ employee_email: cleanEmail });
+  if (cleanEmail) {
+    orConditions.push({ employee_email: cleanEmail });
+  }
   if (cleanPhone) {
     orConditions.push({ phone: cleanPhone });
     orConditions.push({ employee_email: cleanPhone });
   }
-  if (user?.username) orConditions.push({ employee_email: user.username.toLowerCase().trim() });
+  if (user?.username) {
+    orConditions.push({ employee_email: user.username.toLowerCase().trim() });
+  }
 
   if (orConditions.length === 0) return [];
 
@@ -3520,6 +3923,7 @@ export async function respondToEmployeeInvitationFn(input: {
   const now = new Date().toISOString();
 
   if (data.action === "accept") {
+    // Mark invitation as accepted
     await db.collection("employee_invitations").updateOne(
       { _id: invitation._id },
       {
@@ -3531,6 +3935,7 @@ export async function respondToEmployeeInvitationFn(input: {
       }
     );
 
+    // Update the current user account to be employee of this business
     await db.collection("users").updateOne(
       { _id: session.userId as any },
       {
@@ -3559,6 +3964,7 @@ export async function respondToEmployeeInvitationFn(input: {
       user: mappedUser,
     };
   } else {
+    // Mark invitation as rejected
     await db.collection("employee_invitations").updateOne(
       { _id: invitation._id },
       {
@@ -3570,10 +3976,252 @@ export async function respondToEmployeeInvitationFn(input: {
       }
     );
 
+    await db.collection("users").updateOne(
+      { _id: session.userId as any },
+      {
+        $set: {
+          has_pending_invitation: false,
+        },
+      }
+    );
+
     return {
       success: true,
       action: "rejected",
     };
   }
+}
+
+// ── WhatsApp Web Integration Server Actions ─────────────────────────
+
+export async function getWhatsAppStatusFn() {
+  const session = await requireSession();
+  return await getWhatsAppStatus(session.ownerId);
+}
+
+export async function startWhatsAppSessionFn() {
+  const session = await requireSession();
+  return await startWhatsAppSession(session.ownerId);
+}
+
+export async function disconnectWhatsAppSessionFn() {
+  const session = await requireSession();
+  return await disconnectWhatsAppSession(session.ownerId);
+}
+
+export async function sendWhatsAppMessageFn(input: {
+  data: {
+    phone: string;
+    message: string;
+    recipientName?: string;
+  };
+}) {
+  const session = await requireSession();
+  const { data } = input;
+  if (!data.phone || !data.message) {
+    throw new Error("Recipient phone and message text are required");
+  }
+
+  const res = await sendWhatsAppMessage(
+    session.ownerId,
+    data.phone,
+    data.message,
+    {
+      recipientName: data.recipientName,
+      userId: session.userId,
+    }
+  );
+
+  if (!res.isSuccess) {
+    throw new Error(res.error || "Failed to send WhatsApp message");
+  }
+
+  return res;
+}
+
+export async function sendWhatsAppCampaignFn(input: {
+  data: {
+    recipientType: "all_suppliers" | "selected_suppliers" | "all_customers" | "selected_customers" | "direct_numbers";
+    selectedIds?: string[];
+    directNumbers?: string;
+    message: string;
+    campaignTitle?: string;
+    isPersonalized?: boolean;
+  };
+}) {
+  const session = await requireSession();
+  const { data } = input;
+  const db = await getDb();
+
+  interface TargetRecipient {
+    id?: string;
+    name: string;
+    phone: string;
+  }
+
+  let recipients: TargetRecipient[] = [];
+
+  if (data.recipientType === "all_suppliers" || data.recipientType === "selected_suppliers") {
+    const query: any = { owner_id: session.ownerId, phone: { $nin: [null, ""] } };
+    if (data.recipientType === "selected_suppliers" && data.selectedIds && data.selectedIds.length > 0) {
+      query._id = { $in: data.selectedIds as any };
+    }
+    const parties = await db.collection("parties").find(query).toArray();
+    recipients = parties
+      .filter((p) => p.phone && p.phone.trim())
+      .map((p) => ({
+        id: p._id as any as string,
+        name: p.name || "Supplier",
+        phone: p.phone as string,
+      }));
+  } else if (data.recipientType === "all_customers" || data.recipientType === "selected_customers") {
+    const query: any = { owner_id: session.ownerId, phone: { $nin: [null, ""] } };
+    if (data.recipientType === "selected_customers" && data.selectedIds && data.selectedIds.length > 0) {
+      query._id = { $in: data.selectedIds as any };
+    }
+    const customers = await db.collection("customers").find(query).toArray();
+    if (customers.length > 0) {
+      recipients = customers
+        .filter((c) => c.phone && c.phone.trim())
+        .map((c) => ({
+          id: c._id as any as string,
+          name: c.name || "Customer",
+          phone: c.phone as string,
+        }));
+    } else {
+      const parties = await db.collection("parties").find(query).toArray();
+      recipients = parties
+        .filter((p) => p.phone && p.phone.trim())
+        .map((p) => ({
+          id: p._id as any as string,
+          name: p.name || "Customer",
+          phone: p.phone as string,
+        }));
+    }
+  } else if (data.recipientType === "direct_numbers") {
+    const rawNumbers = (data.directNumbers || "")
+      .split(/[\n,;]+/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+
+    recipients = rawNumbers.map((num, idx) => ({
+      name: `Recipient ${idx + 1}`,
+      phone: num,
+    }));
+  }
+
+  if (recipients.length === 0) {
+    throw new Error("No recipients with valid phone numbers were found for this WhatsApp campaign.");
+  }
+
+  return await sendWhatsAppCampaign(
+    session.ownerId,
+    recipients,
+    data.message,
+    session.userId
+  );
+}
+
+// ── Google Sheets OAuth Integration Server Actions ─────────────────────────
+
+export async function connectGoogleSheetsOAuthFn(input: {
+  data: {
+    accessToken: string;
+    googleEmail?: string;
+    spreadsheetId?: string;
+  };
+}) {
+  const { data } = input;
+  const session = await requireSession();
+  if (session.role === "employee") {
+    throw new Error("Access denied: Only owners can configure Google Sheets integration");
+  }
+  const db = await getDb();
+  const biz = await db.collection("businesses").findOne({ owner_id: session.ownerId });
+  if (!biz) throw new Error("Business not found");
+
+  let spreadsheetId = data.spreadsheetId?.trim() || (biz.google_sheets_spreadsheet_id as string | undefined);
+
+  // If no spreadsheet ID exists, auto-create one via Google Sheets API
+  if (!spreadsheetId) {
+    const shopName = biz.name || "HakimQzz Shop";
+    const createRes = await fetch("https://sheets.googleapis.com/v4/spreadsheets", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${data.accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        properties: {
+          title: `HakimQzz - ${shopName} Live Database`,
+        },
+        sheets: [
+          { properties: { title: "Products" } },
+          { properties: { title: "Sales" } },
+          { properties: { title: "Purchases" } },
+          { properties: { title: "Expenses" } },
+          { properties: { title: "Cashbox" } },
+        ],
+      }),
+    });
+
+    if (createRes.ok) {
+      const createdData = await createRes.json();
+      spreadsheetId = createdData.spreadsheetId;
+    } else {
+      const errText = await createRes.text();
+      console.warn("Could not auto-create spreadsheet via Google Sheets API:", errText);
+    }
+  }
+
+  const updateFields: Record<string, any> = {
+    google_sheets_access_token: data.accessToken,
+    google_sheets_connected_email: data.googleEmail || null,
+    google_sheets_sync_enabled: true,
+    updated_at: new Date().toISOString(),
+  };
+
+  if (spreadsheetId) {
+    updateFields.google_sheets_spreadsheet_id = spreadsheetId;
+  }
+
+  await db.collection("businesses").updateOne(
+    { _id: biz._id as any },
+    { $set: updateFields }
+  );
+
+  // Automatically trigger bulk export if spreadsheetId is ready
+  if (spreadsheetId) {
+    try {
+      await bulkExportToGoogleSheets(session.ownerId);
+    } catch (e) {
+      console.warn("Initial bulk export notice:", e);
+    }
+  }
+
+  return {
+    success: true,
+    spreadsheetId,
+    spreadsheetUrl: spreadsheetId ? `https://docs.google.com/spreadsheets/d/${spreadsheetId}` : null,
+  };
+}
+
+export async function disconnectGoogleSheetsFn() {
+  const session = await requireSession();
+  const db = await getDb();
+  await db.collection("businesses").updateOne(
+    { owner_id: session.ownerId },
+    {
+      $unset: {
+        google_sheets_access_token: "",
+        google_sheets_connected_email: "",
+      },
+      $set: {
+        google_sheets_sync_enabled: false,
+        updated_at: new Date().toISOString(),
+      },
+    }
+  );
+  return { success: true };
 }
 

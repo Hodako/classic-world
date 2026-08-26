@@ -1,6 +1,5 @@
 "use client";
 
-
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
@@ -8,20 +7,39 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
+import { Badge } from "@/components/ui/badge";
 import { useT } from "@/lib/i18n";
 import { useAuth } from "@/hooks/use-auth";
 import { toast } from "sonner";
 import {
   getBusinessSettingsFn,
   updateBusinessSettingsFn,
-  createEmployeeLicenseFn,
-  updateEmployeePermissionsFn,
-  deleteLicenseFn,
+  removeEmployeeFn,
 } from "@/lib/rpc-admin";
-import { Trash2, Lock, Unlock, ShieldAlert, Database, FileSpreadsheet, Key, RefreshCw, AlertTriangle, LayoutGrid, Printer } from "lucide-react";
+import Link from "next/link";
+import {
+  Trash2,
+  Lock,
+  Unlock,
+  ShieldAlert,
+  Database,
+  FileSpreadsheet,
+  RefreshCw,
+  AlertTriangle,
+  Printer,
+  Store,
+  Sparkles,
+  ExternalLink,
+  Plus,
+  Mail,
+  UserPlus,
+  Users,
+  Shield,
+  Clock,
+  CheckCircle,
+} from "lucide-react";
 import { getPosPaperConfig, savePosPaperConfig, DEFAULT_POS_CONFIG, type PosPaperSettings } from "@/lib/pos-print";
-import type { PermissionSet } from "@/lib/permissions";
-import { DEFAULT_EMPLOYEE_PERMISSIONS } from "@/lib/permissions";
+import { DEFAULT_EMPLOYEE_PERMISSIONS, type PermissionSet } from "@/lib/permissions";
 import {
   uploadImageFn,
   verifyOwnerPasswordFn,
@@ -35,7 +53,14 @@ import {
   resetExpensesFn,
   resetPartiesFn,
   changeMyPasswordFn,
+  connectGoogleSheetsOAuthFn,
+  disconnectGoogleSheetsFn,
+  sendEmployeeInvitationFn,
+  listEmployeeInvitationsFn,
+  cancelEmployeeInvitationFn,
 } from "@/lib/rpc";
+import { auth } from "@/lib/firebase";
+import { signInWithPopup, GoogleAuthProvider } from "firebase/auth";
 import { useTheme, type ThemeMode, type AccentColor, type BgStyle } from "@/hooks/use-theme";
 import { SpeedLoader } from "@/components/speed-loader";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -49,18 +74,28 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 
-
-
 const BUSINESS_TYPES = ["retail", "wholesale", "fashion", "grocery", "services"];
+
+type SettingsTab = "profile" | "printing" | "sheets" | "staff" | "appearance" | "security";
 
 export default function SettingsPage() {
   const { lang, t } = useT();
-  const { user, refresh, updateUser } = useAuth();
+  const { user, refresh } = useAuth();
   const { theme, setTheme, accentColor, setAccentColor, bgStyle, setBgStyle } = useTheme();
   const isMobile = useIsMobile();
   const qc = useQueryClient();
+  
   const settings = useQuery({ queryKey: ["business-settings"], queryFn: getBusinessSettingsFn });
+  const invitations = useQuery({ queryKey: ["employee-invitations"], queryFn: listEmployeeInvitationsFn });
+
   const [busy, setBusy] = useState(false);
+  const [settingsTab, setSettingsTab] = useState<SettingsTab>("profile");
+
+  // Invite Employee Form State
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteName, setInviteName] = useState("");
+  const [inviteDesignation, setInviteDesignation] = useState("Sales Staff");
+  const [inviteSending, setInviteSending] = useState(false);
 
   // KPI Configuration state
   const [kpiConfig, setKpiConfig] = useState({
@@ -198,75 +233,155 @@ export default function SettingsPage() {
   };
 
   useEffect(() => {
-    if (!isDragging) return;
     const handleMouseMove = (e: MouseEvent) => {
+      if (!isDragging) return;
       const dx = e.clientX - dragStart.x;
       const dy = e.clientY - dragStart.y;
-      setPan({
-        x: panStart.x + dx,
-        y: panStart.y + dy,
-      });
+      setPan({ x: panStart.x + dx, y: panStart.y + dy });
     };
+
     const handleMouseUp = () => {
       setIsDragging(false);
     };
-    window.addEventListener("mousemove", handleMouseMove);
-    window.addEventListener("mouseup", handleMouseUp);
-    return () => {
-      window.removeEventListener("mousemove", handleMouseMove);
-      window.removeEventListener("mouseup", handleMouseUp);
-    };
-  }, [isDragging, dragStart, panStart]);
 
-  useEffect(() => {
-    if (!isTouchDragging) return;
     const handleTouchMove = (e: TouchEvent) => {
-      if (e.cancelable) e.preventDefault();
+      if (!isTouchDragging) return;
       const touch = e.touches[0];
       if (!touch) return;
       const dx = touch.clientX - touchDragStart.x;
       const dy = touch.clientY - touchDragStart.y;
-      setPan({
-        x: touchPanStart.x + dx,
-        y: touchPanStart.y + dy,
-      });
+      setPan({ x: touchPanStart.x + dx, y: touchPanStart.y + dy });
     };
+
     const handleTouchEnd = () => {
       setIsTouchDragging(false);
     };
-    window.addEventListener("touchmove", handleTouchMove, { passive: false });
-    window.addEventListener("touchend", handleTouchEnd);
+
+    if (isDragging) {
+      window.addEventListener("mousemove", handleMouseMove);
+      window.addEventListener("mouseup", handleMouseUp);
+    }
+    if (isTouchDragging) {
+      window.addEventListener("touchmove", handleTouchMove);
+      window.addEventListener("touchend", handleTouchEnd);
+    }
+
     return () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
       window.removeEventListener("touchmove", handleTouchMove);
       window.removeEventListener("touchend", handleTouchEnd);
     };
-  }, [isTouchDragging, touchDragStart, touchPanStart]);
+  }, [isDragging, dragStart, panStart, isTouchDragging, touchDragStart, touchPanStart]);
 
-  async function handleUpdateMyPassword(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    const fd = new FormData(e.currentTarget);
-    const currentPassword = String(fd.get("currentPassword") || "").trim();
-    const newPassword = String(fd.get("newPassword") || "").trim();
-    const confirmPassword = String(fd.get("confirmPassword") || "").trim();
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
 
-    if (newPassword.length < 6) {
-      toast.error("New password must be at least 6 characters long.");
-      return;
-    }
-    if (newPassword !== confirmPassword) {
-      toast.error("New passwords do not match.");
+    if (!file.type.startsWith("image/")) {
+      toast.error("Please upload an image file");
       return;
     }
 
-    setPwBusy(true);
+    setCropImageName(file.name);
+    setCropImageType(file.type);
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      setCropImageSrc(reader.result as string);
+    };
+    reader.readAsDataURL(file);
+    e.target.value = "";
+  };
+
+  const handleCropSave = async () => {
+    if (!cropImageSrc || !imageRef.current) return;
+
+    const canvas = document.createElement("canvas");
+    canvas.width = 256;
+    canvas.height = 256;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, 256, 256);
+
+    const img = imageRef.current;
+    const renderedWidth = imgSize.width * zoom;
+    const renderedHeight = imgSize.height * zoom;
+    const drawX = pan.x;
+    const drawY = pan.y;
+
+    ctx.drawImage(img, drawX, drawY, renderedWidth, renderedHeight);
+
+    const dataUrl = canvas.toDataURL(cropImageType || "image/png");
+    const loadId = toast.loading("Uploading cropped logo...");
     try {
-      await changeMyPasswordFn({ data: { currentPassword, newPassword } });
-      toast.success("Password updated successfully!");
-      e.currentTarget.reset();
+      const res: any = await uploadImageFn({ data: { base64: dataUrl, fileName: cropImageName || "logo.png" } });
+      const url = res?.url || res?.data?.url;
+      if (url) {
+        setLogoUrl(url);
+        await updateBusinessSettingsFn({
+          data: { logo_url: url },
+        });
+        qc.invalidateQueries({ queryKey: ["business-settings"] });
+        toast.success("Logo uploaded and updated successfully!", { id: loadId });
+      } else {
+        toast.error("Upload failed", { id: loadId });
+      }
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Failed to upload image", { id: loadId });
+    } finally {
+      setCropImageSrc(null);
+    }
+  };
+
+  async function saveBusiness(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (!isOwner) return;
+    const fd = new FormData(e.currentTarget);
+    setBusy(true);
+    try {
+      await updateBusinessSettingsFn({
+        data: {
+          name: String(fd.get("name") || "").trim(),
+          address: String(fd.get("address") || "").trim(),
+          phone_numbers: String(fd.get("phone_numbers") || "").trim(),
+          emails: String(fd.get("emails") || "").trim(),
+          business_type: String(fd.get("business_type") || "retail").trim(),
+          invoice_terms: String(fd.get("invoice_terms") || "").trim(),
+          invoice_watermark: String(fd.get("invoice_watermark") || "").trim(),
+          invoice_watermark_enabled: fd.get("invoice_watermark_enabled") === "on",
+          logo_url: logoUrl || biz?.logo_url || "/logo.png",
+        },
+      });
+      qc.invalidateQueries({ queryKey: ["business-settings"] });
+      toast.success(lang === "bn" ? "দোকান প্রোফাইল সংরক্ষিত হয়েছে!" : "Business profile saved successfully!");
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : String(err));
     } finally {
-      setPwBusy(false);
+      setBusy(false);
+    }
+  }
+
+  async function saveInvoiceStyling(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (!isOwner) return;
+    setBusy(true);
+    try {
+      await updateBusinessSettingsFn({
+        data: {
+          invoice_font_size: fontSize,
+          invoice_scale: fontScale,
+          invoice_line_spacing: lineSpacing,
+        },
+      });
+      qc.invalidateQueries({ queryKey: ["business-settings"] });
+      toast.success(lang === "bn" ? "ইনভয়েস সেটিংস সংরক্ষিত হয়েছে!" : "Invoice settings saved successfully!");
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -283,6 +398,64 @@ export default function SettingsPage() {
       toast.error(err instanceof Error ? err.message : "Incorrect owner password.");
     } finally {
       setUnlockLoading(false);
+    }
+  }
+
+  // Google OAuth Connect for Sheets
+  async function handleConnectGoogleOAuth() {
+    if (!isOwner) return;
+    setIsSheetsSaving(true);
+    try {
+      const provider = new GoogleAuthProvider();
+      provider.addScope("https://www.googleapis.com/auth/spreadsheets");
+      provider.addScope("https://www.googleapis.com/auth/drive.file");
+      
+      const result = await signInWithPopup(auth, provider);
+      const credential = GoogleAuthProvider.credentialFromResult(result);
+      const token = credential?.accessToken;
+      const email = result.user?.email || undefined;
+
+      if (!token) {
+        const idToken = await result.user.getIdToken();
+        await connectGoogleSheetsOAuthFn({
+          data: {
+            accessToken: idToken,
+            googleEmail: email,
+          },
+        });
+      } else {
+        await connectGoogleSheetsOAuthFn({
+          data: {
+            accessToken: token,
+            googleEmail: email,
+          },
+        });
+      }
+
+      toast.success(
+        lang === "bn"
+          ? "গুগল শিট সফলভাবে সংযুক্ত এবং সিঙ্ক হয়েছে!"
+          : "Google Sheets successfully connected & synced with your Google account!"
+      );
+      qc.invalidateQueries({ queryKey: ["business-settings"] });
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to connect Google account for Sheets");
+    } finally {
+      setIsSheetsSaving(false);
+    }
+  }
+
+  async function handleDisconnectGoogleSheets() {
+    if (!isOwner) return;
+    setIsSheetsSaving(true);
+    try {
+      await disconnectGoogleSheetsFn();
+      toast.success(lang === "bn" ? "গুগল শিট সংযোগ বিচ্ছিন্ন করা হয়েছে" : "Google Sheets disconnected");
+      qc.invalidateQueries({ queryKey: ["business-settings"] });
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to disconnect Google Sheets");
+    } finally {
+      setIsSheetsSaving(false);
     }
   }
 
@@ -320,6 +493,62 @@ export default function SettingsPage() {
     }
   }
 
+  // Handle Sending Staff Invitation by Email
+  async function handleSendStaffInvitation(e: React.FormEvent) {
+    e.preventDefault();
+    if (!isOwner) return;
+    if (!inviteEmail.trim()) {
+      toast.error("Please enter employee email");
+      return;
+    }
+
+    setInviteSending(true);
+    try {
+      await sendEmployeeInvitationFn({
+        data: {
+          email: inviteEmail.trim(),
+          fullName: inviteName.trim() || undefined,
+          designation: inviteDesignation,
+          permissions: DEFAULT_EMPLOYEE_PERMISSIONS,
+        },
+      });
+      toast.success(
+        lang === "bn"
+          ? `${inviteEmail} ঠিকানায় আমন্ত্রণ সফলভাবে পাঠানো হয়েছে!`
+          : `Staff invitation successfully sent to ${inviteEmail}!`
+      );
+      setInviteEmail("");
+      setInviteName("");
+      qc.invalidateQueries({ queryKey: ["employee-invitations"] });
+      qc.invalidateQueries({ queryKey: ["business-settings"] });
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to send employee invitation");
+    } finally {
+      setInviteSending(false);
+    }
+  }
+
+  async function handleCancelInvitation(invitationId: string) {
+    try {
+      await cancelEmployeeInvitationFn({ data: { invitationId } });
+      toast.success("Invitation cancelled");
+      qc.invalidateQueries({ queryKey: ["employee-invitations"] });
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to cancel invitation");
+    }
+  }
+
+  async function handleRemoveEmployee(employeeId: string) {
+    if (!confirm("Are you sure you want to remove this employee from your shop?")) return;
+    try {
+      await removeEmployeeFn({ data: { employeeId } });
+      toast.success("Staff access removed");
+      qc.invalidateQueries({ queryKey: ["business-settings"] });
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to remove employee");
+    }
+  }
+
   async function handleResetAction() {
     if (!resetType || !isOwner) return;
     if (confirmText !== "CONFIRM") {
@@ -348,14 +577,14 @@ export default function SettingsPage() {
         toast.success("Expenses data reset successfully!");
       } else if (resetType === "parties") {
         await resetPartiesFn();
-        toast.success("Customer, Party, and Debt data reset successfully!");
+        toast.success("Parties and Customer debts reset successfully!");
       } else if (resetType === "all") {
         await resetAllDataFn();
-        toast.success("All business data reset to factory settings!");
+        toast.success("Factory Reset Complete: All business records cleared.");
       }
-      qc.invalidateQueries({ queryKey: ["business-settings"] });
       setResetType(null);
       setConfirmText("");
+      qc.invalidateQueries();
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : String(err));
     } finally {
@@ -363,1013 +592,993 @@ export default function SettingsPage() {
     }
   }
 
-  async function saveBusiness(e: React.FormEvent<HTMLFormElement>) {
+  async function handleUpdateMyPassword(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (!isOwner) return;
     const fd = new FormData(e.currentTarget);
-    setBusy(true);
-    try {
-      await updateBusinessSettingsFn({
-        data: {
-          name: String(fd.get("name") || "Classic World"),
-          address: String(fd.get("address") || ""),
-          phone_numbers: String(fd.get("phone_numbers") || ""),
-          emails: String(fd.get("emails") || ""),
-          invoice_page_size: String(fd.get("invoice_page_size") || "80mm"),
-          invoice_page_width: String(fd.get("invoice_page_width") || ""),
-          invoice_page_height: String(fd.get("invoice_page_height") || ""),
-          logo_url: logoUrl || "/logo.png",
-          business_type: String(fd.get("business_type") || "retail"),
-          theme: "green",
-          employee_limit: Number(fd.get("employee_limit")) || 5,
-          invoice_watermark: String(fd.get("invoice_watermark") || ""),
-          invoice_watermark_enabled: fd.get("invoice_watermark_enabled") === "true",
-          invoice_terms: String(fd.get("invoice_terms") || ""),
-          invoice_color: String(fd.get("invoice_color") || "black"),
-          invoice_font_size: (() => {
-            const raw = String(fd.get("invoice_font_size") || "22px").trim();
-            if (!raw) return "22px";
-            return raw.toLowerCase().endsWith("px") ? raw : `${raw}px`;
-          })(),
-          invoice_scale: (() => {
-            const raw = String(fd.get("invoice_scale") || "100%").trim();
-            if (!raw) return "100%";
-            return raw.endsWith("%") ? raw : `${raw}%`;
-          })(),
-          invoice_line_spacing: (() => {
-            const raw = String(fd.get("invoice_line_spacing") || "6px").trim();
-            if (!raw) return "6px";
-            return raw.toLowerCase().endsWith("px") ? raw : `${raw}px`;
-          })(),
-        },
-      });
-      await refresh();
-      qc.invalidateQueries({ queryKey: ["business-settings"] });
-      toast.success(t("save"));
-    } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : String(err));
-    } finally {
-      setBusy(false);
+    const currentPassword = String(fd.get("currentPassword") || "").trim();
+    const newPassword = String(fd.get("newPassword") || "").trim();
+    const confirmPassword = String(fd.get("confirmPassword") || "").trim();
+
+    if (newPassword !== confirmPassword) {
+      toast.error("New passwords do not match");
+      return;
     }
-  }
-
-  async function uploadLogo(file: File) {
-    const reader = new FileReader();
-    reader.onload = async () => {
-      try {
-        const base64 = (reader.result as string).split(",")[1];
-        const res: any = await uploadImageFn({ data: { base64, fileName: file.name } });
-        const url = res?.url || res?.data?.url;
-        if (url) {
-          updateUser({ logo_url: url });
-          setLogoUrl(url);
-          await updateBusinessSettingsFn({ data: { logo_url: url } });
-          await refresh();
-          qc.invalidateQueries({ queryKey: ["business-settings"] });
-          toast.success(t("save"));
-        } else {
-          toast.error("Upload failed");
-        }
-      } catch (err: unknown) {
-        toast.error(err instanceof Error ? err.message : String(err));
-      }
-    };
-    reader.readAsDataURL(file);
-  }
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const validTypes = ["image/jpeg", "image/png", "image/webp", "image/gif", "image/svg+xml"];
-    if (!validTypes.includes(file.type)) {
-      toast.error("Please upload a valid image file (PNG, JPG, WEBP, GIF, SVG).");
+    if (newPassword.length < 6) {
+      toast.error("Password must be at least 6 characters");
       return;
     }
 
-    setCropImageName(file.name);
-    setCropImageType(file.type);
-    const reader = new FileReader();
-    reader.onload = () => {
-      setCropImageSrc(reader.result as string);
-    };
-    reader.readAsDataURL(file);
-    e.target.value = "";
-  };
-
-  const handleCropSave = () => {
-    const img = imageRef.current;
-    const viewport = viewportRef.current;
-    if (!img || !viewport) return;
-
-    const imgRect = img.getBoundingClientRect();
-    const viewportRect = viewport.getBoundingClientRect();
-
-    const canvas = document.createElement("canvas");
-    canvas.width = 512;
-    canvas.height = 512;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-
-    if (cropImageType === "image/jpeg" || cropImageType === "image/jpg") {
-      ctx.fillStyle = "#ffffff";
-      ctx.fillRect(0, 0, 512, 512);
+    setPwBusy(true);
+    try {
+      await changeMyPasswordFn({
+        data: {
+          currentPassword,
+          newPassword,
+        },
+      });
+      toast.success("Password changed successfully!");
+      (e.target as HTMLFormElement).reset();
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Failed to change password");
+    } finally {
+      setPwBusy(false);
     }
+  }
 
-    const S = 512 / viewportRect.width;
-    const dx = (imgRect.left - viewportRect.left) * S;
-    const dy = (imgRect.top - viewportRect.top) * S;
-    const dw = imgRect.width * S;
-    const dh = imgRect.height * S;
+  if (settings.isLoading) {
+    return <SpeedLoader fullScreen={false} />;
+  }
 
-    ctx.drawImage(img, dx, dy, dw, dh);
+  const pendingInvites = (invitations.data || []).filter((inv: any) => inv.status === "pending");
+  const activeEmployees = settings.data?.employees || [];
 
-    canvas.toBlob((blob) => {
-      if (!blob) return;
-      const file = new File([blob], cropImageName, { type: cropImageType });
-      setCropImageSrc(null);
-      void uploadLogo(file);
-    }, cropImageType);
-  };
-
-  if (settings.isLoading && !settings.data) return <SpeedLoader fullScreen={false} />;
+  const navTabs: { id: SettingsTab; label: string; icon: any; count?: number }[] = [
+    { id: "profile", label: lang === "bn" ? "দোকান প্রোফাইল" : "Shop Profile", icon: Store },
+    { id: "printing", label: lang === "bn" ? "প্রিন্ট ও ইনভয়েস" : "POS & Printing", icon: Printer },
+    { id: "sheets", label: lang === "bn" ? "গুগল শিট ও ক্লাউড" : "Google Sheets & Cloud", icon: FileSpreadsheet },
+    { id: "staff", label: lang === "bn" ? "কর্মচারী ও আমন্ত্রণ" : "Staff & Invitations", icon: Users, count: activeEmployees.length + pendingInvites.length },
+    { id: "appearance", label: lang === "bn" ? "থিম ও ডিসপ্লে" : "Appearance & Themes", icon: Sparkles },
+    { id: "security", label: lang === "bn" ? "নিরাপত্তা ও রিসেট" : "Security & Reset", icon: ShieldAlert },
+  ];
 
   return (
-    <div className={`space-y-6 pb-8 ${isMobile ? "max-w-lg" : "max-w-5xl"} mx-auto`}>
-      <div>
-        <h1 className="text-2xl font-serif font-bold">{t("settings")}</h1>
-        <p className="text-sm text-muted-foreground mt-0.5">{user?.email}</p>
+    <div className="p-3 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-6">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border/60 pb-4">
+        <div>
+          <h1 className="text-xl sm:text-2xl lg:text-3xl font-extrabold tracking-tight text-foreground flex items-center gap-2.5">
+            <Store className="size-6 text-primary" />
+            <span>{lang === "bn" ? "সিস্টেম সেটিংস ও কনফিগারেশন" : "System Settings & Business Hub"}</span>
+          </h1>
+          <p className="text-xs sm:text-sm text-muted-foreground mt-0.5">
+            {lang === "bn"
+              ? "দোকানের প্রোফাইল, প্রিন্টার ফরম্যাট, গুগল শিট ব্যাকআপ, কর্মচারী আমন্ত্রণ এবং নিরাপত্তা পরিচালনা করুন"
+              : "Manage shop branding, thermal printing, Google Sheets sync, employee invitations, and database resets"}
+          </p>
+        </div>
+      </div>
+
+      {/* Modern Desktop Segmented Tab Bar */}
+      <div className="flex items-center gap-1.5 p-1.5 bg-muted/60 dark:bg-muted/30 border border-border/80 rounded-2xl overflow-x-auto scrollbar-none shadow-xs">
+        {navTabs.map((tab) => {
+          const Icon = tab.icon;
+          const isActive = settingsTab === tab.id;
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setSettingsTab(tab.id)}
+              className={`flex items-center gap-2 px-3.5 py-2.5 rounded-xl text-xs sm:text-sm font-semibold whitespace-nowrap transition-all shrink-0 cursor-pointer ${
+                isActive
+                  ? "bg-card text-foreground shadow-sm border border-border/60"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted/40"
+              }`}
+            >
+              <Icon className={`size-4 ${isActive ? "text-primary" : "text-muted-foreground"}`} />
+              <span>{tab.label}</span>
+              {tab.count !== undefined && tab.count > 0 && (
+                <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4">
+                  {tab.count}
+                </Badge>
+              )}
+            </button>
+          );
+        })}
       </div>
 
       {isOwner && biz && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
-        <Card className="glass-card p-5 space-y-4">
-          <h2 className="font-semibold">Business Profile</h2>
-          <form onSubmit={saveBusiness} className="space-y-3">
-            <div className="space-y-1">
-              <Label className="text-xs">Company Name</Label>
-              <Input name="name" defaultValue={biz.name} placeholder="Classic World" />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">{lang === "bn" ? "দোকানের ঠিকানা (Shop Address)" : "Shop Address"}</Label>
-              <Textarea name="address" defaultValue={biz.address || ""} placeholder={lang === "bn" ? "দোকানের ঠিকানা লিখুন..." : "e.g., House 12, Road 4, Dhanmondi, Dhaka"} className="text-xs min-h-[60px]" />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">{lang === "bn" ? "দোকানের ফোন নম্বরসমূহ (Phone Numbers)" : "Shop Phone Numbers (Multiple)"}</Label>
-              <Input name="phone_numbers" defaultValue={biz.phone_numbers || ""} placeholder={lang === "bn" ? "যেমন: +8801700000000, +8801800000000" : "e.g. +8801700000000, +8801800000000"} className="text-xs" />
-              <p className="text-[10px] text-muted-foreground">{lang === "bn" ? "একাধিক নম্বর কমা (,) দিয়ে সেপারেট করুন" : "Separate multiple numbers with comma (,)"}</p>
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">{lang === "bn" ? "দোকানের ইমেইলসমূহ (Emails)" : "Shop Emails (Multiple)"}</Label>
-              <Input name="emails" defaultValue={biz.emails || user?.email || ""} placeholder={lang === "bn" ? "যেমন: info@shop.com, support@shop.com" : "e.g. info@shop.com, support@shop.com"} className="text-xs" />
-              <p className="text-[10px] text-muted-foreground">{lang === "bn" ? "ইনভয়েসে দেখানোর জন্য কমা (,) দিয়ে সেপারেট করুন" : "Separate multiple emails with comma (,)"}</p>
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Logo URL</Label>
-              <Input name="logo_url" value={logoUrl} onChange={e => setLogoUrl(e.target.value)} placeholder="/logo.png" />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Upload Logo</Label>
-              <Input type="file" accept="image/*" onChange={handleFileChange} />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Business Type</Label>
-              <select name="business_type" defaultValue={biz.business_type} className="w-full h-9 rounded-md border border-input bg-input px-3 text-sm">
-                {BUSINESS_TYPES.map(bt => <option key={bt} value={bt}>{bt}</option>)}
-              </select>
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Employee License Limit</Label>
-              <Input name="employee_limit" type="number" min={1} defaultValue={biz.employee_limit} placeholder="5" />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">{t("appearance")}</Label>
-              <select
-                name="theme_mode"
-                value={theme}
-                onChange={e => setTheme(e.target.value as ThemeMode)}
-                className="w-full h-9 rounded-md border border-input bg-input px-3 text-sm"
-              >
-                <option value="light">{t("theme_light")}</option>
-                <option value="dark">{t("theme_dark")}</option>
-                <option value="system">{t("theme_system")}</option>
-              </select>
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">{t("accent_color")}</Label>
-              <select
-                value={accentColor}
-                onChange={e => setAccentColor(e.target.value as AccentColor)}
-                className="w-full h-9 rounded-md border border-input bg-input px-3 text-sm capitalize"
-              >
-                <option value="emerald">emerald (green)</option>
-                <option value="indigo">indigo</option>
-                <option value="violet">violet</option>
-                <option value="blue">blue</option>
-                <option value="rose">rose (red)</option>
-              </select>
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">{lang === "bn" ? "ইউআই থিম ও ডিজাইন সিস্টেম (UI Design System Preset)" : "UI Design System Preset"}</Label>
-              <select
-                onChange={e => {
-                  const val = e.target.value;
-                  const saved = localStorage.getItem("hz_custom_theme");
-                  const current = saved ? JSON.parse(saved) : {};
-                  let isMat = false;
-                  let styleVal = val;
-                  if (val === "material") {
-                    isMat = true;
-                    styleVal = "default";
-                  }
-                  const updated = { ...current, uiStyle: styleVal, isMaterialUI: isMat };
-                  localStorage.setItem("hz_custom_theme", JSON.stringify(updated));
-                  window.dispatchEvent(new Event("hz-theme-updated"));
-                  toast.success(lang === "bn" ? "থিম ডিজাইন আপডেট হয়েছে!" : "UI Theme preset applied!");
-                }}
-                defaultValue={(() => {
-                  if (typeof window === "undefined") return "default";
-                  try {
-                    const saved = localStorage.getItem("hz_custom_theme");
-                    const cfg = saved ? JSON.parse(saved) : {};
-                    if (cfg.isMaterialUI) return "material";
-                    return cfg.uiStyle || "default";
-                  } catch (e) { return "default"; }
-                })()}
-                className="w-full h-9 rounded-md border border-input bg-input px-3 text-xs"
-              >
-                <option value="default">✨ Default Modern Fintech</option>
-                <option value="material">🎨 Material UI Mode (Raised & Elevation)</option>
-                <option value="glassmorphism">💎 Glassmorphism (Translucent Blur)</option>
-                <option value="morphism">⚪ Neumorphism (Soft Morphism)</option>
-                <option value="brutalism">⬛ Brutalism (High Contrast & Hard Borders)</option>
-                <option value="new-brutalism">🟡 Neo-Brutalism (Modern Pop Art)</option>
-                <option value="cyberpunk">⚡ Cyberpunk Neon</option>
-                <option value="flowerism">🌸 Flowerism (Blossom Pastel)</option>
-                <option value="minimalist">▫️ Minimalist Clean</option>
-                <option value="forest">🌲 Nature Forest</option>
-                <option value="luxury">👑 Luxury Gold</option>
-                <option value="feather">🪶 Feather UI</option>
-              </select>
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">{lang === "bn" ? "ফন্ট সাইজ (UI Base Font Size)" : "UI Base Font Size"}</Label>
-              <select
-                onChange={e => {
-                  const val = e.target.value;
-                  const saved = localStorage.getItem("hz_custom_theme");
-                  const current = saved ? JSON.parse(saved) : {};
-                  const updated = { ...current, fontSize: val };
-                  localStorage.setItem("hz_custom_theme", JSON.stringify(updated));
-                  window.dispatchEvent(new Event("hz-theme-updated"));
-                  toast.success(lang === "bn" ? `ফন্ট সাইজ পরিবর্তন হয়েছে (${val})` : `Font size updated to ${val}`);
-                }}
-                defaultValue={(() => {
-                  if (typeof window === "undefined") return "14px";
-                  try {
-                    const saved = localStorage.getItem("hz_custom_theme");
-                    const cfg = saved ? JSON.parse(saved) : {};
-                    return cfg.fontSize || "14px";
-                  } catch (e) { return "14px"; }
-                })()}
-                className="w-full h-9 rounded-md border border-input bg-input px-3 text-xs"
-              >
-                <option value="11px">11px (Extra Small / Ultra Compact)</option>
-                <option value="12px">12px (Small Compact)</option>
-                <option value="13px">13px (Medium Small)</option>
-                <option value="14px">14px (Default Standard)</option>
-                <option value="15px">15px (Large)</option>
-                <option value="16px">16px (Extra Large)</option>
-              </select>
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">{lang === "bn" ? "বর্ডার ও এজ স্টাইল (Border Edges Style)" : "Border Corner Edges Style"}</Label>
-              <select
-                onChange={e => {
-                  const val = e.target.value;
-                  const saved = localStorage.getItem("hz_custom_theme");
-                  const current = saved ? JSON.parse(saved) : {};
-                  const updated = { ...current, borderRadius: val };
-                  localStorage.setItem("hz_custom_theme", JSON.stringify(updated));
-                  window.dispatchEvent(new Event("hz-theme-updated"));
-                  toast.success(lang === "bn" ? `এজ বর্ডার স্টাইল আপডেট হয়েছে!` : `Border edges style updated!`);
-                }}
-                defaultValue={(() => {
-                  if (typeof window === "undefined") return "none";
-                  try {
-                    const saved = localStorage.getItem("hz_custom_theme");
-                    const cfg = saved ? JSON.parse(saved) : {};
-                    return cfg.borderRadius || "none";
-                  } catch (e) { return "none"; }
-                })()}
-                className="w-full h-9 rounded-md border border-input bg-input px-3 text-xs"
-              >
-                <option value="none">📐 Sharp Edges (0px Sharp Default)</option>
-                <option value="small">🔹 Small Curve (4px)</option>
-                <option value="medium">🔷 Medium Curve (8px)</option>
-                <option value="large">⚪ Rounded (16px)</option>
-                <option value="full">🔘 Full Pill (9999px)</option>
-              </select>
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">{t("bg_style")}</Label>
-              <select
-                value={bgStyle}
-                onChange={e => setBgStyle(e.target.value as BgStyle)}
-                className="w-full h-9 rounded-md border border-input bg-input px-3 text-sm capitalize"
-              >
-                <option value="default">default gradient</option>
-                <option value="warm">warm glow</option>
-                <option value="cool">cool glow</option>
-                <option value="clean">solid clean</option>
-                <option value="glass">glassmorphism</option>
-              </select>
-            </div>
-            <div className="border-t border-border pt-3 mt-3 space-y-3">
-              <h3 className="font-semibold text-xs text-muted-foreground uppercase tracking-wider">Invoice Customize Settings</h3>
-              <div className="space-y-1">
-                <Label className="text-xs">Invoice Watermark Text</Label>
-                <Input name="invoice_watermark" defaultValue={biz.invoice_watermark || ""} placeholder="PAID" />
-              </div>
-              <div className="space-y-1 flex items-center justify-between">
-                <Label className="text-xs">Enable Watermark</Label>
-                <select name="invoice_watermark_enabled" defaultValue={String(biz.invoice_watermark_enabled)} className="h-8 rounded border border-input bg-input px-2 text-xs w-28">
-                  <option value="true">Yes</option>
-                  <option value="false">No</option>
-                </select>
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Invoice Terms & Conditions / Footer Notes</Label>
-                <textarea name="invoice_terms" defaultValue={biz.invoice_terms || ""} className="w-full min-h-[60px] rounded-md border border-input bg-input p-2 text-xs" placeholder="e.g. No refund after 7 days" />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Invoice Print Theme Color</Label>
-                <select name="invoice_color" defaultValue={biz.invoice_color || "black"} className="w-full h-9 rounded-md border border-input bg-input px-3 text-xs capitalize">
-                  <option value="black">black</option>
-                  <option value="emerald">emerald (green)</option>
-                  <option value="indigo">indigo</option>
-                  <option value="rose">rose (red)</option>
-                </select>
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">{lang === "bn" ? "ইনভয়েস ফন্ট সাইজ (Invoice Print Font Size)" : "Invoice Print Font Size (PDF & Print)"}</Label>
-                <div className="grid grid-cols-2 gap-2">
-                  <select
-                    value={fontSize}
-                    onChange={(e) => setFontSize(e.target.value)}
-                    className="w-full h-9 rounded-md border border-input bg-input px-3 text-xs capitalize"
-                  >
-                    <option value="12px">12px (Small Compact)</option>
-                    <option value="14px">14px (Standard Medium)</option>
-                    <option value="15px">15px (Default Recommended)</option>
-                    <option value="16px">16px (Extra Large HD 16px)</option>
-                    <option value="18px">18px (Ultra Large HD 18px)</option>
-                    <option value="20px">20px (Super Large 20px)</option>
-                    <option value="22px">22px (Max Preset 22px)</option>
-                    <option value="24px">24px (Extra Max 24px)</option>
-                    <option value="26px">26px (Max Super Size 26px)</option>
-                  </select>
-                  <Input
-                    id="invoice_font_size_custom_input"
-                    name="invoice_font_size"
-                    value={fontSize}
-                    onChange={(e) => setFontSize(e.target.value)}
-                    placeholder="Custom e.g. 26px"
-                    className="h-9 text-xs"
-                  />
-                </div>
-                <p className="text-[10px] text-muted-foreground">{lang === "bn" ? "ড্রপডাউন থেকে বা ম্যানুয়ালি পছন্দের সাইজ টাইপ করুন (যেমন: 18px, 22px, 26px)" : "Select preset or manually type any custom font size up to 26px (e.g. 18px, 22px, 26px)"}</p>
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">{lang === "bn" ? "ইনভয়েস জুম / স্কেল (Invoice Document Zoom & Scale)" : "Invoice Document Scale & Size Zoom"}</Label>
-                <div className="grid grid-cols-2 gap-2">
-                  <select
-                    value={fontScale}
-                    onChange={(e) => setFontScale(e.target.value)}
-                    className="w-full h-9 rounded-md border border-input bg-input px-3 text-xs capitalize"
-                  >
-                    <option value="80%">80% (Compact Small)</option>
-                    <option value="100%">100% (Standard Normal)</option>
-                    <option value="120%">120% (Medium 1.2x)</option>
-                    <option value="150%">150% (Big 1.5x Large)</option>
-                    <option value="180%">180% (Extra Big 1.8x)</option>
-                    <option value="200%">200% (Double Size 2.0x Giant)</option>
-                    <option value="250%">250% (Max Big 2.5x)</option>
-                  </select>
-                  <Input
-                    id="invoice_scale_custom_input"
-                    name="invoice_scale"
-                    value={fontScale}
-                    onChange={(e) => setFontScale(e.target.value)}
-                    placeholder="Custom e.g. 150%"
-                    className="h-9 text-xs"
-                  />
-                </div>
-                <p className="text-[10px] text-muted-foreground">{lang === "bn" ? "ইনভয়েসের সামগ্রিক আকার বড় বা ছোট করতে স্কেল বেছে নিন (যেমন: 120%, 150%, 200%)" : "Resize or turn invoice big according to document size (e.g. 120%, 150%, 200%)"}</p>
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">{lang === "bn" ? "ইনভয়েস ভার্টিকাল স্পেসিং (Invoice Vertical Line Spacing)" : "Invoice Vertical Line Spacing & Padding"}</Label>
-                <div className="grid grid-cols-2 gap-2">
-                  <select
-                    value={lineSpacing}
-                    onChange={(e) => setLineSpacing(e.target.value)}
-                    className="w-full h-9 rounded-md border border-input bg-input px-3 text-xs capitalize"
-                  >
-                    <option value="2px">2px (Compact Tight)</option>
-                    <option value="4px">4px (Standard 4px)</option>
-                    <option value="6px">6px (Relaxed 6px - Recommended)</option>
-                    <option value="8px">8px (Spaced 8px)</option>
-                    <option value="10px">10px (Loose 10px)</option>
-                    <option value="12px">12px (Extra Loose 12px)</option>
-                  </select>
-                  <Input
-                    id="invoice_line_spacing_custom_input"
-                    name="invoice_line_spacing"
-                    value={lineSpacing}
-                    onChange={(e) => setLineSpacing(e.target.value)}
-                    placeholder="Custom e.g. 8px"
-                    className="h-9 text-xs"
-                  />
-                </div>
-                <p className="text-[10px] text-muted-foreground">{lang === "bn" ? "ইনভয়েসের প্রতিটি আইটেম ও লাইনের মাঝে উল্লম্ব ফাঁকা জায়গা পরিবর্তন করুন (যেমন: 6px, 8px, 10px)" : "Adjust vertical gap/padding between invoice items & table rows (e.g. 6px, 8px, 10px)"}</p>
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">{lang === "bn" ? "ইনভয়েস পেপার সাইজ (Invoice Page Size)" : "Invoice Paper Size / Document Format"}</Label>
-                <select name="invoice_page_size" defaultValue={biz.invoice_page_size || "80mm"} className="w-full h-9 rounded-md border border-input bg-input px-3 text-xs capitalize">
-                  <option value="80mm">80mm POS Thermal Receipt (Receipt Printer)</option>
-                  <option value="A4">A4 Full Page Document</option>
-                  <option value="A5">A5 Half Sheet</option>
-                  <option value="custom">Custom Width & Height</option>
-                </select>
-              </div>
-              <div className="grid grid-cols-2 gap-3 text-xs">
-                <div>
-                  <Label className="text-[11px] text-muted-foreground">{lang === "bn" ? "কাস্টম প্রস্থ (Width mm/px)" : "Custom Page Width"}</Label>
-                  <Input name="invoice_page_width" defaultValue={biz.invoice_page_width || ""} placeholder="e.g. 80mm or 210mm" className="h-8 text-xs mt-1" />
-                </div>
-                <div>
-                  <Label className="text-[11px] text-muted-foreground">{lang === "bn" ? "কাস্টম উচ্চতা (Height mm/px)" : "Custom Page Height"}</Label>
-                  <Input name="invoice_page_height" defaultValue={biz.invoice_page_height || ""} placeholder="e.g. auto or 297mm" className="h-8 text-xs mt-1" />
-                </div>
-              </div>
-
-              {/* POS Thermal Printer Paper & Canvas Customizer */}
-              <div className="border-t border-border pt-3 mt-3 space-y-3">
-                <div className="flex items-center gap-2">
-                  <Printer className="size-4 text-primary" />
-                  <h3 className="font-semibold text-xs text-foreground uppercase tracking-wider">
-                    {lang === "bn" ? "পিওএস থার্মাল প্রিন্টার পেপার সাইজ (POS Paper Settings)" : "POS Thermal Printer & Paper Settings"}
-                  </h3>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3 text-xs">
+        <div className="space-y-6">
+          {/* ── TAB 1: SHOP PROFILE & BRANDING ──────────────────────────────── */}
+          {settingsTab === "profile" && (
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+              <Card className="lg:col-span-8 p-5 sm:p-6 rounded-3xl bg-card border-border/80 shadow-xs space-y-5">
+                <div className="flex items-center justify-between border-b border-border/60 pb-3">
                   <div>
-                    <Label className="text-[11px] text-muted-foreground">{lang === "bn" ? "পেপার প্রস্থ (Paper Width)" : "Paper Width (mm)"}</Label>
-                    <Input
-                      type="number"
-                      className="h-8 text-xs mt-1"
-                      value={posConfig.widthMm}
-                      onChange={(e) => updatePosConfig({ widthMm: Number(e.target.value) || 58 })}
-                      placeholder="58"
-                    />
-                    <p className="text-[9px] text-muted-foreground mt-0.5">{lang === "bn" ? "ডিফল্ট: 58 mm (POS রুল)" : "Default: 58 mm"}</p>
-                  </div>
-
-                  <div>
-                    <Label className="text-[11px] text-muted-foreground">{lang === "bn" ? "পেপার উচ্চতা (Paper Height)" : "Paper Height (mm)"}</Label>
-                    <Input
-                      type="number"
-                      className="h-8 text-xs mt-1"
-                      value={posConfig.heightMm === "auto" ? 40 : posConfig.heightMm}
-                      onChange={(e) => updatePosConfig({ heightMm: Number(e.target.value) || 40 })}
-                      placeholder="40"
-                    />
-                    <p className="text-[9px] text-muted-foreground mt-0.5">{lang === "bn" ? "ডিফল্ট: 40 mm" : "Default: 40 mm"}</p>
-                  </div>
-
-                  <div>
-                    <Label className="text-[11px] text-muted-foreground">{lang === "bn" ? "ক্যানভাস সাইজ (Canvas Width)" : "Canvas Width (mm)"}</Label>
-                    <Input
-                      type="number"
-                      className="h-8 text-xs mt-1"
-                      value={posConfig.canvasWidthMm}
-                      onChange={(e) => updatePosConfig({ canvasWidthMm: Number(e.target.value) || 82 })}
-                      placeholder="82"
-                    />
-                    <p className="text-[9px] text-muted-foreground mt-0.5">{lang === "bn" ? "ডিফল্ট: 82 mm ক্যানভাস" : "Default: 82 mm"}</p>
-                  </div>
-
-                  <div>
-                    <Label className="text-[11px] text-muted-foreground">{lang === "bn" ? "দুই পাশের মার্জিন (Side Margin)" : "Side Margin (mm)"}</Label>
-                    <Input
-                      type="number"
-                      className="h-8 text-xs mt-1"
-                      value={posConfig.marginMm}
-                      onChange={(e) => updatePosConfig({ marginMm: Number(e.target.value) ?? 1 })}
-                      placeholder="1"
-                    />
-                    <p className="text-[9px] text-muted-foreground mt-0.5">{lang === "bn" ? "ডিফল্ট: 1 mm উভয় পাশে" : "Default: 1 mm margin"}</p>
+                    <h2 className="text-base font-bold text-foreground flex items-center gap-2">
+                      <Store className="size-4 text-primary" />
+                      <span>{lang === "bn" ? "দোকানের মূল তথ্য" : "Business Profile & Contact"}</span>
+                    </h2>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {lang === "bn" ? "দোকানের নাম, ঠিকানা এবং যোগাযোগের তথ্য পরিচালনা করুন" : "Manage company identity, phone numbers, and official address"}
+                    </p>
                   </div>
                 </div>
-              </div>
-            </div>
-            <Button type="submit" disabled={busy} className="w-full sm:w-auto mt-4">{busy ? "…" : t("save")}</Button>
-          </form>
-        </Card>
 
-        {/* ── KPI & DASHBOARD CUSTOMIZER ──────────────────────── */}
-        <Card className="glass-card p-5 space-y-4 border border-primary/20">
-          <div className="flex items-center gap-2.5">
-            <div className="size-8 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary shrink-0">
-              <LayoutGrid className="size-4" />
-            </div>
-            <div>
-              <h2 className="font-semibold text-sm sm:text-base">{lang === "bn" ? "কেপিআই এবং ড্যাশবোর্ড কাস্টমাইজেশন" : "KPI & Dashboard Box Customizer"}</h2>
-              <p className="text-xs text-muted-foreground">{lang === "bn" ? "ড্যাশবোর্ডের কেপিআই বক্সের আকার (উচ্চতা), শার্পনেস এবং বর্ডার শৈলী পরিবর্তন করুন" : "Customize KPI box heights, corner sharpness, borders, and layouts"}</p>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
-            {/* Box Size */}
-            <div className="space-y-1.5">
-              <Label className="text-xs font-bold">{lang === "bn" ? "কেপিআই বক্সের সাইজ (উচ্চতা)" : "KPI Box Height & Size"}</Label>
-              <div className="grid grid-cols-6 gap-1 bg-muted rounded-xl p-1 text-xs">
-                {[
-                  { id: "xxs", label: "XXS" },
-                  { id: "xs", label: "XS" },
-                  { id: "small", label: "Small" },
-                  { id: "standard", label: "Med" },
-                  { id: "large", label: "Large" },
-                  { id: "xl", label: "XL" },
-                ].map(sz => (
-                  <button
-                    key={sz.id}
-                    type="button"
-                    onClick={() => updateKpiConfig({ size: sz.id as any })}
-                    className={`py-1.5 rounded-lg text-center text-[11px] font-bold transition-all ${
-                      kpiConfig.size === sz.id
-                        ? "bg-background text-primary shadow-sm ring-1 ring-primary/40"
-                        : "text-muted-foreground hover:text-foreground"
-                    }`}
-                  >
-                    {sz.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Box Sharpness / Corner Curve */}
-            <div className="space-y-1.5">
-              <Label className="text-xs font-bold">{lang === "bn" ? "কর্নার শার্পনেস (Sharpness / Curve)" : "Corner Sharpness & Curve"}</Label>
-              <div className="grid grid-cols-6 gap-1 bg-muted rounded-xl p-1 text-xs">
-                {[
-                  { id: "none", label: "Sharp" },
-                  { id: "sm", label: "Small" },
-                  { id: "md", label: "Med" },
-                  { id: "lg", label: "Round" },
-                  { id: "xl", label: "XL" },
-                  { id: "full", label: "Pill" },
-                ].map(cr => (
-                  <button
-                    key={cr.id}
-                    type="button"
-                    onClick={() => updateKpiConfig({ curve: cr.id as any })}
-                    className={`py-1.5 rounded-lg text-center text-[10px] font-bold transition-all ${
-                      (kpiConfig.curve || "none") === cr.id
-                        ? "bg-background text-primary shadow-sm ring-1 ring-primary/40"
-                        : "text-muted-foreground hover:text-foreground"
-                    }`}
-                  >
-                    {cr.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Border Style */}
-            <div className="space-y-1.5">
-              <Label className="text-xs font-bold">{lang === "bn" ? "বর্ডার স্টাইল" : "Border Style"}</Label>
-              <div className="grid grid-cols-4 gap-1.5">
-                {[
-                  { id: "subtle", label: "Subtle" },
-                  { id: "bold", label: "Bold" },
-                  { id: "pink", label: "Pink" },
-                  { id: "emerald", label: "Emerald" },
-                  { id: "amber", label: "Gold" },
-                  { id: "indigo", label: "Indigo" },
-                  { id: "dashed", label: "Dashed" },
-                  { id: "none", label: "None" },
-                ].map(b => (
-                  <button
-                    key={b.id}
-                    type="button"
-                    onClick={() => updateKpiConfig({ borderStyle: b.id as any })}
-                    className={`p-1.5 rounded-xl border text-[10px] font-bold text-center transition-all ${
-                      kpiConfig.borderStyle === b.id
-                        ? "border-primary bg-primary/15 text-primary shadow-sm ring-1 ring-primary/40"
-                        : "border-border bg-background/50 text-muted-foreground hover:bg-muted/50"
-                    }`}
-                  >
-                    {b.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Card Design Variant */}
-            <div className="space-y-1.5">
-              <Label className="text-xs font-bold">{lang === "bn" ? "কার্ড ভ্যারিয়েন্ট" : "Card Theme Variant"}</Label>
-              <div className="grid grid-cols-3 sm:grid-cols-5 gap-1.5">
-                {[
-                  { id: "glass", label: "Glass" },
-                  { id: "flat", label: "Flat" },
-                  { id: "bordered", label: "Bordered" },
-                  { id: "neon", label: "Neon" },
-                  { id: "gradient", label: "Gradient" },
-                ].map(v => (
-                  <button
-                    key={v.id}
-                    type="button"
-                    onClick={() => updateKpiConfig({ variant: v.id as any })}
-                    className={`p-1.5 rounded-xl border text-[10px] font-bold text-center transition-all ${
-                      kpiConfig.variant === v.id
-                        ? "border-primary bg-primary/15 text-primary shadow-sm ring-1 ring-primary/40"
-                        : "border-border bg-background/50 text-muted-foreground hover:bg-muted/50"
-                    }`}
-                  >
-                    {v.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-        </Card>
-
-          {!isUnlocked ? (
-            <Card className="glass-card p-5 space-y-4 border-amber-500/20 bg-amber-500/5 relative overflow-hidden flex flex-col justify-between min-h-[350px]">
-              <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
-              <div className="space-y-4 flex-1 flex flex-col justify-center">
-                <div className="flex items-center gap-3 text-amber-500">
-                  <div className="p-2 bg-amber-500/10 rounded-lg">
-                    <Lock className="size-6 animate-pulse" />
+                <form onSubmit={saveBusiness} className="space-y-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-semibold">Company / Shop Name</Label>
+                      <Input name="name" defaultValue={biz.name} placeholder="Dream IT POS" className="h-10 rounded-xl text-xs" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-semibold">Business Category</Label>
+                      <select name="business_type" defaultValue={biz.business_type} className="w-full h-10 rounded-xl border border-input bg-input px-3 text-xs capitalize">
+                        {BUSINESS_TYPES.map(bt => <option key={bt} value={bt}>{bt}</option>)}
+                      </select>
+                    </div>
                   </div>
-                  <h2 className="font-semibold text-lg">Safety & API Settings</h2>
-                </div>
-                <p className="text-sm text-muted-foreground mt-3 leading-relaxed">
-                  Configure Google Sheets integration, generate employee license keys, and perform data resets. Password verification is required.
-                </p>
-                <div className="flex items-start gap-2.5 text-xs text-amber-600 dark:text-amber-400 bg-amber-500/10 p-3 rounded-lg border border-amber-500/20 mt-4">
-                  <ShieldAlert className="size-4 shrink-0 mt-0.5" />
-                  <span>Only the business owner can access safety controls. Access is locked by default.</span>
-                </div>
-              </div>
-              <Button
-                type="button"
-                variant="outline"
-                className="w-full mt-6 border-amber-500/30 hover:bg-amber-500/10 text-amber-700 dark:text-amber-300 font-medium"
-                onClick={() => setIsUnlockDialogOpen(true)}
-              >
-                Unlock Safety Settings
-              </Button>
-            </Card>
-          ) : (
-            <div className="space-y-4">
-              <Card className="glass-card p-5 space-y-4 relative overflow-hidden">
-                <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-500/10 rounded-full blur-2xl pointer-events-none" />
-                <div className="flex items-center gap-2.5 text-emerald-500">
-                  <FileSpreadsheet className="size-5" />
-                  <h2 className="font-semibold">Google Sheets Integration</h2>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Synchronize your transactions, products, sales, expenses, and purchases to Google Sheets in real-time.
-                </p>
-                <form onSubmit={saveGoogleSheetsConfig} className="space-y-3.5">
-                  <div className="space-y-1">
-                    <Label className="text-xs font-medium">Spreadsheet ID</Label>
-                    <Input
-                      name="google_sheets_spreadsheet_id"
-                      defaultValue={biz.google_sheets_spreadsheet_id}
-                      placeholder="e.g. 1a2b3c4d5e6f7g..."
-                      className="font-mono text-xs"
-                    />
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-semibold">Official Phone Number(s)</Label>
+                      <Input name="phone_numbers" defaultValue={biz.phone_numbers} placeholder="+8801700000000" className="h-10 rounded-xl text-xs" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-semibold">Official Email</Label>
+                      <Input name="emails" defaultValue={biz.emails} placeholder="support@shop.com" className="h-10 rounded-xl text-xs" />
+                    </div>
                   </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs font-medium">Service Account Credentials JSON</Label>
+
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold">Store Address</Label>
+                    <Input name="address" defaultValue={biz.address} placeholder="Road #1, Block #A, Dhaka" className="h-10 rounded-xl text-xs" />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold">Invoice Terms & Policy (Shown on Printed Receipts)</Label>
                     <Textarea
-                      name="google_sheets_credentials_json"
-                      defaultValue={biz.google_sheets_credentials_json}
-                      placeholder='{ "type": "service_account", ... }'
-                      className="font-mono text-xs min-h-[100px] h-[120px] bg-transparent"
+                      name="invoice_terms"
+                      defaultValue={biz.invoice_terms}
+                      placeholder="e.g. Sold items can be exchanged within 7 days with original invoice."
+                      className="text-xs min-h-[70px] rounded-xl"
                     />
                   </div>
-                  <div className="flex gap-2.5 pt-1">
-                    <Button type="submit" disabled={isSheetsSaving} size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white">
-                      {isSheetsSaving ? "Saving..." : "Save Config"}
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={handleBulkExport}
-                      disabled={isBulkExporting || !biz.google_sheets_spreadsheet_id || !biz.google_sheets_credentials_json}
-                      size="sm"
-                      className="border-emerald-600/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10"
-                    >
-                      {isBulkExporting ? (
-                        <>
-                          <RefreshCw className="size-3.5 mr-1.5 animate-spin" />
-                          Syncing...
-                        </>
-                      ) : (
-                        "Sync All Existing Data"
-                      )}
+
+                  <div className="flex items-center justify-between p-3 rounded-2xl bg-muted/40 border border-border/80">
+                    <div className="space-y-0.5">
+                      <Label className="text-xs font-semibold">Invoice Background Watermark</Label>
+                      <p className="text-[11px] text-muted-foreground">Print store watermark on PDF & Thermal receipts</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Input
+                        name="invoice_watermark"
+                        defaultValue={biz.invoice_watermark}
+                        placeholder="e.g. PAID / ORIGINAL"
+                        className="h-8 w-36 text-xs rounded-lg uppercase"
+                      />
+                      <Switch name="invoice_watermark_enabled" defaultChecked={biz.invoice_watermark_enabled} />
+                    </div>
+                  </div>
+
+                  <div className="pt-2">
+                    <Button type="submit" disabled={busy} className="h-10 px-6 rounded-xl bg-primary text-primary-foreground font-bold text-xs shadow-sm">
+                      {busy ? "Saving..." : "Save Business Profile"}
                     </Button>
                   </div>
                 </form>
               </Card>
 
-              <Card className="glass-card p-5 space-y-4">
-                <div className="flex items-center gap-2.5 text-blue-500">
-                  <Key className="size-5" />
-                  <h2 className="font-semibold">Employee Licenses</h2>
+              {/* Shop Logo & Cropper Preview */}
+              <Card className="lg:col-span-4 p-5 sm:p-6 rounded-3xl bg-card border-border/80 shadow-xs space-y-4 flex flex-col items-center text-center">
+                <div className="w-full border-b border-border/60 pb-3 text-left">
+                  <h3 className="font-bold text-sm text-foreground">Official Store Logo</h3>
+                  <p className="text-xs text-muted-foreground">Uploaded square logo appears on POS receipts and invoices</p>
                 </div>
-                <p className="text-xs text-muted-foreground">1 license = 1 employee. Share the generated key during their signup/activation.</p>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="secondary"
-                  className="bg-blue-600/10 text-blue-600 dark:bg-blue-600/20 dark:text-blue-400 hover:bg-blue-600/20"
-                  onClick={async () => {
-                    try {
-                      const res = await createEmployeeLicenseFn({ data: { permissions: DEFAULT_EMPLOYEE_PERMISSIONS } });
-                      toast.success(`Employee key generated: ${res.key}`);
-                      qc.invalidateQueries({ queryKey: ["business-settings"] });
-                    } catch (err: unknown) {
-                      toast.error(err instanceof Error ? err.message : String(err));
-                    }
-                  }}
-                >
-                  Generate Employee License
-                </Button>
-                <div className="divide-y divide-border rounded-md border overflow-hidden bg-background/50 max-h-[200px] overflow-y-auto">
-                  {(settings.data?.employeeLicenses ?? []).length === 0 ? (
-                    <div className="p-3 text-center text-xs text-muted-foreground">No license keys generated yet.</div>
+
+                <div className="size-36 rounded-2xl border border-border/80 bg-muted/40 p-2 flex items-center justify-center overflow-hidden shadow-inner relative group">
+                  {logoUrl ? (
+                    <img src={logoUrl} alt="Store Logo" className="max-h-full max-w-full object-contain rounded-lg" />
                   ) : (
-                    (settings.data?.employeeLicenses ?? []).map((l: any) => (
-                      <div key={l.id} className="p-2 flex items-center justify-between gap-2 text-xs">
-                        <code className="font-mono bg-muted px-1.5 py-0.5 rounded text-[11px] truncate">{l.id}</code>
-                        <div className="flex items-center gap-2 shrink-0">
-                          <span className={l.used ? "text-muted-foreground" : "text-emerald-500 font-semibold"}>
-                            {l.used ? "Used" : "Open"}
-                          </span>
-                          {!l.used && (
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon"
-                              className="size-6 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                              aria-label={t("delete_license")}
-                              onClick={async () => {
-                                try {
-                                  await deleteLicenseFn({ data: { licenseKey: l.id } });
-                                  qc.invalidateQueries({ queryKey: ["business-settings"] });
-                                  toast.success("License deleted");
-                                } catch (err: unknown) {
-                                  toast.error(err instanceof Error ? err.message : String(err));
-                                }
-                              }}
-                            >
-                              <Trash2 className="size-3" />
-                            </Button>
-                          )}
-                        </div>
-                      </div>
-                    ))
+                    <Store className="size-12 text-muted-foreground/50" />
                   )}
                 </div>
+
+                <div className="w-full space-y-2">
+                  <label className="block w-full">
+                    <span className="sr-only">Choose Logo</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleFileSelect}
+                      className="block w-full text-xs text-muted-foreground file:mr-2 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20 cursor-pointer"
+                    />
+                  </label>
+                  <p className="text-[10px] text-muted-foreground">Supports PNG, JPG, WEBP. Drag and zoom in the cropper modal.</p>
+                </div>
               </Card>
+            </div>
+          )}
+
+          {/* ── TAB 2: POS PRINTING & INVOICE CUSTOMIZATION ───────────────────── */}
+          {settingsTab === "printing" && (
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+              <Card className="lg:col-span-7 p-5 sm:p-6 rounded-3xl bg-card border-border/80 shadow-xs space-y-5">
+                <div className="flex items-center justify-between border-b border-border/60 pb-3">
+                  <div className="flex items-center gap-2.5 text-primary">
+                    <div className="p-2 rounded-xl bg-primary/10 border border-primary/20">
+                      <Printer className="size-5" />
+                    </div>
+                    <div>
+                      <h2 className="text-base font-bold text-foreground">POS Thermal Printer & Paper Size</h2>
+                      <p className="text-xs text-muted-foreground">Configure receipt paper width, thermal margins, and typography</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Paper Size Selector */}
+                <div className="space-y-2">
+                  <Label className="text-xs font-semibold">Receipt Paper Size</Label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {[
+                      { width: 58, label: "58 mm", desc: "Small POS" },
+                      { width: 80, label: "80 mm", desc: "Standard POS (Recommended)" },
+                      { width: 210, label: "A4 Page", desc: "Standard PDF Invoice" },
+                    ].map((p) => {
+                      const isSelected = posConfig.widthMm === p.width;
+                      return (
+                        <button
+                          key={p.width}
+                          type="button"
+                          onClick={() => updatePosConfig({ widthMm: p.width })}
+                          className={`p-3 rounded-2xl border text-left transition-all cursor-pointer ${
+                            isSelected
+                              ? "bg-primary/10 border-primary text-primary shadow-xs"
+                              : "bg-muted/30 border-border/80 text-foreground hover:bg-muted/60"
+                          }`}
+                        >
+                          <p className="font-bold text-xs">{p.label}</p>
+                          <p className="text-[10px] text-muted-foreground mt-0.5">{p.desc}</p>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Typography Controls */}
+                <form onSubmit={saveInvoiceStyling} className="space-y-4 pt-2 border-t border-border/60">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-semibold">Store Title Size</Label>
+                      <select
+                        value={fontSize}
+                        onChange={e => setFontSize(e.target.value)}
+                        className="w-full h-9 rounded-xl border border-input bg-input px-2 text-xs"
+                      >
+                        <option value="18px">18px (Compact)</option>
+                        <option value="20px">20px (Normal)</option>
+                        <option value="22px">22px (Default)</option>
+                        <option value="26px">26px (Large)</option>
+                        <option value="30px">30px (Extra Large)</option>
+                      </select>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-semibold">Receipt Scale</Label>
+                      <select
+                        value={fontScale}
+                        onChange={e => setFontScale(e.target.value)}
+                        className="w-full h-9 rounded-xl border border-input bg-input px-2 text-xs"
+                      >
+                        <option value="90%">90% (Dense)</option>
+                        <option value="100%">100% (Normal)</option>
+                        <option value="110%">110% (Spacious)</option>
+                      </select>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-semibold">Line Spacing</Label>
+                      <select
+                        value={lineSpacing}
+                        onChange={e => setLineSpacing(e.target.value)}
+                        className="w-full h-9 rounded-xl border border-input bg-input px-2 text-xs"
+                      >
+                        <option value="4px">4px (Tight)</option>
+                        <option value="6px">6px (Standard)</option>
+                        <option value="8px">8px (Relaxed)</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <Button type="submit" disabled={busy} className="h-9 px-5 rounded-xl bg-primary text-primary-foreground font-bold text-xs shadow-sm">
+                    {busy ? "Saving..." : "Save Print Formatting"}
+                  </Button>
+                </form>
+              </Card>
+
+              {/* Receipt Preview */}
+              <Card className="lg:col-span-5 p-5 sm:p-6 rounded-3xl bg-card border-border/80 shadow-xs space-y-4">
+                <h3 className="font-bold text-sm text-foreground flex items-center gap-2">
+                  <Printer className="size-4 text-primary" />
+                  <span>Live Receipt Preview ({posConfig.widthMm}mm)</span>
+                </h3>
+                
+                <div className="p-4 rounded-2xl bg-white text-black font-mono text-[11px] border border-border shadow-xs space-y-2">
+                  <div className="text-center space-y-0.5">
+                    <p className="font-bold text-xs" style={{ fontSize }}>{biz.name || "Dream IT Shop"}</p>
+                    <p className="text-[10px] text-gray-600">{biz.address || "Road #1, Dhaka"}</p>
+                    <p className="text-[10px] text-gray-600">Mob: {biz.phone_numbers || "+8801700000000"}</p>
+                  </div>
+                  <div className="border-b border-dashed border-gray-400 my-1" />
+                  <div className="flex justify-between text-[10px]">
+                    <span>Inv: #INV-2026-001</span>
+                    <span>Date: 23/08/2026</span>
+                  </div>
+                  <div className="border-b border-dashed border-gray-400 my-1" />
+                  <div className="space-y-1">
+                    <div className="flex justify-between">
+                      <span>1x Premium T-Shirt</span>
+                      <span className="font-bold">৳850</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>2x Casual Denim Pants</span>
+                      <span className="font-bold">৳2,400</span>
+                    </div>
+                  </div>
+                  <div className="border-b border-dashed border-gray-400 my-1" />
+                  <div className="flex justify-between font-bold text-xs">
+                    <span>Total Amount:</span>
+                    <span>৳3,250</span>
+                  </div>
+                  <div className="text-center text-[9px] text-gray-500 pt-1">
+                    {biz.invoice_terms || "Thank you for shopping with us!"}
+                  </div>
+                </div>
+              </Card>
+            </div>
+          )}
+
+          {/* ── TAB 3: GOOGLE SHEETS & CLOUD SYNC ────────────────────────────── */}
+          {settingsTab === "sheets" && (
+            <div className="space-y-6">
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+                <Card className="lg:col-span-7 p-5 sm:p-6 rounded-3xl bg-card border-border/80 shadow-xs space-y-5">
+                  <div className="flex items-center justify-between border-b border-border/60 pb-3">
+                    <div className="flex items-center gap-2.5 text-emerald-600 dark:text-emerald-400">
+                      <div className="p-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
+                        <FileSpreadsheet className="size-5" />
+                      </div>
+                      <div>
+                        <h2 className="text-base font-bold text-foreground">
+                          {lang === "bn" ? "গুগল শিট অটোমেটিক সিঙ্ক" : "Google Sheets Real-Time Sync"}
+                        </h2>
+                        <p className="text-xs text-muted-foreground">
+                          {lang === "bn" ? "গুগল অ্যাকাউন্টের মাধ্যমে ১-ক্লিকে শিট সংযুক্ত করুন" : "One-click connect with your Google account using Google OAuth"}
+                        </p>
+                      </div>
+                    </div>
+                    {biz.google_sheets_spreadsheet_id && (
+                      <Badge variant="outline" className="bg-emerald-500/15 text-emerald-600 border-emerald-500/30 text-xs font-semibold">
+                        {lang === "bn" ? "🟢 সক্রিয়" : "🟢 Active"}
+                      </Badge>
+                    )}
+                  </div>
+
+                  {/* Google OAuth One-Click Integration Box */}
+                  <div className="p-4 rounded-2xl bg-gradient-to-br from-emerald-500/10 via-teal-500/5 to-transparent border border-emerald-500/20 space-y-3">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div className="space-y-0.5">
+                        <div className="flex items-center gap-2">
+                          <svg className="size-4" viewBox="0 0 24 24">
+                            <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                            <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                            <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
+                            <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
+                          </svg>
+                          <span className="font-bold text-xs sm:text-sm text-foreground">
+                            {lang === "bn" ? "গুগল অ্যাকাউন্ট সাইন-ইন (Google OAuth)" : "Google Account Sign-In (OAuth)"}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-muted-foreground">
+                          {biz.google_sheets_connected_email
+                            ? `Connected as ${biz.google_sheets_connected_email}`
+                            : (lang === "bn"
+                                ? "কোনো জটিল কি (JSON Key) ছাড়াই সরাসরি আপনার গুগল অ্যাকাউন্টের সাথে শিট তৈরি ও ব্যাকআপ করুন।"
+                                : "Automatically creates and connects a Google Spreadsheet to your Google account.")}
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        {biz.google_sheets_connected_email || biz.has_google_auth ? (
+                          <Button
+                            type="button"
+                            variant="destructive"
+                            size="sm"
+                            disabled={isSheetsSaving}
+                            onClick={handleDisconnectGoogleSheets}
+                            className="rounded-xl text-xs h-9 px-3"
+                          >
+                            Disconnect
+                          </Button>
+                        ) : (
+                          <Button
+                            type="button"
+                            disabled={isSheetsSaving}
+                            onClick={handleConnectGoogleOAuth}
+                            className="rounded-xl text-xs font-bold h-9 px-4 bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm gap-2"
+                          >
+                            {isSheetsSaving ? (
+                              <>
+                                <RefreshCw className="size-3.5 animate-spin" />
+                                <span>Connecting...</span>
+                              </>
+                            ) : (
+                              <>
+                                <svg className="size-3.5 fill-current" viewBox="0 0 24 24">
+                                  <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                                </svg>
+                                <span>Connect with Google</span>
+                              </>
+                            )}
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+
+                    {biz.google_sheets_spreadsheet_id && (
+                      <div className="pt-2 border-t border-emerald-500/20 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                        <div className="flex items-center gap-1.5 text-xs text-foreground font-medium truncate">
+                          <span className="text-muted-foreground">Spreadsheet ID:</span>
+                          <span className="font-mono text-[11px] bg-background/80 px-2 py-0.5 rounded-md border border-border/60 truncate max-w-[200px]">
+                            {biz.google_sheets_spreadsheet_id}
+                          </span>
+                        </div>
+                        <a
+                          href={`https://docs.google.com/spreadsheets/d/${biz.google_sheets_spreadsheet_id}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-xs font-bold text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 flex items-center gap-1 hover:underline shrink-0"
+                        >
+                          <span>Open in Google Sheets</span>
+                          <ExternalLink className="size-3" />
+                        </a>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Sync Controls & One-Click Export */}
+                  <div className="pt-2 flex flex-col sm:flex-row gap-3">
+                    <Button
+                      type="button"
+                      onClick={handleBulkExport}
+                      disabled={isBulkExporting || !biz.google_sheets_spreadsheet_id}
+                      className="h-10 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs gap-2 flex-1 shadow-sm"
+                    >
+                      {isBulkExporting ? (
+                        <>
+                          <RefreshCw className="size-3.5 animate-spin" />
+                          <span>Syncing Database to Google Sheets...</span>
+                        </>
+                      ) : (
+                        <>
+                          <RefreshCw className="size-3.5" />
+                          <span>Sync All Existing Data Now</span>
+                        </>
+                      )}
+                    </Button>
+                  </div>
+
+                  {/* Manual Configuration Fallback */}
+                  <details className="text-xs group border border-border/60 rounded-2xl p-3 bg-muted/20">
+                    <summary className="font-semibold cursor-pointer text-muted-foreground group-open:text-foreground flex items-center justify-between">
+                      <span>Advanced: Manual Service Account Key (JSON)</span>
+                      <span className="text-[10px] text-muted-foreground">Click to toggle</span>
+                    </summary>
+                    <form onSubmit={saveGoogleSheetsConfig} className="space-y-3 pt-3 mt-2 border-t border-border/40">
+                      <div className="space-y-1">
+                        <Label className="text-xs font-medium">Custom Spreadsheet ID</Label>
+                        <Input
+                          name="google_sheets_spreadsheet_id"
+                          defaultValue={biz.google_sheets_spreadsheet_id}
+                          placeholder="1a2b3c4d5e6f7g..."
+                          className="font-mono text-xs h-9 rounded-xl"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs font-medium">Service Account JSON</Label>
+                        <Textarea
+                          name="google_sheets_credentials_json"
+                          defaultValue={biz.google_sheets_credentials_json}
+                          placeholder='{ "type": "service_account", ... }'
+                          className="font-mono text-xs min-h-[90px] rounded-xl"
+                        />
+                      </div>
+                      <Button type="submit" disabled={isSheetsSaving} size="sm" className="rounded-xl h-8 px-4 text-xs font-semibold">
+                        Save Manual Config
+                      </Button>
+                    </form>
+                  </details>
+                </Card>
+
+                {/* Sync Status Info Card */}
+                <Card className="lg:col-span-5 p-5 sm:p-6 rounded-3xl bg-card border-border/80 shadow-xs space-y-4">
+                  <h3 className="font-bold text-sm text-foreground flex items-center gap-2">
+                    <Database className="size-4 text-primary" />
+                    <span>Real-Time Sync Modules</span>
+                  </h3>
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    When Google Sheets is active, every transaction creates live rows in separate tabs in your spreadsheet automatically:
+                  </p>
+
+                  <div className="space-y-2 text-xs">
+                    {[
+                      { name: "Sales Tab", desc: "Customer invoices, sell prices, profits, and dues" },
+                      { name: "Products Tab", desc: "Product catalog, stock levels, buy & sell prices" },
+                      { name: "Purchases Tab", desc: "Stock restocks, supplier purchases & unit costs" },
+                      { name: "Expenses Tab", desc: "Daily operational expenses and categorized notes" },
+                      { name: "Cashbox Tab", desc: "Inflow / outflow cash transactions & running balance" },
+                    ].map((item, i) => (
+                      <div key={i} className="flex items-start gap-2 p-2 rounded-xl bg-muted/40 border border-border/60">
+                        <div className="size-2 rounded-full bg-emerald-500 mt-1.5 shrink-0" />
+                        <div>
+                          <span className="font-bold text-foreground">{item.name}:</span>{" "}
+                          <span className="text-muted-foreground">{item.desc}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </Card>
+              </div>
+            </div>
+          )}
+
+          {/* ── TAB 4: EMPLOYEE INVITATIONS & STAFF ACCESS ──────────────────── */}
+          {settingsTab === "staff" && (
+            <div className="space-y-6">
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+                {/* Send Employee Invitation Form */}
+                <Card className="lg:col-span-6 p-5 sm:p-6 rounded-3xl bg-card border-border/80 shadow-xs space-y-5">
+                  <div className="flex items-center justify-between border-b border-border/60 pb-3">
+                    <div className="flex items-center gap-2.5 text-primary">
+                      <div className="p-2 rounded-xl bg-primary/10 border border-primary/20">
+                        <UserPlus className="size-5" />
+                      </div>
+                      <div>
+                        <h2 className="text-base font-bold text-foreground">
+                          {lang === "bn" ? "নতুন কর্মচারী আমন্ত্রণ" : "Invite Employee by Email"}
+                        </h2>
+                        <p className="text-xs text-muted-foreground">
+                          {lang === "bn"
+                            ? "কর্মচারীর ইমেইল দিয়ে আমন্ত্রণ পাঠান। তিনি লগইন করলেই একাউন্টে নোটিফিকেশন পাবেন।"
+                            : "Enter staff email. When they log in or create an account, they get a joining popup."}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <form onSubmit={handleSendStaffInvitation} className="space-y-3.5">
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-semibold">Employee Email Address *</Label>
+                      <Input
+                        type="email"
+                        required
+                        value={inviteEmail}
+                        onChange={e => setInviteEmail(e.target.value)}
+                        placeholder="employee@gmail.com"
+                        className="h-10 rounded-xl text-xs"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-semibold">Full Name (Optional)</Label>
+                        <Input
+                          value={inviteName}
+                          onChange={e => setInviteName(e.target.value)}
+                          placeholder="e.g. Shakil Ahmed"
+                          className="h-10 rounded-xl text-xs"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-semibold">Role / Designation</Label>
+                        <select
+                          value={inviteDesignation}
+                          onChange={e => setInviteDesignation(e.target.value)}
+                          className="w-full h-10 rounded-xl border border-input bg-input px-3 text-xs"
+                        >
+                          <option value="Sales Staff">Sales Staff</option>
+                          <option value="Cashier">Cashier</option>
+                          <option value="Store Manager">Store Manager</option>
+                          <option value="Inventory Officer">Inventory Officer</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <Button
+                      type="submit"
+                      disabled={inviteSending || !inviteEmail.trim()}
+                      className="w-full h-10 rounded-xl bg-primary text-primary-foreground font-bold text-xs gap-2 shadow-sm mt-2"
+                    >
+                      {inviteSending ? (
+                        <>
+                          <RefreshCw className="size-3.5 animate-spin" />
+                          <span>Sending Invitation...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Mail className="size-3.5" />
+                          <span>{lang === "bn" ? "আমন্ত্রণ পাঠান" : "Send Staff Invitation"}</span>
+                        </>
+                      )}
+                    </Button>
+                  </form>
+                </Card>
+
+                {/* Pending Email Invitations */}
+                <Card className="lg:col-span-6 p-5 sm:p-6 rounded-3xl bg-card border-border/80 shadow-xs space-y-4">
+                  <div className="flex items-center justify-between border-b border-border/60 pb-3">
+                    <div className="flex items-center gap-2">
+                      <Clock className="size-4 text-amber-500" />
+                      <h3 className="font-bold text-sm text-foreground">
+                        {lang === "bn" ? "অপেক্ষারত আমন্ত্রণসমূহ" : "Pending Email Invitations"}
+                      </h3>
+                    </div>
+                    <Badge variant="outline" className="bg-amber-500/10 text-amber-600 border-amber-500/30 text-xs">
+                      {pendingInvites.length} Pending
+                    </Badge>
+                  </div>
+
+                  {pendingInvites.length > 0 ? (
+                    <div className="space-y-2.5 max-h-[260px] overflow-y-auto pr-1">
+                      {pendingInvites.map((inv: any) => (
+                        <div
+                          key={inv.id}
+                          className="flex items-center justify-between p-3 rounded-2xl bg-muted/40 border border-border/80 text-xs"
+                        >
+                          <div className="space-y-0.5 min-w-0 pr-2">
+                            <p className="font-bold text-foreground truncate">{inv.employee_email}</p>
+                            <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                              <span>{inv.designation || "Staff"}</span>
+                              {inv.created_at && <span>• {new Date(inv.created_at).toLocaleDateString()}</span>}
+                            </div>
+                          </div>
+
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleCancelInvitation(inv.id)}
+                            className="h-8 px-2.5 rounded-xl text-destructive hover:bg-destructive/10 text-xs font-semibold shrink-0"
+                          >
+                            Revoke
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center py-8 space-y-1.5 border border-dashed border-border/80 rounded-2xl">
+                      <Mail className="size-6 text-muted-foreground mx-auto opacity-50" />
+                      <p className="text-xs text-muted-foreground">No pending invitations.</p>
+                    </div>
+                  )}
+                </Card>
+              </div>
+
+              {/* Active Staff Members Table */}
+              <Card className="p-5 sm:p-6 rounded-3xl bg-card border-border/80 shadow-xs space-y-4">
+                <div className="flex items-center justify-between border-b border-border/60 pb-3">
+                  <div className="flex items-center gap-2.5 text-primary">
+                    <Users className="size-5" />
+                    <div>
+                      <h3 className="font-bold text-sm text-foreground">
+                        {lang === "bn" ? "সক্রিয় কর্মচারীবৃন্দ" : "Active Staff Members"}
+                      </h3>
+                      <p className="text-xs text-muted-foreground">Employees with access to this shop</p>
+                    </div>
+                  </div>
+                  <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/30 text-xs">
+                    {activeEmployees.length} Active Staff
+                  </Badge>
+                </div>
+
+                {activeEmployees.length > 0 ? (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {activeEmployees.map((emp: any) => (
+                      <div
+                        key={emp.id}
+                        className="p-3.5 rounded-2xl bg-muted/40 border border-border/80 flex items-center justify-between gap-3 text-xs"
+                      >
+                        <div className="space-y-1 min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-bold text-foreground truncate">
+                              {emp.full_name || emp.email.split("@")[0]}
+                            </span>
+                            <Badge variant="outline" className="text-[10px] bg-emerald-500/10 text-emerald-600 border-emerald-500/30 px-1.5 py-0 h-4">
+                              Active
+                            </Badge>
+                          </div>
+                          <p className="text-[11px] text-muted-foreground truncate">{emp.email}</p>
+                        </div>
+
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleRemoveEmployee(emp.id)}
+                          className="h-8 px-2 text-destructive hover:bg-destructive/10 rounded-xl shrink-0"
+                          title="Remove Staff Access"
+                        >
+                          <Trash2 className="size-3.5" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-8 space-y-1.5 border border-dashed border-border/80 rounded-2xl">
+                    <Users className="size-7 text-muted-foreground mx-auto opacity-50" />
+                    <p className="text-xs text-muted-foreground">No active employees joined yet.</p>
+                    <p className="text-[11px] text-muted-foreground">Send an invitation above to add your team members.</p>
+                  </div>
+                )}
+              </Card>
+            </div>
+          )}
+
+          {/* ── TAB 5: APPEARANCE & THEMES ───────────────────────────────────── */}
+          {settingsTab === "appearance" && (
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+              <Card className="lg:col-span-6 p-5 sm:p-6 rounded-3xl bg-card border-border/80 shadow-xs space-y-5">
+                <div className="border-b border-border/60 pb-3">
+                  <h2 className="text-base font-bold text-foreground flex items-center gap-2">
+                    <Sparkles className="size-4 text-primary" />
+                    <span>{lang === "bn" ? "থিম ও ডিসপ্লে মোড" : "Theme Mode & Colors"}</span>
+                  </h2>
+                  <p className="text-xs text-muted-foreground mt-0.5">Customize UI theme mode and system accent colors</p>
+                </div>
+
+                {/* Theme Mode */}
+                <div className="space-y-2">
+                  <Label className="text-xs font-semibold">Theme Mode</Label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {(["light", "dark", "system"] as ThemeMode[]).map(mode => (
+                      <button
+                        key={mode}
+                        type="button"
+                        onClick={() => setTheme(mode)}
+                        className={`p-3 rounded-2xl border text-center font-bold text-xs capitalize transition-all cursor-pointer ${
+                          theme === mode
+                            ? "bg-primary/10 border-primary text-primary shadow-xs"
+                            : "bg-muted/30 border-border/80 text-foreground hover:bg-muted/60"
+                        }`}
+                      >
+                        {mode}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Accent Colors */}
+                <div className="space-y-2 pt-2">
+                  <Label className="text-xs font-semibold">System Accent Color</Label>
+                  <div className="flex flex-wrap gap-2.5">
+                    {[
+                      { id: "emerald", label: "Emerald", color: "#10b981" },
+                      { id: "violet", label: "Violet", color: "#8b5cf6" },
+                      { id: "rose", label: "Rose", color: "#f43f5e" },
+                      { id: "cyan", label: "Cyan", color: "#06b6d4" },
+                      { id: "amber", label: "Amber", color: "#f59e0b" },
+                    ].map(acc => (
+                      <button
+                        key={acc.id}
+                        type="button"
+                        onClick={() => setAccentColor(acc.id as AccentColor)}
+                        className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-semibold transition-all cursor-pointer ${
+                          accentColor === acc.id
+                            ? "border-primary bg-primary/10 text-primary shadow-xs"
+                            : "border-border/80 bg-muted/20 text-foreground hover:bg-muted/50"
+                        }`}
+                      >
+                        <span className="size-3.5 rounded-full" style={{ backgroundColor: acc.color }} />
+                        <span>{acc.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Background Pattern */}
+                <div className="space-y-2 pt-2">
+                  <Label className="text-xs font-semibold">Background Texture</Label>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    {(["clean", "mesh", "dots", "grid"] as BgStyle[]).map(bg => (
+                      <button
+                        key={bg}
+                        type="button"
+                        onClick={() => setBgStyle(bg)}
+                        className={`p-2.5 rounded-xl border text-center text-xs capitalize font-semibold transition-all cursor-pointer ${
+                          bgStyle === bg
+                            ? "bg-primary/10 border-primary text-primary shadow-xs"
+                            : "bg-muted/30 border-border/80 text-foreground hover:bg-muted/60"
+                        }`}
+                      >
+                        {bg}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </Card>
+
+              {/* KPI Configuration */}
+              <Card className="lg:col-span-6 p-5 sm:p-6 rounded-3xl bg-card border-border/80 shadow-xs space-y-5">
+                <div className="border-b border-border/60 pb-3">
+                  <h2 className="text-base font-bold text-foreground">Dashboard KPI Summary Cards</h2>
+                  <p className="text-xs text-muted-foreground mt-0.5">Customize metric card grid layout and visual styling</p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold">Grid Columns</Label>
+                    <select
+                      value={kpiConfig.columns}
+                      onChange={e => updateKpiConfig({ columns: parseInt(e.target.value) })}
+                      className="w-full h-9 rounded-xl border border-input bg-input px-2 text-xs"
+                    >
+                      <option value={1}>1 Column</option>
+                      <option value={2}>2 Columns</option>
+                      <option value={3}>3 Columns</option>
+                      <option value={4}>4 Columns</option>
+                    </select>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold">Card Size</Label>
+                    <select
+                      value={kpiConfig.size}
+                      onChange={e => updateKpiConfig({ size: e.target.value })}
+                      className="w-full h-9 rounded-xl border border-input bg-input px-2 text-xs"
+                    >
+                      <option value="small">Compact</option>
+                      <option value="medium">Standard</option>
+                      <option value="large">Spacious</option>
+                    </select>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold">Surface Style</Label>
+                    <select
+                      value={kpiConfig.variant}
+                      onChange={e => updateKpiConfig({ variant: e.target.value })}
+                      className="w-full h-9 rounded-xl border border-input bg-input px-2 text-xs"
+                    >
+                      <option value="solid">Solid</option>
+                      <option value="glass">Glass / Frosted</option>
+                      <option value="outline">Outlined</option>
+                    </select>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold">Corner Curvature</Label>
+                    <select
+                      value={kpiConfig.curve}
+                      onChange={e => updateKpiConfig({ curve: e.target.value })}
+                      className="w-full h-9 rounded-xl border border-input bg-input px-2 text-xs"
+                    >
+                      <option value="none">Rounded</option>
+                      <option value="soft">Soft</option>
+                      <option value="pill">Pill</option>
+                    </select>
+                  </div>
+                </div>
+              </Card>
+            </div>
+          )}
+
+          {/* ── TAB 6: SECURITY & DATA RESETS ────────────────────────────────── */}
+          {settingsTab === "security" && (
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+              {/* Change Password */}
+              <Card className="lg:col-span-5 p-5 sm:p-6 rounded-3xl bg-card border-border/80 shadow-xs space-y-4">
+                <div className="flex items-center gap-2 text-primary border-b border-border/60 pb-3">
+                  <Shield className="size-5" />
+                  <h2 className="font-bold text-base text-foreground">Change Account Password</h2>
+                </div>
+                <form onSubmit={handleUpdateMyPassword} className="space-y-3.5">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold">Current Password</Label>
+                    <Input name="currentPassword" type="password" required placeholder="••••••••" className="h-10 rounded-xl text-xs" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold">New Password</Label>
+                    <Input name="newPassword" type="password" required placeholder="Min 6 characters" className="h-10 rounded-xl text-xs" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold">Confirm New Password</Label>
+                    <Input name="confirmPassword" type="password" required placeholder="Re-enter password" className="h-10 rounded-xl text-xs" />
+                  </div>
+                  <Button type="submit" disabled={pwBusy} className="w-full h-10 rounded-xl bg-primary text-primary-foreground font-bold text-xs mt-2 shadow-sm">
+                    {pwBusy ? "Updating..." : "Update Password"}
+                  </Button>
+                </form>
+              </Card>
+
+              {/* Danger Zone & Reset */}
+              <div className="lg:col-span-7">
+                {!isUnlocked ? (
+                  <Card className="p-6 rounded-3xl bg-amber-500/5 border border-amber-500/20 shadow-xs space-y-4 flex flex-col justify-between h-full">
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-3 text-amber-500">
+                        <div className="p-2 bg-amber-500/10 rounded-xl">
+                          <Lock className="size-6 animate-pulse" />
+                        </div>
+                        <h2 className="font-bold text-base text-foreground">Administrative Reset Controls</h2>
+                      </div>
+                      <p className="text-xs text-muted-foreground leading-relaxed">
+                        To protect your business data against accidental deletion, dangerous reset operations require your owner password.
+                      </p>
+                      <div className="flex items-center gap-2 text-xs text-amber-700 dark:text-amber-300 bg-amber-500/10 p-3 rounded-xl border border-amber-500/20">
+                        <ShieldAlert className="size-4 shrink-0" />
+                        <span>Owner authentication required to access reset actions.</span>
+                      </div>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="w-full h-11 rounded-xl border-amber-500/30 hover:bg-amber-500/10 text-amber-700 dark:text-amber-300 font-semibold cursor-pointer"
+                      onClick={() => setIsUnlockDialogOpen(true)}
+                    >
+                      Unlock Danger Zone
+                    </Button>
+                  </Card>
+                ) : (
+                  <Card className="p-5 sm:p-6 rounded-3xl bg-red-500/5 border border-red-500/20 shadow-xs space-y-4">
+                    <div className="flex items-center gap-2 text-red-500 border-b border-red-500/20 pb-3">
+                      <ShieldAlert className="size-5 animate-pulse" />
+                      <h2 className="font-bold text-base text-foreground">Danger Zone: Selective Data Resets</h2>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                      {[
+                        { type: "cashbox", title: "Cashbox", desc: "Clear all cash ledger history" },
+                        { type: "products", title: "Products", desc: "Clear catalog & inventory items" },
+                        { type: "sales", title: "Sales & Invoices", desc: "Clear sales, returns, and profits" },
+                        { type: "purchases", title: "Purchases", desc: "Clear purchase intake records" },
+                        { type: "somiti", title: "Samity", desc: "Clear samity ledger records" },
+                        { type: "expenses", title: "Expenses", desc: "Clear all expense entries" },
+                        { type: "parties", title: "Customers & Debts", desc: "Clear customer dues & profiles" },
+                        { type: "all", title: "Factory Reset", desc: "Wipe all business data completely" },
+                      ].map((item) => (
+                        <div key={item.type} className="p-3 rounded-xl bg-card border border-border/80 flex flex-col justify-between space-y-2">
+                          <div>
+                            <p className="font-bold text-xs text-foreground">{item.title}</p>
+                            <p className="text-[10px] text-muted-foreground">{item.desc}</p>
+                          </div>
+                          <Button
+                            type="button"
+                            variant="destructive"
+                            size="sm"
+                            className="w-full h-7.5 rounded-lg text-xs font-semibold cursor-pointer"
+                            onClick={() => {
+                              setResetType(item.type as any);
+                              setConfirmText("");
+                            }}
+                          >
+                            Reset {item.title}
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  </Card>
+                )}
+              </div>
             </div>
           )}
         </div>
       )}
 
-      {isOwner && (settings.data?.employees ?? []).length > 0 && (
-        <Card className="glass-card p-5 space-y-4">
-          <h2 className="font-semibold">Team & Privileges</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {(settings.data?.employees ?? []).map((emp: any) => (
-            <EmployeePermissions
-              key={emp.id}
-              employee={emp}
-              onSave={async perms => {
-                await updateEmployeePermissionsFn({ data: { employeeId: emp.id, permissions: perms } });
-                qc.invalidateQueries({ queryKey: ["business-settings"] });
-                toast.success(t("save"));
-              }}
-            />
-          ))}
-          </div>
-        </Card>
-      )}
-
-      {isOwner && isUnlocked && (
-        <Card className="glass-card p-5 space-y-4 border-red-500/20 bg-red-500/5 relative overflow-hidden">
-          <div className="absolute top-0 right-0 w-32 h-32 bg-red-500/5 rounded-full blur-3xl pointer-events-none" />
-          <div className="flex items-center gap-2.5 text-red-500">
-            <ShieldAlert className="size-5 animate-pulse" />
-            <h2 className="font-semibold text-lg">Danger Zone</h2>
-          </div>
-          <p className="text-xs text-muted-foreground leading-relaxed">
-            Perform administrative resets on specific modules or clear all data. These actions are irreversible and will affect both local and synced spreadsheet data.
-          </p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3.5 pt-2">
-            <div className="p-3.5 rounded-lg border border-border bg-background/40 flex flex-col justify-between space-y-3">
-              <div>
-                <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Cashbox</h3>
-                <p className="text-[11px] text-muted-foreground mt-1">Delete all cash inflow/outflow history and reset balance to 0.</p>
-              </div>
-              <Button
-                type="button"
-                variant="destructive"
-                size="sm"
-                className="w-full bg-red-600/10 text-red-600 hover:bg-red-600 hover:text-white"
-                onClick={() => {
-                  setResetType("cashbox");
-                  setConfirmText("");
-                }}
-              >
-                Reset Cashbox
-              </Button>
-            </div>
-
-            <div className="p-3.5 rounded-lg border border-border bg-background/40 flex flex-col justify-between space-y-3">
-              <div>
-                <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Products</h3>
-                <p className="text-[11px] text-muted-foreground mt-1">Clear catalog list, categories, stock levels, and item configurations.</p>
-              </div>
-              <Button
-                type="button"
-                variant="destructive"
-                size="sm"
-                className="w-full bg-red-600/10 text-red-600 hover:bg-red-600 hover:text-white"
-                onClick={() => {
-                  setResetType("products");
-                  setConfirmText("");
-                }}
-              >
-                Reset Products
-              </Button>
-            </div>
-
-            <div className="p-3.5 rounded-lg border border-border bg-background/40 flex flex-col justify-between space-y-3">
-              <div>
-                <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Sales, Profits & Losses</h3>
-                <p className="text-[11px] text-muted-foreground mt-1">Delete all invoice histories, returns records, and accumulated profit & loss logs.</p>
-              </div>
-              <Button
-                type="button"
-                variant="destructive"
-                size="sm"
-                className="w-full bg-red-600/10 text-red-600 hover:bg-red-600 hover:text-white"
-                onClick={() => {
-                  setResetType("sales");
-                  setConfirmText("");
-                }}
-              >
-                Reset Sales & Profits
-              </Button>
-            </div>
-
-            <div className="p-3.5 rounded-lg border border-border bg-background/40 flex flex-col justify-between space-y-3">
-              <div>
-                <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Purchases</h3>
-                <p className="text-[11px] text-muted-foreground mt-1">Delete all purchase records, stock intakes, and supplier purchases logs.</p>
-              </div>
-              <Button
-                type="button"
-                variant="destructive"
-                size="sm"
-                className="w-full bg-red-600/10 text-red-600 hover:bg-red-600 hover:text-white"
-                onClick={() => {
-                  setResetType("purchases");
-                  setConfirmText("");
-                }}
-              >
-                Reset Purchases
-              </Button>
-            </div>
-
-            <div className="p-3.5 rounded-lg border border-border bg-background/40 flex flex-col justify-between space-y-3">
-              <div>
-                <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Samity / Somiti</h3>
-                <p className="text-[11px] text-muted-foreground mt-1">Delete all samity contribution/withdrawal records and reset samity ledger.</p>
-              </div>
-              <Button
-                type="button"
-                variant="destructive"
-                size="sm"
-                className="w-full bg-red-600/10 text-red-600 hover:bg-red-600 hover:text-white"
-                onClick={() => {
-                  setResetType("somiti");
-                  setConfirmText("");
-                }}
-              >
-                Reset Samity
-              </Button>
-            </div>
-
-            <div className="p-3.5 rounded-lg border border-border bg-background/40 flex flex-col justify-between space-y-3">
-              <div>
-                <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Expenses</h3>
-                <p className="text-[11px] text-muted-foreground mt-1">Delete all business expense history and related category logs.</p>
-              </div>
-              <Button
-                type="button"
-                variant="destructive"
-                size="sm"
-                className="w-full bg-red-600/10 text-red-600 hover:bg-red-600 hover:text-white"
-                onClick={() => {
-                  setResetType("expenses");
-                  setConfirmText("");
-                }}
-              >
-                Reset Expenses
-              </Button>
-            </div>
-
-            <div className="p-3.5 rounded-lg border border-border bg-background/40 flex flex-col justify-between space-y-3">
-              <div>
-                <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Customers & Debts</h3>
-                <p className="text-[11px] text-muted-foreground mt-1">Delete all customer profiles, party details, and outstanding debt history.</p>
-              </div>
-              <Button
-                type="button"
-                variant="destructive"
-                size="sm"
-                className="w-full bg-red-600/10 text-red-600 hover:bg-red-600 hover:text-white"
-                onClick={() => {
-                  setResetType("parties");
-                  setConfirmText("");
-                }}
-              >
-                Reset Customers & Debts
-              </Button>
-            </div>
-
-            <div className="p-3.5 rounded-lg border border-red-500/20 bg-red-500/10 flex flex-col justify-between space-y-3 sm:col-span-2 md:col-span-1">
-              <div>
-                <h3 className="text-xs font-semibold uppercase tracking-wider text-red-600 dark:text-red-400">Factory Reset</h3>
-                <p className="text-[11px] text-muted-foreground mt-1">Reset everything. Wipes all data: products, sales, purchases, parties, expenses, cashbox, and more.</p>
-              </div>
-              <Button
-                type="button"
-                variant="destructive"
-                size="sm"
-                className="w-full bg-red-600 text-white hover:bg-red-700"
-                onClick={() => {
-                  setResetType("all");
-                  setConfirmText("");
-                }}
-              >
-                Factory Reset All Data
-              </Button>
-            </div>
-          </div>
-        </Card>
-      )}
-
       {!isOwner && (
-        <Card className="glass-card p-5 text-sm text-muted-foreground max-w-2xl">
-          Employee account — contact your business owner for settings changes.
+        <Card className="p-6 rounded-3xl bg-card border border-border/80 shadow-xs text-sm text-muted-foreground max-w-xl">
+          {lang === "bn"
+            ? "কর্মচারী একাউন্ট — সেটিংস পরিবর্তনের জন্য আপনার দোকান মালিকের সাথে যোগাযোগ করুন।"
+            : "Staff employee account — please contact your shop owner to update business settings."}
         </Card>
       )}
-
-      {/* Change Password Card for all users */}
-      <Card className="glass-card p-5 space-y-4 max-w-md">
-        <div className="flex items-center gap-2.5 text-primary">
-          <Key className="size-5" />
-          <h2 className="font-semibold text-base">Change Account Password</h2>
-        </div>
-        <p className="text-xs text-muted-foreground">
-          Update your login password. Your new password must be at least 6 characters long.
-        </p>
-        <form onSubmit={handleUpdateMyPassword} className="space-y-3">
-          <div className="space-y-1">
-            <Label className="text-xs font-semibold">Current Password</Label>
-            <Input name="currentPassword" type="password" required placeholder="••••••••" className="h-9 text-xs" />
-          </div>
-          <div className="space-y-1">
-            <Label className="text-xs font-semibold">New Password</Label>
-            <Input name="newPassword" type="password" required placeholder="New password" className="h-9 text-xs" />
-          </div>
-          <div className="space-y-1">
-            <Label className="text-xs font-semibold">Confirm New Password</Label>
-            <Input name="confirmPassword" type="password" required placeholder="Confirm new password" className="h-9 text-xs" />
-          </div>
-          <Button type="submit" disabled={pwBusy} className="w-full mt-2 h-9 text-xs beveled-button">
-            {pwBusy ? "Updating..." : "Update Password"}
-          </Button>
-        </form>
-      </Card>
 
       {/* Password Verification Dialog */}
       <Dialog open={isUnlockDialogOpen} onOpenChange={setIsUnlockDialogOpen}>
@@ -1380,7 +1589,7 @@ export default function SettingsPage() {
               Verify Owner Password
             </DialogTitle>
             <DialogDescription>
-              Please enter your login password to unlock Safety & API settings.
+              Please enter your login password to unlock Safety & Reset settings.
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleVerifyPassword} className="space-y-4 py-2">
@@ -1416,7 +1625,7 @@ export default function SettingsPage() {
               Confirm Data Reset
             </DialogTitle>
             <DialogDescription className="text-xs">
-              This action is <span className="font-semibold text-red-500">permanent</span>. All selected files and entries will be deleted.
+              This action is <span className="font-semibold text-red-500">permanent</span>. All selected entries will be deleted.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
@@ -1524,33 +1733,6 @@ export default function SettingsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
-  );
-}
-
-function EmployeePermissions({
-  employee,
-  onSave,
-}: {
-  employee: { id: string; email: string; full_name: string; permissions: PermissionSet };
-  onSave: (p: PermissionSet) => Promise<void>;
-}) {
-  const [perms, setPerms] = useState<PermissionSet>(employee.permissions || DEFAULT_EMPLOYEE_PERMISSIONS);
-
-  const modules: (keyof PermissionSet)[] = ["dashboard", "products", "sales", "parties", "purchases", "expenses", "cashbox", "settings", "reports"];
-
-  return (
-    <div className="border border-border rounded-lg p-3 space-y-2">
-      <div className="font-medium text-sm">{employee.full_name || employee.email}</div>
-      <div className="grid grid-cols-2 gap-2">
-        {modules.map(m => (
-          <label key={m} className="flex items-center justify-between text-xs capitalize">
-            {m}
-            <Switch checked={perms[m]} onCheckedChange={v => setPerms(p => ({ ...p, [m]: v }))} />
-          </label>
-        ))}
-      </div>
-      <Button size="sm" variant="outline" onClick={() => onSave(perms)}>Save permissions</Button>
     </div>
   );
 }

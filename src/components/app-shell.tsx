@@ -430,7 +430,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
         </nav>
       )}
-      <FloatingAiChat />
+      {!isMobile && (pathname === "/dashboard" || pathname === "/") && (
+        <FloatingAiChat />
+      )}
       <AdminPopupDialog />
     </div>
   );

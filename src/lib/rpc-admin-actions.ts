@@ -497,22 +497,54 @@ export async function updateBusinessSettingsFn(input: {
     google_sheets_spreadsheet_id?: string;
     google_sheets_credentials_json?: string;
     [key: string]: any;
-  }
+  };
 }) {
   const { data } = input;
   const session = await requireSession();
   if (session.role !== "owner") throw new Error("Only business owner can change settings");
   const db = await getDb();
-  const business = await db.collection("businesses").findOne({ owner_id: session.ownerId });
-  if (!business) throw new Error("Business not found");
-  await db.collection("businesses").updateOne({ _id: business._id as any }, { $set: data });
-  if (data.name) {
-    await db.collection("users").updateOne(
-      { _id: session.ownerId as any },
-      { $set: { business_name: data.name } }
-    );
+  let business = (session.businessId ? await db.collection("businesses").findOne({ _id: session.businessId as any }) : null)
+    || await db.collection("businesses").findOne({ owner_id: session.ownerId })
+    || await db.collection("businesses").findOne({ owner_id: session.userId });
+
+  if (!business) {
+    const newBizId = crypto.randomUUID();
+    business = {
+      _id: newBizId as any,
+      owner_id: session.userId,
+      name: data.name || "Classic World",
+      logo_url: data.logo_url || "/logo.png",
+      business_type: data.business_type || "retail",
+      theme: data.theme || "green",
+      status: "active",
+      sms_credits: 0,
+      max_products: 500,
+      max_invoices: 10000,
+      employee_limit: 5,
+      created_at: new Date().toISOString(),
+    };
+    await db.collection("businesses").insertOne(business as any);
+    await db.collection("users").updateOne({ _id: session.userId as any }, { $set: { business_id: newBizId } });
   }
-  return { success: true };
+
+  await db.collection("businesses").updateOne({ _id: business._id as any }, { $set: data });
+
+  const userUpdates: Record<string, any> = {};
+  if (data.name) userUpdates.business_name = data.name;
+  if (data.logo_url) userUpdates.logo_url = data.logo_url;
+  if (Object.keys(userUpdates).length > 0) {
+    await db.collection("users").updateOne(
+      { _id: session.userId as any },
+      { $set: userUpdates }
+    );
+    if (session.ownerId !== session.userId) {
+      await db.collection("users").updateOne(
+        { _id: session.ownerId as any },
+        { $set: userUpdates }
+      );
+    }
+  }
+  return { success: true, business: { ...business, ...data } };
 }
 
 export async function createEmployeeLicenseFn(input: { data: { permissions?: PermissionSet } }) {

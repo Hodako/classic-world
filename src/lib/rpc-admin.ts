@@ -79,6 +79,7 @@ export const getBusinessSettingsFn = makeAdminAction("getBusinessSettingsFn");
 export const updateBusinessSettingsFn = makeAdminAction("updateBusinessSettingsFn");
 export const createEmployeeLicenseFn = makeAdminAction("createEmployeeLicenseFn");
 export const updateEmployeePermissionsFn = makeAdminAction("updateEmployeePermissionsFn");
+export const removeEmployeeFn = makeAdminAction("removeEmployeeFn");
 export const deleteLicenseFn = makeAdminAction("deleteLicenseFn");
 export const impersonateUserFn = makeAdminAction("impersonateUserFn");
 export const deleteUserFn = makeAdminAction("deleteUserFn");

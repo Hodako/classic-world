@@ -330,3 +330,9 @@ export const listEmployeeInvitationsFn = makeReadAction("listEmployeeInvitations
 export const cancelEmployeeInvitationFn = makeWriteAction("cancelEmployeeInvitationFn");
 export const getMyPendingEmployeeInvitationsFn = makeReadAction("getMyPendingEmployeeInvitationsFn");
 export const respondToEmployeeInvitationFn = makeWriteAction("respondToEmployeeInvitationFn");
+export const removeEmployeeFn = makeWriteAction("removeEmployeeFn");
+
+// ── Google Sheets OAuth Integration ──────────────────────────────────────
+export const connectGoogleSheetsOAuthFn = makeWriteAction("connectGoogleSheetsOAuthFn");
+export const disconnectGoogleSheetsFn = makeWriteAction("disconnectGoogleSheetsFn");
+

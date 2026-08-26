@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useRef, useEffect } from "react";
+import { usePathname } from "next/navigation";
 import { Sparkles, Send, X, MessageSquare, Bot, AlertTriangle, HelpCircle } from "lucide-react";
 import { useT } from "@/lib/i18n";
 import { useAuth } from "@/hooks/use-auth";
@@ -18,6 +19,7 @@ export function FloatingAiChat() {
   const { lang, t } = useT();
   const { user } = useAuth();
   const isMobile = useIsMobile();
+  const pathname = usePathname();
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
@@ -51,8 +53,8 @@ export function FloatingAiChat() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
-  // Only show for owner (admin) role on desktop/PC — hide AI overlay on mobile phones
-  if (!user || user.role !== "owner" || isMobile) {
+  // Only show for owner (admin) role on desktop/PC and ONLY on the home/dashboard page
+  if (!user || user.role !== "owner" || isMobile || (pathname !== "/dashboard" && pathname !== "/")) {
     return null;
   }
 

@@ -17,7 +17,17 @@ import { Plus, Trash2 } from "lucide-react";
 
 type PurchaseLine = { productId: string; qty: string; unitCost: string; sellPrice: string };
 
-export function PurchaseDialog({ open, onOpenChange, presetPartyId }: { open: boolean; onOpenChange: (v: boolean) => void; presetPartyId?: string }) {
+export function PurchaseDialog({
+  open,
+  onOpenChange,
+  presetPartyId,
+  presetProductId,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  presetPartyId?: string;
+  presetProductId?: string;
+}) {
   const { lang, t } = useT();
   const qc = useQueryClient();
   const { data: products = [] } = useCachedQuery(["products"], getProducts);
@@ -36,11 +46,19 @@ export function PurchaseDialog({ open, onOpenChange, presetPartyId }: { open: bo
 
   useEffect(() => {
     if (open) {
-      setLines([{ productId: "", qty: "1", unitCost: "", sellPrice: "" }]);
+      const p = presetProductId ? products.find(x => x.id === presetProductId) : null;
+      setLines([
+        {
+          productId: presetProductId ?? "",
+          qty: "1",
+          unitCost: p ? String(p.buy_price || "") : "",
+          sellPrice: p ? String(p.sell_price || "") : "",
+        },
+      ]);
       setPartyId(presetPartyId ?? "");
       setPaymentType("cash");
     }
-  }, [open, presetPartyId]);
+  }, [open, presetPartyId, presetProductId, products]);
 
   function updateLine(i: number, patch: Partial<PurchaseLine>) {
     setLines(prev => prev.map((l, idx) => {

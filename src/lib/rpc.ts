@@ -316,6 +316,13 @@ const fsActionMap: Record<string, (args?: any) => Promise<any>> = {
 
   verifyOwnerPasswordFn: async (args: any) => fs.fsVerifyOwnerPassword(args?.data || args),
   changeMyPasswordFn: async (args: any) => fs.fsChangeMyPassword(args?.data || args),
+
+  getMeFn: async () => fs.fsGetMe(),
+  getBusinessSettingsFn: async () => fs.fsGetBusinessSettings(),
+  updateBusinessSettingsFn: async (args: any) => fs.fsUpdateBusinessSettings(args?.data || args),
+  getActiveAdminPopupsFn: async () => fs.fsGetActiveAdminPopups(),
+  dismissAdminPopupFn: async (args: any) => fs.fsDismissAdminPopup(args?.data?.popupId || args?.popupId),
+  firebaseAuthSyncFn: async (args: any) => fs.fsFirebaseAuthSync(args?.data || args),
 };
 
 async function executeAction(name: string, args: any): Promise<any> {

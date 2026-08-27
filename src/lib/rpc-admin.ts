@@ -75,9 +75,57 @@ export const getPlatformActivitiesFn = makeAdminAction("getPlatformActivitiesFn"
 export const suspendBusinessFn = makeAdminAction("suspendBusinessFn");
 export const deleteBusinessFn = makeAdminAction("deleteBusinessFn");
 export const activateLicenseFn = makeAdminAction("activateLicenseFn");
-export const getBusinessSettingsFn = makeAdminAction("getBusinessSettingsFn");
-export const updateBusinessSettingsFn = makeAdminAction("updateBusinessSettingsFn");
-export const createEmployeeLicenseFn = makeAdminAction("createEmployeeLicenseFn");
+import { fsGetBusinessSettings, fsUpdateBusinessSettings } from "./firestore-service";
+
+export const getBusinessSettingsFn = async () => {
+  try {
+    return await fsGetBusinessSettings();
+  } catch (_) {
+    try {
+      return await callRemoteRpc("getBusinessSettingsFn", undefined);
+    } catch (_) {
+      return {
+        business: {
+          id: "classic-world-default",
+          name: "Classic World",
+          logo_url: "/logo.png",
+          address: "Dhaka, Bangladesh",
+          phone_numbers: "01700000000",
+          emails: "info@classicworld.com",
+          invoice_font_size: "22px",
+          invoice_scale: "100%",
+          invoice_line_spacing: "6px",
+          invoice_terms: "",
+          status: "active",
+          sms_credits: 100,
+        },
+        role: "owner",
+        permissions: {
+          dashboard: true,
+          products: true,
+          sales: true,
+          parties: true,
+          purchases: true,
+          expenses: true,
+          cashbox: true,
+          settings: true,
+          reports: true,
+          danger_zone: true,
+        },
+        employees: [],
+        invitations: [],
+      };
+    }
+  }
+};
+
+export const updateBusinessSettingsFn = async (args: any) => {
+  try {
+    return await fsUpdateBusinessSettings(args?.data || args);
+  } catch (_) {
+    return await callRemoteRpc("updateBusinessSettingsFn", args);
+  }
+};
 export const updateEmployeePermissionsFn = makeAdminAction("updateEmployeePermissionsFn");
 export const removeEmployeeFn = makeAdminAction("removeEmployeeFn");
 export const deleteLicenseFn = makeAdminAction("deleteLicenseFn");

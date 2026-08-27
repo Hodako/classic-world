@@ -984,18 +984,24 @@ export default function Dashboard() {
       hours.push({ date: label, sales: 0, profit: 0, expenses: 0, hourly: 0, count: 0 });
     }
 
-    filteredSales.forEach(s => {
-      if (s.returned || (s as any).courier_status === "cancelled") return;
-      const d = new Date(s.created_at || Date.now());
-      const h = d.getHours();
-      if (h >= 8 && h <= 23) {
-        const idx = h - 8;
-        const lineTotal = (Number(s.sell_price) || 0) * (Number(s.qty) || 1) - (Number(s.discount) || 0);
-        hours[idx].sales += lineTotal;
-        hours[idx].hourly += lineTotal;
-        hours[idx].count += 1;
-      }
-    });
+    if (Array.isArray(filteredSales)) {
+      filteredSales.forEach(s => {
+        if (!s || s.returned || (s as any).courier_status === "cancelled") return;
+        try {
+          const d = new Date(s.created_at || Date.now());
+          const h = d.getHours();
+          if (!isNaN(h) && h >= 8 && h <= 23) {
+            const idx = h - 8;
+            if (hours[idx]) {
+              const lineTotal = (Number(s.sell_price) || 0) * (Number(s.qty) || 1) - (Number(s.discount) || 0);
+              hours[idx].sales += lineTotal;
+              hours[idx].hourly += lineTotal;
+              hours[idx].count += 1;
+            }
+          }
+        } catch (_) {}
+      });
+    }
 
     return hours;
   }, [filteredSales]);

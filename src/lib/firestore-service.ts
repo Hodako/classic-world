@@ -13,7 +13,7 @@ import {
   increment,
   Timestamp,
 } from "firebase/firestore";
-import { db } from "./firebase";
+import { db, auth } from "./firebase";
 
 // Helper to convert Firestore documents into clean JSON objects
 function docToData<T = any>(docSnap: any): T {
@@ -1397,6 +1397,135 @@ export async function fsChangeMyPassword(args: { currentPassword?: string; newPa
   
   localStorage.setItem("user", JSON.stringify(updated));
   return { success: true };
+}
+
+export function fsGetCurrentUser() {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem("user") || localStorage.getItem("auth_profile");
+    if (raw) return JSON.parse(raw);
+  } catch (_) {}
+  const authUser = auth.currentUser;
+  if (authUser) {
+    return {
+      id: authUser.uid,
+      email: authUser.email || "user@classicworld.com",
+      full_name: authUser.displayName || "Classic World User",
+      role: "owner",
+      activated: true,
+      business_id: "classic-world-default",
+      business_name: "Classic World",
+      logo_url: authUser.photoURL || "/logo.png",
+      avatar_url: authUser.photoURL || undefined,
+    };
+  }
+  return null;
+}
+
+export async function fsGetMe() {
+  const user = fsGetCurrentUser();
+  if (!user) {
+    const token = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
+    if (!token) return { user: null };
+  }
+  return { user };
+}
+
+export async function fsGetBusinessSettings() {
+  const user = fsGetCurrentUser();
+  let bizData: any = null;
+  try {
+    const docSnap = await getDoc(doc(db, "businesses", "classic-world-settings"));
+    if (docSnap.exists()) {
+      bizData = docSnap.data();
+    }
+  } catch (_) {}
+
+  return {
+    business: {
+      id: bizData?.id || user?.business_id || "classic-world-default",
+      name: bizData?.name || user?.business_name || "Classic World",
+      logo_url: bizData?.logo_url || user?.logo_url || "/logo.png",
+      address: bizData?.address || user?.business_address || "Dhaka, Bangladesh",
+      phone_numbers: bizData?.phone_numbers || user?.business_phone_numbers || "01700000000",
+      emails: bizData?.emails || user?.business_emails || "info@classicworld.com",
+      invoice_font_size: bizData?.invoice_font_size || user?.invoice_font_size || "22px",
+      invoice_scale: bizData?.invoice_scale || user?.invoice_scale || "100%",
+      invoice_line_spacing: bizData?.invoice_line_spacing || user?.invoice_line_spacing || "6px",
+      invoice_terms: bizData?.invoice_terms || user?.invoice_terms || "",
+      status: bizData?.status || user?.status || "active",
+      sms_credits: bizData?.sms_credits ?? user?.sms_credits ?? 100,
+    },
+    role: user?.role || "owner",
+    permissions: user?.permissions || {
+      dashboard: true,
+      products: true,
+      sales: true,
+      parties: true,
+      purchases: true,
+      expenses: true,
+      cashbox: true,
+      settings: true,
+      reports: true,
+      danger_zone: true,
+    },
+    employees: [],
+    invitations: [],
+  };
+}
+
+export async function fsUpdateBusinessSettings(data: any) {
+  try {
+    await setDoc(doc(db, "businesses", "classic-world-settings"), data, { merge: true });
+  } catch (_) {}
+  const user = fsGetCurrentUser();
+  if (user) {
+    const updatedUser = { ...user, ...data };
+    if (typeof window !== "undefined") {
+      localStorage.setItem("user", JSON.stringify(updatedUser));
+      localStorage.setItem("auth_profile", JSON.stringify(updatedUser));
+    }
+  }
+  return { success: true };
+}
+
+export async function fsGetActiveAdminPopups() {
+  try {
+    const snap = await getDocs(collection(db, "admin_popups"));
+    const list = snap.docs.map(docToData);
+    return list.filter((p: any) => p.active !== false);
+  } catch (_) {
+    return [];
+  }
+}
+
+export async function fsDismissAdminPopup(popupId: string) {
+  return { success: true };
+}
+
+export async function fsFirebaseAuthSync(data: { email: string; fullName?: string; photoUrl?: string; firebaseUid?: string }) {
+  const cleanEmail = (data.email || "").toLowerCase().trim();
+  const userId = data.firebaseUid || crypto.randomUUID();
+  const userObj = {
+    id: userId,
+    email: cleanEmail,
+    full_name: data.fullName || cleanEmail.split("@")[0],
+    role: "owner",
+    activated: true,
+    business_id: "classic-world-default",
+    business_name: "Classic World",
+    logo_url: data.photoUrl || "/logo.png",
+    avatar_url: data.photoUrl || undefined,
+    firebase_uid: data.firebaseUid,
+    status: "active",
+    sms_credits: 100,
+  };
+  if (typeof window !== "undefined") {
+    localStorage.setItem("user", JSON.stringify(userObj));
+    localStorage.setItem("auth_profile", JSON.stringify(userObj));
+    localStorage.setItem("auth_token", `token_${userId}`);
+  }
+  return { user: userObj, token: `token_${userId}` };
 }
 
 

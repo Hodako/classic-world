@@ -75,7 +75,7 @@ export const getPlatformActivitiesFn = makeAdminAction("getPlatformActivitiesFn"
 export const suspendBusinessFn = makeAdminAction("suspendBusinessFn");
 export const deleteBusinessFn = makeAdminAction("deleteBusinessFn");
 export const activateLicenseFn = makeAdminAction("activateLicenseFn");
-import { fsGetBusinessSettings, fsUpdateBusinessSettings } from "./firestore-service";
+import { fsGetBusinessSettings, fsUpdateBusinessSettings, fsRemoveEmployee, fsUpdateEmployeePermissions } from "./firestore-service";
 
 export const getBusinessSettingsFn = async () => {
   try {
@@ -126,8 +126,22 @@ export const updateBusinessSettingsFn = async (args: any) => {
     return await callRemoteRpc("updateBusinessSettingsFn", args);
   }
 };
-export const updateEmployeePermissionsFn = makeAdminAction("updateEmployeePermissionsFn");
-export const removeEmployeeFn = makeAdminAction("removeEmployeeFn");
+
+export const updateEmployeePermissionsFn = async (args: any) => {
+  try {
+    return await fsUpdateEmployeePermissions(args?.data || args);
+  } catch (_) {
+    return await callRemoteRpc("updateEmployeePermissionsFn", args);
+  }
+};
+
+export const removeEmployeeFn = async (args: any) => {
+  try {
+    return await fsRemoveEmployee(args?.data?.employeeId || args?.employeeId);
+  } catch (_) {
+    return await callRemoteRpc("removeEmployeeFn", args);
+  }
+};
 export const deleteLicenseFn = makeAdminAction("deleteLicenseFn");
 export const impersonateUserFn = makeAdminAction("impersonateUserFn");
 export const deleteUserFn = makeAdminAction("deleteUserFn");

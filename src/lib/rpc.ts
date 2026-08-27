@@ -254,8 +254,11 @@ const fsActionMap: Record<string, (args?: any) => Promise<any>> = {
   archiveCustomerFn: async (args: any) => fs.fsUpdateCustomer(args?.data?.id || args?.id, { archived: args?.data?.archived ?? true }),
 
   createPartyReceivableFn: async (args: any) => fs.fsCreatePartyReceivable(args?.data || args),
+  deletePartyReceivableFn: async (args: any) => fs.fsDeletePartyReceivable(args?.data?.id || args?.id),
   createPartyPayableFn: async (args: any) => fs.fsCreatePartyPayable(args?.data || args),
+  deletePartyPayableFn: async (args: any) => fs.fsDeletePartyPayable(args?.data?.id || args?.id),
   createPayableSettlementFn: async (args: any) => fs.fsCreatePayableSettlement(args?.data || args),
+  deletePayableSettlementFn: async (args: any) => fs.fsDeletePayableSettlement(args?.data?.id || args?.id),
 
   createSaleFn: async (args: any) => fs.fsCreateSale(args?.data || args),
   editSaleFn: async (args: any) => fs.fsEditSale(args?.data?.id || args?.id, args?.data || args),
@@ -282,6 +285,8 @@ const fsActionMap: Record<string, (args?: any) => Promise<any>> = {
   createSomitiFn: async (args: any) => fs.fsCreateSomiti(args?.data || args),
   updateSomitiFn: async (args: any) => fs.fsUpdateSomiti(args?.data?.id || args?.id, args?.data || args),
   deleteSomitiFn: async (args: any) => fs.fsDeleteSomiti(args?.data?.id || args?.id),
+  renameSomitiFn: async (args: any) => fs.fsRenameSomiti(args?.data || args),
+  deleteSomitiFnByName: async (args: any) => fs.fsDeleteSomitiByName(args?.data || args),
 
   createWithdrawalFn: async (args: any) => fs.fsCreateWithdrawal(args?.data || args),
 
@@ -292,6 +297,7 @@ const fsActionMap: Record<string, (args?: any) => Promise<any>> = {
   createCashboxFn: async (args: any) => fs.fsCreateCashbox(args?.data || args),
   updateCashboxFn: async (args: any) => fs.fsUpdateCashbox(args?.data?.id || args?.id, args?.data || args),
   deleteCashboxFn: async (args: any) => fs.fsDeleteCashbox(args?.data?.id || args?.id),
+  repairCashboxDbFn: async () => fs.fsRepairCashbox(),
   emptyCashboxFn: async () => fs.fsEmptyCashbox(),
 
   createReminderFn: async (args: any) => fs.fsCreateReminder(args?.data || args),
@@ -323,6 +329,24 @@ const fsActionMap: Record<string, (args?: any) => Promise<any>> = {
   getActiveAdminPopupsFn: async () => fs.fsGetActiveAdminPopups(),
   dismissAdminPopupFn: async (args: any) => fs.fsDismissAdminPopup(args?.data?.popupId || args?.popupId),
   firebaseAuthSyncFn: async (args: any) => fs.fsFirebaseAuthSync(args?.data || args),
+
+  uploadImageFn: async (args: any) => fs.fsUploadImage(args?.data || args),
+  toggleGoogleSheetsSyncFn: async (args: any) => fs.fsToggleGoogleSheetsSync(args?.data || args),
+  bulkExportToGoogleSheetsFn: async () => fs.fsBulkExportToGoogleSheets(),
+
+  listEmployeeInvitationsFn: async () => fs.fsListEmployeeInvitations(),
+  sendEmployeeInvitationFn: async (args: any) => fs.fsSendEmployeeInvitation(args?.data || args),
+  cancelEmployeeInvitationFn: async (args: any) => fs.fsCancelEmployeeInvitation(args?.data?.id || args?.id),
+  removeEmployeeFn: async (args: any) => fs.fsRemoveEmployee(args?.data?.employeeId || args?.employeeId),
+  updateEmployeePermissionsFn: async (args: any) => fs.fsUpdateEmployeePermissions(args?.data || args),
+
+  getSmsSettingsFn: async () => fs.fsGetSmsSettings(),
+  updateSmsSettingsFn: async (args: any) => fs.fsUpdateSmsSettings(args?.data || args),
+  checkSmsBalanceFn: async () => fs.fsCheckSmsBalance(),
+  getSmsLogsFn: async () => fs.fsGetSmsLogs(),
+  sendSmsCampaignFn: async (args: any) => fs.fsSendSmsCampaign(args?.data || args),
+  checkSmsDeliveryStatusFn: async (args: any) => fs.fsCheckSmsDeliveryStatus(args?.data || args),
+  deleteSmsLogFn: async (args: any) => fs.fsDeleteSmsLog(args?.data?.id || args?.id),
 };
 
 async function executeAction(name: string, args: any): Promise<any> {

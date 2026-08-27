@@ -272,11 +272,13 @@ export default function SettingsPage() {
   // Admin PIN Code Lock State
   const [pinLockEnabled, setPinLockEnabled] = useState(false);
   const [pinCodeVal, setPinCodeVal] = useState("1234");
+  const [pinTimeoutVal, setPinTimeoutVal] = useState("10");
 
   useEffect(() => {
     if (typeof window !== "undefined") {
       setPinLockEnabled(localStorage.getItem("app_pin_code_enabled") === "true");
       setPinCodeVal(localStorage.getItem("app_pin_code_val") || "1234");
+      setPinTimeoutVal(localStorage.getItem("app_pin_timeout") || "10");
     }
   }, []);
 
@@ -1964,28 +1966,51 @@ export default function SettingsPage() {
                 </div>
 
                 {pinLockEnabled && (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
-                    <div className="space-y-1.5">
-                      <Label className="text-xs font-semibold">{lang === "bn" ? "৪ সংখ্যার পিন কোড সেট করুন" : "Set 4-Digit PIN Code"}</Label>
-                      <Input
-                        type="password"
-                        maxLength={6}
-                        value={pinCodeVal}
-                        onChange={(e) => {
-                          const val = e.target.value.replace(/[^0-9]/g, "");
-                          setPinCodeVal(val);
-                          localStorage.setItem("app_pin_code_val", val);
-                          window.dispatchEvent(new Event("storage"));
-                        }}
-                        placeholder="e.g. 1234"
-                        className="h-10 rounded-xl text-base font-mono tracking-widest text-center font-bold"
-                      />
+                  <div className="space-y-4 pt-2">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-semibold">{lang === "bn" ? "৪ সংখ্যার পিন কোড সেট করুন" : "Set 4-Digit PIN Code"}</Label>
+                        <Input
+                          type="password"
+                          maxLength={6}
+                          value={pinCodeVal}
+                          onChange={(e) => {
+                            const val = e.target.value.replace(/[^0-9]/g, "");
+                            setPinCodeVal(val);
+                            localStorage.setItem("app_pin_code_val", val);
+                            window.dispatchEvent(new Event("storage"));
+                          }}
+                          placeholder="e.g. 1234"
+                          className="h-10 rounded-xl text-base font-mono tracking-widest text-center font-bold"
+                        />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-semibold">{lang === "bn" ? "অটো-লক সময়সীমা (নিষ্ক্রিয় থাকলে)" : "Auto-Lock Inactivity Timeout"}</Label>
+                        <select
+                          value={pinTimeoutVal}
+                          onChange={(e) => {
+                            setPinTimeoutVal(e.target.value);
+                            localStorage.setItem("app_pin_timeout", e.target.value);
+                            window.dispatchEvent(new Event("storage"));
+                            toast.success(lang === "bn" ? "অটো-লক সময়সীমা আপডেট হয়েছে" : "Auto-lock timeout updated");
+                          }}
+                          className="h-10 w-full rounded-xl border border-input bg-background px-3 text-xs font-medium focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                        >
+                          <option value="1">{lang === "bn" ? "১ মিনিট নিষ্ক্রিয় থাকলে" : "1 minute of inactivity"}</option>
+                          <option value="5">{lang === "bn" ? "৫ মিনিট নিষ্ক্রিয় থাকলে" : "5 minutes of inactivity"}</option>
+                          <option value="10">{lang === "bn" ? "১০ মিনিট (ডিফল্ট)" : "10 minutes (Default)"}</option>
+                          <option value="30">{lang === "bn" ? "৩০ মিনিট নিষ্ক্রিয় থাকলে" : "30 minutes of inactivity"}</option>
+                          <option value="0">{lang === "bn" ? "কখনই অটো-লক হবে না (শুধু ম্যানুয়াল)" : "Never (Manual lock only)"}</option>
+                        </select>
+                      </div>
                     </div>
-                    <div className="flex items-end gap-2">
+
+                    <div className="flex justify-end pt-1">
                       <Button
                         type="button"
                         variant="outline"
-                        className="h-10 rounded-xl flex-1 text-xs font-semibold gap-1.5 border-amber-500/40 text-amber-700 dark:text-amber-300 hover:bg-amber-500/10 cursor-pointer"
+                        className="h-9 px-4 rounded-xl text-xs font-semibold gap-1.5 border-amber-500/40 text-amber-700 dark:text-amber-300 hover:bg-amber-500/10 cursor-pointer"
                         onClick={() => {
                           sessionStorage.removeItem("app_pin_unlocked");
                           window.dispatchEvent(new Event("app_lock_screen"));

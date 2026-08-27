@@ -21,8 +21,8 @@ import { setCachedData, refreshQueries } from "@/lib/optimistic-cache";
 import Link from "next/link";
 import { downloadCsv, exportDateStamp } from "@/lib/export";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { PaginationBar, paginate } from "@/components/ui/pagination-bar";
-import { Search, Plus, Download, DollarSign, Wallet, Users, ArrowRight } from "lucide-react";
+import { Search, Plus, Download, DollarSign, Wallet, Users, ArrowRight, Share2 } from "lucide-react";
+import { getWhatsAppDueReminderUrl } from "@/lib/whatsapp-helper";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -432,7 +432,7 @@ export default function DuesPage() {
                   </div>
                 )}
 
-                <div className="flex items-center gap-2 pt-1">
+                <div className="flex items-center gap-1.5 pt-1">
                   <Button 
                     size="sm" 
                     variant="outline" 
@@ -450,6 +450,25 @@ export default function DuesPage() {
                     <Plus className="size-3 mr-1" />
                     {lang === "bn" ? "টাকা আদায়" : "Collect"}
                   </Button>
+                  {isReceivable && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-8 px-2 text-xs border-emerald-500/30 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/10 cursor-pointer"
+                      title={lang === "bn" ? "হোয়াটসঅ্যাপে তাগাদা পাঠান" : "Send WhatsApp Reminder"}
+                      onClick={() => {
+                        const waUrl = getWhatsAppDueReminderUrl({
+                          customerName: p.name,
+                          customerPhone: p.phone,
+                          shopName: "Classic World",
+                          dueAmount: Math.abs(p.outstanding),
+                        }, lang as any);
+                        window.open(waUrl, "_blank");
+                      }}
+                    >
+                      <Share2 className="size-3.5 text-emerald-600" />
+                    </Button>
+                  )}
                 </div>
               </Card>
             );

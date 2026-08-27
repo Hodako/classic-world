@@ -9,7 +9,8 @@ import {
   DollarSign, Banknote, Users, Search, ChevronDown, ChevronUp, ArrowUpDown,
   Trash2, Plus, Calendar, BarChart3, LineChart as LineChartIcon, AreaChart as AreaChartIcon, CheckSquare, Square,
   Palette, Sparkles, LayoutGrid, SlidersHorizontal, Layers, Eye, EyeOff,
-  Truck, PackageCheck, CheckCircle2, XCircle, Clock, GripVertical, RotateCcw
+  Truck, PackageCheck, CheckCircle2, XCircle, Clock, GripVertical, RotateCcw,
+  AlertTriangle, ArrowRight
 } from "lucide-react";
 import { useT } from "@/lib/i18n";
 import { getExpenses, getSales, getWithdrawals, getProducts, getParties, getReminders, getAllPayments, getAllPartyReceivables, getAllPartyPayables, getAllPayableSettlements, getPurchases, getSomiti } from "@/lib/queries";
@@ -31,6 +32,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { toast } from "sonner";
 import { createReminderFn, toggleReminderFn, deleteReminderFn, approveCourierPaymentFn, cancelCourierOrderFn } from "@/lib/rpc";
 import { SaleDialog } from "@/components/sale-dialog";
+import { PurchaseDialog } from "@/components/purchase-dialog";
 import { playTapSound } from "@/lib/audio";
 
 import {
@@ -441,9 +443,13 @@ export default function Dashboard() {
   }, [dateFilter, t]);
 
   // Custom Chart State
-  const [chartMetric, setChartMetric] = useState<"sales" | "profit" | "expenses">("sales");
+  const [chartMetric, setChartMetric] = useState<"sales" | "profit" | "expenses" | "hourly">("sales");
   const [chartType, setChartType] = useState<"area" | "bar" | "line">("area");
   const [chartRange, setChartRange] = useState<7 | 14 | 30>(7);
+
+  // Quick Restock State
+  const [purchaseOpen, setPurchaseOpen] = useState(false);
+  const [restockProductId, setRestockProductId] = useState<string | undefined>(undefined);
 
   // Custom Reminder State & Logic variables
   const [newReminderTitle, setNewReminderTitle] = useState("");
@@ -970,6 +976,30 @@ export default function Dashboard() {
   // Custom graph data
   const customGraphData = groupAllDataByDay(allSales, allExpenses, chartRange);
 
+  // Hourly Traffic & Peak Sales
+  const hourlySalesData = useMemo(() => {
+    const hours: { date: string; sales: number; profit: number; expenses: number; hourly: number; count: number }[] = [];
+    for (let h = 8; h <= 23; h++) {
+      const label = h === 12 ? "12PM" : h > 12 ? `${h - 12}PM` : `${h}AM`;
+      hours.push({ date: label, sales: 0, profit: 0, expenses: 0, hourly: 0, count: 0 });
+    }
+
+    filteredSales.forEach(s => {
+      if (s.returned || (s as any).courier_status === "cancelled") return;
+      const d = new Date(s.created_at || Date.now());
+      const h = d.getHours();
+      if (h >= 8 && h <= 23) {
+        const idx = h - 8;
+        const lineTotal = (Number(s.sell_price) || 0) * (Number(s.qty) || 1) - (Number(s.discount) || 0);
+        hours[idx].sales += lineTotal;
+        hours[idx].hourly += lineTotal;
+        hours[idx].count += 1;
+      }
+    });
+
+    return hours;
+  }, [filteredSales]);
+
   // Payment method breakdown for pie
   const salesForPie = filteredSales.length > 0 ? filteredSales : allSales;
   let pieCashTotal = 0;
@@ -1191,6 +1221,7 @@ export default function Dashboard() {
   const getMetricColor = () => {
     if (chartMetric === "profit") return "#10b981";
     if (chartMetric === "expenses") return "#ef4444";
+    if (chartMetric === "hourly") return "#ec4899";
     return "#6366f1";
   };
 
@@ -1597,25 +1628,64 @@ export default function Dashboard() {
 
       case "valuations":
         return (
-          <Card key="valuations" className="p-3.5 border border-border space-y-2 bg-gradient-to-br from-white to-zinc-50/40 dark:from-zinc-900/90 dark:to-zinc-950/90 backdrop-blur-sm rounded-2xl shadow-[0_6px_20px_rgba(0,0,0,0.03)] dark:shadow-[0_6px_20px_rgba(0,0,0,0.25)] hover:shadow-md transition-all">
-            <div className="text-[10px] text-muted-foreground uppercase tracking-wide font-medium">{lang === "bn" ? "পণ্য স্টক মূল্য (ইনভেন্টরি)" : "Stock & Inventory Valuation"}</div>
-            <div className="grid grid-cols-2 gap-2 text-xs">
-              <div className="p-2.5 bg-gradient-to-br from-white via-teal-50/20 to-teal-500/5 dark:from-zinc-900 dark:via-teal-950/10 dark:to-teal-500/5 border border-teal-500/15 rounded-lg flex items-center justify-between gap-1.5 shadow-[0_2px_8px_rgba(20,184,166,0.04)]">
-                <div className="min-w-0 flex-1">
-                  <div className="text-[9px] text-muted-foreground">{t("inventory_val_cost")}</div>
-                  <div className="font-bold text-xs min-[360px]:text-sm mt-0.5 text-foreground">{fmtMoney(totalStockCostValuation)}</div>
+          <div key="valuations" className="space-y-3">
+            <Card className="p-3.5 border border-border space-y-2 bg-gradient-to-br from-white to-zinc-50/40 dark:from-zinc-900/90 dark:to-zinc-950/90 backdrop-blur-sm rounded-2xl shadow-[0_6px_20px_rgba(0,0,0,0.03)] dark:shadow-[0_6px_20px_rgba(0,0,0,0.25)] hover:shadow-md transition-all">
+              <div className="text-[10px] text-muted-foreground uppercase tracking-wide font-medium">{lang === "bn" ? "পণ্য স্টক মূল্য (ইনভেন্টরি)" : "Stock & Inventory Valuation"}</div>
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="p-2.5 bg-gradient-to-br from-white via-teal-50/20 to-teal-500/5 dark:from-zinc-900 dark:via-teal-950/10 dark:to-teal-500/5 border border-teal-500/15 rounded-lg flex items-center justify-between gap-1.5 shadow-[0_2px_8px_rgba(20,184,166,0.04)]">
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[9px] text-muted-foreground">{t("inventory_val_cost")}</div>
+                    <div className="font-bold text-xs min-[360px]:text-sm mt-0.5 text-foreground">{fmtMoney(totalStockCostValuation)}</div>
+                  </div>
+                  <img src="https://img.icons8.com/bubbles/100/buy.png" className="size-8 object-contain shrink-0" alt="buy" />
                 </div>
-                <img src="https://img.icons8.com/bubbles/100/buy.png" className="size-8 object-contain shrink-0" alt="buy" />
-              </div>
-              <div className="p-2.5 bg-gradient-to-br from-white via-pink-50/20 to-pink-500/5 dark:from-zinc-900 dark:via-pink-950/10 dark:to-pink-500/5 border border-pink-500/15 rounded-lg flex items-center justify-between gap-1.5 shadow-[0_2px_8px_rgba(236,72,153,0.04)]">
-                <div className="min-w-0 flex-1">
-                  <div className="text-[9px] text-muted-foreground">{t("inventory_val_sale")}</div>
-                  <div className="font-bold text-xs min-[360px]:text-sm mt-0.5 text-foreground">{fmtMoney(totalStockSaleValuation)}</div>
+                <div className="p-2.5 bg-gradient-to-br from-white via-pink-50/20 to-pink-500/5 dark:from-zinc-900 dark:via-pink-950/10 dark:to-pink-500/5 border border-pink-500/15 rounded-lg flex items-center justify-between gap-1.5 shadow-[0_2px_8px_rgba(236,72,153,0.04)]">
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[9px] text-muted-foreground">{t("inventory_val_sale")}</div>
+                    <div className="font-bold text-xs min-[360px]:text-sm mt-0.5 text-foreground">{fmtMoney(totalStockSaleValuation)}</div>
+                  </div>
+                  <Package className="size-5 text-muted-foreground shrink-0" />
                 </div>
-                <Package className="size-5 text-muted-foreground shrink-0" />
               </div>
-            </div>
-          </Card>
+            </Card>
+
+            {lowStockProducts.length > 0 && (
+              <Card className="p-3.5 border border-amber-500/30 space-y-2.5 bg-gradient-to-br from-amber-50/40 via-white to-amber-100/20 dark:from-amber-950/20 dark:via-zinc-900/90 dark:to-zinc-950/90 backdrop-blur-sm rounded-2xl shadow-sm">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5 text-xs font-bold text-amber-700 dark:text-amber-400">
+                    <AlertTriangle className="size-4 animate-bounce text-amber-500" />
+                    <span>{lang === "bn" ? `সংকটজনক স্টক অ্যালার্ট (${lowStockProducts.length})` : `Low Stock Alert (${lowStockProducts.length})`}</span>
+                  </div>
+                  <Link href="/products" className="text-[10px] text-primary hover:underline font-semibold flex items-center gap-0.5">
+                    {lang === "bn" ? "সকল পণ্য" : "View All"} <ArrowRight className="size-3" />
+                  </Link>
+                </div>
+                <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                  {lowStockProducts.slice(0, 6).map(p => (
+                    <div key={p.id} className="flex items-center justify-between p-2 rounded-xl border border-amber-500/20 bg-background/80 text-xs">
+                      <div className="min-w-0 flex-1">
+                        <div className="font-semibold truncate text-foreground text-[11px]">{p.name}</div>
+                        <div className="text-[9px] text-muted-foreground">
+                          {lang === "bn" ? "স্টক:" : "Stock:"} <span className="font-bold text-rose-600 font-mono">{p.stock}</span> / {p.min_stock ?? 5}
+                        </div>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-6 px-2 text-[10px] font-bold border-amber-500/40 text-amber-700 dark:text-amber-300 hover:bg-amber-500/10 cursor-pointer gap-1"
+                        onClick={() => {
+                          setRestockProductId(p.id);
+                          setPurchaseOpen(true);
+                        }}
+                      >
+                        <Plus className="size-3" /> {lang === "bn" ? "ক্রয়" : "Restock"}
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            )}
+          </div>
         );
 
       case "graphs":
@@ -1635,22 +1705,25 @@ export default function Dashboard() {
                     <button onClick={() => setChartMetric("sales")} className={`px-2 py-0.5 rounded ${chartMetric === "sales" ? "bg-background shadow font-medium" : ""}`}>{lang === "bn" ? "বিক্রি" : "Sales"}</button>
                     <button onClick={() => setChartMetric("profit")} className={`px-2 py-0.5 rounded ${chartMetric === "profit" ? "bg-background shadow font-medium" : ""}`}>{lang === "bn" ? "লাভ" : "Profit"}</button>
                     <button onClick={() => setChartMetric("expenses")} className={`px-2 py-0.5 rounded ${chartMetric === "expenses" ? "bg-background shadow font-medium" : ""}`}>{lang === "bn" ? "খরচ" : "Expenses"}</button>
+                    <button onClick={() => setChartMetric("hourly")} className={`px-2 py-0.5 rounded ${chartMetric === "hourly" ? "bg-background shadow font-medium text-pink-600 dark:text-pink-400" : ""}`}>{lang === "bn" ? "পিক আওয়ার" : "Peak Hours"}</button>
                   </div>
                   <div className="flex bg-muted rounded p-0.5">
                     <button onClick={() => setChartType("area")} className={`p-1 rounded ${chartType === "area" ? "bg-background shadow" : ""}`} title="Area Chart"><AreaChartIcon className="size-3" /></button>
                     <button onClick={() => setChartType("bar")} className={`p-1 rounded ${chartType === "bar" ? "bg-background shadow" : ""}`} title="Bar Chart"><BarChart3 className="size-3" /></button>
                     <button onClick={() => setChartType("line")} className={`p-1 rounded ${chartType === "line" ? "bg-background shadow" : ""}`} title="Line Chart"><LineChartIcon className="size-3" /></button>
                   </div>
-                  <div className="flex bg-muted rounded p-0.5">
-                    <button onClick={() => setChartRange(7)} className={`px-1.5 py-0.5 rounded ${chartRange === 7 ? "bg-background shadow" : ""}`}>7d</button>
-                    <button onClick={() => setChartRange(14)} className={`px-1.5 py-0.5 rounded ${chartRange === 14 ? "bg-background shadow" : ""}`}>14d</button>
-                    <button onClick={() => setChartRange(30)} className={`px-1.5 py-0.5 rounded ${chartRange === 30 ? "bg-background shadow" : ""}`}>30d</button>
-                  </div>
+                  {chartMetric !== "hourly" && (
+                    <div className="flex bg-muted rounded p-0.5">
+                      <button onClick={() => setChartRange(7)} className={`px-1.5 py-0.5 rounded ${chartRange === 7 ? "bg-background shadow" : ""}`}>7d</button>
+                      <button onClick={() => setChartRange(14)} className={`px-1.5 py-0.5 rounded ${chartRange === 14 ? "bg-background shadow" : ""}`}>14d</button>
+                      <button onClick={() => setChartRange(30)} className={`px-1.5 py-0.5 rounded ${chartRange === 30 ? "bg-background shadow" : ""}`}>30d</button>
+                    </div>
+                  )}
                 </div>
 
                 <div className="w-full h-[150px]">
                   <ResponsiveContainer width="100%" height="100%">
-                    <ChartComponent data={customGraphData}>
+                    <ChartComponent data={chartMetric === "hourly" ? hourlySalesData : customGraphData}>
                       <defs>
                         <linearGradient id="gSales" x1="0" y1="0" x2="0" y2="1">
                           <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3} />
@@ -2170,6 +2243,43 @@ export default function Dashboard() {
                 size={kpiConfig.size as any}
               />
             </div>
+
+            {lowStockProducts.length > 0 && (
+              <Card className="p-4 border border-amber-500/30 space-y-3 bg-gradient-to-br from-amber-50/40 via-white to-amber-100/20 dark:from-amber-950/20 dark:via-zinc-900/90 dark:to-zinc-950/90 backdrop-blur-sm rounded-2xl shadow-sm">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-sm font-bold text-amber-700 dark:text-amber-400">
+                    <AlertTriangle className="size-4 animate-bounce text-amber-500" />
+                    <span>{lang === "bn" ? `সংকটজনক স্টক অ্যালার্ট ও দ্রুত ক্রয় (${lowStockProducts.length}টি পণ্য)` : `Low Stock Alert & Quick Restock (${lowStockProducts.length} Items)`}</span>
+                  </div>
+                  <Link href="/products" className="text-xs text-primary hover:underline font-semibold flex items-center gap-1">
+                    {lang === "bn" ? "সকল পণ্য দেখুন" : "View All Products"} <ArrowRight className="size-3.5" />
+                  </Link>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5">
+                  {lowStockProducts.slice(0, 6).map(p => (
+                    <div key={p.id} className="flex items-center justify-between p-2.5 rounded-xl border border-amber-500/20 bg-background/80 text-xs shadow-2xs">
+                      <div className="min-w-0 flex-1 mr-2">
+                        <div className="font-semibold truncate text-foreground text-xs">{p.name}</div>
+                        <div className="text-[10px] text-muted-foreground mt-0.5">
+                          {lang === "bn" ? "বর্তমান স্টক:" : "Stock:"} <span className="font-bold text-rose-600 font-mono">{p.stock}</span> / {p.min_stock ?? 5}
+                        </div>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 px-2.5 text-xs font-bold border-amber-500/40 text-amber-700 dark:text-amber-300 hover:bg-amber-500/10 cursor-pointer gap-1"
+                        onClick={() => {
+                          setRestockProductId(p.id);
+                          setPurchaseOpen(true);
+                        }}
+                      >
+                        <Plus className="size-3" /> {lang === "bn" ? "ক্রয় করুন" : "Restock"}
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            )}
           </div>
         );
 
@@ -2184,23 +2294,26 @@ export default function Dashboard() {
                     <button onClick={() => setChartMetric("sales")} className={`px-2 py-0.5 rounded ${chartMetric === "sales" ? "bg-background shadow font-medium" : ""}`}>{lang === "bn" ? "বিক্রি" : "Sales"}</button>
                     <button onClick={() => setChartMetric("profit")} className={`px-2 py-0.5 rounded ${chartMetric === "profit" ? "bg-background shadow font-medium" : ""}`}>{lang === "bn" ? "লাভ" : "Profit"}</button>
                     <button onClick={() => setChartMetric("expenses")} className={`px-2 py-0.5 rounded ${chartMetric === "expenses" ? "bg-background shadow font-medium" : ""}`}>{lang === "bn" ? "খরচ" : "Expenses"}</button>
+                    <button onClick={() => setChartMetric("hourly")} className={`px-2 py-0.5 rounded ${chartMetric === "hourly" ? "bg-background shadow font-medium text-pink-600 dark:text-pink-400" : ""}`}>{lang === "bn" ? "পিক আওয়ার" : "Peak Hours"}</button>
                   </div>
                   <div className="flex bg-muted rounded p-0.5">
                     <button onClick={() => setChartType("area")} className={`p-1 rounded ${chartType === "area" ? "bg-background shadow" : ""}`} title="Area Chart"><AreaChartIcon className="size-3.5" /></button>
                     <button onClick={() => setChartType("bar")} className={`p-1 rounded ${chartType === "bar" ? "bg-background shadow" : ""}`} title="Bar Chart"><BarChart3 className="size-3.5" /></button>
                     <button onClick={() => setChartType("line")} className={`p-1 rounded ${chartType === "line" ? "bg-background shadow" : ""}`} title="Line Chart"><LineChartIcon className="size-3.5" /></button>
                   </div>
-                  <div className="flex bg-muted rounded p-0.5">
-                    <button onClick={() => setChartRange(7)} className={`px-2 py-0.5 rounded ${chartRange === 7 ? "bg-background shadow" : ""}`}>7 Days</button>
-                    <button onClick={() => setChartRange(14)} className={`px-2 py-0.5 rounded ${chartRange === 14 ? "bg-background shadow" : ""}`}>14 Days</button>
-                    <button onClick={() => setChartRange(30)} className={`px-2 py-0.5 rounded ${chartRange === 30 ? "bg-background shadow" : ""}`}>30 Days</button>
-                  </div>
+                  {chartMetric !== "hourly" && (
+                    <div className="flex bg-muted rounded p-0.5">
+                      <button onClick={() => setChartRange(7)} className={`px-2 py-0.5 rounded ${chartRange === 7 ? "bg-background shadow" : ""}`}>7 Days</button>
+                      <button onClick={() => setChartRange(14)} className={`px-2 py-0.5 rounded ${chartRange === 14 ? "bg-background shadow" : ""}`}>14 Days</button>
+                      <button onClick={() => setChartRange(30)} className={`px-2 py-0.5 rounded ${chartRange === 30 ? "bg-background shadow" : ""}`}>30 Days</button>
+                    </div>
+                  )}
                 </div>
               </div>
 
               <div className="w-full h-[220px]">
                 <ResponsiveContainer width="100%" height="100%">
-                  <ChartComponent data={customGraphData}>
+                  <ChartComponent data={chartMetric === "hourly" ? hourlySalesData : customGraphData}>
                     <defs>
                       <linearGradient id="dSales" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="5%" stopColor="#6366f1" stopOpacity={0.25} />
@@ -3136,6 +3249,15 @@ export default function Dashboard() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <PurchaseDialog
+        open={purchaseOpen}
+        onOpenChange={(v) => {
+          setPurchaseOpen(v);
+          if (!v) setRestockProductId(undefined);
+        }}
+        presetProductId={restockProductId}
+      />
 
     </div>
   );

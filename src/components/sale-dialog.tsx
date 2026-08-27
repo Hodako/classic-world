@@ -15,10 +15,12 @@ import { toast } from "sonner";
 import { getCustomers, getProducts, type Product } from "@/lib/queries";
 import { fmtMoney, fmtDateTime } from "@/lib/format";
 import { createSaleFn, createCustomerFn } from "@/lib/rpc";
-import { Plus, Minus, Trash2, Scan, Printer, History, Banknote, Smartphone, CreditCard, DollarSign, ShoppingCart, Truck, PackageCheck } from "lucide-react";
+import { Plus, Minus, Trash2, Scan, Printer, History, Banknote, Smartphone, CreditCard, DollarSign, ShoppingCart, Truck, PackageCheck, Share2 } from "lucide-react";
 import Link from "next/link";
 import { safeUUID } from "@/lib/utils";
 import { printPwaInvoice, downloadPwaInvoicePdf } from "@/lib/invoice-printer";
+import { playTapSound, playScanSuccessSound, playSaleSuccessSound, playErrorSound } from "@/lib/audio";
+import { getWhatsAppInvoiceUrl } from "@/lib/whatsapp-helper";
 
 type CartLine = { productId: string; qty: string; sellPrice: string; discount: string };
 export type SalePaymentType = "cash" | "bkash" | "bank" | "credit" | "online";
@@ -222,15 +224,28 @@ export function SaleDialog({
   const due = Math.max(sellTotal - paidNum, 0);
 
   function addToCart() {
-    if (!draft.productId) return toast.error(t("select_product"));
+    if (!draft.productId) {
+      playErrorSound();
+      return toast.error(t("select_product"));
+    }
     const p = products.find(x => x.id === draft.productId);
     const qty = Number(draft.qty) || 1;
-    if (qty <= 0) return toast.error(t("qty") + " > 0");
+    if (qty <= 0) {
+      playErrorSound();
+      return toast.error(t("qty") + " > 0");
+    }
     const sell = Number(draft.sellPrice) || (p ? p.sell_price : 0);
-    if (!sell || sell <= 0) return toast.error(t("sell_price") + " " + t("required"));
+    if (!sell || sell <= 0) {
+      playErrorSound();
+      return toast.error(t("sell_price") + " " + t("required"));
+    }
     const disc = Number(draft.discount) || 0;
-    if (disc < 0) return toast.error(lang === "bn" ? "ডিসকাউন্ট নেতিবাচক হতে পারে না" : "Discount cannot be negative");
+    if (disc < 0) {
+      playErrorSound();
+      return toast.error(lang === "bn" ? "ডিসকাউন্ট নেতিবাচক হতে পারে না" : "Discount cannot be negative");
+    }
     
+    playScanSuccessSound();
     setCart(prev => {
       const idx = prev.findIndex(item => item.productId === draft.productId);
       if (idx !== -1) {
@@ -281,8 +296,14 @@ export function SaleDialog({
 
   async function submit(e: React.FormEvent, action: "print" | "download" | "none" = "none") {
     e.preventDefault();
-    if (!user || cart.length === 0) return toast.error(t("select_product"));
-    if (type === "credit" && !partyId) return toast.error((lang === "bn" ? "কাস্টমার" : "Customer") + " " + t("required"));
+    if (!user || cart.length === 0) {
+      playErrorSound();
+      return toast.error(t("select_product"));
+    }
+    if (type === "credit" && !partyId) {
+      playErrorSound();
+      return toast.error((lang === "bn" ? "কাস্টমার" : "Customer") + " " + t("required"));
+    }
     setBusy(true);
     try {
       const duePerItem = type === "credit" ? due / cart.length : 0;
@@ -320,14 +341,54 @@ export function SaleDialog({
         });
       }
 
-      toast.success(t("record_sale"));
-      qc.invalidateQueries({ queryKey: ["sales"] });
-      qc.invalidateQueries({ queryKey: ["products"] });
-      qc.invalidateQueries({ queryKey: ["party-detail"] });
-      qc.invalidateQueries({ queryKey: ["cashbox"] });
+      await qc.invalidateQueries({ queryKey: ["sales"] });
+      await qc.invalidateQueries({ queryKey: ["products"] });
+      await qc.invalidateQueries({ queryKey: ["party-detail"] });
+      await qc.invalidateQueries({ queryKey: ["cashbox"] });
+
+      playSaleSuccessSound();
+
+      const cust = customers.find(c => c.id === partyId);
+      const waUrl = getWhatsAppInvoiceUrl({
+        invoiceNo: `INV-${cartId.slice(-6).toUpperCase()}`,
+        customerName: cust?.name || (lang === "bn" ? "সম্মানিত ক্রেতা" : "Valued Customer"),
+        customerPhone: cust?.phone || "",
+        shopName: user.business_name || user.full_name || "Classic World",
+        shopPhone: user.business_phone_numbers || "",
+        items: cart.map(c => {
+          const prod = products.find(p => p.id === c.productId);
+          return {
+            name: prod?.name || "Product",
+            qty: Number(c.qty) || 1,
+            price: Math.max((Number(c.sellPrice) || prod?.sell_price || 0) - (Number(c.discount) || 0), 0),
+          };
+        }),
+        subtotal: sellTotal + discTotal,
+        discount: discTotal,
+        total: sellTotal,
+        paidAmount: type === "online" ? 0 : (type === "credit" ? paidNum : sellTotal),
+        dueAmount: type === "online" ? sellTotal : (type === "credit" ? due : 0),
+        paymentMethod: type,
+      }, lang as any);
+
+      toast.success(
+        <div className="flex items-center justify-between gap-3 w-full">
+          <span>{lang === "bn" ? "বিক্রয় সম্পন্ন হয়েছে!" : "Sale recorded successfully!"}</span>
+          {cust?.phone && (
+            <a
+              href={waUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-[11px] font-bold shrink-0 inline-flex items-center gap-1 shadow-sm transition-colors"
+            >
+              <Share2 className="size-3" /> WhatsApp
+            </a>
+          )}
+        </div>,
+        { duration: 6000 }
+      );
 
       if (action === "print") {
-        const cust = customers.find(c => c.id === partyId);
         const paymentModeStr = type === "online"
           ? `COURIER [${courierName}]`
           : type === "bkash"
@@ -339,7 +400,7 @@ export function SaleDialog({
           : "CASH (নগদ)";
 
         const invoiceParams = {
-          businessName: user.business_name || user.full_name || "Dream Fashion POS",
+          businessName: user.business_name || user.full_name || "Classic World POS",
           userEmail: user.business_emails || user.email || "",
           shopAddress: user.business_address || "",
           shopPhoneNumbers: user.business_phone_numbers || "",
@@ -371,11 +432,11 @@ export function SaleDialog({
         };
 
         printPwaInvoice(invoiceParams);
-        toast.success(lang === "bn" ? "ইনভয়েস প্রিন্ট প্রস্তুত হচ্ছে!" : "Opening invoice print view!");
       }
 
       onOpenChange(false);
     } catch (err: unknown) {
+      playErrorSound();
       toast.error(err instanceof Error ? err.message : String(err));
     } finally { setBusy(false); }
   }

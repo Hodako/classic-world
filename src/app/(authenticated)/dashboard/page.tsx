@@ -470,6 +470,7 @@ export default function Dashboard() {
   const DEFAULT_KPI_ORDER = [
     "total_sales",
     "cash_sale",
+    "bkash_bank",
     "credit_sale",
     "online_sell",
     "purchases",
@@ -487,6 +488,7 @@ export default function Dashboard() {
   > = {
     total_sales: { nameEn: "Total Sales", nameBn: "আজকের মোট বিক্রয়", badge: "Total", bg: "bg-blue-500/10 border-blue-500/30 text-blue-600 dark:text-blue-400" },
     cash_sale: { nameEn: "Cash Sale", nameBn: "নগদ বিক্রয়", badge: "Cash", bg: "bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-400" },
+    bkash_bank: { nameEn: "bKash & Bank Collections", nameBn: "বিকাশ ও ব্যাংক ব্যালেন্স", badge: "Digital", bg: "bg-pink-500/10 border-pink-500/30 text-pink-600 dark:text-pink-400" },
     credit_sale: { nameEn: "Credit Sale", nameBn: "বাকি বিক্রয়", badge: "Credit", bg: "bg-amber-500/10 border-amber-500/30 text-amber-600 dark:text-amber-400" },
     online_sell: { nameEn: "Online Sale", nameBn: "অনলাইন বিক্রয়", badge: "Online", bg: "bg-purple-500/10 border-purple-500/30 text-purple-600 dark:text-purple-400" },
     purchases: { nameEn: "Purchases (BUY)", nameBn: "মাল ক্রয় (BUY)", badge: "Buy", bg: "bg-indigo-500/10 border-indigo-500/30 text-indigo-600 dark:text-indigo-400" },
@@ -509,7 +511,18 @@ export default function Dashboard() {
   };
 
   // KPI Configuration state
-  const [kpiConfig, setKpiConfig] = useState({
+  const [kpiConfig, setKpiConfig] = useState<{
+    align: string;
+    size: string;
+    columns: number;
+    variant: string;
+    shadow: string;
+    borderStyle: string;
+    curve: string;
+    bentoGrid: boolean;
+    order: string[];
+    hiddenKpis?: string[];
+  }>({
     align: "left",
     size: "small",
     columns: 2,
@@ -519,6 +532,7 @@ export default function Dashboard() {
     curve: "none",
     bentoGrid: true,
     order: DEFAULT_KPI_ORDER,
+    hiddenKpis: [],
   });
 
   const [draggedKpiIdx, setDraggedKpiIdx] = useState<number | null>(null);
@@ -880,6 +894,8 @@ export default function Dashboard() {
 
   const bkashToday   = filteredSales.filter(s => s.type === "bkash").reduce((a, s) => a + ((Number(s.sell_price) || 0) * (Number(s.qty) || 1) - (Number(s.discount) || 0)), 0);
   const bankToday    = filteredSales.filter(s => (s.type as string) === "bank").reduce((a, s) => a + ((Number(s.sell_price) || 0) * (Number(s.qty) || 1) - (Number(s.discount) || 0)), 0);
+  const bkashBankCollected = filteredSales.filter(s => (s.type === "bkash" || (s.type as string) === "bank") && ((s as any).payment_status === "accepted" || (s as any).payment_accepted)).reduce((a, s) => a + ((Number(s.paid_amount) || Number(s.sell_price) || 0) * (Number(s.qty) || 1) - (Number(s.discount) || 0)), 0);
+  const bkashBankPending = filteredSales.filter(s => (s.type === "bkash" || (s.type as string) === "bank") && ((s as any).payment_status === "pending" || !(s as any).payment_accepted)).reduce((a, s) => a + ((Number(s.paid_amount) || Number(s.sell_price) || 0) * (Number(s.qty) || 1) - (Number(s.discount) || 0)), 0);
   const creditToday  = filteredSales.filter(s => s.type === "credit").reduce((a, s) => {
     const lineTotal = (Number(s.sell_price) || 0) * (Number(s.qty) || 1) - (Number(s.discount) || 0);
     const due = Number(s.due_amount);
@@ -888,7 +904,7 @@ export default function Dashboard() {
   const onlineToday  = filteredSales.filter(s => s.type === "online").reduce((a, s) => a + ((Number(s.sell_price) || 0) * (Number(s.qty) || 1) - (Number(s.discount) || 0)), 0);
   const onlinePendingToday = filteredSales.filter(s => s.type === "online" && (s as any).courier_status !== "collected" && (s as any).courier_status !== "cancelled").reduce((a, s) => a + ((Number(s.sell_price) || 0) * (Number(s.qty) || 1) - (Number(s.discount) || 0)), 0);
   const onlineCollectedToday = filteredSales.filter(s => s.type === "online" && (s as any).courier_status === "collected").reduce((a, s) => a + ((Number(s.sell_price) || 0) * (Number(s.qty) || 1) - (Number(s.discount) || 0)), 0);
-  const cashboxDepositedToday = cashToday + bkashToday + bankToday + onlineCollectedToday;
+  const cashboxDepositedToday = cashToday + bkashBankCollected + onlineCollectedToday;
   const purchasesToday = filteredPurchases.reduce((a, p) => a + (Number(p.total) || 0), 0);
   const validFilteredSales = filteredSales.filter(s => !s.returned && (s as any).courier_status !== "cancelled");
   const calcSaleProfit = (s: any) => {
@@ -1349,6 +1365,26 @@ export default function Dashboard() {
               isBentoHero={isHeroCard("cash_sale")}
             />
           ),
+          bkash_bank: (
+            <Link href="/sales" className={`block ${isHeroCard("bkash_bank") ? "sm:col-span-2" : ""}`} key="bkash_bank" onClick={() => playTapSound()}>
+              <KPICard
+                label={lang === "bn" ? "বিকাশ ও ব্যাংক" : "bKash & Bank"}
+                value={fmtMoney(bkashBankCollected)}
+                sub={lang === "bn" ? `পেন্ডিং: ${fmtMoney(bkashBankPending)}` : `Pending: ${fmtMoney(bkashBankPending)}`}
+                imageUrl="/icons/bkash_logo.png"
+                icon={DollarSign}
+                color="bg-pink-600"
+                className="h-full w-full"
+                align={kpiConfig.align as any}
+                size={kpiConfig.size as any}
+                variant={(kpiConfig.variant || "glass") as any}
+                shadowStyle={(kpiConfig.shadow || "glow") as any}
+                borderStyle={(kpiConfig.borderStyle || "subtle") as any}
+                curve={(kpiConfig.curve || "none") as any}
+                isBentoHero={isHeroCard("bkash_bank")}
+              />
+            </Link>
+          ),
           online_sell: (
             <div className={`block ${isHeroCard("online_sell") ? "sm:col-span-2" : ""}`} key="online_sell">
               <KPICard
@@ -1550,7 +1586,9 @@ export default function Dashboard() {
             {!collapsed.kpis && (
               <div className="space-y-2.5">
                 <div className={`grid gap-2.5 ${gridColsClass}`}>
-                  {kpiConfig.order.map(key => kpiCardsMap[key])}
+                  {kpiConfig.order
+                    .filter((key) => !(kpiConfig.hiddenKpis || []).includes(key))
+                    .map((key) => kpiCardsMap[key])}
                 </div>
               </div>
             )}
@@ -1916,6 +1954,29 @@ export default function Dashboard() {
                   size={kpiConfig.size as any}
                 />
               );
+            case "bkash_bank":
+              return (
+                <Link
+                  href="/sales"
+                  key="bkash_bank"
+                  className="block cursor-pointer h-full"
+                  onClick={() => playTapSound()}
+                >
+                  <KPICard
+                    label={lang === "bn" ? "বিকাশ ও ব্যাংক ব্যালেন্স" : "bKash & Bank Collections"}
+                    value={fmtMoney(bkashBankCollected)}
+                    sub={lang === "bn" ? `অপেক্ষমাণ: ${fmtMoney(bkashBankPending)}` : `Pending: ${fmtMoney(bkashBankPending)}`}
+                    imageUrl="/icons/bkash_logo.png"
+                    icon={DollarSign}
+                    color="bg-pink-600"
+                    isDesktop={true}
+                    hotkey={hotkey}
+                    className="h-full"
+                    align={kpiConfig.align as any}
+                    size={kpiConfig.size as any}
+                  />
+                </Link>
+              );
             case "online_sell":
               return (
                 <KPICard
@@ -2082,7 +2143,9 @@ export default function Dashboard() {
         return (
           <div key="kpis" className="space-y-6 col-span-3">
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-              {kpiConfig.order.map((key, idx) => renderDesktopCard(key, idx))}
+              {kpiConfig.order
+                .filter((key) => !(kpiConfig.hiddenKpis || []).includes(key))
+                .map((key, idx) => renderDesktopCard(key, idx))}
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -3006,7 +3069,36 @@ export default function Dashboard() {
                         </span>
                       </div>
 
-                      <div className="flex items-center gap-0.5 shrink-0">
+                      <div className="flex items-center gap-1 shrink-0">
+                        {/* KPI Visibility Toggle */}
+                        {(() => {
+                          const isHidden = (kpiConfig.hiddenKpis || []).includes(kpiKey);
+                          return (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => {
+                                const hidden = kpiConfig.hiddenKpis || [];
+                                const updated = isHidden ? hidden.filter(k => k !== kpiKey) : [...hidden, kpiKey];
+                                updateKpiConfig({ hiddenKpis: updated });
+                              }}
+                              className={`size-6 p-0 rounded cursor-pointer ${
+                                isHidden
+                                  ? "text-rose-500 hover:text-rose-600 bg-rose-500/10"
+                                  : "text-emerald-600 hover:text-emerald-700 bg-emerald-500/10"
+                              }`}
+                              title={
+                                isHidden
+                                  ? (lang === "bn" ? "কেপিআইটি লুকানো আছে (ক্লিক করে প্রদর্শন করুন)" : "Hidden (Click to show)")
+                                  : (lang === "bn" ? "কেপিআইটি প্রদর্শিত হচ্ছে (ক্লিক করে লুকান)" : "Visible (Click to hide)")
+                              }
+                            >
+                              {isHidden ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
+                            </Button>
+                          );
+                        })()}
+
                         <Button
                           type="button"
                           size="sm"

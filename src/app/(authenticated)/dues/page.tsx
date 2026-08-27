@@ -338,7 +338,7 @@ export default function DuesPage() {
             <Input
               style={{ paddingLeft: "2.5rem" }}
               className="pl-10 h-9"
-              placeholder={t("search_parties")}
+              placeholder={lang === "bn" ? "কাস্টমার খুঁজুন..." : "Search customers..."}
               value={search}
               onChange={e => { setSearch(e.target.value); setPage(1); }}
             />

@@ -361,21 +361,63 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               </DropdownMenu>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon" className="size-8">
-                    <Avatar className="size-5">
+                  <Button variant="ghost" size="icon" className="size-8 cursor-pointer ring-1 ring-border/50 hover:ring-primary/40 rounded-full">
+                    <Avatar className="size-6">
                       {user?.avatar_url ? (
                         <img src={user.avatar_url} className="aspect-square h-full w-full object-cover rounded-full" alt="Profile" />
                       ) : (
-                        <AvatarFallback className="text-[9px] bg-primary text-primary-foreground">{userInitials}</AvatarFallback>
+                        <AvatarFallback className="text-[9px] font-bold bg-primary text-primary-foreground">{userInitials}</AvatarFallback>
                       )}
                     </Avatar>
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuLabel className="text-xs max-w-[180px] truncate">{user.email}</DropdownMenuLabel>
+                <DropdownMenuContent align="end" className="w-56 p-1.5 shadow-xl rounded-2xl border-border/80">
+                  <div className="px-2 py-1.5 border-b border-border/60">
+                    <div className="text-xs font-bold truncate text-foreground">{user.business_name || "Classic World"}</div>
+                    <div className="text-[11px] text-muted-foreground truncate">{user.email || user.username}</div>
+                    <div className="inline-block mt-1 text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.2 rounded-md bg-primary/10 text-primary border border-primary/20">
+                      {user.role || "Admin / Owner"}
+                    </div>
+                  </div>
+
+                  <div className="py-1">
+                    <DropdownMenuItem
+                      onClick={() => {
+                        sessionStorage.removeItem("app_pin_unlocked");
+                        window.dispatchEvent(new Event("app_lock_screen"));
+                      }}
+                      className="text-xs font-medium cursor-pointer"
+                    >
+                      <Lock className="size-3.5 mr-2 text-amber-500" />
+                      {lang === "bn" ? "স্ক্রিন লক করুন" : "Lock Screen"}
+                    </DropdownMenuItem>
+
+                    <DropdownMenuItem
+                      onClick={() => {
+                        router.push("/settings");
+                      }}
+                      className="text-xs font-medium cursor-pointer"
+                    >
+                      <Settings className="size-3.5 mr-2 text-muted-foreground" />
+                      {lang === "bn" ? "সেটিংস ও নিরাপত্তা" : "Settings & Security"}
+                    </DropdownMenuItem>
+
+                    <DropdownMenuItem
+                      onClick={() => {
+                        if (confirm(lang === "bn" ? "অন্য আইডি দিয়ে লগইন করতে চান?" : "Switch to another ID / Account?")) {
+                          router.push("/login");
+                        }
+                      }}
+                      className="text-xs font-medium cursor-pointer"
+                    >
+                      <RefreshCw className="size-3.5 mr-2 text-primary" />
+                      {lang === "bn" ? "আইডি পরিবর্তন (Switch ID)" : "Fast Switch ID"}
+                    </DropdownMenuItem>
+                  </div>
+
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={handleSignOut} className="text-destructive text-xs">
-                    <LogOut className="icon-sm mr-2" />
+                  <DropdownMenuItem onClick={handleSignOut} className="text-destructive text-xs font-medium cursor-pointer">
+                    <LogOut className="size-3.5 mr-2" />
                     {t("sign_out")}
                   </DropdownMenuItem>
                 </DropdownMenuContent>

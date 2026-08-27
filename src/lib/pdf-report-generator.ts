@@ -860,3 +860,358 @@ export async function generateBusinessReportPdf(data: ReportPdfData, openInNewTa
     generateEnglishReportPdf(data, openInNewTab);
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Party / Supplier Statement PDF Generator
+// ─────────────────────────────────────────────────────────────────────────────
+export interface PartyStatementData {
+  bizName: string;
+  bizPhone?: string;
+  bizAddress?: string;
+  partyName: string;
+  partyPhone?: string;
+  partyAddress?: string;
+  lang: "bn" | "en";
+  payableTotal: number;
+  settledTotal: number;
+  payableOutstanding: number;
+  entries: {
+    date: string;
+    label: string;
+    kind: string;
+    amount: number;
+    runningBalance?: number;
+  }[];
+}
+
+export async function generatePartyStatementPdf(data: PartyStatementData, openInNewTab = false): Promise<void> {
+  const { default: html2canvas } = await import("html2canvas");
+
+  const container = document.createElement("div");
+  container.style.position = "fixed";
+  container.style.top = "-9999px";
+  container.style.left = "-9999px";
+  container.style.width = "794px";
+  container.style.backgroundColor = "#ffffff";
+  container.style.color = "#0f172a";
+  container.style.fontFamily = "'Hind Siliguri', 'Siyam Rupali', sans-serif";
+  container.style.padding = "36px 32px";
+  container.style.boxSizing = "border-box";
+  container.style.zIndex = "-1000";
+
+  const isBn = data.lang === "bn";
+
+  container.innerHTML = `
+    <div style="font-family: 'Hind Siliguri', 'Siyam Rupali', sans-serif; color: #0f172a; line-height: 1.45;">
+      <div style="border-top: 5px solid #0284c7; padding-top: 14px; margin-bottom: 18px; display: flex; justify-content: space-between; align-items: flex-start;">
+        <div>
+          <h1 style="margin: 0; font-size: 22px; font-weight: 700; color: #0f172a;">${data.bizName || "Classic World"}</h1>
+          <p style="margin: 3px 0 0 0; font-size: 11px; color: #64748b;">
+            ${[data.bizAddress, data.bizPhone ? `ফোন: ${data.bizPhone}` : ""].filter(Boolean).join(" | ")}
+          </p>
+        </div>
+        <div style="text-align: right;">
+          <div style="font-size: 14px; font-weight: 700; color: #0284c7;">
+            ${isBn ? "সাপ্লায়ার / মহাজন লেজার স্টেটমেন্ট" : "Supplier & Vendor Ledger Statement"}
+          </div>
+          <div style="font-size: 10px; color: #94a3b8; margin-top: 2px;">
+            ${isBn ? "প্রস্তুত তারিখ:" : "Date:"} ${new Date().toLocaleDateString(isBn ? "bn-BD" : "en-US")}
+          </div>
+        </div>
+      </div>
+
+      <!-- Party Profile Box -->
+      <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 14px; margin-bottom: 16px; display: flex; justify-content: space-between; font-size: 11.5px;">
+        <div>
+          <div style="font-size: 13px; font-weight: 700; color: #0f172a;">${data.partyName}</div>
+          <div style="color: #64748b; margin-top: 2px;">${[data.partyPhone ? (isBn ? `ফোন: ${data.partyPhone}` : `Phone: ${data.partyPhone}`) : "", data.partyAddress].filter(Boolean).join(" · ") || (isBn ? "ঠিকানা দেওয়া নেই" : "No address specified")}</div>
+        </div>
+        <div style="text-align: right;">
+          <div style="font-size: 10px; color: #64748b; font-weight: 600; text-transform: uppercase;">${isBn ? "বর্তমান বকেয়া পাওনা" : "Net Payable Outstanding"}</div>
+          <div style="font-size: 16px; font-weight: 800; color: #e11d48;">৳${data.payableOutstanding.toLocaleString()}</div>
+        </div>
+      </div>
+
+      <!-- KPI 3 Summary Badges -->
+      <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 18px;">
+        <div style="border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px 10px; background-color: #ffffff;">
+          <div style="font-size: 10px; color: #64748b; font-weight: 600;">${isBn ? "মোট মালামাল ক্রয় / পাওনা" : "Total Purchases / Payable"}</div>
+          <div style="font-size: 14px; font-weight: 700; color: #0f172a; margin-top: 2px;">৳${data.payableTotal.toLocaleString()}</div>
+        </div>
+        <div style="border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px 10px; background-color: #ffffff;">
+          <div style="font-size: 10px; color: #64748b; font-weight: 600;">${isBn ? "মোট পরিশোধ / পরিশোধিত" : "Total Paid / Settled"}</div>
+          <div style="font-size: 14px; font-weight: 700; color: #059669; margin-top: 2px;">৳${data.settledTotal.toLocaleString()}</div>
+        </div>
+        <div style="border: 1px solid #fecdd3; border-radius: 6px; padding: 8px 10px; background-color: #fff1f2;">
+          <div style="font-size: 10px; color: #9f1239; font-weight: 600;">${isBn ? "বকেয়া পাওনা স্থিতি" : "Balance Due"}</div>
+          <div style="font-size: 14px; font-weight: 700; color: #e11d48; margin-top: 2px;">৳${data.payableOutstanding.toLocaleString()}</div>
+        </div>
+      </div>
+
+      <!-- Ledger Table -->
+      <table style="width: 100%; border-collapse: collapse; font-size: 10.5px; text-align: left; margin-bottom: 24px;">
+        <thead>
+          <tr style="background-color: #0f172a; color: #ffffff;">
+            <th style="padding: 6px 8px; border: 1px solid #0f172a; width: 35px; text-align: center;">#</th>
+            <th style="padding: 6px 8px; border: 1px solid #0f172a; width: 85px;">${isBn ? "তারিখ" : "Date"}</th>
+            <th style="padding: 6px 8px; border: 1px solid #0f172a;">${isBn ? "লেনদেনের বিবরণ" : "Description"}</th>
+            <th style="padding: 6px 8px; border: 1px solid #0f172a; text-align: center; width: 80px;">${isBn ? "ধরন" : "Type"}</th>
+            <th style="padding: 6px 8px; border: 1px solid #0f172a; text-align: right; width: 95px;">${isBn ? "টাকার পরিমাণ" : "Amount (BDT)"}</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${data.entries.length > 0 ? data.entries.map((e, idx) => `
+            <tr style="border-bottom: 1px solid #e2e8f0; ${idx % 2 === 1 ? "background-color: #f8fafc;" : ""}">
+              <td style="padding: 5px 8px; text-align: center; border: 1px solid #e2e8f0;">${idx + 1}</td>
+              <td style="padding: 5px 8px; border: 1px solid #e2e8f0;">${e.date.slice(0, 10)}</td>
+              <td style="padding: 5px 8px; font-weight: 600; border: 1px solid #e2e8f0;">${e.label}</td>
+              <td style="padding: 5px 8px; text-align: center; border: 1px solid #e2e8f0; font-size: 10px;">
+                <span style="padding: 2px 6px; border-radius: 4px; ${e.kind === "payable" || e.kind === "receivable" ? "background-color: #fee2e2; color: #991b1b;" : "background-color: #dcfce7; color: #166534;"}">
+                  ${e.kind === "payable" ? (isBn ? "পাওনা যোগ" : "Payable Added") : e.kind === "settlement" ? (isBn ? "টাকা পরিশোধ" : "Settlement") : e.kind}
+                </span>
+              </td>
+              <td style="padding: 5px 8px; text-align: right; font-weight: 700; border: 1px solid #e2e8f0; color: ${e.kind === "settlement" || e.kind === "payment" ? "#059669" : "#e11d48"};">
+                ${e.kind === "settlement" || e.kind === "payment" ? "−" : "+"}৳${e.amount.toLocaleString()}
+              </td>
+            </tr>
+          `).join("") : `
+            <tr><td colspan="5" style="padding: 10px; text-align: center; color: #64748b; border: 1px solid #e2e8f0;">${isBn ? "কোনো লেনদেনের রেকর্ড পাওয়া যায়নি" : "No transaction records found"}</td></tr>
+          `}
+        </tbody>
+      </table>
+
+      <!-- Signatures -->
+      <div style="margin-top: 36px; padding-top: 14px; display: flex; justify-content: space-between; text-align: center; font-size: 11px; color: #475569;">
+        <div style="width: 170px; border-top: 1.5px solid #94a3b8; padding-top: 6px; font-weight: 600;">
+          ${isBn ? "হিসাবরক্ষকের স্বাক্ষর" : "Accountant Signature"}
+        </div>
+        <div style="width: 170px; border-top: 1.5px solid #94a3b8; padding-top: 6px; font-weight: 600;">
+          ${isBn ? "পার্টি / সাপ্লায়ারের স্বাক্ষর" : "Party / Supplier Signature"}
+        </div>
+        <div style="width: 170px; border-top: 1.5px solid #94a3b8; padding-top: 6px; font-weight: 600;">
+          ${isBn ? "স্বত্বাধিকারীর অনুমোদন" : "Proprietor Signature"}
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(container);
+
+  try {
+    const canvas = await html2canvas(container, {
+      scale: 2,
+      useCORS: true,
+      backgroundColor: "#ffffff",
+      logging: false,
+    });
+
+    const imgData = canvas.toDataURL("image/png");
+    const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+    const imgWidth = 210;
+    const pageHeight = 297;
+    const imgHeight = (canvas.height * imgWidth) / canvas.width;
+    let heightLeft = imgHeight;
+    let position = 0;
+
+    pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight);
+    heightLeft -= pageHeight;
+
+    while (heightLeft > 0) {
+      position = heightLeft - imgHeight;
+      pdf.addPage();
+      pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight);
+      heightLeft -= pageHeight;
+    }
+
+    const filename = `Party_Statement_${data.partyName.replace(/\s+/g, "_")}.pdf`;
+    if (openInNewTab) {
+      const blobUrl = pdf.output("bloburl");
+      window.open(blobUrl, "_blank");
+    } else {
+      pdf.save(filename);
+    }
+  } finally {
+    document.body.removeChild(container);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Samity Bank-Statement Style PDF Generator
+// ─────────────────────────────────────────────────────────────────────────────
+export interface SamityStatementData {
+  bizName: string;
+  bizPhone?: string;
+  bizAddress?: string;
+  samityName: string;
+  samityPhone?: string;
+  samityAccountNo?: string;
+  openingDate?: string;
+  lang: "bn" | "en";
+  totalDeposited: number;
+  totalWithdrawn: number;
+  netBalance: number;
+  entries: {
+    date: string;
+    kind: "deposit" | "withdraw";
+    amount: number;
+    runningBalance: number;
+    note?: string;
+  }[];
+}
+
+export async function generateSamityStatementPdf(data: SamityStatementData, openInNewTab = false): Promise<void> {
+  const { default: html2canvas } = await import("html2canvas");
+
+  const container = document.createElement("div");
+  container.style.position = "fixed";
+  container.style.top = "-9999px";
+  container.style.left = "-9999px";
+  container.style.width = "794px";
+  container.style.backgroundColor = "#ffffff";
+  container.style.color = "#0f172a";
+  container.style.fontFamily = "'Hind Siliguri', 'Siyam Rupali', sans-serif";
+  container.style.padding = "36px 32px";
+  container.style.boxSizing = "border-box";
+  container.style.zIndex = "-1000";
+
+  const isBn = data.lang === "bn";
+
+  container.innerHTML = `
+    <div style="font-family: 'Hind Siliguri', 'Siyam Rupali', sans-serif; color: #0f172a; line-height: 1.45;">
+      <div style="border-top: 5px solid #0d9488; padding-top: 14px; margin-bottom: 18px; display: flex; justify-content: space-between; align-items: flex-start;">
+        <div>
+          <h1 style="margin: 0; font-size: 22px; font-weight: 700; color: #0f172a;">${data.bizName || "Classic World"}</h1>
+          <p style="margin: 3px 0 0 0; font-size: 11px; color: #64748b;">
+            ${[data.bizAddress, data.bizPhone ? `ফোন: ${data.bizPhone}` : ""].filter(Boolean).join(" | ")}
+          </p>
+        </div>
+        <div style="text-align: right;">
+          <div style="font-size: 14px; font-weight: 700; color: #0d9488;">
+            ${isBn ? "সমিতি সঞ্চয় ও ডিপিএস ব্যাংক স্টেটমেন্ট" : "Samity Savings Account Bank Statement"}
+          </div>
+          <div style="font-size: 10px; color: #94a3b8; margin-top: 2px;">
+            ${isBn ? "প্রস্তুত তারিখ:" : "Date:"} ${new Date().toLocaleDateString(isBn ? "bn-BD" : "en-US")}
+          </div>
+        </div>
+      </div>
+
+      <!-- Account Info Header -->
+      <div style="background-color: #f0fdfa; border: 1px solid #ccfbf1; border-radius: 8px; padding: 12px 14px; margin-bottom: 16px; display: flex; justify-content: space-between; font-size: 11.5px;">
+        <div>
+          <div style="font-size: 13px; font-weight: 700; color: #0f172a;">${isBn ? "হিসাবের নাম:" : "Account:"} ${data.samityName}</div>
+          <div style="color: #0f766e; margin-top: 2px;">
+            ${[data.samityAccountNo ? (isBn ? `হিসাব নং: ${data.samityAccountNo}` : `Acc No: ${data.samityAccountNo}`) : "", data.samityPhone ? (isBn ? `ফোন: ${data.samityPhone}` : `Phone: ${data.samityPhone}`) : ""].filter(Boolean).join(" · ")}
+          </div>
+        </div>
+        <div style="text-align: right;">
+          <div style="font-size: 10px; color: #0f766e; font-weight: 600; text-transform: uppercase;">${isBn ? "বর্তমান সঞ্চয় স্থিতি (ব্যালেন্স)" : "Current Net Balance"}</div>
+          <div style="font-size: 17px; font-weight: 800; color: #0d9488;">৳${data.netBalance.toLocaleString()}</div>
+        </div>
+      </div>
+
+      <!-- Summary KPI 3 Badges -->
+      <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 18px;">
+        <div style="border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px 10px; background-color: #ffffff;">
+          <div style="font-size: 10px; color: #64748b; font-weight: 600;">${isBn ? "সর্বমোট সঞ্চয় জমা" : "Total Deposited"}</div>
+          <div style="font-size: 14px; font-weight: 700; color: #059669; margin-top: 2px;">+৳${data.totalDeposited.toLocaleString()}</div>
+        </div>
+        <div style="border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px 10px; background-color: #ffffff;">
+          <div style="font-size: 10px; color: #64748b; font-weight: 600;">${isBn ? "সর্বমোট উত্তোলন" : "Total Withdrawn"}</div>
+          <div style="font-size: 14px; font-weight: 700; color: #e11d48; margin-top: 2px;">−৳${data.totalWithdrawn.toLocaleString()}</div>
+        </div>
+        <div style="border: 1px solid #99f6e4; border-radius: 6px; padding: 8px 10px; background-color: #ccfbf1;">
+          <div style="font-size: 10px; color: #115e59; font-weight: 600;">${isBn ? "বর্তমান সঞ্চয় স্থিতি" : "Net Balance"}</div>
+          <div style="font-size: 14px; font-weight: 700; color: #0f766e; margin-top: 2px;">৳${data.netBalance.toLocaleString()}</div>
+        </div>
+      </div>
+
+      <!-- Bank Statement Table -->
+      <table style="width: 100%; border-collapse: collapse; font-size: 10.5px; text-align: left; margin-bottom: 24px;">
+        <thead>
+          <tr style="background-color: #115e59; color: #ffffff;">
+            <th style="padding: 6px 8px; border: 1px solid #115e59; width: 35px; text-align: center;">#</th>
+            <th style="padding: 6px 8px; border: 1px solid #115e59; width: 85px;">${isBn ? "তারিখ" : "Date"}</th>
+            <th style="padding: 6px 8px; border: 1px solid #115e59; text-align: center; width: 80px;">${isBn ? "লেনদেন ধরন" : "Type"}</th>
+            <th style="padding: 6px 8px; border: 1px solid #115e59; text-align: right; width: 100px;">${isBn ? "জমা / উত্তোলন (৳)" : "Amount (BDT)"}</th>
+            <th style="padding: 6px 8px; border: 1px solid #115e59; text-align: right; width: 110px;">${isBn ? "চলতি ব্যালেন্স (৳)" : "Running Balance"}</th>
+            <th style="padding: 6px 8px; border: 1px solid #115e59;">${isBn ? "রেফারেন্স / নোট" : "Reference / Note"}</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${data.entries.length > 0 ? data.entries.map((e, idx) => `
+            <tr style="border-bottom: 1px solid #e2e8f0; ${idx % 2 === 1 ? "background-color: #f8fafc;" : ""}">
+              <td style="padding: 5px 8px; text-align: center; border: 1px solid #e2e8f0;">${idx + 1}</td>
+              <td style="padding: 5px 8px; border: 1px solid #e2e8f0;">${e.date.slice(0, 10)}</td>
+              <td style="padding: 5px 8px; text-align: center; border: 1px solid #e2e8f0; font-size: 10px;">
+                <span style="padding: 2px 6px; border-radius: 4px; ${e.kind === "deposit" ? "background-color: #dcfce7; color: #166534;" : "background-color: #fee2e2; color: #991b1b;"}">
+                  ${e.kind === "deposit" ? (isBn ? "জমা (Deposit)" : "Deposit") : (isBn ? "উত্তোলন (Withdraw)" : "Withdraw")}
+                </span>
+              </td>
+              <td style="padding: 5px 8px; text-align: right; font-weight: 700; border: 1px solid #e2e8f0; color: ${e.kind === "deposit" ? "#059669" : "#e11d48"};">
+                ${e.kind === "deposit" ? "+" : "−"}৳${e.amount.toLocaleString()}
+              </td>
+              <td style="padding: 5px 8px; text-align: right; font-weight: 700; border: 1px solid #e2e8f0; color: #0f766e;">
+                ৳${e.runningBalance.toLocaleString()}
+              </td>
+              <td style="padding: 5px 8px; color: #64748b; border: 1px solid #e2e8f0;">${e.note || "—"}</td>
+            </tr>
+          `).join("") : `
+            <tr><td colspan="6" style="padding: 10px; text-align: center; color: #64748b; border: 1px solid #e2e8f0;">${isBn ? "কোনো লেনদেনের রেকর্ড নেই" : "No transaction records found"}</td></tr>
+          `}
+        </tbody>
+      </table>
+
+      <!-- Signatures -->
+      <div style="margin-top: 36px; padding-top: 14px; display: flex; justify-content: space-between; text-align: center; font-size: 11px; color: #475569;">
+        <div style="width: 170px; border-top: 1.5px solid #94a3b8; padding-top: 6px; font-weight: 600;">
+          ${isBn ? "হিসাব পরিচালকের স্বাক্ষর" : "Officer Signature"}
+        </div>
+        <div style="width: 170px; border-top: 1.5px solid #94a3b8; padding-top: 6px; font-weight: 600;">
+          ${isBn ? "যাচাইকারী কর্মকর্তার স্বাক্ষর" : "Verified By"}
+        </div>
+        <div style="width: 170px; border-top: 1.5px solid #94a3b8; padding-top: 6px; font-weight: 600;">
+          ${isBn ? "কর্তৃপক্ষের অনুমোদন ও সিল" : "Authority Stamp & Sign"}
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(container);
+
+  try {
+    const canvas = await html2canvas(container, {
+      scale: 2,
+      useCORS: true,
+      backgroundColor: "#ffffff",
+      logging: false,
+    });
+
+    const imgData = canvas.toDataURL("image/png");
+    const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+    const imgWidth = 210;
+    const pageHeight = 297;
+    const imgHeight = (canvas.height * imgWidth) / canvas.width;
+    let heightLeft = imgHeight;
+    let position = 0;
+
+    pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight);
+    heightLeft -= pageHeight;
+
+    while (heightLeft > 0) {
+      position = heightLeft - imgHeight;
+      pdf.addPage();
+      pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight);
+      heightLeft -= pageHeight;
+    }
+
+    const filename = `Samity_Statement_${data.samityName.replace(/\s+/g, "_")}.pdf`;
+    if (openInNewTab) {
+      const blobUrl = pdf.output("bloburl");
+      window.open(blobUrl, "_blank");
+    } else {
+      pdf.save(filename);
+    }
+  } finally {
+    document.body.removeChild(container);
+  }
+}

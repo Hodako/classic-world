@@ -10,6 +10,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ShieldAlert, PhoneCall, MessageCircle, LogOut, Lock } from "lucide-react";
 import { useT } from "@/lib/i18n";
+import { PinLockModal } from "@/components/pin-lock-modal";
 
 export default function AuthenticatedLayout({
   children,
@@ -113,6 +114,7 @@ export default function AuthenticatedLayout({
 
   return (
     <SidebarProvider>
+      <PinLockModal />
       <AppShell>{children}</AppShell>
     </SidebarProvider>
   );

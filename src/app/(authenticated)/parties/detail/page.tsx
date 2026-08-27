@@ -3,7 +3,7 @@
 
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import { ArrowLeft, ArrowDownToLine, Trash2, Pencil, Plus } from "lucide-react";
+import { ArrowLeft, ArrowDownToLine, Trash2, Pencil, Plus, Download, Printer, Loader2, FileSpreadsheet, ChevronDown } from "lucide-react";
 import {
   getPaymentsForParty, getSalesForParty, getParty,
   getPartyReceivables, getPartyPayables, getPayableSettlements,
@@ -32,11 +32,21 @@ import { ConfirmDeleteDialog } from "@/components/confirm-delete-dialog";
 import { PurchaseDialog } from "@/components/purchase-dialog";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { PartyReturnDialog } from "@/components/party-return-dialog";
+import { useAuth } from "@/hooks/use-auth";
+import { generatePartyStatementPdf } from "@/lib/pdf-report-generator";
+import { downloadCsv } from "@/lib/export";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 export default function PartyDetail() {
   const searchParams = useSearchParams();
   const id = searchParams.get("id") || "";
   const { lang, t } = useT();
+  const { user } = useAuth();
   const router = useRouter();
   const qc = useQueryClient();
 
@@ -68,6 +78,7 @@ export default function PartyDetail() {
   const [payOpen, setPayOpen] = useState(false);
   const [buyOpen, setBuyOpen] = useState(false);
   const [returnOpen, setReturnOpen] = useState(false);
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
 
   const party = partyQuery.data;
   const isLoading = partyQuery.isLoading && !party;
@@ -215,6 +226,54 @@ export default function PartyDetail() {
     );
   }
 
+  const handleDownloadPartyPdf = async (openInNewTab = false) => {
+    if (!party) return;
+    setIsGeneratingPdf(true);
+    try {
+      await generatePartyStatementPdf({
+        bizName: user?.business_name || "Classic World",
+        partyName: party.name,
+        partyPhone: party.phone || undefined,
+        partyAddress: party.address || undefined,
+        lang,
+        payableTotal,
+        settledTotal,
+        payableOutstanding,
+        entries: entries.map(e => ({
+          date: e.date,
+          label: e.label,
+          kind: e.kind,
+          amount: Math.abs(e.amount),
+        })),
+      }, openInNewTab);
+      toast.success(lang === "bn" ? "পার্টি স্টেটমেন্ট প্রস্তুত হয়েছে!" : "Party statement report opened!");
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to generate PDF");
+    } finally {
+      setIsGeneratingPdf(false);
+    }
+  };
+
+  const handleDownloadPartyCsv = () => {
+    if (!party) return;
+    const isBn = lang === "bn";
+    const rows: (string | number)[][] = [
+      [isBn ? "সাপ্লায়ার / মহাজন" : "Party Name", party.name],
+      [isBn ? "ফোন" : "Phone", party.phone || "-"],
+      [isBn ? "ঠিকানা" : "Address", party.address || "-"],
+      [isBn ? "মোট পাওনা" : "Total Payable", payableTotal],
+      [isBn ? "মোট পরিশোধ" : "Total Settled", settledTotal],
+      [isBn ? "বকেয়া স্থিতি" : "Net Balance Due", payableOutstanding],
+      [],
+      [isBn ? "তারিখ" : "Date", isBn ? "বিবরণ" : "Description", isBn ? "ধরন" : "Type", isBn ? "পরিমাণ (টাকা)" : "Amount (BDT)"]
+    ];
+    entries.forEach(e => {
+      rows.push([e.date.slice(0, 10), e.label, e.kind, Math.abs(e.amount)]);
+    });
+    downloadCsv(`Party_Statement_${party.name.replace(/\s+/g, "_")}.csv`, ["Metric / Date", "Value / Description", "Type", "Amount"], rows);
+    toast.success(isBn ? "CSV স্টেটমেন্ট ডাউনলোড হয়েছে!" : "CSV statement downloaded!");
+  };
+
   return (
     <div className="space-y-4 pb-4">
       <Link href={backPath}>
@@ -223,7 +282,7 @@ export default function PartyDetail() {
           {backPath === "/dues" ? (lang === "bn" ? "বাকী" : "Dues") : t("parties")}
         </Button>
       </Link>
-      <div className="flex items-start justify-between gap-2">
+      <div className="flex items-start justify-between gap-2 flex-wrap sm:flex-nowrap">
         <div>
           <h1 className="text-2xl font-bold">{party.name || "Unnamed"}</h1>
           <div className="text-sm text-muted-foreground space-y-0.5">
@@ -231,7 +290,31 @@ export default function PartyDetail() {
             {party.address && <p>{party.address}</p>}
           </div>
         </div>
-        <div className="flex gap-1.5 shrink-0">
+        <div className="flex items-center gap-1.5 shrink-0 flex-wrap">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button size="sm" variant="outline" className="beveled-button gap-1 text-xs border-primary/40 text-primary font-bold">
+                {isGeneratingPdf ? <Loader2 className="size-3.5 animate-spin" /> : <Download className="size-3.5" />}
+                <span>{lang === "bn" ? "স্টেটমেন্ট রিপোর্ট" : "Statement"}</span>
+                <ChevronDown className="size-3 opacity-60" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => handleDownloadPartyPdf(false)}>
+                <Download className="size-4 mr-2" />
+                {lang === "bn" ? "PDF ডাউনলোড করুন" : "Download PDF"}
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleDownloadPartyPdf(true)}>
+                <Printer className="size-4 mr-2" />
+                {lang === "bn" ? "PDF প্রিন্ট / ভিউ" : "Print / View PDF"}
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={handleDownloadPartyCsv}>
+                <FileSpreadsheet className="size-4 mr-2" />
+                {lang === "bn" ? "Excel / CSV ডাউনলোড" : "Download CSV"}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+
           <Button size="sm" variant="outline" onClick={() => setEditOpen(true)}>
             <Pencil className="size-3.5 mr-1" />{t("edit")}
           </Button>

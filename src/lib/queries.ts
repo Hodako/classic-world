@@ -47,6 +47,7 @@ export type Sale = {
   paid_amount: number; due_amount: number; created_at: string;
   returned?: boolean; return_qty?: number;
   parties?: { name: string } | null;
+  customer?: { id?: string; name: string; phone?: string | null; address?: string | null } | null;
   note?: string | null;
   cart_id?: string | null;
   discount?: number;

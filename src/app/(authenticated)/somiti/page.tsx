@@ -16,6 +16,11 @@ import {
   Plus,
   PiggyBank,
   Wallet,
+  Printer,
+  FileSpreadsheet,
+  Loader2,
+  FileText,
+  ChevronDown,
 } from "lucide-react";
 import { getSomiti } from "@/lib/queries";
 import { useT } from "@/lib/i18n";
@@ -30,6 +35,8 @@ import { toast } from "sonner";
 import { createSomitiFn, updateSomitiFn, deleteSomitiFn, renameSomitiFn, deleteSomitiFnByName } from "@/lib/rpc";
 import { playTapSound } from "@/lib/audio";
 import { FAB } from "@/components/ui/fab";
+import { useAuth } from "@/hooks/use-auth";
+import { generateSamityStatementPdf } from "@/lib/pdf-report-generator";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -39,10 +46,12 @@ import {
 
 export default function SomitiPage() {
   const { lang, t } = useT();
+  const { user } = useAuth();
   const qc = useQueryClient();
   const { data, isLoading } = useQuery({ queryKey: ["somiti"], queryFn: getSomiti });
 
   const [selectedSamity, setSelectedSamity] = useState<string | null>(null);
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const [search, setSearch] = useState("");
   const [activeTab, setActiveTab] = useState<"samities" | "ledger">("samities");
 
@@ -181,6 +190,46 @@ export default function SomitiPage() {
     toast.success(langCode === "bn" ? "CSV ফাইল ডাউনলোড সফল হয়েছে!" : "CSV exported successfully!");
   }
 
+  const handleDownloadSamityPdf = async (openInNewTab = false) => {
+    setIsGeneratingPdf(true);
+    try {
+      const chronEntries = [...samityEntries].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+      let running = 0;
+      const statementEntries = chronEntries.map(e => {
+        const amt = Number(e.amount) || 0;
+        if (e.kind === "deposit") running += amt;
+        else running -= amt;
+        return {
+          date: e.created_at,
+          kind: e.kind as "deposit" | "withdraw",
+          amount: amt,
+          runningBalance: running,
+          note: e.actualNote || "",
+        };
+      });
+
+      const totalDeposited = samityEntries.filter(e => e.kind === "deposit").reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+      const totalWithdrawn = samityEntries.filter(e => e.kind === "withdraw").reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+      const netBalance = totalDeposited - totalWithdrawn;
+
+      await generateSamityStatementPdf({
+        bizName: user?.business_name || "Classic World",
+        samityName: currentSamity ? currentSamity.name : (lang === "bn" ? "সাধারণ সমিতি সঞ্চয় হিসাব" : "General Samity Savings"),
+        samityAccountNo: `SAM-${(currentSamity?.name || "GEN").replace(/[^a-zA-Z0-9]/g, "").slice(0, 4).toUpperCase() || "AC"}-${Math.abs(currentSamity?.balance || 101).toString().slice(0, 4)}`,
+        lang,
+        totalDeposited,
+        totalWithdrawn,
+        netBalance,
+        entries: statementEntries,
+      }, openInNewTab);
+      toast.success(lang === "bn" ? "সমিতি ব্যাংক স্টেটমেন্ট প্রস্তুত হয়েছে!" : "Samity statement generated!");
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to generate statement");
+    } finally {
+      setIsGeneratingPdf(false);
+    }
+  };
+
   if (selectedSamity && currentSamity) {
     return (
       <div className="space-y-4 pb-4">
@@ -189,7 +238,7 @@ export default function SomitiPage() {
           {lang === "bn" ? "সমিতি তালিকা" : "Samity List"}
         </Button>
 
-        <div className="flex items-start justify-between gap-2">
+        <div className="flex items-start justify-between gap-2 flex-wrap sm:flex-nowrap">
           <div>
             <h1 className="text-2xl font-bold font-serif">{currentSamity.name}</h1>
             <div className="text-sm text-muted-foreground space-y-0.5 mt-0.5">
@@ -200,7 +249,31 @@ export default function SomitiPage() {
               </p>
             </div>
           </div>
-          <div className="flex gap-1.5 shrink-0">
+          <div className="flex items-center gap-1.5 shrink-0 flex-wrap">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button size="sm" variant="outline" className="beveled-button gap-1 text-xs border-teal-600/40 text-teal-700 dark:text-teal-300 font-bold">
+                  {isGeneratingPdf ? <Loader2 className="size-3.5 animate-spin" /> : <Download className="size-3.5" />}
+                  <span>{lang === "bn" ? "ব্যাংক স্টেটমেন্ট" : "Bank Statement"}</span>
+                  <ChevronDown className="size-3 opacity-60" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => handleDownloadSamityPdf(false)}>
+                  <Download className="size-4 mr-2" />
+                  {lang === "bn" ? "স্টেটমেন্ট PDF ডাউনলোড" : "Download Statement PDF"}
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleDownloadSamityPdf(true)}>
+                  <Printer className="size-4 mr-2" />
+                  {lang === "bn" ? "স্টেটমেন্ট ভিউ / প্রিন্ট" : "Print / View Statement"}
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => exportCSV(lang === "bn" ? "bn" : "en")}>
+                  <FileSpreadsheet className="size-4 mr-2" />
+                  {lang === "bn" ? "Excel / CSV ডাউনলোড" : "Download CSV"}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+
             <Button size="sm" variant="outline" onClick={() => { playTapSound(); setSamityToRename(currentSamity.name); setRenameOpen(true); }}>
               <Pencil className="size-3.5 mr-1" /> {t("edit")}
             </Button>

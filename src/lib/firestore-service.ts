@@ -94,7 +94,26 @@ export async function fsGetSales() {
     const colRef = collection(db, "sales");
     const q = query(colRef, orderBy("created_at", "desc"));
     const snap = await getDocs(q);
-    return snap.docs.map(docToData);
+    const sales = snap.docs.map(docToData);
+
+    try {
+      const custSnap = await getDocs(collection(db, "customers"));
+      const custMap = new Map();
+      custSnap.docs.forEach(d => {
+        const c = docToData(d);
+        custMap.set(c.id, c);
+      });
+      return sales.map(s => {
+        const cust = s.party_id ? custMap.get(s.party_id) : null;
+        return {
+          ...s,
+          parties: cust ? { name: cust.name } : s.parties || null,
+          customer: cust ? { id: cust.id, name: cust.name, phone: cust.phone, address: cust.address } : null,
+        };
+      });
+    } catch {
+      return sales;
+    }
   } catch (err) {
     try {
       const snap = await getDocs(collection(db, "sales"));
@@ -149,13 +168,14 @@ export async function fsCreateSale(data: any) {
     }
   }
 
-  // 2. Cashbox log if cash, bkash, bank, or paid amount received
-  const isDirectPayment = data.type === "cash" || data.type === "bkash" || data.type === "bank" || data.type === "nagad" || data.type === "card" || data.type === "pos";
+  // 2. Cashbox log if cash payment
+  const isDirectPayment = data.type === "cash" || data.type === "nagad" || data.type === "card" || data.type === "pos";
+  const isDigitalPending = data.type === "bkash" || data.type === "bank";
   const isOnline = data.type === "online";
-  const cashReceived = isOnline ? (data.courier_status === "collected" ? (Number(data.sell_price) * qty) : 0) : (isDirectPayment ? (paidAmount || (sellPrice * qty - discount)) : paidAmount);
+  const cashReceived = (isOnline || isDigitalPending) ? 0 : (isDirectPayment ? (paidAmount || (sellPrice * qty - discount)) : paidAmount);
   if (cashReceived > 0) {
     try {
-      const methodTag = isOnline ? " [Paid by COURIER]" : data.type ? ` [Paid by ${data.type.toUpperCase()}]` : "";
+      const methodTag = data.type ? ` [Paid by ${data.type.toUpperCase()}]` : "";
       await addDoc(collection(db, "cashbox_logs"), {
         kind: "sale",
         amount: cashReceived,
@@ -183,7 +203,44 @@ export async function fsCreateSale(data: any) {
     }
   }
 
-  return { success: true, id: saleId, _id: saleId, ...saleDoc, created_at: new Date().toISOString() };
+  return {
+    success: true,
+    id: saleId,
+    _id: saleId,
+    ...saleDoc,
+    payment_status: isDigitalPending ? "pending" : "accepted",
+    payment_accepted: !isDigitalPending,
+    created_at: new Date().toISOString()
+  };
+}
+
+export async function fsAcceptDigitalPayment(id: string) {
+  const docRef = doc(db, "sales", id);
+  const snap = await getDoc(docRef);
+  if (!snap.exists()) throw new Error("Sale not found");
+  const s = snap.data();
+  const total = Number(s.paid_amount) || Number(s.sell_price) || (Number(s.qty) * Number(s.buy_price) + Number(s.profit));
+
+  await updateDoc(docRef, {
+    payment_status: "accepted",
+    payment_accepted: true,
+    accepted_at: Timestamp.now(),
+  });
+
+  // Credit Cashbox
+  try {
+    await addDoc(collection(db, "cashbox_logs"), {
+      kind: "sale",
+      amount: total,
+      note: `Digital Payment Received [${(s.type || "bkash").toUpperCase()}]: ${s.product_name || "Item"} (INV-${id.slice(-6).toUpperCase()})`,
+      ref_id: id,
+      created_at: Timestamp.now(),
+    });
+  } catch (err) {
+    console.warn("Cashbox digital payment log skipped:", err);
+  }
+
+  return { success: true, id };
 }
 
 export async function fsApproveCourierPayment(id: string) {
@@ -339,7 +396,46 @@ export async function fsCreatePurchase(data: any) {
 }
 
 export async function fsDeletePurchase(id: string) {
-  await deleteDoc(doc(db, "purchases", id));
+  try {
+    const docRef = doc(db, "purchases", id);
+    const snap = await getDoc(docRef);
+    if (snap.exists()) {
+      const p = snap.data();
+      // 1. Rollback stock decrement
+      if (p.product_id && p.qty) {
+        try {
+          await updateDoc(doc(db, "products", p.product_id), {
+            stock: increment(-Number(p.qty)),
+          });
+        } catch (err) {
+          console.warn("Product stock rollback warning:", err);
+        }
+      }
+      // 2. Delete linked cashbox log
+      try {
+        const q = query(collection(db, "cashbox_logs"), where("ref_id", "==", id));
+        const cSnap = await getDocs(q);
+        for (const cDoc of cSnap.docs) {
+          await deleteDoc(doc(db, "cashbox_logs", cDoc.id));
+        }
+      } catch (err) {
+        console.warn("Cashbox log rollback warning:", err);
+      }
+      // 3. Delete linked party payable
+      try {
+        const q2 = query(collection(db, "party_payables"), where("ref_id", "==", id));
+        const ppSnap = await getDocs(q2);
+        for (const ppDoc of ppSnap.docs) {
+          await deleteDoc(doc(db, "party_payables", ppDoc.id));
+        }
+      } catch (err) {
+        console.warn("Party payable rollback warning:", err);
+      }
+      await deleteDoc(docRef);
+    }
+  } catch (err) {
+    await deleteDoc(doc(db, "purchases", id));
+  }
   return { success: true, id };
 }
 

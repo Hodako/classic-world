@@ -108,6 +108,7 @@ export default function SettingsPage() {
   const DEFAULT_KPI_ORDER = [
     "total_sales",
     "cash_sale",
+    "bkash_bank",
     "credit_sale",
     "online_sell",
     "purchases",
@@ -140,6 +141,15 @@ export default function SettingsPage() {
       badge: "Cash",
       color: "text-emerald-500",
       bg: "bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-400",
+    },
+    bkash_bank: {
+      nameEn: "bKash & Bank Collections",
+      nameBn: "বিকাশ ও ব্যাংক ব্যালেন্স",
+      descEn: "Verified digital payments & bank balances",
+      descBn: "বিকাশ ও ব্যাংক অ্যাকাউন্টে জমা হওয়া টাকার হিসাব",
+      badge: "Digital",
+      color: "text-pink-600",
+      bg: "bg-pink-500/10 border-pink-500/30 text-pink-600 dark:text-pink-400",
     },
     credit_sale: {
       nameEn: "Credit Sale",
@@ -244,6 +254,7 @@ export default function SettingsPage() {
     borderStyle: string;
     curve: string;
     order: string[];
+    hiddenKpis?: string[];
   }>({
     align: "left",
     size: "small",
@@ -253,9 +264,21 @@ export default function SettingsPage() {
     borderStyle: "subtle",
     curve: "none",
     order: DEFAULT_KPI_ORDER,
+    hiddenKpis: [],
   });
 
   const [draggedKpiIdx, setDraggedKpiIdx] = useState<number | null>(null);
+
+  // Admin PIN Code Lock State
+  const [pinLockEnabled, setPinLockEnabled] = useState(false);
+  const [pinCodeVal, setPinCodeVal] = useState("1234");
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      setPinLockEnabled(localStorage.getItem("app_pin_code_enabled") === "true");
+      setPinCodeVal(localStorage.getItem("app_pin_code_val") || "1234");
+    }
+  }, []);
 
   useEffect(() => {
     const saved = localStorage.getItem("hz_kpi_config");
@@ -266,6 +289,7 @@ export default function SettingsPage() {
           ...prev,
           ...parsed,
           order: normalizeKpiOrderList(parsed.order),
+          hiddenKpis: parsed.hiddenKpis || [],
         }));
       } catch (e) {}
     }
@@ -1843,7 +1867,36 @@ export default function SettingsPage() {
                             </div>
                           </div>
 
-                          <div className="flex items-center gap-0.5 shrink-0">
+                          <div className="flex items-center gap-1 shrink-0">
+                            {/* KPI Visibility Toggle */}
+                            {(() => {
+                              const isHidden = (kpiConfig.hiddenKpis || []).includes(kpiKey);
+                              return (
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => {
+                                    const hidden = kpiConfig.hiddenKpis || [];
+                                    const updated = isHidden ? hidden.filter(k => k !== kpiKey) : [...hidden, kpiKey];
+                                    updateKpiConfig({ hiddenKpis: updated });
+                                  }}
+                                  className={`size-7 p-0 rounded-lg cursor-pointer ${
+                                    isHidden
+                                      ? "text-rose-500 hover:text-rose-600 bg-rose-500/10"
+                                      : "text-emerald-600 hover:text-emerald-700 bg-emerald-500/10"
+                                  }`}
+                                  title={
+                                    isHidden
+                                      ? (lang === "bn" ? "কেপিআইটি লুকানো আছে (ক্লিক করে প্রদর্শন করুন)" : "Hidden (Click to show)")
+                                      : (lang === "bn" ? "কেপিআইটি প্রদর্শিত হচ্ছে (ক্লিক করে লুকান)" : "Visible (Click to hide)")
+                                  }
+                                >
+                                  {isHidden ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
+                                </Button>
+                              );
+                            })()}
+
                             <Button
                               type="button"
                               size="sm"
@@ -1879,6 +1932,74 @@ export default function SettingsPage() {
           {/* ── TAB 6: SECURITY & DATA RESETS ────────────────────────────────── */}
           {settingsTab === "security" && (
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+              {/* Screen Security & Admin PIN Code Lock */}
+              <Card className="lg:col-span-12 p-5 sm:p-6 rounded-3xl bg-card border-border/80 shadow-xs space-y-4">
+                <div className="flex items-center justify-between border-b border-border/60 pb-3">
+                  <div className="flex items-center gap-2.5">
+                    <div className="p-2 rounded-xl bg-primary/10 text-primary">
+                      <Lock className="size-5" />
+                    </div>
+                    <div>
+                      <h2 className="font-bold text-base text-foreground">
+                        {lang === "bn" ? "স্ক্রিন সিকিউরিটি ও অ্যাডমিন পিন কোড লক" : "Screen Security & Admin PIN Lock"}
+                      </h2>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {lang === "bn" ? "সাইটে প্রবেশের সময় ৪ সংখ্যার পিন কোড সক্রিয় করুন (Classic World PIN Lock)" : "Require a 4-digit PIN code to enter and access this website"}
+                      </p>
+                    </div>
+                  </div>
+                  <Switch
+                    checked={pinLockEnabled}
+                    onCheckedChange={(checked) => {
+                      setPinLockEnabled(checked);
+                      localStorage.setItem("app_pin_code_enabled", checked ? "true" : "false");
+                      if (checked && !pinCodeVal) {
+                        setPinCodeVal("1234");
+                        localStorage.setItem("app_pin_code_val", "1234");
+                      }
+                      window.dispatchEvent(new Event("storage"));
+                      toast.success(checked ? (lang === "bn" ? "পিন লক সক্রিয় করা হয়েছে!" : "PIN Lock enabled!") : (lang === "bn" ? "পিন লক নিষ্ক্রিয় করা হয়েছে" : "PIN Lock disabled"));
+                    }}
+                  />
+                </div>
+
+                {pinLockEnabled && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-semibold">{lang === "bn" ? "৪ সংখ্যার পিন কোড সেট করুন" : "Set 4-Digit PIN Code"}</Label>
+                      <Input
+                        type="password"
+                        maxLength={6}
+                        value={pinCodeVal}
+                        onChange={(e) => {
+                          const val = e.target.value.replace(/[^0-9]/g, "");
+                          setPinCodeVal(val);
+                          localStorage.setItem("app_pin_code_val", val);
+                          window.dispatchEvent(new Event("storage"));
+                        }}
+                        placeholder="e.g. 1234"
+                        className="h-10 rounded-xl text-base font-mono tracking-widest text-center font-bold"
+                      />
+                    </div>
+                    <div className="flex items-end gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="h-10 rounded-xl flex-1 text-xs font-semibold gap-1.5 border-amber-500/40 text-amber-700 dark:text-amber-300 hover:bg-amber-500/10 cursor-pointer"
+                        onClick={() => {
+                          sessionStorage.removeItem("app_pin_unlocked");
+                          window.dispatchEvent(new Event("app_lock_screen"));
+                          toast.info(lang === "bn" ? "স্ক্রিন লক করা হয়েছে" : "Screen locked!");
+                        }}
+                      >
+                        <Lock className="size-3.5" />
+                        {lang === "bn" ? "এখনই স্ক্রিন লক করুন" : "Lock Screen Now"}
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </Card>
+
               {/* Change Password */}
               <Card className="lg:col-span-5 p-5 sm:p-6 rounded-3xl bg-card border-border/80 shadow-xs space-y-4">
                 <div className="flex items-center gap-2 text-primary border-b border-border/60 pb-3">

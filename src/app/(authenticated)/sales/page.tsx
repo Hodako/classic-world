@@ -46,7 +46,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { toast } from "sonner";
-import { createReturnFn, deleteSaleFn, approveCourierPaymentFn, cancelCourierOrderFn, toggleGoogleSheetsSyncFn, bulkExportToGoogleSheetsFn } from "@/lib/rpc";
+import { createReturnFn, deleteSaleFn, approveCourierPaymentFn, cancelCourierOrderFn, acceptDigitalPaymentFn, toggleGoogleSheetsSyncFn, bulkExportToGoogleSheetsFn } from "@/lib/rpc";
 import { ConfirmDeleteDialog } from "@/components/confirm-delete-dialog";
 import { printPwaInvoice, downloadPwaInvoicePdf } from "@/lib/invoice-printer";
 import { useAuth } from "@/hooks/use-auth";
@@ -791,6 +791,21 @@ function SalesTab({
     }
   }
 
+  async function handleAcceptDigitalPayment(id: string) {
+    setActionBusyId(id);
+    try {
+      await acceptDigitalPaymentFn({ data: { id } });
+      toast.success(lang === "bn" ? "ডিজিটাল পেমেন্ট গ্রহণ করা হয়েছে এবং ক্যাশবক্সে যোগ হয়েছে!" : "Digital payment accepted and deposited into Cashbox!");
+      qc.invalidateQueries({ queryKey: ["sales"] });
+      qc.invalidateQueries({ queryKey: ["cashbox"] });
+      qc.invalidateQueries({ queryKey: ["dashboard-kpis"] });
+    } catch (err: any) {
+      toast.error(err.message || String(err));
+    } finally {
+      setActionBusyId(null);
+    }
+  }
+
   async function performDelete() {
     if (!saleToDelete) return;
     setIsDeleting(true);
@@ -1024,6 +1039,42 @@ function SalesTab({
                         >
                           <RotateCcw className="size-3" />
                           <span>{lang === "bn" ? "বাতিল" : "Cancel"}</span>
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Inline Digital Payment (bKash / Bank) Verification Actions */}
+                {(s.type === "bkash" || s.type === "bank") && (
+                  <div className="p-2 rounded-lg bg-pink-500/10 border-[0.5px] border-pink-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-xs">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="font-bold text-pink-900 dark:text-pink-200 uppercase font-balooda">
+                        {s.type === "bkash" ? "bKash (বিকাশ)" : "Bank (ব্যাংক)"}
+                      </span>
+                      <span className="text-[10.5px] text-muted-foreground font-balooda">
+                        ({lang === "bn" ? "পেমেন্ট পরিমাণ:" : "Amount:"} {fmtMoney(s.sell_price)})
+                      </span>
+                    </div>
+
+                    {(s as any).payment_status === "accepted" || (s as any).payment_accepted ? (
+                      <span className="text-[10.5px] font-bold text-emerald-700 dark:text-emerald-300 flex items-center gap-1 bg-emerald-500/15 px-2 py-0.5 rounded border border-emerald-500/30 font-balooda">
+                        <CheckCircle2 className="size-3" />
+                        {lang === "bn" ? "পেমেন্ট ক্যাশবক্সে জমা হয়েছে" : "Deposited in Cashbox"}
+                      </span>
+                    ) : (
+                      <div className="flex items-center gap-1.5 w-full sm:w-auto">
+                        <span className="text-[10px] text-amber-600 dark:text-amber-400 font-bold px-1.5 py-0.5 rounded bg-amber-500/10 border border-amber-500/20 font-balooda">
+                          ⏳ {lang === "bn" ? "অপেক্ষমাণ" : "Pending"}
+                        </span>
+                        <Button
+                          size="sm"
+                          onClick={(e) => { e.stopPropagation(); handleAcceptDigitalPayment(s.id); }}
+                          disabled={actionBusyId === s.id}
+                          className="h-6.5 px-2.5 text-[11px] font-bold rounded-md bg-emerald-600 hover:bg-emerald-700 text-white gap-1 shadow-xs cursor-pointer font-balooda"
+                        >
+                          <CheckCircle2 className="size-3" />
+                          <span>{lang === "bn" ? "✓ পেমেন্ট গ্রহণ" : "Accept Payment"}</span>
                         </Button>
                       </div>
                     )}

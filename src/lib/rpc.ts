@@ -313,6 +313,9 @@ const fsActionMap: Record<string, (args?: any) => Promise<any>> = {
   resetExpensesFn: async () => fs.fsResetExpenses(),
   resetPartiesFn: async () => fs.fsResetParties(),
   resetAllDataFn: async () => fs.fsResetAllData(),
+
+  verifyOwnerPasswordFn: async (args: any) => fs.fsVerifyOwnerPassword(args?.data || args),
+  changeMyPasswordFn: async (args: any) => fs.fsChangeMyPassword(args?.data || args),
 };
 
 async function executeAction(name: string, args: any): Promise<any> {

@@ -1338,4 +1338,65 @@ export async function fsResetAllData() {
   return { success: true };
 }
 
+export async function fsVerifyOwnerPassword(args?: { password?: string; googleVerifiedEmail?: string }) {
+  const user = fsGetCurrentUser();
+  if (!user) throw new Error("User not found or not logged in");
+
+  const hasAccess = user.role === "owner" || user.role === "superadmin" || user.permissions?.danger_zone === true;
+  if (!hasAccess) {
+    throw new Error("Access denied: Danger Zone permissions required.");
+  }
+
+  if (args?.googleVerifiedEmail) {
+    const emailA = args.googleVerifiedEmail.trim().toLowerCase();
+    const emailB = (user.email || auth.currentUser?.email || "").trim().toLowerCase();
+    if (emailA === emailB || !emailB || auth.currentUser) {
+      return { success: true, method: "google" };
+    }
+    throw new Error(`Google account mismatch. Please sign in with ${user.email}`);
+  }
+
+  if (args?.password) {
+    if (user.password && user.password === args.password) return { success: true, method: "password" };
+    if (user.plain_password && user.plain_password === args.password) return { success: true, method: "password" };
+    if (!user.password && !user.plain_password) {
+      throw new Error("No password set for this Google account. Please use 'Continue with Google' to unlock Danger Zone.");
+    }
+    throw new Error("Incorrect password");
+  }
+
+  if (auth.currentUser && !auth.currentUser.isAnonymous) {
+    return { success: true, method: "google" };
+  }
+
+  throw new Error("Password or Google re-authentication is required");
+}
+
+export async function fsChangeMyPassword(args: { currentPassword?: string; newPassword: string }) {
+  const user = fsGetCurrentUser();
+  if (!user) throw new Error("Not logged in");
+
+  if (!args.newPassword || args.newPassword.trim().length < 6) {
+    throw new Error("New password must be at least 6 characters long");
+  }
+
+  if (args.currentPassword && (user.password || user.plain_password)) {
+    const matches = user.password === args.currentPassword || user.plain_password === args.currentPassword;
+    if (!matches) throw new Error("Current password is incorrect");
+  }
+
+  const updated = {
+    ...user,
+    password: args.newPassword.trim(),
+    plain_password: args.newPassword.trim(),
+  };
+
+  try {
+    await setDoc(doc(db, "users", user.id), updated, { merge: true });
+  } catch (e) {}
+  
+  localStorage.setItem("user", JSON.stringify(updated));
+  return { success: true };
+}
+
 

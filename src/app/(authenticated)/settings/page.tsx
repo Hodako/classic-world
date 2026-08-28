@@ -111,9 +111,10 @@ export default function SettingsPage() {
   const DEFAULT_KPI_ORDER = [
     "total_sales",
     "cash_sale",
-    "bkash_bank",
+    "sell_kpi",
     "credit_sale",
     "online_sell",
+    "owner_wallet",
     "purchases",
     "profit",
     "loss",
@@ -145,12 +146,12 @@ export default function SettingsPage() {
       color: "text-emerald-500",
       bg: "bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-400",
     },
-    bkash_bank: {
-      nameEn: "bKash & Bank Collections",
-      nameBn: "বিকাশ ও ব্যাংক ব্যালেন্স",
-      descEn: "Verified digital payments & bank balances",
-      descBn: "বিকাশ ও ব্যাংক অ্যাকাউন্টে জমা হওয়া টাকার হিসাব",
-      badge: "Digital",
+    sell_kpi: {
+      nameEn: "Sell KPI (Collections)",
+      nameBn: "বিক্রয় ও ডিজিটাল আদায় (Sell KPI)",
+      descEn: "Digital, card & cash breakdown like Sales page",
+      descBn: "বিক্রয় পাতা অনুসারে ডিজিটাল ও আদায় সারাংশ",
+      badge: "Sell KPI",
       color: "text-pink-600",
       bg: "bg-pink-500/10 border-pink-500/30 text-pink-600 dark:text-pink-400",
     },
@@ -171,6 +172,15 @@ export default function SettingsPage() {
       badge: "Online",
       color: "text-purple-500",
       bg: "bg-purple-500/10 border-purple-500/30 text-purple-600 dark:text-purple-400",
+    },
+    owner_wallet: {
+      nameEn: "Owner's Expense",
+      nameBn: "মালিকের খরচ (ওয়ালেট)",
+      descEn: "Owner's personal & family withdrawals",
+      descBn: "মালিকের ব্যক্তিগত ও পরিবার খরচের মোট হিসাব",
+      badge: "Owner",
+      color: "text-amber-600",
+      bg: "bg-amber-500/10 border-amber-500/30 text-amber-600 dark:text-amber-400",
     },
     purchases: {
       nameEn: "Purchases (BUY)",
@@ -240,7 +250,7 @@ export default function SettingsPage() {
   const normalizeKpiOrderList = (order?: string[]) => {
     const defaultList = [...DEFAULT_KPI_ORDER];
     if (!order || !Array.isArray(order) || order.length === 0) return defaultList;
-    const list = [...order];
+    const list = order.map(k => (k === "bkash_bank" ? "sell_kpi" : k === "owners_wallet" ? "owner_wallet" : k));
     for (const key of defaultList) {
       if (!list.includes(key)) list.push(key);
     }
@@ -1836,18 +1846,18 @@ export default function SettingsPage() {
 
                 {/* Drag and Drop KPI Position Reorder List */}
                 <div className="space-y-3">
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
                     <div className="flex items-center gap-1.5 text-xs font-bold text-foreground">
                       <ArrowUpDown className="size-3.5 text-primary" />
-                      <span>{lang === "bn" ? "কেপিআই কার্ডের অবস্থান ক্রম (ড্র্যাগ ও ড্রপ করুন)" : "KPI Card Sequence (Drag & Drop or use arrows)"}</span>
+                      <span>{lang === "bn" ? "কেপিআই কার্ডের অবস্থান ক্রম (↑ / ↓ কি বা বাটন)" : "KPI Card Sequence (↑ / ↓ Arrow Keys or Buttons)"}</span>
                     </div>
                     <span className="text-[11px] text-muted-foreground">
-                      {lang === "bn" ? "মোট ১১টি কেপিআই কার্ড" : "11 Total Metric Cards"}
+                      {lang === "bn" ? "মোট ১৩টি কেপিআই কার্ড • অ্যারো বাটন বা কীবোর্ডের ↑/↓ চাপুন" : "13 Metric Cards • Use buttons or keyboard ↑/↓"}
                     </span>
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2.5">
-                    {normalizeKpiOrderList(kpiConfig.order).map((kpiKey, idx) => {
+                    {normalizeKpiOrderList(kpiConfig.order).map((kpiKey, idx, arr) => {
                       const meta = KPI_METADATA[kpiKey] || {
                         nameEn: kpiKey,
                         nameBn: kpiKey,
@@ -1862,11 +1872,23 @@ export default function SettingsPage() {
                       return (
                         <div
                           key={kpiKey}
+                          tabIndex={0}
+                          role="listitem"
+                          aria-label={`${meta.nameEn}, position ${idx + 1} of ${arr.length}`}
+                          onKeyDown={(e) => {
+                            if (e.key === "ArrowUp") {
+                              e.preventDefault();
+                              if (idx > 0) moveKpiPosition(idx, idx - 1);
+                            } else if (e.key === "ArrowDown") {
+                              e.preventDefault();
+                              if (idx < arr.length - 1) moveKpiPosition(idx, idx + 1);
+                            }
+                          }}
                           draggable
                           onDragStart={() => handleKpiDragStart(idx)}
                           onDragOver={(e) => handleKpiDragOver(e, idx)}
                           onDragEnd={handleKpiDragEnd}
-                          className={`group flex items-center justify-between gap-2.5 p-3 rounded-2xl border transition-all select-none cursor-grab active:cursor-grabbing ${
+                          className={`group flex items-center justify-between gap-2.5 p-3 rounded-2xl border transition-all select-none cursor-grab active:cursor-grabbing focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary ${
                             isBeingDragged
                               ? "opacity-50 border-primary bg-primary/15 shadow-md scale-[0.98]"
                               : "bg-card/90 hover:bg-card border-border/80 hover:border-primary/50 shadow-xs hover:shadow-sm"

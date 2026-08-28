@@ -246,10 +246,10 @@ export default function OwnersWalletPage() {
   return (
     <div className="space-y-4 pb-12 max-w-7xl mx-auto font-hind">
       {/* ──────────────── Top Navigation Bar ──────────────── */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-card p-3.5 sm:p-4 rounded-2xl border border-border shadow-xs">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-card p-3 sm:p-4 rounded-2xl border border-border shadow-xs">
         <div className="flex items-center gap-2.5">
           <Link href="/more">
-            <Button variant="ghost" size="sm" className="h-8 px-2.5 text-muted-foreground hover:text-foreground font-balooda font-bold">
+            <Button variant="ghost" size="sm" className="h-8 px-2 text-muted-foreground hover:text-foreground font-balooda font-bold">
               <ArrowLeft className="size-4 mr-1" />
               {t("more")}
             </Button>
@@ -262,14 +262,9 @@ export default function OwnersWalletPage() {
             <div>
               <h1 className="font-bold font-charukola text-base sm:text-lg flex items-center gap-1.5">
                 {lang === "bn" ? "মালিকের খরচ (Owner Expense)" : "Owner's Dedicated Expense"}
-                <span className="text-[11px] font-normal px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 font-balooda">
-                  {lang === "bn" ? "ব্যক্তিগত / পরিবার খরচ" : "Personal & Family Expenses"}
-                </span>
               </h1>
               <p className="text-[11px] text-muted-foreground font-balooda">
-                {lang === "bn"
-                  ? "মালিকের ব্যক্তিগত ও পারিবারিক খরচের হিসাব যা দোকানের ক্যাশবাক্স ও লাভ থেকে স্বয়ংক্রিয়ভাবে হিসাবভুক্ত হয়"
-                  : "Track owner's personal & dedicated expenses automatically deducted from cashbox & profit"}
+                {lang === "bn" ? "মালিকের ব্যক্তিগত ও পরিবার খরচের হিসাব" : "Personal & family expense tracker"}
               </p>
             </div>
           </div>
@@ -284,82 +279,71 @@ export default function OwnersWalletPage() {
               setEntryDate(new Date().toISOString().slice(0, 10));
               setAddOpen(true);
             }}
-            className="h-8.5 px-3 text-xs bg-amber-600 hover:bg-amber-700 text-white font-bold shadow-xs flex items-center gap-1.5 font-balooda"
+            className="h-8.5 px-3 text-xs bg-amber-600 hover:bg-amber-700 text-white font-bold shadow-xs flex items-center gap-1.5 font-balooda w-full sm:w-auto justify-center"
           >
             <Plus className="size-4" />
-            {lang === "bn" ? "নতুন খরচ যোগ করুন" : "Add Personal Expense"}
+            {lang === "bn" ? "খরচ যোগ করুন" : "Add Expense"}
           </Button>
         </div>
       </div>
 
-      {/* ──────────────── Notice Card ──────────────── */}
-      <div className="flex items-start gap-2.5 p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-900 dark:text-amber-200 text-xs font-balooda">
-        <Info className="size-4 shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
-        <div>
-          <span className="font-bold">{lang === "bn" ? "অর্থ প্রবাহ নিয়ম:" : "Money Flow Rule:"}</span>{" "}
-          {lang === "bn"
-            ? "এখানে যুক্ত করা যেকোনো ব্যক্তিগত/পারিবারিক খরচ স্বয়ংক্রিয়ভাবে দোকানের ক্যাশবাক্স (Cashbox) থেকে উত্তোলন হিসেবে এবং রিপোর্টসের নিট মুনাফা (Net Profit) থেকে কর্তন হবে।"
-            : "Any personal/family expense logged here automatically deducts cash from the Cashbox and deducts from Net Profit in business reports."}
-        </div>
-      </div>
-
       {/* ──────────────── Summary Cards Grid ──────────────── */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <Card className="p-3.5 rounded-xl border border-border shadow-xs bg-card space-y-1">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3">
+        <Card className="p-2.5 sm:p-3.5 rounded-xl border border-border shadow-xs bg-card space-y-1">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-medium text-muted-foreground font-balooda">
-              {lang === "bn" ? "সর্বমোট ব্যক্তিগত খরচ" : "Total Personal Withdrawals"}
+            <span className="text-[10px] sm:text-[11px] font-medium text-muted-foreground font-balooda">
+              {lang === "bn" ? "মোট ব্যক্তিগত খরচ" : "Total Personal"}
             </span>
             <div className="p-1.5 rounded-lg bg-amber-500/10 text-amber-600">
               <TrendingDown className="size-3.5" />
             </div>
           </div>
-          <p className="text-lg font-bold font-charukola text-amber-600 dark:text-amber-400">
+          <p className="text-base sm:text-lg font-bold font-charukola text-amber-600 dark:text-amber-400">
             ৳{fmtMoney(stats.totalAll)}
           </p>
-          <span className="text-[10px] text-muted-foreground font-balooda">
-            {entries.length} {lang === "bn" ? "টি মোট এন্ট্রি" : "total entries"}
+          <span className="text-[9px] sm:text-[10px] text-muted-foreground font-balooda">
+            {entries.length} {lang === "bn" ? "টি মোট এন্ট্রি" : "entries"}
           </span>
         </Card>
 
-        <Card className="p-3.5 rounded-xl border border-border shadow-xs bg-card space-y-1">
+        <Card className="p-2.5 sm:p-3.5 rounded-xl border border-border shadow-xs bg-card space-y-1">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-medium text-muted-foreground font-balooda">
-              {lang === "bn" ? "চলতি মাসের খরচ" : "This Month"}
+            <span className="text-[10px] sm:text-[11px] font-medium text-muted-foreground font-balooda">
+              {lang === "bn" ? "চলতি মাস" : "This Month"}
             </span>
             <div className="p-1.5 rounded-lg bg-blue-500/10 text-blue-600">
               <Calendar className="size-3.5" />
             </div>
           </div>
-          <p className="text-lg font-bold font-charukola text-blue-600 dark:text-blue-400">
+          <p className="text-base sm:text-lg font-bold font-charukola text-blue-600 dark:text-blue-400">
             ৳{fmtMoney(stats.totalMonth)}
           </p>
-          <span className="text-[10px] text-muted-foreground font-balooda">
-            {lang === "bn" ? "চলতি ক্যালেন্ডার মাস" : "Current calendar month"}
+          <span className="text-[9px] sm:text-[10px] text-muted-foreground font-balooda">
+            {lang === "bn" ? "ক্যালেন্ডার মাস" : "This month"}
           </span>
         </Card>
 
-        <Card className="p-3.5 rounded-xl border border-border shadow-xs bg-card space-y-1">
+        <Card className="p-2.5 sm:p-3.5 rounded-xl border border-border shadow-xs bg-card space-y-1">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-medium text-muted-foreground font-balooda">
-              {lang === "bn" ? "আজকের খরচ" : "Today's Expenses"}
+            <span className="text-[10px] sm:text-[11px] font-medium text-muted-foreground font-balooda">
+              {lang === "bn" ? "আজকের খরচ" : "Today"}
             </span>
             <div className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-600">
               <DollarSign className="size-3.5" />
             </div>
           </div>
-          <p className="text-lg font-bold font-charukola text-emerald-600 dark:text-emerald-400">
+          <p className="text-base sm:text-lg font-bold font-charukola text-emerald-600 dark:text-emerald-400">
             ৳{fmtMoney(stats.totalToday)}
           </p>
-          <span className="text-[10px] text-muted-foreground font-balooda">
-            {lang === "bn" ? "আজকের ক্যাশ কর্তন" : "Today's cash deduction"}
+          <span className="text-[9px] sm:text-[10px] text-muted-foreground font-balooda">
+            {lang === "bn" ? "আজকের কর্তন" : "Today's total"}
           </span>
         </Card>
 
-        <Card className="p-3.5 rounded-xl border border-border shadow-xs bg-card space-y-1">
+        <Card className="p-2.5 sm:p-3.5 rounded-xl border border-border shadow-xs bg-card space-y-1">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-medium text-muted-foreground font-balooda">
-              {lang === "bn" ? "সর্বোচ্চ খরচের খাত" : "Top Expense Category"}
+            <span className="text-[10px] sm:text-[11px] font-medium text-muted-foreground font-balooda">
+              {lang === "bn" ? "সর্বোচ্চ খাত" : "Top Category"}
             </span>
             <div className="p-1.5 rounded-lg bg-purple-500/10 text-purple-600">
               <Home className="size-3.5" />
@@ -371,10 +355,10 @@ export default function OwnersWalletPage() {
             const topInfo = topCat ? getCategoryInfo(topCat[0], lang) : null;
             return (
               <>
-                <p className="text-base font-bold font-charukola text-purple-600 dark:text-purple-400 truncate">
+                <p className="text-sm sm:text-base font-bold font-charukola text-purple-600 dark:text-purple-400 truncate">
                   {topInfo ? `${topInfo.label}` : "—"}
                 </p>
-                <span className="text-[10px] text-muted-foreground font-balooda">
+                <span className="text-[9px] sm:text-[10px] text-muted-foreground font-balooda">
                   {topCat ? `৳${fmtMoney(topCat[1])}` : "—"}
                 </span>
               </>

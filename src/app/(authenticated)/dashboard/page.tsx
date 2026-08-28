@@ -476,9 +476,10 @@ export default function Dashboard() {
   const DEFAULT_KPI_ORDER = [
     "total_sales",
     "cash_sale",
-    "bkash_bank",
+    "sell_kpi",
     "credit_sale",
     "online_sell",
+    "owner_wallet",
     "purchases",
     "profit",
     "loss",
@@ -494,9 +495,10 @@ export default function Dashboard() {
   > = {
     total_sales: { nameEn: "Total Sales", nameBn: "আজকের মোট বিক্রয়", badge: "Total", bg: "bg-blue-500/10 border-blue-500/30 text-blue-600 dark:text-blue-400" },
     cash_sale: { nameEn: "Cash Sale", nameBn: "নগদ বিক্রয়", badge: "Cash", bg: "bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-400" },
-    bkash_bank: { nameEn: "bKash & Bank Collections", nameBn: "বিকাশ ও ব্যাংক ব্যালেন্স", badge: "Digital", bg: "bg-pink-500/10 border-pink-500/30 text-pink-600 dark:text-pink-400" },
+    sell_kpi: { nameEn: "Sell KPI (Collections)", nameBn: "বিক্রয় ও আদায় (Sell KPI)", badge: "Sell KPI", bg: "bg-pink-500/10 border-pink-500/30 text-pink-600 dark:text-pink-400" },
     credit_sale: { nameEn: "Credit Sale", nameBn: "বাকি বিক্রয়", badge: "Credit", bg: "bg-amber-500/10 border-amber-500/30 text-amber-600 dark:text-amber-400" },
     online_sell: { nameEn: "Online Sale", nameBn: "অনলাইন বিক্রয়", badge: "Online", bg: "bg-purple-500/10 border-purple-500/30 text-purple-600 dark:text-purple-400" },
+    owner_wallet: { nameEn: "Owner's Expense", nameBn: "মালিকের খরচ", badge: "Owner", bg: "bg-amber-600/10 border-amber-600/30 text-amber-600 dark:text-amber-400" },
     purchases: { nameEn: "Purchases (BUY)", nameBn: "মাল ক্রয় (BUY)", badge: "Buy", bg: "bg-indigo-500/10 border-indigo-500/30 text-indigo-600 dark:text-indigo-400" },
     profit: { nameEn: "Total Profit", nameBn: "মোট লাভ", badge: "Profit", bg: "bg-emerald-600/10 border-emerald-600/30 text-emerald-600 dark:text-emerald-400" },
     loss: { nameEn: "Total Loss", nameBn: "মোট ক্ষতি", badge: "Loss", bg: "bg-rose-500/10 border-rose-500/30 text-rose-600 dark:text-rose-400" },
@@ -506,10 +508,18 @@ export default function Dashboard() {
     somiti: { nameEn: "Samity Savings", nameBn: "সমিতি ও সঞ্চয়", badge: "Samity", bg: "bg-cyan-500/10 border-cyan-500/30 text-cyan-600 dark:text-cyan-400" },
   };
 
+  const parseDate = (val: any): Date | null => {
+    if (!val) return null;
+    if (typeof val?.toDate === "function") return val.toDate();
+    if (typeof val?.seconds === "number") return new Date(val.seconds * 1000);
+    const d = new Date(val);
+    return isNaN(d.getTime()) ? null : d;
+  };
+
   const normalizeKpiOrder = (order?: string[]) => {
     const defaultList = [...DEFAULT_KPI_ORDER];
     if (!order || !Array.isArray(order) || order.length === 0) return defaultList;
-    const list = [...order];
+    const list = order.map(k => (k === "bkash_bank" ? "sell_kpi" : k === "owners_wallet" ? "owner_wallet" : k));
     for (const key of defaultList) {
       if (!list.includes(key)) list.push(key);
     }
@@ -934,6 +944,27 @@ export default function Dashboard() {
   }, 0);
 
   const expenseToday = filteredExpenses.reduce((a, e) => a + Number(e.amount), 0);
+
+  const ownerExpensesFiltered = useMemo(() => {
+    const allW = (withdrawals.data || []);
+    if (!dateFilter.from && !dateFilter.to) {
+      const todayStr = new Date().toISOString().slice(0, 10);
+      return allW.filter((w: any) => {
+        const d = parseDate(w.created_at || w.date);
+        return d ? d.toISOString().slice(0, 10) === todayStr : false;
+      });
+    }
+    return allW.filter((w: any) => {
+      const d = parseDate(w.created_at || w.date);
+      if (!d) return false;
+      const dStr = d.toISOString().slice(0, 10);
+      if (dateFilter.from && dStr < dateFilter.from) return false;
+      if (dateFilter.to && dStr > dateFilter.to) return false;
+      return true;
+    });
+  }, [withdrawals.data, dateFilter]);
+
+  const ownerExpenseTotal = ownerExpensesFiltered.reduce((sum: number, w: any) => sum + (Number(w.amount) || 0), 0);
 
   // Cashbox balance is a running total across ALL time or up to the filtered period
   const cashboxTotal = useMemo(() => {
@@ -1402,14 +1433,14 @@ export default function Dashboard() {
               isBentoHero={isHeroCard("cash_sale")}
             />
           ),
-          bkash_bank: (
-            <Link href="/sales" className={`block ${isHeroCard("bkash_bank") ? "sm:col-span-2" : ""}`} key="bkash_bank" onClick={() => playTapSound()}>
+          sell_kpi: (
+            <Link href="/sales" className={`block ${isHeroCard("sell_kpi") ? "sm:col-span-2" : ""}`} key="sell_kpi" onClick={() => playTapSound()}>
               <KPICard
-                label={lang === "bn" ? "বিকাশ ও ব্যাংক" : "bKash & Bank"}
-                value={fmtMoney(bkashBankCollected)}
-                sub={lang === "bn" ? `পেন্ডিং: ${fmtMoney(bkashBankPending)}` : `Pending: ${fmtMoney(bkashBankPending)}`}
+                label={lang === "bn" ? "বিক্রয় ও ডিজিটাল আদায়" : "Sell KPI (Collections)"}
+                value={fmtMoney(cashToday + bkashBankCollected)}
+                sub={lang === "bn" ? `ডিজিটাল: ৳${fmtMoney(bkashBankCollected)} | ক্যাশ: ৳${fmtMoney(cashToday)}` : `Digital: ৳${fmtMoney(bkashBankCollected)} | Cash: ৳${fmtMoney(cashToday)}`}
                 imageUrl="/icons/bkash_logo.png"
-                icon={DollarSign}
+                icon={ShoppingBag}
                 color="bg-pink-600"
                 className="h-full w-full"
                 align={kpiConfig.align as any}
@@ -1418,7 +1449,26 @@ export default function Dashboard() {
                 shadowStyle={(kpiConfig.shadow || "glow") as any}
                 borderStyle={(kpiConfig.borderStyle || "subtle") as any}
                 curve={(kpiConfig.curve || "none") as any}
-                isBentoHero={isHeroCard("bkash_bank")}
+                isBentoHero={isHeroCard("sell_kpi")}
+              />
+            </Link>
+          ),
+          owner_wallet: (
+            <Link href="/owner-expense" className={`block ${isHeroCard("owner_wallet") ? "sm:col-span-2" : ""}`} key="owner_wallet" onClick={() => playTapSound()}>
+              <KPICard
+                label={lang === "bn" ? "মালিকের খরচ" : "Owner's Expense"}
+                value={fmtMoney(ownerExpenseTotal)}
+                sub={lang === "bn" ? `${ownerExpensesFiltered.length} টি ব্যক্তিগত খরচ / উত্তোলন` : `${ownerExpensesFiltered.length} personal withdrawals`}
+                icon={Wallet}
+                color="bg-amber-600"
+                className="h-full w-full"
+                align={kpiConfig.align as any}
+                size={kpiConfig.size as any}
+                variant={(kpiConfig.variant || "glass") as any}
+                shadowStyle={(kpiConfig.shadow || "glow") as any}
+                borderStyle={(kpiConfig.borderStyle || "subtle") as any}
+                curve={(kpiConfig.curve || "none") as any}
+                isBentoHero={isHeroCard("owner_wallet")}
               />
             </Link>
           ),
@@ -2033,21 +2083,45 @@ export default function Dashboard() {
                   size={kpiConfig.size as any}
                 />
               );
+            case "sell_kpi":
             case "bkash_bank":
               return (
                 <Link
                   href="/sales"
-                  key="bkash_bank"
+                  key="sell_kpi"
                   className="block cursor-pointer h-full"
                   onClick={() => playTapSound()}
                 >
                   <KPICard
-                    label={lang === "bn" ? "বিকাশ ও ব্যাংক ব্যালেন্স" : "bKash & Bank Collections"}
-                    value={fmtMoney(bkashBankCollected)}
-                    sub={lang === "bn" ? `অপেক্ষমাণ: ${fmtMoney(bkashBankPending)}` : `Pending: ${fmtMoney(bkashBankPending)}`}
+                    label={lang === "bn" ? "বিক্রয় ও ডিজিটাল আদায়" : "Sell KPI (Collections)"}
+                    value={fmtMoney(cashToday + bkashBankCollected)}
+                    sub={lang === "bn" ? `ডিজিটাল: ৳${fmtMoney(bkashBankCollected)} | ক্যাশ: ৳${fmtMoney(cashToday)}` : `Digital: ৳${fmtMoney(bkashBankCollected)} | Cash: ৳${fmtMoney(cashToday)}`}
                     imageUrl="/icons/bkash_logo.png"
-                    icon={DollarSign}
+                    icon={ShoppingBag}
                     color="bg-pink-600"
+                    isDesktop={true}
+                    hotkey={hotkey}
+                    className="h-full"
+                    align={kpiConfig.align as any}
+                    size={kpiConfig.size as any}
+                  />
+                </Link>
+              );
+            case "owner_wallet":
+            case "owners_wallet":
+              return (
+                <Link
+                  href="/owner-expense"
+                  key="owner_wallet"
+                  className="block cursor-pointer h-full"
+                  onClick={() => playTapSound()}
+                >
+                  <KPICard
+                    label={lang === "bn" ? "মালিকের খরচ" : "Owner's Expense"}
+                    value={fmtMoney(ownerExpenseTotal)}
+                    sub={lang === "bn" ? `${ownerExpensesFiltered.length} টি ব্যক্তিগত খরচ / উত্তোলন` : `${ownerExpensesFiltered.length} personal withdrawals`}
+                    icon={Wallet}
+                    color="bg-amber-600"
                     isDesktop={true}
                     hotkey={hotkey}
                     className="h-full"
@@ -3133,12 +3207,12 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* KPI Drag and Drop Reordering */}
+            {/* KPI Drag and Drop & Arrow Key Reordering */}
             <div className="space-y-2.5 pt-2 border-t border-border/50">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-1.5 text-xs font-bold text-foreground">
                   <ArrowUpDown className="size-3.5 text-primary" />
-                  <span>{lang === "bn" ? "কেপিআই কার্ডের অবস্থান ক্রম (ড্র্যাগ ও ড্রপ)" : "KPI Card Sequence (Drag & Drop)"}</span>
+                  <span>{lang === "bn" ? "কেপিআই কার্ডের অবস্থান ক্রম (↑ / ↓ কি বা ড্র্যাগ)" : "KPI Sequence (↑ / ↓ Arrow Keys or Drag)"}</span>
                 </div>
                 <Button
                   type="button"
@@ -3152,8 +3226,12 @@ export default function Dashboard() {
                 </Button>
               </div>
 
-              <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
-                {normalizeKpiOrder(kpiConfig.order).map((kpiKey, idx) => {
+              <div className="text-[10px] text-muted-foreground">
+                {lang === "bn" ? "💡 যেকোনো কেপিআই সিলেক্ট করে কীবোর্ডের Up (↑) / Down (↓) অ্যারো বা ডানপাশের বাটনে চেপে অবস্থান পরিবর্তন করুন।" : "💡 Focus any KPI and press Up (↑) / Down (↓) arrow keys or click the buttons to reorder."}
+              </div>
+
+              <div className="space-y-1.5 max-h-60 overflow-y-auto pr-1">
+                {normalizeKpiOrder(kpiConfig.order).map((kpiKey, idx, arr) => {
                   const meta = KPI_METADATA[kpiKey] || {
                     nameEn: kpiKey,
                     nameBn: kpiKey,
@@ -3165,11 +3243,23 @@ export default function Dashboard() {
                   return (
                     <div
                       key={kpiKey}
+                      tabIndex={0}
+                      role="listitem"
+                      aria-label={`${meta.nameEn}, position ${idx + 1} of ${arr.length}`}
+                      onKeyDown={(e) => {
+                        if (e.key === "ArrowUp") {
+                          e.preventDefault();
+                          if (idx > 0) moveKpiPosition(idx, idx - 1);
+                        } else if (e.key === "ArrowDown") {
+                          e.preventDefault();
+                          if (idx < arr.length - 1) moveKpiPosition(idx, idx + 1);
+                        }
+                      }}
                       draggable
                       onDragStart={() => handleKpiDragStart(idx)}
                       onDragOver={(e) => handleKpiDragOver(e, idx)}
                       onDragEnd={handleKpiDragEnd}
-                      className={`group flex items-center justify-between gap-2 p-2 rounded-xl border text-xs select-none transition-all cursor-grab active:cursor-grabbing ${
+                      className={`group flex items-center justify-between gap-2 p-2 rounded-xl border text-xs select-none transition-all cursor-grab active:cursor-grabbing focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary ${
                         isBeingDragged
                           ? "opacity-50 border-primary bg-primary/15 shadow-sm"
                           : "bg-background/70 hover:bg-background border-border/80 hover:border-primary/40 shadow-2xs"

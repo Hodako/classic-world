@@ -586,19 +586,6 @@ export function SaleDialog({
                         <span>{lang === "bn" ? "বাকী" : "Credit"}</span>
                       </button>
                     </div>
-
-                    {(type === "bkash" || type === "bank") && (
-                      <div className="p-2.5 rounded-xl bg-pink-500/10 border border-pink-500/20 text-[11px] text-pink-700 dark:text-pink-300 flex items-center justify-between gap-2 animate-in fade-in duration-200">
-                        <span>
-                          {lang === "bn"
-                            ? "⚡ ডিজিটাল পেমেন্ট পেন্ডিং থাকবে। লাভ যোগ হবে তৎক্ষণাৎ, টাকা পাওয়ার পর 'পেমেন্ট গ্রহণ' করলে ক্যাশবক্সে যুক্ত হবে।"
-                            : "Digital payment will be pending. Profit is recognized immediately, and will deposit to Cashbox upon acceptance."}
-                        </span>
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-pink-500/20 shrink-0">
-                          ⏳ {lang === "bn" ? "অপেক্ষমাণ" : "Pending"}
-                        </span>
-                      </div>
-                    )}
                   </div>
                 )}
 

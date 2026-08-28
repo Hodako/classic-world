@@ -30,6 +30,7 @@ import {
   Share2,
   FileDown,
   Loader2,
+  Download,
 } from "lucide-react";
 import Link from "next/link";
 import { getBusinessSettingsFn } from "@/lib/rpc-admin";
@@ -664,7 +665,7 @@ export default function InvoicePage() {
 
             <Button size="sm" onClick={handlePrint} disabled={invoiceItems.length === 0} className="h-8 px-3 text-xs bg-primary text-primary-foreground font-bold shadow-xs">
               <Printer className="size-3.5 mr-1.5" />
-              {t("print_invoice")}
+              {lang === "bn" ? "ইনভয়েস প্রিন্ট" : "Print Invoice"}
             </Button>
           </div>
         </div>

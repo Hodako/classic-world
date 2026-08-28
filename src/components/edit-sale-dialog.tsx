@@ -72,7 +72,7 @@ export function EditSaleDialog({
     if (!productId) return toast.error(t("select_product"));
     if (qtyNum <= 0) return toast.error("Quantity must be greater than 0");
     if (sellPriceNum <= 0) return toast.error("Sell price must be greater than 0");
-    if (type === "credit" && !partyId) return toast.error(t("customer") + " " + t("required"));
+    if (type === "credit" && !partyId) return toast.error(lang === "bn" ? "ক্রেতা নির্বাচন করা আবশ্যক" : "Customer is required for credit sale");
 
     setBusy(true);
     try {

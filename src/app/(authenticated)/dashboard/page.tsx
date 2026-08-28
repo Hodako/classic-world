@@ -1755,7 +1755,7 @@ export default function Dashboard() {
                           stroke={getMetricColor()}
                           fill={chartMetric === "profit" ? "url(#gProfit)" : chartMetric === "expenses" ? "url(#gExpense)" : "url(#gSales)"}
                           strokeWidth={2}
-                          name={t(chartMetric)}
+                          name={chartMetric === "hourly" ? (lang === "bn" ? "পিক আওয়ার" : "Peak Hours") : t(chartMetric as any)}
                         />
                       )}
                       {chartType === "bar" && (
@@ -1763,7 +1763,7 @@ export default function Dashboard() {
                           dataKey={chartMetric}
                           fill={getMetricColor()}
                           radius={[4, 4, 0, 0]}
-                          name={t(chartMetric)}
+                          name={chartMetric === "hourly" ? (lang === "bn" ? "পিক আওয়ার" : "Peak Hours") : t(chartMetric as any)}
                         />
                       )}
                       {chartType === "line" && (
@@ -1774,7 +1774,7 @@ export default function Dashboard() {
                           strokeWidth={2}
                           dot={{ r: 2 }}
                           activeDot={{ r: 4 }}
-                          name={t(chartMetric)}
+                          name={chartMetric === "hourly" ? (lang === "bn" ? "পিক আওয়ার" : "Peak Hours") : t(chartMetric as any)}
                         />
                       )}
                     </ChartComponent>
@@ -2345,7 +2345,7 @@ export default function Dashboard() {
                         stroke={getMetricColor()}
                         fill={chartMetric === "profit" ? "url(#dProfit)" : chartMetric === "expenses" ? "url(#dExpense)" : "url(#dSales)"}
                         strokeWidth={2}
-                        name={t(chartMetric)}
+                        name={chartMetric === "hourly" ? (lang === "bn" ? "পিক আওয়ার" : "Peak Hours") : t(chartMetric as any)}
                       />
                     )}
                     {chartType === "bar" && (
@@ -2353,7 +2353,7 @@ export default function Dashboard() {
                         dataKey={chartMetric}
                         fill={getMetricColor()}
                         radius={[4, 4, 0, 0]}
-                        name={t(chartMetric)}
+                        name={chartMetric === "hourly" ? (lang === "bn" ? "পিক আওয়ার" : "Peak Hours") : t(chartMetric as any)}
                       />
                     )}
                     {chartType === "line" && (
@@ -2364,7 +2364,7 @@ export default function Dashboard() {
                         strokeWidth={2.5}
                         dot={{ r: 3 }}
                         activeDot={{ r: 5 }}
-                        name={t(chartMetric)}
+                        name={chartMetric === "hourly" ? (lang === "bn" ? "পিক আওয়ার" : "Peak Hours") : t(chartMetric as any)}
                       />
                     )}
                   </ChartComponent>

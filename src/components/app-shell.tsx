@@ -10,6 +10,7 @@ import {
   LogOut, Languages, Banknote, DollarSign, Settings,
   BarChart3, Receipt, PiggyBank, ShoppingCart, Moon, Sun, FileText,
   TrendingUp, TrendingDown, Sparkles, Palette, MessageSquare, HelpCircle,
+  RefreshCw, Lock,
 } from "lucide-react";
 import { useTheme } from "@/hooks/use-theme";
 import { useT } from "@/lib/i18n";
@@ -374,7 +375,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 <DropdownMenuContent align="end" className="w-56 p-1.5 shadow-xl rounded-2xl border-border/80">
                   <div className="px-2 py-1.5 border-b border-border/60">
                     <div className="text-xs font-bold truncate text-foreground">{user.business_name || "Classic World"}</div>
-                    <div className="text-[11px] text-muted-foreground truncate">{user.email || user.username}</div>
+                    <div className="text-[11px] text-muted-foreground truncate">{user.email || (user as any).username || ""}</div>
                     <div className="inline-block mt-1 text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.2 rounded-md bg-primary/10 text-primary border border-primary/20">
                       {user.role || "Admin / Owner"}
                     </div>
@@ -405,7 +406,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                     <DropdownMenuItem
                       onClick={() => {
                         if (confirm(lang === "bn" ? "অন্য আইডি দিয়ে লগইন করতে চান?" : "Switch to another ID / Account?")) {
-                          router.push("/login");
+                          window.location.href = "/auth";
                         }
                       }}
                       className="text-xs font-medium cursor-pointer"

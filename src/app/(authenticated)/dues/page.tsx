@@ -19,6 +19,7 @@ import { toast } from "sonner";
 import { createPaymentFn, createPartyReceivableFn, createCustomerFn as createPartyFn } from "@/lib/rpc";
 import { setCachedData, refreshQueries } from "@/lib/optimistic-cache";
 import Link from "next/link";
+import { PaginationBar, paginate } from "@/components/ui/pagination-bar";
 import { downloadCsv, exportDateStamp } from "@/lib/export";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Search, Plus, Download, DollarSign, Wallet, Users, ArrowRight, Share2 } from "lucide-react";

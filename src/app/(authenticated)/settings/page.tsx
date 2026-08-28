@@ -43,6 +43,9 @@ import {
   RotateCcw,
   ArrowUpDown,
   LayoutGrid,
+  Users,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { getPosPaperConfig, savePosPaperConfig, DEFAULT_POS_CONFIG, type PosPaperSettings } from "@/lib/pos-print";
 import { DEFAULT_EMPLOYEE_PERMISSIONS, type PermissionSet } from "@/lib/permissions";

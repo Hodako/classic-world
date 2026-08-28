@@ -40,7 +40,7 @@ type AuthCtx = {
   loading: boolean;
   isUploading: boolean;
   uploadProgress: number;
-  login: (user: AuthUser) => void;
+  login: (user: AuthUser, token?: string) => void;
   logout: () => Promise<void>;
   refresh: () => Promise<void>;
   updateUser: (patch: Partial<AuthUser>) => void;

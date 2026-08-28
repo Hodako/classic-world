@@ -36,6 +36,7 @@ export interface SendDynamicSmsParams extends MiMSMSCredentials {
 export interface MiMSMSResponse {
   statusCode: string;
   status: "Success" | "Failed" | "Scheduled" | string;
+  isSuccess?: boolean;
   trxnId?: string;
   trackingId?: string;
   balance?: string;

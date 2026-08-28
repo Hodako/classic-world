@@ -1,4 +1,4 @@
-const CACHE_NAME = "classicworld-pwa-v30";
+const CACHE_NAME = "classicworld-pwa-v50";
 
 const PRECACHE_ASSETS = [
   "/manifest.json",

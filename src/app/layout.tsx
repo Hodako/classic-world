@@ -113,10 +113,12 @@ export default function RootLayout({
                   doc.style.setProperty('--sidebar-primary', val);
                 } catch (e) {}
 
-                // Register PWA Service Worker for phone browsers & standalone mode
+                // Register PWA Service Worker with cache-busting for phone browsers & standalone mode
                 if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
                   window.addEventListener('load', function() {
-                    navigator.serviceWorker.register('/sw.js').catch(function() {});
+                    navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' }).then(function(reg) {
+                      reg.update().catch(function() {});
+                    }).catch(function() {});
                   });
                 }
               })();

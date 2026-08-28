@@ -13,6 +13,36 @@
     ],
     "headers": [
       {
+        "source": "/sw.js",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache, no-store, must-revalidate"
+          },
+          {
+            "key": "Service-Worker-Allowed",
+            "value": "/"
+          },
+          {
+            "key": "Access-Control-Allow-Origin",
+            "value": "*"
+          }
+        ]
+      },
+      {
+        "source": "/manifest.json",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache, no-store, must-revalidate"
+          },
+          {
+            "key": "Access-Control-Allow-Origin",
+            "value": "*"
+          }
+        ]
+      },
+      {
         "source": "/_next/static/**",
         "headers": [
           {
@@ -43,7 +73,7 @@
         "headers": [
           {
             "key": "Cache-Control",
-            "value": "public, max-age=0, s-maxage=3600, stale-while-revalidate=86400"
+            "value": "no-cache, no-store, must-revalidate"
           },
           {
             "key": "Access-Control-Allow-Origin",

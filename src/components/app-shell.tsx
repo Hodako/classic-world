@@ -10,7 +10,7 @@ import {
   LogOut, Languages, Banknote, DollarSign, Settings,
   BarChart3, Receipt, PiggyBank, ShoppingCart, Moon, Sun, FileText,
   TrendingUp, TrendingDown, Sparkles, Palette, MessageSquare, HelpCircle,
-  RefreshCw, Lock,
+  RefreshCw, Lock, Wallet,
 } from "lucide-react";
 import { useTheme } from "@/hooks/use-theme";
 import { useT } from "@/lib/i18n";
@@ -41,7 +41,7 @@ import { AdminPopupDialog } from "@/components/admin-popup-dialog";
 
 type NavItem = {
   to: string;
-  labelKey: "home" | "products" | "sales" | "parties" | "settings" | "more" | "online_sell" | "cash_management" | "trackback" | "expenses" | "somiti" | "new_purchase" | "invoice_generator" | "due" | "profit" | "products_buy" | "losses" | "reports_generator" | "ai_audits" | "customers" | "theme_settings" | "sms";
+  labelKey: "home" | "products" | "sales" | "parties" | "settings" | "more" | "online_sell" | "cash_management" | "trackback" | "expenses" | "owner_expense" | "somiti" | "new_purchase" | "invoice_generator" | "due" | "profit" | "products_buy" | "losses" | "reports_generator" | "ai_audits" | "customers" | "theme_settings" | "sms";
   icon: React.ElementType;
   perm?: keyof PermissionSet;
 };
@@ -67,6 +67,7 @@ const desktopNavGroups: NavGroup[] = [
       { to: "/invoices", labelKey: "invoice_generator", icon: FileText, perm: "sales" },
       { to: "/purchases", labelKey: "new_purchase", icon: ShoppingCart, perm: "purchases" },
       { to: "/expenses", labelKey: "expenses", icon: Receipt, perm: "expenses" },
+      { to: "/owners-wallet", labelKey: "owner_expense", icon: Wallet, perm: "expenses" },
       { to: "/somiti", labelKey: "somiti", icon: PiggyBank, perm: "expenses" },
       { to: "/online-sells", labelKey: "online_sell", icon: DollarSign, perm: "sales" },
       { to: "/cash-management", labelKey: "cash_management", icon: Banknote, perm: "expenses" },

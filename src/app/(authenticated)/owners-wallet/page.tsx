@@ -261,15 +261,15 @@ export default function OwnersWalletPage() {
             </div>
             <div>
               <h1 className="font-bold font-charukola text-base sm:text-lg flex items-center gap-1.5">
-                {lang === "bn" ? "মালিকের ওয়ালেট" : "Owner's Wallet"}
+                {lang === "bn" ? "মালিকের খরচ (Owner Expense)" : "Owner's Dedicated Expense"}
                 <span className="text-[11px] font-normal px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 font-balooda">
                   {lang === "bn" ? "ব্যক্তিগত / পরিবার খরচ" : "Personal & Family Expenses"}
                 </span>
               </h1>
               <p className="text-[11px] text-muted-foreground font-balooda">
                 {lang === "bn"
-                  ? "দোকানের ক্যাশবাক্স ও লাভ থেকে স্বয়ংক্রিয়ভাবে কর্তিত ব্যক্তিগত উত্তোলনের হিসাব"
-                  : "Track personal withdrawals automatically deducted from cashbox & net profit"}
+                  ? "মালিকের ব্যক্তিগত ও পারিবারিক খরচের হিসাব যা দোকানের ক্যাশবাক্স ও লাভ থেকে স্বয়ংক্রিয়ভাবে হিসাবভুক্ত হয়"
+                  : "Track owner's personal & dedicated expenses automatically deducted from cashbox & profit"}
               </p>
             </div>
           </div>

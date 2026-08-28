@@ -89,12 +89,6 @@ export default function RootLayout({
                 try {
                   var mode = localStorage.getItem('hz-theme') || 'light';
                   var accent = localStorage.getItem('hz-accent') || 'mechanix';
-                  var doc = document.documentElement;
-                  if (mode === 'dark' || (mode === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
-                    doc.classList.add('dark');
-                  } else {
-                    doc.classList.remove('dark');
-                  }
                   var accents = {
                     mechanix: { light: '#228B22', dark: '#228B22' },
                     emerald: { light: 'oklch(0.38 0.12 155)', dark: 'oklch(0.65 0.14 155)' },
@@ -103,13 +97,16 @@ export default function RootLayout({
                     blue: { light: 'oklch(0.5 0.18 245)', dark: 'oklch(0.68 0.16 245)' },
                     rose: { light: 'oklch(0.55 0.22 15)', dark: 'oklch(0.7 0.18 15)' }
                   };
-                  var isDark = doc.classList.contains('dark');
+                  var isDark = mode === 'dark' || (mode === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
                   var cfg = accents[accent] || accents.mechanix;
                   var val = isDark ? cfg.dark : cfg.light;
-                  doc.style.setProperty('--primary', val);
-                  doc.style.setProperty('--ring', val);
-                  doc.style.setProperty('--loader-color', val);
-                  doc.style.setProperty('--sidebar-primary', val);
+                  var st = document.getElementById('theme-init-style');
+                  if (!st) {
+                    st = document.createElement('style');
+                    st.id = 'theme-init-style';
+                    document.head.appendChild(st);
+                  }
+                  st.textContent = ':root { --primary: ' + val + '; --ring: ' + val + '; --loader-color: ' + val + '; --sidebar-primary: ' + val + '; }';
                 } catch (e) {}
 
                 // Register PWA Service Worker with cache-busting for phone browsers & standalone mode

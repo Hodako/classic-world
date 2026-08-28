@@ -80,10 +80,9 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <head suppressHydrationWarning>
+      <body className="antialiased site-bg text-foreground min-h-screen relative overflow-x-hidden" suppressHydrationWarning>
         <script
           id="theme-initializer"
-          suppressHydrationWarning
           dangerouslySetInnerHTML={{
             __html: `
               (function() {
@@ -125,8 +124,6 @@ export default function RootLayout({
             `,
           }}
         />
-      </head>
-      <body className="antialiased site-bg text-foreground min-h-screen relative overflow-x-hidden" suppressHydrationWarning>
         <div className="content relative z-10 w-full min-h-screen">
           <Providers>
             {children}

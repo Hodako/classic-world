@@ -6,10 +6,12 @@ import { useT } from "@/lib/i18n";
 
 export function PwaAutoUpdater() {
   const { lang } = useT();
+  const [mounted, setMounted] = useState(false);
   const [updateAvailable, setUpdateAvailable] = useState(false);
   const [waitingWorker, setWaitingWorker] = useState<ServiceWorker | null>(null);
 
   useEffect(() => {
+    setMounted(true);
     if (typeof window === "undefined" || !("serviceWorker" in navigator)) {
       return;
     }
@@ -84,7 +86,7 @@ export function PwaAutoUpdater() {
     }
   };
 
-  if (!updateAvailable) return null;
+  if (!mounted || !updateAvailable) return null;
 
   return (
     <div className="fixed top-3 left-1/2 -translate-x-1/2 z-50 max-w-sm w-[92%] sm:w-auto bg-primary text-primary-foreground px-4 py-2.5 rounded-2xl shadow-2xl flex items-center justify-between gap-3 animate-in fade-in slide-in-from-top-4 duration-300 border border-white/20">

@@ -233,7 +233,7 @@ export default function ForgotPasswordPage() {
 
       {/* Footer */}
       <div className="w-full text-center text-xs text-slate-400 dark:text-zinc-600 py-2">
-        <span>© 2026 Classic World. All rights reserved.</span>
+        <span>© 2026 Classic World · Powered by Dream IT</span>
       </div>
     </div>
   );

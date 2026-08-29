@@ -387,7 +387,7 @@ export default function AuthPage() {
         {/* Bottom copyright footer (PC view) */}
         <div className="space-y-0.5 relative z-10 text-xs text-zinc-400 border-t border-white/10 pt-3 shrink-0">
           <p className="text-[11px] text-zinc-400">
-            © 2026 Classic World. All rights reserved.
+            © 2026 Classic World · Powered by Dream IT
           </p>
         </div>
       </div>

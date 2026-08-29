@@ -1400,410 +1400,318 @@ export default function Dashboard() {
   const renderWidget = (widgetId: string) => {
     switch (widgetId) {
       case "kpis":
-        const isHeroCard = (id: string) => kpiConfig.bentoGrid && (id === "total_sales" || id === "cash_sale" || id === "profit" || id === "cashbox");
-        const allowPurchases = perms ? canAccess(perms, "purchases") : true;
-        const allowSomiti = perms ? canAccess(perms, "expenses") : true;
+        const renderDesktopCard = (key: string, index: number) => {
+          const hotkey = index + 1 <= 9 ? index + 1 : undefined;
+          const isHidden = (kpiConfig.hiddenKpis || []).includes(key);
+          const isRevealed = revealedKpis[key] ?? !isHidden;
+          const privacyProps = { isPrivacyProtected: isHidden, isRevealed };
 
-        // Define all cards dynamically in a map with Bento Grid & Custom Style options
-        const kpiCardsMap: Record<string, React.ReactNode> = {
-          total_sales: (
-            <KPICard
-              key="total_sales"
-              label={lang === "bn" ? "আজকের মোট বিক্রি" : "Today's Total Sales"}
-              value={fmtMoney(totalSalesToday)}
-              sub={dateRangeLabel}
-              imageUrl="/icons/sell_icon.png"
-              icon={ShoppingBag}
-              color="bg-indigo-600"
-              className="h-full w-full cursor-pointer"
-              align={kpiConfig.align as any}
-              size={kpiConfig.size as any}
-              variant={(kpiConfig.variant || "glass") as any}
-              shadowStyle={(kpiConfig.shadow || "glow") as any}
-              borderStyle={(kpiConfig.borderStyle || "subtle") as any}
-              curve={(kpiConfig.curve || "none") as any}
-              isBentoHero={isHeroCard("total_sales")}
-              isPrivacyProtected={(kpiConfig.hiddenKpis || []).includes("total_sales")}
-              isRevealed={revealedKpis["total_sales"] ?? !(kpiConfig.hiddenKpis || []).includes("total_sales")}
-              onClick={() => handlePrivacyKpiClick(null as any, "total_sales", "/sales")}
-            />
-          ),
-          credit_sale: (
-            <KPICard
-              key="credit_sale"
-              label={t("credit_sale")}
-              value={fmtMoney(creditToday)}
-              sub={dateRangeLabel}
-              imageUrl="/icons/credit_sale_icon.png"
-              icon={CreditCard}
-              color="bg-amber-500"
-              onClick={() => {
-                playTapSound();
-                setSalePresetType("credit");
-                setSaleOpen(true);
-              }}
-              align={kpiConfig.align as any}
-              size={kpiConfig.size as any}
-              variant={(kpiConfig.variant || "glass") as any}
-              shadowStyle={(kpiConfig.shadow || "glow") as any}
-              borderStyle={(kpiConfig.borderStyle || "subtle") as any}
-              curve={(kpiConfig.curve || "none") as any}
-              isBentoHero={isHeroCard("credit_sale")}
-            />
-          ),
-          cash_sale: (
-            <KPICard
-              key="cash_sale"
-              label={t("cash_sale")}
-              value={fmtMoney(cashToday)}
-              sub={dateRangeLabel}
-              imageUrl="/icons/sell_icon.png"
-              icon={ShoppingBag}
-              color="bg-indigo-500"
-              onClick={() => {
-                playTapSound();
-                setSalePresetType("cash");
-                setSaleOpen(true);
-              }}
-              align={kpiConfig.align as any}
-              size={kpiConfig.size as any}
-              variant={(kpiConfig.variant || "glass") as any}
-              shadowStyle={(kpiConfig.shadow || "glow") as any}
-              borderStyle={(kpiConfig.borderStyle || "subtle") as any}
-              curve={(kpiConfig.curve || "none") as any}
-              isBentoHero={isHeroCard("cash_sale")}
-            />
-          ),
-          sell_kpi: (
-            <Link href="/sales" className={`block ${isHeroCard("sell_kpi") ? "sm:col-span-2" : ""}`} key="sell_kpi" onClick={() => playTapSound()}>
-              <KPICard
-                label={lang === "bn" ? "বিক্রয়" : "Sell"}
-                value={fmtMoney(totalSalesToday)}
-                sub={
-                  bkashPending > 0 || bankPending > 0 || onlinePendingToday > 0
-                    ? (lang === "bn"
-                        ? `পেন্ডিং: বিকাশ ৳${fmtMoney(bkashPending)} • ব্যাংক ৳${fmtMoney(bankPending)} • অনলাইন ৳${fmtMoney(onlinePendingToday)}`
-                        : `Pending: bKash ৳${fmtMoney(bkashPending)} • Bank ৳${fmtMoney(bankPending)} • Online ৳${fmtMoney(onlinePendingToday)}`)
-                    : (lang === "bn"
-                        ? `নগদ আদায়: ৳${fmtMoney(cashToday + bkashBankCollected)}`
-                        : `Collected: ৳${fmtMoney(cashToday + bkashBankCollected)}`)
-                }
-                imageUrl="/icons/sales-kpi.svg"
-                icon={ShoppingBag}
-                color="bg-pink-600"
-                className="h-full w-full"
-                align={kpiConfig.align as any}
-                size={kpiConfig.size as any}
-                variant={(kpiConfig.variant || "glass") as any}
-                shadowStyle={(kpiConfig.shadow || "glow") as any}
-                borderStyle={(kpiConfig.borderStyle || "subtle") as any}
-                curve={(kpiConfig.curve || "none") as any}
-                isBentoHero={isHeroCard("sell_kpi")}
-              />
-            </Link>
-          ),
-          owner_wallet: (
-            <Link href="/owner-expense" className={`block ${isHeroCard("owner_wallet") ? "sm:col-span-2" : ""}`} key="owner_wallet" onClick={() => playTapSound()}>
-              <KPICard
-                label={lang === "bn" ? "মালিকের খরচ" : "Owner's Expense"}
-                value={fmtMoney(ownerExpenseTotal)}
-                sub={lang === "bn" ? `${ownerExpensesFiltered.length} টি ব্যক্তিগত খরচ / উত্তোলন` : `${ownerExpensesFiltered.length} personal withdrawals`}
-                imageUrl="/icons/wallet.svg"
-                icon={Wallet}
-                color="bg-amber-600"
-                className="h-full w-full"
-                align={kpiConfig.align as any}
-                size={kpiConfig.size as any}
-                variant={(kpiConfig.variant || "glass") as any}
-                shadowStyle={(kpiConfig.shadow || "glow") as any}
-                borderStyle={(kpiConfig.borderStyle || "subtle") as any}
-                curve={(kpiConfig.curve || "none") as any}
-                isBentoHero={isHeroCard("owner_wallet")}
-              />
-            </Link>
-          ),
-          online_sell: (
-            <div className={`block ${isHeroCard("online_sell") ? "sm:col-span-2" : ""}`} key="online_sell">
-              <KPICard
-                label={t("online_sell")}
-                value={fmtMoney(onlineToday)}
-                sub={lang === "bn" ? `পেন্ডিং: ${fmtMoney(onlinePendingToday)}` : `Pending: ${fmtMoney(onlinePendingToday)}`}
-                imageUrl="/icons/online_sale_icon.png"
-                icon={Truck}
-                color="bg-purple-600"
-                className="h-full w-full"
-                align={kpiConfig.align as any}
-                size={kpiConfig.size as any}
-                variant={(kpiConfig.variant || "glass") as any}
-                shadowStyle={(kpiConfig.shadow || "glow") as any}
-                borderStyle={(kpiConfig.borderStyle || "subtle") as any}
-                curve={(kpiConfig.curve || "none") as any}
-                isBentoHero={isHeroCard("online_sell")}
-                onClick={() => {
-                  playTapSound();
-                  setSalePresetType("online");
-                  setSaleOpen(true);
-                }}
-              />
-            </div>
-          ),
-          purchases: allowPurchases ? (
-            <Link href="/purchases" className={`block ${isHeroCard("purchases") ? "sm:col-span-2" : ""}`} key="purchases" onClick={() => playTapSound()}>
-              <KPICard
-                label={lang === "bn" ? "পণ্য ক্রয়" : "Purchases"}
-                value={fmtMoney(purchasesToday)}
-                sub={dateRangeLabel}
-                imageUrl="https://img.icons8.com/fluency/48/buy.png"
-                icon={ShoppingCart}
-                color="bg-teal-500"
-                className="h-full w-full"
-                align={kpiConfig.align as any}
-                size={kpiConfig.size as any}
-                variant={(kpiConfig.variant || "glass") as any}
-                shadowStyle={(kpiConfig.shadow || "glow") as any}
-                borderStyle={(kpiConfig.borderStyle || "subtle") as any}
-                curve={(kpiConfig.curve || "none") as any}
-                isBentoHero={isHeroCard("purchases")}
-              />
-            </Link>
-          ) : <div key="purchases" className="hidden" />,
-          profit: (
-            <div
-              className={`block cursor-pointer ${isHeroCard("profit") ? "sm:col-span-2" : ""}`}
-              key="profit"
-              onClick={(e) => handlePrivacyKpiClick(e, "profit", "/profits")}
-            >
-              <KPICard
-                label={t("profit")}
-                value={fmtMoney(profitToday)}
-                sub={dateRangeLabel}
-                imageUrl="/icons/profit_icon.png"
-                icon={TrendingUp}
-                color="bg-emerald-500"
-                className="h-full w-full"
-                align={kpiConfig.align as any}
-                size={kpiConfig.size as any}
-                variant={(kpiConfig.variant || "glass") as any}
-                shadowStyle={(kpiConfig.shadow || "glow") as any}
-                borderStyle={(kpiConfig.borderStyle || "subtle") as any}
-                curve={(kpiConfig.curve || "none") as any}
-                isBentoHero={isHeroCard("profit")}
-                isPrivacyProtected={true}
-                isRevealed={revealedKpis.profit}
-              />
-            </div>
-          ),
-          loss: (
-            <Link href="/losses" className={`block ${isHeroCard("loss") ? "sm:col-span-2" : ""}`} key="loss" onClick={() => playTapSound()}>
-              <KPICard
-                label={lang === "bn" ? "লোকসান" : "Loss"}
-                value={fmtMoney(lossToday)}
-                sub={dateRangeLabel}
-                imageUrl="https://img.icons8.com/color/48/depreciation.png"
-                icon={TrendingDown}
-                color="bg-rose-500"
-                className="h-full w-full"
-                align={kpiConfig.align as any}
-                size={kpiConfig.size as any}
-                variant={(kpiConfig.variant || "glass") as any}
-                shadowStyle={(kpiConfig.shadow || "glow") as any}
-                borderStyle={(kpiConfig.borderStyle || "subtle") as any}
-                curve={(kpiConfig.curve || "none") as any}
-                isBentoHero={isHeroCard("loss")}
-              />
-            </Link>
-          ),
-          expense: canAccess(perms, "expenses") ? (
-            <Link href="/expenses" className={`block ${isHeroCard("expense") ? "sm:col-span-2" : ""}`} key="expense" onClick={() => playTapSound()}>
-              <KPICard
-                label={t("expense")}
-                value={fmtMoney(expenseToday)}
-                sub={dateRangeLabel}
-                imageUrl="https://img.icons8.com/color/48/tax.png"
-                icon={Receipt}
-                color="bg-orange-500"
-                className="h-full w-full"
-                align={kpiConfig.align as any}
-                size={kpiConfig.size as any}
-                variant={(kpiConfig.variant || "glass") as any}
-                shadowStyle={(kpiConfig.shadow || "glow") as any}
-                borderStyle={(kpiConfig.borderStyle || "subtle") as any}
-                curve={(kpiConfig.curve || "none") as any}
-                isBentoHero={isHeroCard("expense")}
-              />
-            </Link>
-          ) : <div key="expense" className="hidden" />,
-          due: canAccess(perms, "parties") ? (
-            <Link href="/dues" className={`block ${isHeroCard("due") ? "sm:col-span-2" : ""}`} key="due" onClick={() => playTapSound()}>
-              <KPICard
-                label={t("due")}
-                value={fmtMoney(totalDues)}
-                sub={dateRangeLabel}
-                imageUrl="https://img.icons8.com/color/48/loan.png"
-                icon={Banknote}
-                color="bg-amber-600"
-                trendUp={false}
-                className="h-full w-full"
-                align={kpiConfig.align as any}
-                size={kpiConfig.size as any}
-                variant={(kpiConfig.variant || "glass") as any}
-                shadowStyle={(kpiConfig.shadow || "glow") as any}
-                borderStyle={(kpiConfig.borderStyle || "subtle") as any}
-                curve={(kpiConfig.curve || "none") as any}
-                isBentoHero={isHeroCard("due")}
-              />
-            </Link>
-          ) : <div key="due" className="hidden" />,
-          cashbox: canAccess(perms, "cashbox") ? (
-            <Link href="/cash-management/cashbox" className="block w-full" key="cashbox" onClick={() => playTapSound()}>
-              <KPICard
-                label={t("cashbox")}
-                value={fmtMoney(cashboxTotal)}
-                sub={dateRangeLabel}
-                imageUrl="/icons/cashbox_icon.png"
-                icon={Banknote}
-                color="bg-emerald-600"
-                trendUp={cashboxTotal >= 0}
-                trend={t("balance")}
-                className="w-full"
-                align={kpiConfig.align as any}
-                size={kpiConfig.size as any}
-                variant={(kpiConfig.variant || "glass") as any}
-                shadowStyle={(kpiConfig.shadow || "glow") as any}
-                borderStyle={(kpiConfig.borderStyle || "subtle") as any}
-                curve={(kpiConfig.curve || "none") as any}
-                isBentoHero={false}
-              />
-            </Link>
-          ) : <div key="cashbox" className="hidden" />,
-          somiti: allowSomiti ? (
-            <div
-              className="block w-full cursor-pointer"
-              key="somiti"
-              onClick={(e) => handlePrivacyKpiClick(e, "somiti", "/somiti")}
-            >
-              <KPICard
-                label={lang === "bn" ? "সমিতি (Samity)" : "Samity"}
-                value={fmtMoney(somitiTotal)}
-                sub={dateRangeLabel}
-                imageUrl="/icons/samity_icon.png"
-                icon={PiggyBank}
-                color="bg-purple-600"
-                trendUp={somitiTotal >= 0}
-                trend={lang === "bn" ? "নিট জমা" : "Net Balance"}
-                className="w-full"
-                align={kpiConfig.align as any}
-                size={kpiConfig.size as any}
-                variant={(kpiConfig.variant || "glass") as any}
-                shadowStyle={(kpiConfig.shadow || "glow") as any}
-                borderStyle={(kpiConfig.borderStyle || "subtle") as any}
-                curve={(kpiConfig.curve || "none") as any}
-                isBentoHero={false}
-                isPrivacyProtected={true}
-                isRevealed={revealedKpis.somiti}
-              />
-            </div>
-          ) : <div key="somiti" className="hidden" />,
+          switch (key) {
+            case "total_sales":
+              return (
+                <KPICard
+                  key="total_sales"
+                  label={lang === "bn" ? "আজকের মোট বিক্রি" : "Today's Total Sales"}
+                  value={fmtMoney(totalSalesToday)}
+                  sub={dateRangeLabel}
+                  imageUrl="/icons/sell_icon.png"
+                  icon={ShoppingBag}
+                  color="bg-indigo-600"
+                  isDesktop={true}
+                  hotkey={hotkey}
+                  className="h-full cursor-pointer"
+                  align={kpiConfig.align as any}
+                  size={kpiConfig.size as any}
+                  {...privacyProps}
+                  onClick={() => handlePrivacyKpiClick(null as any, "total_sales", "/sales")}
+                />
+              );
+            case "cash_sale":
+              return (
+                <KPICard
+                  key="cash_sale"
+                  label={t("cash_sale")}
+                  value={fmtMoney(cashToday)}
+                  sub={dateRangeLabel}
+                  imageUrl="/icons/sell_icon.png"
+                  icon={ShoppingBag}
+                  color="bg-indigo-500"
+                  isDesktop={true}
+                  hotkey={hotkey}
+                  className="h-full cursor-pointer"
+                  align={kpiConfig.align as any}
+                  size={kpiConfig.size as any}
+                  {...privacyProps}
+                  onClick={() => {
+                    if (isHidden && !isRevealed) {
+                      handlePrivacyKpiClick(null as any, "cash_sale");
+                    } else {
+                      playTapSound();
+                      setSalePresetType("cash");
+                      setSaleOpen(true);
+                    }
+                  }}
+                />
+              );
+            case "credit_sale":
+              return (
+                <KPICard
+                  key="credit_sale"
+                  label={t("credit_sale")}
+                  value={fmtMoney(creditToday)}
+                  sub={dateRangeLabel}
+                  imageUrl="/icons/credit_sale_icon.png"
+                  icon={CreditCard}
+                  color="bg-amber-500"
+                  isDesktop={true}
+                  hotkey={hotkey}
+                  className="h-full cursor-pointer"
+                  align={kpiConfig.align as any}
+                  size={kpiConfig.size as any}
+                  {...privacyProps}
+                  onClick={() => {
+                    if (isHidden && !isRevealed) {
+                      handlePrivacyKpiClick(null as any, "credit_sale");
+                    } else {
+                      playTapSound();
+                      setSalePresetType("credit");
+                      setSaleOpen(true);
+                    }
+                  }}
+                />
+              );
+            case "online_sell":
+              return (
+                <KPICard
+                  key="online_sell"
+                  label={t("online_sell")}
+                  value={fmtMoney(onlineToday)}
+                  sub={lang === "bn" ? `পেন্ডিং: ${fmtMoney(onlinePendingToday)}` : `Pending: ${fmtMoney(onlinePendingToday)}`}
+                  imageUrl="/icons/online_sale_icon.png"
+                  icon={Truck}
+                  color="bg-purple-600"
+                  isDesktop={true}
+                  hotkey={hotkey}
+                  className="h-full cursor-pointer"
+                  align={kpiConfig.align as any}
+                  size={kpiConfig.size as any}
+                  {...privacyProps}
+                  onClick={() => {
+                    if (isHidden && !isRevealed) {
+                      handlePrivacyKpiClick(null as any, "online_sell");
+                    } else {
+                      playTapSound();
+                      setSalePresetType("online");
+                      setSaleOpen(true);
+                    }
+                  }}
+                />
+              );
+            case "owner_wallet":
+            case "owners_wallet":
+              return (
+                <KPICard
+                  key="owner_wallet"
+                  label={lang === "bn" ? "মালিকের খরচ" : "Owner's Expense"}
+                  value={fmtMoney(ownerExpenseTotal)}
+                  sub={lang === "bn" ? `${ownerExpensesFiltered.length} টি ব্যক্তিগত খরচ / উত্তোলন` : `${ownerExpensesFiltered.length} personal withdrawals`}
+                  imageUrl="/icons/wallet.svg"
+                  icon={Wallet}
+                  color="bg-amber-600"
+                  isDesktop={true}
+                  hotkey={hotkey}
+                  className="h-full cursor-pointer"
+                  align={kpiConfig.align as any}
+                  size={kpiConfig.size as any}
+                  {...privacyProps}
+                  onClick={() => handlePrivacyKpiClick(null as any, "owner_wallet", "/owner-expense")}
+                />
+              );
+            case "profit":
+              return (
+                <KPICard
+                  key="profit"
+                  label={t("profit")}
+                  value={fmtMoney(profitToday)}
+                  sub={dateRangeLabel}
+                  imageUrl="/icons/profit_icon.png"
+                  icon={TrendingUp}
+                  color="bg-emerald-500"
+                  isDesktop={true}
+                  hotkey={hotkey}
+                  className="h-full cursor-pointer"
+                  align={kpiConfig.align as any}
+                  size={kpiConfig.size as any}
+                  {...privacyProps}
+                  onClick={() => handlePrivacyKpiClick(null as any, "profit", "/profits")}
+                />
+              );
+            case "loss":
+              return (
+                <KPICard
+                  key="loss"
+                  label={lang === "bn" ? "লোকসান" : "Loss"}
+                  value={fmtMoney(lossToday)}
+                  sub={dateRangeLabel}
+                  imageUrl="https://img.icons8.com/color/48/depreciation.png"
+                  icon={TrendingDown}
+                  color="bg-rose-500"
+                  isDesktop={true}
+                  hotkey={hotkey}
+                  className="h-full cursor-pointer"
+                  align={kpiConfig.align as any}
+                  size={kpiConfig.size as any}
+                  {...privacyProps}
+                  onClick={() => handlePrivacyKpiClick(null as any, "loss", "/losses")}
+                />
+              );
+            case "expense":
+              return (
+                <KPICard
+                  key="expense"
+                  label={t("expense")}
+                  value={fmtMoney(expenseToday)}
+                  sub={dateRangeLabel}
+                  imageUrl="https://img.icons8.com/color/48/tax.png"
+                  icon={Receipt}
+                  color="bg-orange-500"
+                  isDesktop={true}
+                  hotkey={hotkey}
+                  className="h-full cursor-pointer"
+                  align={kpiConfig.align as any}
+                  size={kpiConfig.size as any}
+                  {...privacyProps}
+                  onClick={() => handlePrivacyKpiClick(null as any, "expense", "/expenses")}
+                />
+              );
+            case "due":
+              return (
+                <KPICard
+                  key="due"
+                  label={t("due")}
+                  value={fmtMoney(totalDues)}
+                  sub={dateRangeLabel}
+                  imageUrl="https://img.icons8.com/color/48/loan.png"
+                  icon={Banknote}
+                  color="bg-amber-600"
+                  trendUp={false}
+                  isDesktop={true}
+                  hotkey={hotkey}
+                  className="h-full cursor-pointer"
+                  align={kpiConfig.align as any}
+                  size={kpiConfig.size as any}
+                  {...privacyProps}
+                  onClick={() => handlePrivacyKpiClick(null as any, "due", "/dues")}
+                />
+              );
+            case "cashbox":
+              return (
+                <KPICard
+                  key="cashbox"
+                  label={t("cashbox")}
+                  value={fmtMoney(cashboxTotal)}
+                  sub={dateRangeLabel}
+                  imageUrl="/icons/cashbox_icon.png"
+                  icon={Banknote}
+                  color="bg-emerald-600"
+                  trendUp={cashboxTotal >= 0}
+                  trend={t("balance")}
+                  isDesktop={true}
+                  hotkey={hotkey}
+                  className="h-full cursor-pointer"
+                  align={kpiConfig.align as any}
+                  size={kpiConfig.size as any}
+                  {...privacyProps}
+                  onClick={() => handlePrivacyKpiClick(null as any, "cashbox", "/cash-management/cashbox")}
+                />
+              );
+            case "somiti":
+              return (
+                <KPICard
+                  key="somiti"
+                  label={lang === "bn" ? "সমিতি (Samity)" : "Samity"}
+                  value={fmtMoney(somitiTotal)}
+                  sub={dateRangeLabel}
+                  imageUrl="/icons/samity_icon.png"
+                  icon={PiggyBank}
+                  color="bg-purple-600"
+                  trendUp={somitiTotal >= 0}
+                  trend={lang === "bn" ? "নিট জমা" : "Net Balance"}
+                  isDesktop={true}
+                  hotkey={hotkey}
+                  className="h-full cursor-pointer"
+                  align={kpiConfig.align as any}
+                  size={kpiConfig.size as any}
+                  {...privacyProps}
+                  onClick={() => handlePrivacyKpiClick(null as any, "somiti", "/somiti")}
+                />
+              );
+            default:
+              return null;
+          }
         };
 
-        const gridColsClass = kpiConfig.columns === 1 ? "grid-cols-1" : kpiConfig.columns === 3 ? "grid-cols-3" : kpiConfig.columns === 4 ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-2";
+        const gridClass = kpiConfig.columns === 1 ? "grid-cols-1" : kpiConfig.columns === 3 ? "grid-cols-3" : kpiConfig.columns === 4 ? "grid-cols-2 md:grid-cols-4" : "grid-cols-2 md:grid-cols-3 lg:grid-cols-4";
 
         return (
-          <Card key="kpis" className="p-4 border border-border/80 space-y-3 bg-card/90 dark:bg-zinc-900/90 backdrop-blur-xl rounded-2xl shadow-md transition-all">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-foreground uppercase tracking-wider flex items-center gap-1.5">
-                <LayoutGrid className="size-4 text-primary animate-pulse" />
-                {t("key_metrics")}
-              </span>
-              <Button variant="ghost" size="icon" className="size-7" onClick={() => { playTapSound(); setCollapsed(prev => ({ ...prev, kpis: !prev.kpis })); }}>
-                {collapsed.kpis ? <ChevronDown className="size-4" /> : <ChevronUp className="size-4" />}
-              </Button>
+          <div key="kpis" className="space-y-6 col-span-3">
+            <div className={`grid gap-4 ${gridClass}`}>
+              {kpiConfig.order.map((key, idx) => renderDesktopCard(key, idx))}
             </div>
 
-            {!collapsed.kpis && (
-              <div className="space-y-2.5">
-                <div className={`grid gap-2.5 ${gridColsClass}`}>
-                  {kpiConfig.order
-                    .filter((key) => {
-                      // Hidden KPIs are still shown but with masked amount — NOT filtered out
-                      const isEmp = activeEmpSession ? true : user?.role === "employee";
-                      const empKpis = activeEmpSession?.allowedKpis || (user as any)?.allowedKpis;
-                      if (isEmp && empKpis && Array.isArray(empKpis) && empKpis.length > 0) {
-                        return empKpis.includes(key);
-                      }
-                      return true;
-                    })
-                    .map((key) => {
-                      const isHidden = (kpiConfig.hiddenKpis || []).includes(key);
-                      if (!isHidden) return kpiCardsMap[key];
-                      // Clone the card element with privacy props injected
-                      const card = kpiCardsMap[key];
-                      if (!card) return null;
-                      return React.cloneElement(card as React.ReactElement<any>, {
-      isPrivacyProtected: isHidden,
-      isRevealed: revealedKpis[key] ?? !isHidden,
-      onClick: (e: React.MouseEvent) => handlePrivacyKpiClick(e, key, (card as any)?.props?.onClick ? "" : ""),
-    });
-                    })}
-                </div>
-              </div>
-            )}
-          </Card>
-        );
-
-      case "valuations":
-        return (
-          <div key="valuations" className="space-y-3">
-            <Card className="p-3.5 border border-border space-y-2 bg-gradient-to-br from-white to-zinc-50/40 dark:from-zinc-900/90 dark:to-zinc-950/90 backdrop-blur-sm rounded-2xl shadow-[0_6px_20px_rgba(0,0,0,0.03)] dark:shadow-[0_6px_20px_rgba(0,0,0,0.25)] hover:shadow-md transition-all">
-              <div className="text-[10px] text-muted-foreground uppercase tracking-wide font-medium">{lang === "bn" ? "পণ্য স্টক মূল্য (ইনভেন্টরি)" : "Stock & Inventory Valuation"}</div>
-              <div className="grid grid-cols-2 gap-2 text-xs">
-                <div className="p-2.5 bg-gradient-to-br from-white via-teal-50/20 to-teal-500/5 dark:from-zinc-900 dark:via-teal-950/10 dark:to-teal-500/5 border border-teal-500/15 rounded-lg flex items-center justify-between gap-1.5 shadow-[0_2px_8px_rgba(20,184,166,0.04)]">
-                  <div className="min-w-0 flex-1">
-                    <div className="text-[9px] text-muted-foreground">{t("inventory_val_cost")}</div>
-                    <div className="font-bold text-xs min-[360px]:text-sm mt-0.5 text-foreground">{fmtMoney(totalStockCostValuation)}</div>
-                  </div>
-                  <img src="https://img.icons8.com/bubbles/100/buy.png" className="size-8 object-contain shrink-0" alt="buy" />
-                </div>
-                <div className="p-2.5 bg-gradient-to-br from-white via-pink-50/20 to-pink-500/5 dark:from-zinc-900 dark:via-pink-950/10 dark:to-pink-500/5 border border-pink-500/15 rounded-lg flex items-center justify-between gap-1.5 shadow-[0_2px_8px_rgba(236,72,153,0.04)]">
-                  <div className="min-w-0 flex-1">
-                    <div className="text-[9px] text-muted-foreground">{t("inventory_val_sale")}</div>
-                    <div className="font-bold text-xs min-[360px]:text-sm mt-0.5 text-foreground">{fmtMoney(totalStockSaleValuation)}</div>
-                  </div>
-                  <Package className="size-5 text-muted-foreground shrink-0" />
-                </div>
-              </div>
-            </Card>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <KPICard
+                label={t("inventory_val_cost")}
+                value={fmtMoney(totalStockCostValuation)}
+                sub={lang === "bn" ? "কেনা মূল্যের হিসাব" : "Cost Worth of Stock"}
+                icon={Package}
+                color="bg-teal-500"
+                isDesktop={true}
+                align={kpiConfig.align as any}
+                size={kpiConfig.size as any}
+              />
+              <KPICard
+                label={t("inventory_val_sale")}
+                value={fmtMoney(totalStockSaleValuation)}
+                sub={lang === "bn" ? "বিক্রি মূল্যের হিসাব" : "Selling Worth of Stock"}
+                icon={ShoppingBag}
+                color="bg-pink-500"
+                isDesktop={true}
+                align={kpiConfig.align as any}
+                size={kpiConfig.size as any}
+              />
+            </div>
 
             {lowStockProducts.length > 0 && (
-              <Card className="p-3.5 border border-amber-500/30 space-y-2.5 bg-gradient-to-br from-amber-50/40 via-white to-amber-100/20 dark:from-amber-950/20 dark:via-zinc-900/90 dark:to-zinc-950/90 backdrop-blur-sm rounded-2xl shadow-sm">
+              <Card className="p-4 border border-amber-500/30 space-y-3 bg-gradient-to-br from-amber-50/40 via-white to-amber-100/20 dark:from-amber-950/20 dark:via-zinc-900/90 dark:to-zinc-950/90 backdrop-blur-sm rounded-2xl shadow-sm">
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-1.5 text-xs font-bold text-amber-700 dark:text-amber-400">
+                  <div className="flex items-center gap-2 text-sm font-bold text-amber-700 dark:text-amber-400">
                     <AlertTriangle className="size-4 animate-bounce text-amber-500" />
-                    <span>{lang === "bn" ? `সংকটজনক স্টক অ্যালার্ট (${lowStockProducts.length})` : `Low Stock Alert (${lowStockProducts.length})`}</span>
+                    <span>{lang === "bn" ? `সংকটজনক স্টক অ্যালার্ট ও দ্রুত ক্রয় (${lowStockProducts.length}টি পণ্য)` : `Low Stock Alert & Quick Restock (${lowStockProducts.length} Items)`}</span>
                   </div>
-                  <Link href="/products" className="text-[10px] text-primary hover:underline font-semibold flex items-center gap-0.5">
-                    {lang === "bn" ? "সকল পণ্য" : "View All"} <ArrowRight className="size-3" />
+                  <Link href="/products" className="text-xs text-primary hover:underline font-semibold flex items-center gap-1">
+                    {lang === "bn" ? "সকল পণ্য দেখুন" : "View All Products"} <ArrowRight className="size-3.5" />
                   </Link>
                 </div>
-                <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5">
                   {lowStockProducts.slice(0, 6).map(p => (
-                    <div key={p.id} className="flex items-center justify-between p-2 rounded-xl border border-amber-500/20 bg-background/80 text-xs">
-                      <div className="min-w-0 flex-1">
-                        <div className="font-semibold truncate text-foreground text-[11px]">{p.name}</div>
-                        <div className="text-[9px] text-muted-foreground">
-                          {lang === "bn" ? "স্টক:" : "Stock:"} <span className="font-bold text-rose-600 font-mono">{p.stock}</span> / {p.min_stock ?? 5}
+                    <div key={p.id} className="flex items-center justify-between p-2.5 rounded-xl border border-amber-500/20 bg-background/80 text-xs shadow-2xs">
+                      <div className="min-w-0 flex-1 mr-2">
+                        <div className="font-semibold truncate text-foreground text-xs">{p.name}</div>
+                        <div className="text-[10px] text-muted-foreground mt-0.5">
+                          {lang === "bn" ? "বর্তমান স্টক:" : "Stock:"} <span className="font-bold text-rose-600 font-mono">{p.stock}</span> / {p.min_stock ?? 5}
                         </div>
                       </div>
                       <Button
                         size="sm"
                         variant="outline"
-                        className="h-6 px-2 text-[10px] font-bold border-amber-500/40 text-amber-700 dark:text-amber-300 hover:bg-amber-500/10 cursor-pointer gap-1"
+                        className="h-7 px-2.5 text-xs font-bold border-amber-500/40 text-amber-700 dark:text-amber-300 hover:bg-amber-500/10 cursor-pointer gap-1"
                         onClick={() => {
                           setRestockProductId(p.id);
                           setPurchaseOpen(true);
                         }}
                       >
-                        <Plus className="size-3" /> {lang === "bn" ? "ক্রয়" : "Restock"}
+                        <Plus className="size-3" /> {lang === "bn" ? "ক্রয় করুন" : "Restock"}
                       </Button>
                     </div>
                   ))}

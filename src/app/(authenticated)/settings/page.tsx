@@ -23,6 +23,7 @@ import {
   Trash2,
   Lock,
   Unlock,
+  Crown,
   ShieldAlert,
   Database,
   FileSpreadsheet,
@@ -254,7 +255,14 @@ export default function SettingsPage() {
 
   // PIN Lock & Password States
   const [pinLockEnabled, setPinLockEnabled] = useState(false);
-  const [pinCodeVal, setPinCodeVal] = useState("1234");
+  const [pinCodeVal, setPinCodeVal] = useState(() => {
+    if (typeof window !== "undefined") return localStorage.getItem("app_pin_code_val") || "1234";
+    return "1234";
+  });
+  const [employeePinVal, setEmployeePinVal] = useState(() => {
+    if (typeof window !== "undefined") return localStorage.getItem("app_employee_pin_code_val") || "0000";
+    return "0000";
+  });
   const [pinTimeoutVal, setPinTimeoutVal] = useState("10");
   const [pwBusy, setPwBusy] = useState(false);
 
@@ -2156,8 +2164,12 @@ export default function SettingsPage() {
                 {pinLockEnabled && (
                   <div className="space-y-4 pt-2">
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      
                       <div className="space-y-1.5">
-                        <Label className="text-xs font-semibold">{lang === "bn" ? "৪ সংখ্যার পিন কোড সেট করুন" : "Set 4-Digit PIN Code"}</Label>
+                        <Label className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 flex items-center gap-1.5">
+                          <Crown className="size-3.5" />
+                          <span>{lang === "bn" ? "মালিক পিন কোড (Owner PIN)" : "Owner PIN Code"}</span>
+                        </Label>
                         <Input
                           type="password"
                           maxLength={6}
@@ -2168,10 +2180,31 @@ export default function SettingsPage() {
                             localStorage.setItem("app_pin_code_val", val);
                             window.dispatchEvent(new Event("storage"));
                           }}
-                          placeholder="e.g. 1234"
+                          placeholder="1234"
                           className="h-10 rounded-xl text-base font-mono tracking-widest text-center font-bold"
                         />
                       </div>
+
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-semibold text-amber-600 dark:text-amber-400 flex items-center gap-1.5">
+                          <Users className="size-3.5" />
+                          <span>{lang === "bn" ? "কর্মচারী পিন কোড (Employee PIN)" : "Employee PIN Code"}</span>
+                        </Label>
+                        <Input
+                          type="password"
+                          maxLength={6}
+                          value={employeePinVal}
+                          onChange={(e) => {
+                            const val = e.target.value.replace(/[^0-9]/g, "");
+                            setEmployeePinVal(val);
+                            localStorage.setItem("app_employee_pin_code_val", val);
+                            window.dispatchEvent(new Event("storage"));
+                          }}
+                          placeholder="0000"
+                          className="h-10 rounded-xl text-base font-mono tracking-widest text-center font-bold"
+                        />
+                      </div>
+
 
                       <div className="space-y-1.5">
                         <Label className="text-xs font-semibold">{lang === "bn" ? "অটো-লক সময়সীমা (নিষ্ক্রিয় থাকলে)" : "Auto-Lock Inactivity Timeout"}</Label>

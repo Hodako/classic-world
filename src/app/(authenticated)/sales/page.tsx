@@ -116,7 +116,7 @@ function groupSales(sales: Sale[]): GroupedSale[] {
 
     const firstItem = items[0];
     const totalQty = items.reduce((sum, x) => sum + x.qty, 0);
-    const totalSellPrice = items.reduce((sum, x) => sum + Number(x.sell_price) * x.qty, 0);
+    const totalSellPrice = items.reduce((sum, x) => sum + Math.max((Number(x.sell_price) || 0) * (Number(x.qty) || 1) - (Number((x as any).discount) || 0), 0), 0);
     const totalProfit = items.reduce((sum, x) => sum + x.profit, 0);
     const totalDue = items.reduce((sum, x) => sum + x.due_amount, 0);
     const totalPaid = items.reduce((sum, x) => sum + x.paid_amount, 0);

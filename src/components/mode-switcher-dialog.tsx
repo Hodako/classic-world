@@ -18,13 +18,12 @@ export function ModeSwitcherDialog({ open, onOpenChange }: ModeSwitcherDialogPro
   const { lang } = useT();
   const [activeTab, setActiveTab] = useState<"owner" | "employee">("owner");
   const [pinInput, setPinInput] = useState("");
-  const [selectedEmpId, setSelectedEmpId] = useState<string | null>(null);
   const [employees, setEmployees] = useState<any[]>([]);
+  const [selectedEmpId, setSelectedEmpId] = useState<string | null>(null);
   const [currentSessionRole, setCurrentSessionRole] = useState<"owner" | "employee">("owner");
   const [activeEmpSession, setActiveEmpSession] = useState<any>(null);
   const [errorShake, setErrorShake] = useState(false);
 
-  // Load employee list and current state
   useEffect(() => {
     if (!open) {
       setPinInput("");
@@ -49,10 +48,10 @@ export function ModeSwitcherDialog({ open, onOpenChange }: ModeSwitcherDialogPro
       setActiveEmpSession(activeEmp);
       if (activeEmp) {
         setCurrentSessionRole("employee");
-        setActiveTab("owner"); // Default suggestion: switch back to owner
+        setActiveTab("owner");
       } else {
         setCurrentSessionRole("owner");
-        setActiveTab("employee"); // Default suggestion: switch to employee
+        setActiveTab("employee");
       }
     } catch (_) {
       setCurrentSessionRole("owner");
@@ -79,23 +78,24 @@ export function ModeSwitcherDialog({ open, onOpenChange }: ModeSwitcherDialogPro
   };
 
   const handleVerifyEmployeePin = (pinToTest: string) => {
+    const defaultEmpPin = localStorage.getItem("app_employee_pin_code_val") || "0000";
     let targetEmployee = employees.find(e => e.id === selectedEmpId);
-    // If no employee selected specifically, check all employees for matching PIN
     if (!targetEmployee) {
       targetEmployee = employees.find(e => String(e.pin).trim() === pinToTest.trim());
     }
 
-    if (targetEmployee && String(targetEmployee.pin).trim() === pinToTest.trim()) {
+    if (pinToTest.trim() === defaultEmpPin.trim() || (targetEmployee && String(targetEmployee.pin).trim() === pinToTest.trim())) {
       playSaleSuccessSound();
       sessionStorage.setItem("app_pin_unlocked", "true");
-      localStorage.setItem("cw_active_employee_session", JSON.stringify(targetEmployee));
+      const empData = targetEmployee || { id: "default-emp", name: "Staff / কর্মচারী", pin: defaultEmpPin, permissions: { sales: true, products: true, customers: true } };
+      localStorage.setItem("cw_active_employee_session", JSON.stringify(empData));
       localStorage.setItem("cw_active_session_role", "employee");
       window.dispatchEvent(new Event("hz-employee-switched"));
       onOpenChange(false);
       toast.success(
         lang === "bn"
-          ? `কর্মচারী (${targetEmployee.name}) মোডে প্রবেশ সফল হয়েছে!`
-          : `Switched to Employee (${targetEmployee.name}) Mode!`
+          ? `কর্মচারী (${empData.name}) মোডে প্রবেশ সফল হয়েছে!`
+          : `Switched to Employee (${empData.name}) Mode!`
       );
     } else {
       playErrorSound();
@@ -128,12 +128,12 @@ export function ModeSwitcherDialog({ open, onOpenChange }: ModeSwitcherDialogPro
             <Lock className="size-6" />
           </div>
           <DialogTitle className="text-base sm:text-lg font-bold text-foreground">
-            {lang === "bn" ? "ইউজার মোড ও আইডি পরিবর্তন" : "Quick Switch Role / PIN Unlock"}
+            {lang === "bn" ? "ইউজার মোড পরিবর্তন" : "Quick Switch Role (PIN Required)"}
           </DialogTitle>
           <DialogDescription className="text-xs text-muted-foreground">
             {lang === "bn"
-              ? "মালিক বা কর্মচারীর নির্দিষ্ট ৪ সংখ্যার পিন দিয়ে মোড পরিবর্তন করুন"
-              : "Switch between Owner & Employee access using their 4-digit PIN"}
+              ? "মালিক বা কর্মচারীর ৪ সংখ্যার সিকিউরিটি পিন দিয়ে মোড পরিবর্তন করুন"
+              : "Enter Owner PIN or Employee PIN to switch access role"}
           </DialogDescription>
         </DialogHeader>
 
@@ -145,12 +145,12 @@ export function ModeSwitcherDialog({ open, onOpenChange }: ModeSwitcherDialogPro
           }`}>
             {currentSessionRole === "owner" ? (
               <>
-                <Crown className="size-3.5" />
+                <Crown className="size-3.5 text-indigo-500" />
                 <span>{lang === "bn" ? "স্বত্বাধিকারী (Owner)" : "Owner (Admin)"}</span>
               </>
             ) : (
               <>
-                <User className="size-3.5" />
+                <User className="size-3.5 text-amber-500" />
                 <span>{lang === "bn" ? `কর্মচারী (${activeEmpSession?.name || "Staff"})` : `Employee (${activeEmpSession?.name || "Staff"})`}</span>
               </>
             )}
@@ -195,50 +195,11 @@ export function ModeSwitcherDialog({ open, onOpenChange }: ModeSwitcherDialogPro
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4 pt-1">
-          {activeTab === "employee" && employees.length > 0 && (
-            <div className="space-y-1.5">
-              <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">
-                {lang === "bn" ? "কর্মচারী নির্বাচন করুন:" : "Select Employee Account:"}
-              </label>
-              <div className="grid grid-cols-2 gap-2">
-                {employees.map((emp) => (
-                  <button
-                    key={emp.id}
-                    type="button"
-                    onClick={() => {
-                      playTapSound();
-                      setSelectedEmpId(emp.id);
-                    }}
-                    className={`p-2.5 rounded-xl border text-left text-xs transition-all flex items-center justify-between cursor-pointer ${
-                      selectedEmpId === emp.id
-                        ? "border-primary bg-primary/10 text-primary font-bold shadow-2xs"
-                        : "border-border/70 bg-card/60 text-muted-foreground hover:text-foreground"
-                    }`}
-                  >
-                    <span className="truncate">{emp.name}</span>
-                    {selectedEmpId === emp.id && <Check className="size-3.5 text-primary shrink-0" />}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {activeTab === "employee" && employees.length === 0 && (
-            <div className="p-3 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-700 dark:text-amber-400 space-y-1 text-center">
-              <p className="font-semibold">{lang === "bn" ? "কোন কর্মচারী আইডি তৈরি করা নেই" : "No employee accounts found"}</p>
-              <p className="text-[11px] opacity-80">
-                {lang === "bn"
-                  ? "সেটিংস > 'কর্মচারী ও পিন কোড' ট্যাবে গিয়ে কর্মচারীর জন্য নাম ও পিন তৈরি করুন।"
-                  : "Create employee accounts with dedicated PINs in Settings > Staff tab."}
-              </p>
-            </div>
-          )}
-
           {/* PIN Input field */}
           <div className="space-y-1.5">
             <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider flex items-center justify-between">
-              <span>{activeTab === "owner" ? (lang === "bn" ? "মালিক পিন কোড" : "Owner PIN Code") : (lang === "bn" ? "কর্মচারী পিন কোড" : "Employee PIN Code")}</span>
-              <span className="text-[10px] font-normal lowercase">{lang === "bn" ? "৪ সংখ্যার পিন" : "4-digit pin"}</span>
+              <span>{activeTab === "owner" ? (lang === "bn" ? "মালিক পিন কোড দিন" : "Enter Owner PIN") : (lang === "bn" ? "কর্মচারী পিন কোড দিন" : "Enter Employee PIN")}</span>
+              <span className="text-[10px] font-normal lowercase font-mono">{activeTab === "owner" ? "(Default: 1234)" : "(Default: 0000)"}</span>
             </label>
             <div className={`relative ${errorShake ? "animate-shake" : ""}`}>
               <Input
@@ -280,7 +241,7 @@ export function ModeSwitcherDialog({ open, onOpenChange }: ModeSwitcherDialogPro
               disabled={pinInput.length < 4}
               className="h-10 rounded-xl text-xs font-bold gap-1.5 bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer shadow-xs"
             >
-              <span>{lang === "bn" ? "আনলক / পরিবর্তন" : "Unlock / Switch"}</span>
+              <span>{lang === "bn" ? "মোড পরিবর্তন করুন" : "Switch Mode"}</span>
               <ArrowRight className="size-3.5" />
             </Button>
           </div>

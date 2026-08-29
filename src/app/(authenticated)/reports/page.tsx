@@ -168,8 +168,7 @@ export default function ReportsGeneratorPage() {
 
   const cashSalesTotal = useMemo(() => cashSales.reduce((a, s) => {
     const lineTotal = (Number(s.sell_price) || 0) * (Number(s.qty) || 1) - (Number(s.discount) || 0);
-    const paid = Number(s.paid_amount);
-    return a + (!isNaN(paid) && paid > 0 ? paid : lineTotal);
+    return a + Math.max(lineTotal, 0);
   }, 0), [cashSales]);
   const bkashSalesTotal = useMemo(() => bkashSales.reduce((a, s) => a + ((Number(s.sell_price) || 0) * (Number(s.qty) || 1) - (Number(s.discount) || 0)), 0), [bkashSales]);
   const creditSalesTotal = useMemo(() => creditSales.reduce((a, s) => a + ((Number(s.sell_price) || 0) * (Number(s.qty) || 1) - (Number(s.discount) || 0)), 0), [creditSales]);

@@ -236,6 +236,10 @@ const fsActionMap: Record<string, (args?: any) => Promise<any>> = {
   getRemindersFn: async () => fs.fsGetReminders(),
   getBankAccountsFn: async () => fs.fsGetBankAccounts(),
   getBankLoansFn: async () => fs.fsGetBankLoans(),
+  getEmployeesFn: async () => fs.fsGetEmployees(),
+  getEmployeeSalariesFn: async () => fs.fsGetEmployeeSalaries(),
+  getEmployeeExpensesFn: async () => fs.fsGetEmployeeExpenses(),
+  getEmployeeShoppingsFn: async () => fs.fsGetEmployeeShoppings(),
 
   // Writes
   createProductFn: async (args: any) => fs.fsCreateProduct(args?.data || args),
@@ -312,6 +316,19 @@ const fsActionMap: Record<string, (args?: any) => Promise<any>> = {
   createBankLoanFn: async (args: any) => fs.fsCreateBankLoan(args?.data || args),
   payBankLoanInstallmentFn: async (args: any) => fs.fsPayBankLoanInstallment(args?.data || args),
   deleteBankLoanFn: async (args: any) => fs.fsDeleteBankLoan(args?.data?.id || args?.id),
+
+  addEmployeeFn: async (args: any) => fs.fsAddEmployee(args?.data || args),
+  updateEmployeeFn: async (args: any) => fs.fsUpdateEmployee(args?.data?.id || args?.id, args?.data || args),
+  deleteEmployeeFn: async (args: any) => fs.fsDeleteEmployee(args?.data?.id || args?.id),
+
+  createEmployeeSalaryFn: async (args: any) => fs.fsCreateEmployeeSalary(args?.data || args),
+  deleteEmployeeSalaryFn: async (args: any) => fs.fsDeleteEmployeeSalary(args?.data?.id || args?.id),
+
+  createEmployeeExpenseFn: async (args: any) => fs.fsCreateEmployeeExpense(args?.data || args),
+  deleteEmployeeExpenseFn: async (args: any) => fs.fsDeleteEmployeeExpense(args?.data?.id || args?.id),
+
+  createEmployeeShoppingFn: async (args: any) => fs.fsCreateEmployeeShopping(args?.data || args),
+  deleteEmployeeShoppingFn: async (args: any) => fs.fsDeleteEmployeeShopping(args?.data?.id || args?.id),
 
   resetProductsFn: async () => fs.fsResetProducts(),
   resetSalesFn: async () => fs.fsResetSales(),
@@ -615,3 +632,20 @@ export const activateLicenseFn = makeWriteAction("activateLicenseFn");
 
 export const updateBusinessSettingsFn = makeWriteAction("updateBusinessSettingsFn");
 export const getBusinessSettingsFn = makeReadAction("getBusinessSettingsFn");
+
+export const getEmployeesFn = makeReadAction("getEmployeesFn");
+export const addEmployeeFn = makeWriteAction("addEmployeeFn");
+export const updateEmployeeFn = makeWriteAction("updateEmployeeFn");
+export const deleteEmployeeFn = makeWriteAction("deleteEmployeeFn");
+
+export const getEmployeeSalariesFn = makeReadAction("getEmployeeSalariesFn");
+export const createEmployeeSalaryFn = makeWriteAction("createEmployeeSalaryFn");
+export const deleteEmployeeSalaryFn = makeWriteAction("deleteEmployeeSalaryFn");
+
+export const getEmployeeExpensesFn = makeReadAction("getEmployeeExpensesFn");
+export const createEmployeeExpenseFn = makeWriteAction("createEmployeeExpenseFn");
+export const deleteEmployeeExpenseFn = makeWriteAction("deleteEmployeeExpenseFn");
+
+export const getEmployeeShoppingsFn = makeReadAction("getEmployeeShoppingsFn");
+export const createEmployeeShoppingFn = makeWriteAction("createEmployeeShoppingFn");
+export const deleteEmployeeShoppingFn = makeWriteAction("deleteEmployeeShoppingFn");

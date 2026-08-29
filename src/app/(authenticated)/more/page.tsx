@@ -41,6 +41,7 @@ const businessLinks = [
   { to: "/customers",      labelKey: "customers",       desc: "Customer profiles & transaction statistics", icon: Users, perm: "parties" as const },
   { to: "/dues",           labelKey: "due",             desc: "Customer dues & collections history", icon: Banknote, perm: "parties"    as const },
   { to: "/parties",        labelKey: "parties",         desc: "Suppliers, vendors, and partner logs", icon: Users, perm: "parties"    as const },
+  { to: "/employees",      labelKey: "employees" as any, desc: "Employee accounts, salary ledger, expenses & shopping draws", icon: Users, perm: "settings" as const },
   { to: "/settings",       labelKey: "settings",        desc: "Advanced settings & configurations", icon: Settings,     perm: "settings"   as const },
 ] as const;
 

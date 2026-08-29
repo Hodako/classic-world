@@ -1823,6 +1823,16 @@ export async function fsFirebaseAuthSync(data: { email: string; fullName?: strin
     }
   } catch (_) {}
 
+  // Check if email or phone is registered in employees collection
+  let matchedEmp: any = null;
+  try {
+    const empQ = query(collection(db, "employees"), where("email", "==", cleanEmail), limit(1));
+    const empSnap = await getDocs(empQ);
+    if (!empSnap.empty) {
+      matchedEmp = { id: empSnap.docs[0].id, ...empSnap.docs[0].data() };
+    }
+  } catch (_) {}
+
   const userObj = existingUser
     ? {
         ...existingUser,
@@ -1840,7 +1850,9 @@ export async function fsFirebaseAuthSync(data: { email: string; fullName?: strin
         id: userId,
         email: cleanEmail,
         full_name: data.fullName || cleanEmail.split("@")[0],
-        role: "owner",
+        role: matchedEmp ? "employee" : "owner",
+        employee_id: matchedEmp?.id || undefined,
+        permissions: matchedEmp?.permissions || undefined,
         activated: true,
         business_id: "classic-world-default",
         business_name: bizSettings?.name || "Classic World",
@@ -2540,4 +2552,356 @@ export async function fsExchangeProducts(data: {
   }
 
   return { success: true, exchangeId, cashDifference };
+}
+
+// ── Employee Management Suite ──────────────────────────────────────────────────
+export async function fsGetEmployees() {
+  try {
+    const q = query(collection(db, "employees"), orderBy("created_at", "desc"));
+    const snap = await getDocs(q);
+    return snap.docs.map(d => ({
+      id: d.id,
+      ...d.data(),
+      created_at: d.data().created_at?.toDate?.()?.toISOString() || new Date().toISOString(),
+    }));
+  } catch (err) {
+    try {
+      const snap = await getDocs(collection(db, "employees"));
+      return snap.docs.map(d => ({
+        id: d.id,
+        ...d.data(),
+        created_at: d.data().created_at?.toDate?.()?.toISOString() || new Date().toISOString(),
+      }));
+    } catch (_) {
+      return [];
+    }
+  }
+}
+
+export async function fsAddEmployee(data: any) {
+  const phone = (data.phone || "").replace(/\s+/g, "").trim();
+  const email = (data.email || "").toLowerCase().trim();
+  const docRef = await addDoc(collection(db, "employees"), {
+    name: (data.name || "Employee").trim(),
+    phone: phone || null,
+    email: email || null,
+    designation: (data.designation || "Staff").trim(),
+    base_salary: Number(data.base_salary) || 0,
+    status: data.status || "active",
+    permissions: data.permissions || {
+      can_sales: true,
+      can_customers: true,
+      can_returns: true,
+      can_products: false,
+      can_expenses: false,
+      can_reports: false,
+      can_delete: false,
+      can_discount: false,
+    },
+    notes: data.notes || null,
+    created_at: Timestamp.now(),
+    updated_at: Timestamp.now(),
+  });
+  return { success: true, id: docRef.id };
+}
+
+export async function fsUpdateEmployee(id: string, data: any) {
+  try {
+    const phone = data.phone ? String(data.phone).replace(/\s+/g, "").trim() : undefined;
+    const email = data.email ? String(data.email).toLowerCase().trim() : undefined;
+    const updatePayload: any = {
+      updated_at: Timestamp.now(),
+    };
+    if (data.name) updatePayload.name = data.name.trim();
+    if (phone !== undefined) updatePayload.phone = phone || null;
+    if (email !== undefined) updatePayload.email = email || null;
+    if (data.designation !== undefined) updatePayload.designation = data.designation;
+    if (data.base_salary !== undefined) updatePayload.base_salary = Number(data.base_salary) || 0;
+    if (data.status !== undefined) updatePayload.status = data.status;
+    if (data.permissions !== undefined) updatePayload.permissions = data.permissions;
+    if (data.notes !== undefined) updatePayload.notes = data.notes;
+
+    await updateDoc(doc(db, "employees", id), updatePayload);
+    return { success: true };
+  } catch (err: any) {
+    throw new Error(err?.message || "Failed to update employee");
+  }
+}
+
+export async function fsDeleteEmployee(id: string) {
+  try {
+    await fsMoveToRecycleBin("employees", id, "Employee #" + id);
+    return { success: true };
+  } catch (err: any) {
+    try {
+      await deleteDoc(doc(db, "employees", id));
+      return { success: true };
+    } catch (e: any) {
+      throw new Error(e?.message || "Failed to delete employee");
+    }
+  }
+}
+
+// ── Employee Salaries ──────────────────────────────────────────────────────────
+export async function fsGetEmployeeSalaries() {
+  try {
+    const q = query(collection(db, "employee_salaries"), orderBy("created_at", "desc"));
+    const snap = await getDocs(q);
+    return snap.docs.map(d => ({
+      id: d.id,
+      ...d.data(),
+      created_at: d.data().created_at?.toDate?.()?.toISOString() || new Date().toISOString(),
+    }));
+  } catch (_) {
+    try {
+      const snap = await getDocs(collection(db, "employee_salaries"));
+      return snap.docs.map(d => ({
+        id: d.id,
+        ...d.data(),
+        created_at: d.data().created_at?.toDate?.()?.toISOString() || new Date().toISOString(),
+      }));
+    } catch (_) {
+      return [];
+    }
+  }
+}
+
+export async function fsCreateEmployeeSalary(data: any) {
+  const amount = Number(data.amount) || 0;
+  const empName = data.employee_name || "Employee";
+  const month = data.month || new Date().toISOString().slice(0, 7);
+  const paymentMethod = data.payment_method || "cash";
+
+  const docRef = await addDoc(collection(db, "employee_salaries"), {
+    employee_id: data.employee_id,
+    employee_name: empName,
+    month,
+    amount,
+    base_salary: Number(data.base_salary) || 0,
+    deductions: Number(data.deductions) || 0,
+    bonus: Number(data.bonus) || 0,
+    payment_method: paymentMethod,
+    payment_date: data.payment_date || new Date().toISOString().slice(0, 10),
+    status: data.status || "paid",
+    note: data.note || null,
+    created_at: Timestamp.now(),
+  });
+
+  const title = `[কর্মচারী বেতন] ${empName} (${month})`;
+
+  // 1. Log in general expenses as "salary"
+  if (amount > 0) {
+    try {
+      await addDoc(collection(db, "expenses"), {
+        title,
+        amount,
+        category: "salary",
+        note: `Employee Salary ID: ${docRef.id} | Paid via ${paymentMethod}`,
+        created_at: Timestamp.now(),
+      });
+    } catch (e) {
+      console.warn("Salary expense log skipped:", e);
+    }
+
+    // 2. If paid via cash, deduct from cashbox
+    if (paymentMethod === "cash") {
+      try {
+        await addDoc(collection(db, "cashbox_logs"), {
+          kind: "withdraw",
+          amount,
+          note: title,
+          ref_id: docRef.id,
+          created_at: Timestamp.now(),
+        });
+      } catch (e) {
+        console.warn("Salary cashbox log skipped:", e);
+      }
+    }
+  }
+
+  return { success: true, id: docRef.id };
+}
+
+export async function fsDeleteEmployeeSalary(id: string) {
+  try {
+    await fsMoveToRecycleBin("employee_salaries", id, "Salary Payment #" + id);
+    return { success: true };
+  } catch (_) {
+    await deleteDoc(doc(db, "employee_salaries", id));
+    return { success: true };
+  }
+}
+
+// ── Employee Daily Expenses & Allowances ───────────────────────────────────────
+export async function fsGetEmployeeExpenses() {
+  try {
+    const q = query(collection(db, "employee_expenses"), orderBy("created_at", "desc"));
+    const snap = await getDocs(q);
+    return snap.docs.map(d => ({
+      id: d.id,
+      ...d.data(),
+      created_at: d.data().created_at?.toDate?.()?.toISOString() || new Date().toISOString(),
+    }));
+  } catch (_) {
+    try {
+      const snap = await getDocs(collection(db, "employee_expenses"));
+      return snap.docs.map(d => ({
+        id: d.id,
+        ...d.data(),
+        created_at: d.data().created_at?.toDate?.()?.toISOString() || new Date().toISOString(),
+      }));
+    } catch (_) {
+      return [];
+    }
+  }
+}
+
+export async function fsCreateEmployeeExpense(data: any) {
+  const amount = Number(data.amount) || 0;
+  const empName = data.employee_name || "Employee";
+  const category = data.category || "food"; // food, travel, tea, bonus, other
+  const note = data.note || "";
+  const paymentMethod = data.payment_method || "cash";
+
+  const catLabel = category === "food" ? "খাবার ভাতা" : category === "travel" ? "যাতায়াত" : category === "tea" ? "নাস্তা/চা" : category === "bonus" ? "বোনাস" : "অন্যান্য";
+  const title = `[কর্মচারী খরচ] ${empName} (${catLabel}): ${note}`;
+
+  const docRef = await addDoc(collection(db, "employee_expenses"), {
+    employee_id: data.employee_id || null,
+    employee_name: empName,
+    category,
+    amount,
+    payment_method: paymentMethod,
+    date: data.date || new Date().toISOString().slice(0, 10),
+    note: note || null,
+    created_at: Timestamp.now(),
+  });
+
+  // Log in expenses
+  if (amount > 0) {
+    try {
+      await addDoc(collection(db, "expenses"), {
+        title,
+        amount,
+        category: "employee_expense",
+        note: `Employee Expense ID: ${docRef.id}`,
+        created_at: Timestamp.now(),
+      });
+    } catch (_) {}
+
+    // Deduct from cashbox if paid via cash
+    if (paymentMethod === "cash") {
+      try {
+        await addDoc(collection(db, "cashbox_logs"), {
+          kind: "withdraw",
+          amount,
+          note: title,
+          ref_id: docRef.id,
+          created_at: Timestamp.now(),
+        });
+      } catch (_) {}
+    }
+  }
+
+  return { success: true, id: docRef.id };
+}
+
+export async function fsDeleteEmployeeExpense(id: string) {
+  try {
+    await fsMoveToRecycleBin("employee_expenses", id, "Employee Expense #" + id);
+    return { success: true };
+  } catch (_) {
+    await deleteDoc(doc(db, "employee_expenses", id));
+    return { success: true };
+  }
+}
+
+// ── Employee Shopping / Clothing Draw (কর্মচারী কেনাকাটা) ──────────────────────────
+export async function fsGetEmployeeShoppings() {
+  try {
+    const q = query(collection(db, "employee_shoppings"), orderBy("created_at", "desc"));
+    const snap = await getDocs(q);
+    return snap.docs.map(d => ({
+      id: d.id,
+      ...d.data(),
+      created_at: d.data().created_at?.toDate?.()?.toISOString() || new Date().toISOString(),
+    }));
+  } catch (_) {
+    try {
+      const snap = await getDocs(collection(db, "employee_shoppings"));
+      return snap.docs.map(d => ({
+        id: d.id,
+        ...d.data(),
+        created_at: d.data().created_at?.toDate?.()?.toISOString() || new Date().toISOString(),
+      }));
+    } catch (_) {
+      return [];
+    }
+  }
+}
+
+export async function fsCreateEmployeeShopping(data: any) {
+  const empName = data.employee_name || "Employee";
+  const items = Array.isArray(data.items) ? data.items : [];
+  const totalAmount = Number(data.total_amount) || 0;
+  const paymentStatus = data.payment_status || "deduct_from_salary"; // deduct_from_salary, paid_cash, gift
+  const note = data.note || "";
+
+  // 1. Deduct stock from inventory for each item taken
+  for (const item of items) {
+    if (item.product_id) {
+      try {
+        const prodRef = doc(db, "products", item.product_id);
+        const prodSnap = await getDoc(prodRef);
+        if (prodSnap.exists()) {
+          const curStock = Number(prodSnap.data().stock) || 0;
+          const takeQty = Number(item.qty) || 1;
+          const newStock = Math.max(curStock - takeQty, 0);
+          await updateDoc(prodRef, {
+            stock: newStock,
+            updated_at: Timestamp.now(),
+          });
+        }
+      } catch (e) {
+        console.warn("Could not deduct stock for employee shopping:", e);
+      }
+    }
+  }
+
+  // 2. Save document
+  const docRef = await addDoc(collection(db, "employee_shoppings"), {
+    employee_id: data.employee_id || null,
+    employee_name: empName,
+    items,
+    total_amount: totalAmount,
+    payment_status: paymentStatus,
+    date: data.date || new Date().toISOString().slice(0, 10),
+    note: note || null,
+    created_at: Timestamp.now(),
+  });
+
+  // 3. If paid in cash, add to cashbox as income
+  if (paymentStatus === "paid_cash" && totalAmount > 0) {
+    try {
+      await addDoc(collection(db, "cashbox_logs"), {
+        kind: "deposit",
+        amount: totalAmount,
+        note: `[কর্মচারী কেনাকাটা নগদ আদায়] ${empName}: ${note || "পোশাক বিক্রয়"}`,
+        ref_id: docRef.id,
+        created_at: Timestamp.now(),
+      });
+    } catch (_) {}
+  }
+
+  return { success: true, id: docRef.id };
+}
+
+export async function fsDeleteEmployeeShopping(id: string) {
+  try {
+    await fsMoveToRecycleBin("employee_shoppings", id, "Employee Shopping #" + id);
+    return { success: true };
+  } catch (_) {
+    await deleteDoc(doc(db, "employee_shoppings", id));
+    return { success: true };
+  }
 }

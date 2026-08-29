@@ -58,6 +58,7 @@ export const ROUTE_PERMISSIONS: { prefix: string; perm: keyof PermissionSet }[] 
   { prefix: "/cash-management", perm: "cashbox" },
   { prefix: "/somiti", perm: "expenses" },
   { prefix: "/settings", perm: "settings" },
+  { prefix: "/employees", perm: "settings" },
   { prefix: "/purchases", perm: "purchases" },
 ];
 

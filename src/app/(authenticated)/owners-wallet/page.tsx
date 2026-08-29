@@ -16,6 +16,9 @@ import {
   TrendingDown,
   Home,
   ShoppingBag,
+  Shirt,
+  PackageCheck,
+  X,
   HeartPulse,
   User,
   MoreHorizontal,
@@ -23,7 +26,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useCachedQuery } from "@/hooks/use-cached-query";
-import { getOwnerWallet, type OwnerWalletEntry } from "@/lib/queries";
+import { getOwnerWallet, getProducts, type OwnerWalletEntry, type Product } from "@/lib/queries";
 import { useT } from "@/lib/i18n";
 import { fmtMoney, fmtDate, fmtDateTime } from "@/lib/format";
 import { Card } from "@/components/ui/card";
@@ -57,6 +60,11 @@ export default function OwnersWalletPage() {
   const { lang, t } = useT();
   const qc = useQueryClient();
   const { data: entries = [], isLoading } = useCachedQuery(["owner_wallet"], getOwnerWallet);
+  const { data: products = [] } = useCachedQuery(["products"], getProducts);
+
+  // Dress / Product Selector state
+  const [selectedItems, setSelectedItems] = useState<{ product_id: string; product_name: string; qty: number; unit_price: number; total: number }[]>([]);
+  const [prodSearch, setProdSearch] = useState("");
 
   // Filter States
   const [search, setSearch] = useState("");

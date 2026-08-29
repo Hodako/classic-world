@@ -1,12 +1,13 @@
-﻿"use client";
+"use client";
 
+import Link from "next/link";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCachedQuery } from "@/hooks/use-cached-query";
 import { PaginationBar, paginate } from "@/components/ui/pagination-bar";
 import { FAB } from "@/components/ui/fab";
 import { useState, useMemo, useRef, useEffect } from "react";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { Plus, RotateCcw, Pencil, Trash2, Search, Archive, Download, Eye, AlertCircle, MoreVertical, ShoppingCart, Minus, X, Scan } from "lucide-react";
+import { Plus, Pencil, Trash2, Search, Archive, Download, Eye, AlertCircle, MoreVertical, ShoppingCart, Minus, X, Scan, BarChart2, ArrowLeftRight, RefreshCw } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { getProducts, getSales, getCustomers, type Product } from "@/lib/queries";
 import { useT } from "@/lib/i18n";
@@ -39,20 +40,6 @@ export default function ProductsPage() {
   const isMobile = useIsMobile();
   const { data: productsData } = useCachedQuery(["products"], getProducts);
   const salesQuery = useCachedQuery(["sales"], getSales);
-
-  // Employee session check — hide sensitive price info from employees
-  const [isEmployee, setIsEmployee] = useState(() => {
-    if (typeof window === "undefined") return false;
-    try { return !!JSON.parse(localStorage.getItem("cw_active_employee_session") || "null"); } catch { return false; }
-  });
-  useEffect(() => {
-    const h = () => {
-      try { setIsEmployee(!!JSON.parse(localStorage.getItem("cw_active_employee_session") || "null")); } catch {}
-    };
-    window.addEventListener("hz-employee-switched", h);
-    window.addEventListener("storage", h);
-    return () => { window.removeEventListener("hz-employee-switched", h); window.removeEventListener("storage", h); };
-  }, []);
 
   useEffect(() => {
     if (productsData && productsData.length > 0) {
@@ -299,30 +286,29 @@ export default function ProductsPage() {
         : (langCode === "bn" ? "না" : "No")
     ]);
     downloadCsv(`products_${activeTab}_${exportDateStamp()}.csv`, headers, rows);
-    toast.success(langCode === "bn" ? "CSV ফাইল ডাউনলোড সফল হয়েছে!" : "CSV exported successfully!");
+    toast.success(langCode === "bn" ? "CSV ফাইল ডাউনলোড সফল হয়েছে!" : "CSV exported successfully!");
   }
 
   return (
     <div className="space-y-3">
-      {!isEmployee && (
-        <div className="flex items-center justify-between bg-secondary/20 px-3 py-1.5 rounded-lg border border-border/40 no-print">
-          <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
-            {lang === "bn" ? "স্টক এবং মূল্যায়ন পরিসংখ্যান" : "Stock & Valuation Statistics"}
-          </span>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-6 text-[10px] hover:bg-transparent text-primary hover:text-primary/80"
-            onClick={() => setStatsExpanded(!statsExpanded)}
-          >
-            {statsExpanded 
-              ? (lang === "bn" ? "লুকান ▲" : "Hide Stats ▲") 
-              : (lang === "bn" ? "পরিসংখ্যান দেখান ▼" : "Show Stats ▼")}
-          </Button>
-        </div>
-      )}
+      {/* Valuation & Top Header - Collapsible */}
+      <div className="flex items-center justify-between bg-secondary/20 px-3 py-1.5 rounded-lg border border-border/40 no-print">
+        <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+          {lang === "bn" ? "স্টক এবং মূল্যায়ন পরিসংখ্যান" : "Stock & Valuation Statistics"}
+        </span>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-6 text-[10px] hover:bg-transparent text-primary hover:text-primary/80"
+          onClick={() => setStatsExpanded(!statsExpanded)}
+        >
+          {statsExpanded 
+            ? (lang === "bn" ? "লুকান ▲" : "Hide Stats ▲") 
+            : (lang === "bn" ? "পরিসংখ্যান দেখান ▼" : "Show Stats ▼")}
+        </Button>
+      </div>
 
-      {!isEmployee && statsExpanded && (
+      {statsExpanded && (
         <div className="grid grid-cols-3 gap-2 sm:gap-3 transition-all duration-300">
           <Card className="p-2 sm:p-3 bg-gradient-to-br from-indigo-50/50 to-indigo-100/50 dark:from-indigo-950/20 dark:to-indigo-900/10 border-indigo-200/30">
             <div className="text-[8px] sm:text-[10px] text-muted-foreground uppercase tracking-wider">{t("stock_value")} ({t("buy")})</div>
@@ -333,7 +319,7 @@ export default function ProductsPage() {
             <div className="text-xs sm:text-base font-bold font-serif text-emerald-700 dark:text-emerald-400 mt-0.5">{fmtMoney(totalSaleValuation)}</div>
           </Card>
           <Card className="p-2 sm:p-3 bg-gradient-to-br from-amber-50/50 to-amber-100/50 dark:from-amber-950/20 dark:to-amber-900/10 border-amber-200/30">
-            <div className="text-[8px] sm:text-[10px] text-muted-foreground uppercase tracking-wider">{lang === "bn" ? "মোট বিক্রয় লাভ (র' প্রফিট)" : "Raw Sales Profit"}</div>
+            <div className="text-[8px] sm:text-[10px] text-muted-foreground uppercase tracking-wider">{lang === "bn" ? "মোট বিক্রয় লাভ (র' প্রফিট)" : "Raw Sales Profit"}</div>
             <div className="text-xs sm:text-base font-bold font-serif text-amber-700 dark:text-amber-400 mt-0.5">{fmtMoney(totalRawProfit)}</div>
           </Card>
         </div>
@@ -374,6 +360,17 @@ export default function ProductsPage() {
               </span>
             )}
           </Button>
+          <Link href="/product-analytics">
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-8 text-[10px] sm:text-xs text-primary border-primary/30 hover:bg-primary/10"
+              title={lang === "bn" ? "পণ্য অ্যানালিটিক্স" : "Product Analytics"}
+            >
+              <BarChart2 className="size-3.5 mr-1" />
+              {isMobile ? "" : (lang === "bn" ? "অ্যানালিটিক্স" : "Analytics")}
+            </Button>
+          </Link>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button size="sm" variant="outline" className="h-8 text-[10px] sm:text-xs">
@@ -390,6 +387,19 @@ export default function ProductsPage() {
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
+          <Button
+            size="sm"
+            variant="outline"
+            className="hidden md:inline-flex h-8 text-[10px] sm:text-xs text-emerald-600 border-emerald-500/30 hover:bg-emerald-500/10 gap-1 font-semibold"
+            title={lang === "bn" ? "কাস্টমারের সাথে পণ্য পরিবর্তন" : "Exchange Product"}
+            onClick={() => {
+              setExchangeProduct(null);
+              setExchangeOpen(true);
+            }}
+          >
+            <ArrowLeftRight className="size-3.5 text-emerald-600" />
+            <span>{lang === "bn" ? "এক্সচেঞ্জ" : "Exchange"}</span>
+          </Button>
           <Button size="sm" variant="outline" className="h-8 text-[10px] sm:text-xs" onClick={() => setBuyOpen(true)}>{t("buy")}</Button>
         </div>
       </div>
@@ -676,6 +686,10 @@ export default function ProductsPage() {
                 setReturnProduct(p);
                 setReturnOpen(true);
               }}
+              onExchange={() => {
+                setExchangeProduct(p);
+                setExchangeOpen(true);
+              }}
               onBuy={() => {
                 setBuyProduct(p.id);
                 setBuyOpen(true);
@@ -717,19 +731,6 @@ export default function ProductsPage() {
         }}
         presetProductId={buyProduct}
       />
-      <ExchangeProductDialog
-        open={exchangeOpen}
-        onOpenChange={setExchangeOpen}
-        products={productsData || []}
-        preselectedProduct={exchangeProduct}
-        onSuccess={() => {
-          qc.invalidateQueries({ queryKey: ["products"] });
-          qc.invalidateQueries({ queryKey: ["sales"] });
-          qc.invalidateQueries({ queryKey: ["returns"] });
-          qc.invalidateQueries({ queryKey: ["cashbox"] });
-        }}
-      />
-
       <ReturnDialog
         open={returnOpen}
         onOpenChange={setReturnOpen}
@@ -737,6 +738,19 @@ export default function ProductsPage() {
         onSuccess={() => {
           qc.invalidateQueries({ queryKey: ["products"] });
           qc.invalidateQueries({ queryKey: ["sales"] });
+        }}
+      />
+      <ExchangeProductDialog
+        open={exchangeOpen}
+        onOpenChange={setExchangeOpen}
+        products={productsData?.filter(p => !p.archived) || []}
+        preselectedProduct={exchangeProduct}
+        onSuccess={() => {
+          qc.invalidateQueries({ queryKey: ["products"] });
+          qc.invalidateQueries({ queryKey: ["sales"] });
+          qc.invalidateQueries({ queryKey: ["returns"] });
+          qc.invalidateQueries({ queryKey: ["cashbox"] });
+          qc.invalidateQueries({ queryKey: ["cashbox-balance"] });
         }}
       />
 
@@ -790,11 +804,12 @@ function ProductCard({
   onRestore,
   onDelete,
   onLongPress,
-  onBuy,
+  onExchange,
   t,
   isMobile,
   isPinned,
   onTogglePin,
+  onBuy,
 }: {
   p: Product;
   isLowStock: boolean;
@@ -805,6 +820,7 @@ function ProductCard({
   onRestore: () => void;
   onDelete: () => void;
   onLongPress: () => void;
+  onExchange?: () => void;
   onBuy?: () => void;
   t: (k: any) => string;
   isMobile: boolean;
@@ -860,6 +876,9 @@ function ProductCard({
                 🛒 {t("buy")} / Restock (ক্রয়)
               </button>
             )}
+            <button onClick={() => { setContextMenuOpen(false); onExchange && onExchange(); }} className="w-full text-left text-sm px-3 py-2.5 rounded-xl hover:bg-emerald-500/10 flex items-center gap-3 font-medium text-emerald-600 dark:text-emerald-400 transition-colors">
+              🔄 Exchange Item / পণ্য পরিবর্তন
+            </button>
             <button onClick={() => { setContextMenuOpen(false); onEdit(); }} className="w-full text-left text-sm px-3 py-2.5 rounded-xl hover:bg-muted flex items-center gap-3 font-medium transition-colors">
               ✏️ {t("edit")}
             </button>
@@ -1078,17 +1097,15 @@ function ReturnDialog({
       await createDirectProductReturnFn({
         data: {
           product_id: product.id,
-          product_name: product.name,
           qty: returnQty,
           return_price: returnPrice,
-          buy_price: product.buy_price || 0,
-          profit_adjustment: -(profitPerUnit * returnQty),
+          buy_date: buyDate,
           return_date: buyDate,
+          profit_adjustment: -(profitPerUnit * returnQty),
           note: note.trim() || null,
-          deduct_cashbox: true,
         },
       });
-      toast.success(`Product returned. ৳${(Number(price) * Number(qty)).toLocaleString()} deducted from cashbox.`);
+      toast.success(`Product returned. ৳${(returnPrice * returnQty).toLocaleString()} deducted from cashbox.`);
       onSuccess();
       onOpenChange(false);
     } catch (err: any) {
@@ -1158,7 +1175,6 @@ function ReturnDialog({
   );
 }
 
-
 function ExchangeProductDialog({
   open,
   onOpenChange,
@@ -1195,6 +1211,7 @@ function ExchangeProductDialog({
     }
   }, [preselectedProduct, products, open]);
 
+  // When returned product changes, auto-set return price
   const handleReturnedProductChange = (prodId: string) => {
     setReturnedProductId(prodId);
     const prod = products.find(p => p.id === prodId);
@@ -1203,6 +1220,7 @@ function ExchangeProductDialog({
     }
   };
 
+  // When new product changes, auto-set sell price
   const handleNewProductChange = (prodId: string) => {
     setNewProductId(prodId);
     const prod = products.find(p => p.id === prodId);
@@ -1220,7 +1238,7 @@ function ExchangeProductDialog({
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!returnedProductId || !newProductId) {
-      toast.error(lang === "bn" ? "ফেরত ও নতুন উভয় পণ্য নির্বাচন করুন" : "Please select both returned and replacement products");
+      toast.error("Please select both returned and replacement products");
       return;
     }
     setBusy(true);
@@ -1253,185 +1271,168 @@ function ExchangeProductDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto rounded-3xl p-5 sm:p-6 bg-card border-border/80 shadow-2xl">
-        <DialogHeader className="border-b border-border/60 pb-3">
-          <DialogTitle className="text-base sm:text-lg font-bold flex items-center gap-2">
-            <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
-              <RotateCcw className="size-4" />
+      <DialogContent className="max-w-lg rounded-3xl p-5 sm:p-6 bg-card border-border shadow-2xl">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 text-base font-bold">
+            <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
+              <ArrowLeftRight className="size-4" />
             </div>
             <span>{lang === "bn" ? "পণ্য এক্সচেঞ্জ / পরিবর্তন" : "Exchange Product with Customer"}</span>
           </DialogTitle>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4 pt-2">
-          {/* Returned Product Section */}
-          <div className="p-3.5 rounded-2xl bg-rose-500/5 border border-rose-500/20 space-y-3">
+          {/* Section 1: Customer Returned Product */}
+          <div className="p-3.5 rounded-2xl bg-muted/40 border border-border/80 space-y-3">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-rose-600 dark:text-rose-400 flex items-center gap-1.5">
-                <span>1.</span> {lang === "bn" ? "কাস্টমারের ফেরত দেওয়া পণ্য (স্টকে যোগ হবে)" : "Returned Product (Restocked)"}
-              </span>
-              <span className="text-[11px] font-mono font-bold text-rose-600 dark:text-rose-400">
-                ৳{fmtMoney(returnedTotal)}
+              <span className="text-xs font-bold text-destructive flex items-center gap-1.5">
+                <span>🔄 1. কাস্টমার যা ফেরত দিচ্ছে (Returned Item)</span>
               </span>
             </div>
 
-            <div className="space-y-1.5">
-              <Label className="text-xs">{lang === "bn" ? "ফেরত পণ্য" : "Returned Item"}</Label>
+            <div className="space-y-1">
+              <Label className="text-xs font-medium">Select Returned Product *</Label>
               <select
+                required
                 value={returnedProductId}
                 onChange={e => handleReturnedProductChange(e.target.value)}
-                className="w-full h-9 rounded-xl border border-input bg-input px-2 text-xs font-medium"
+                className="w-full h-9 rounded-xl border border-input bg-input px-3 text-xs"
               >
-                <option value="">-- {lang === "bn" ? "পণ্য নির্বাচন করুন" : "Select Product"} --</option>
+                <option value="">-- Choose Product --</option>
                 {products.map(p => (
                   <option key={p.id} value={p.id}>
-                    {p.name} (৳{p.sell_price})
+                    {p.name} (Stock: {p.stock}, Sell: ৳{p.sell_price})
                   </option>
                 ))}
               </select>
             </div>
 
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
-                <Label className="text-[11px] text-muted-foreground">{lang === "bn" ? "ফেরত পরিমাণ" : "Returned Qty"}</Label>
+                <Label className="text-xs font-medium">Return Qty *</Label>
                 <Input
                   type="number"
                   min="1"
-                  className="h-8 text-xs rounded-xl"
+                  required
                   value={returnedQty}
                   onChange={e => setReturnedQty(e.target.value)}
+                  className="h-9 rounded-xl text-xs"
                 />
               </div>
               <div className="space-y-1">
-                <Label className="text-[11px] text-muted-foreground">{lang === "bn" ? "ফেরত রেট (৳)" : "Return Price Rate (৳)"}</Label>
+                <Label className="text-xs font-medium">Return Unit Price (৳) *</Label>
                 <Input
                   type="number"
+                  min="0"
                   step="any"
-                  className="h-8 text-xs rounded-xl font-mono"
+                  required
                   value={returnedPrice}
                   onChange={e => setReturnedPrice(e.target.value)}
+                  className="h-9 rounded-xl text-xs font-num"
                 />
               </div>
             </div>
           </div>
 
-          {/* New Product Chosen Section */}
+          {/* Section 2: Replacement Product Taken by Customer */}
           <div className="p-3.5 rounded-2xl bg-emerald-500/5 border border-emerald-500/20 space-y-3">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
-                <span>2.</span> {lang === "bn" ? "নতুন নেওয়া পণ্য (স্টক কমবে)" : "Replacement Product (Stock Deducted)"}
-              </span>
-              <span className="text-[11px] font-mono font-bold text-emerald-600 dark:text-emerald-400">
-                ৳{fmtMoney(newTotal)}
+                <span>✨ 2. কাস্টমার নতুন যা নিচ্ছে (Replacement Item)</span>
               </span>
             </div>
 
-            <div className="space-y-1.5">
-              <Label className="text-xs">{lang === "bn" ? "নতুন পণ্য" : "New Item"}</Label>
+            <div className="space-y-1">
+              <Label className="text-xs font-medium">Select New Replacement Item *</Label>
               <select
+                required
                 value={newProductId}
                 onChange={e => handleNewProductChange(e.target.value)}
-                className="w-full h-9 rounded-xl border border-input bg-input px-2 text-xs font-medium"
+                className="w-full h-9 rounded-xl border border-input bg-input px-3 text-xs"
               >
-                <option value="">-- {lang === "bn" ? "নতুন পণ্য নির্বাচন করুন" : "Select Replacement Product"} --</option>
-                {products.filter(p => p.id !== returnedProductId).map(p => (
-                  <option key={p.id} value={p.id}>
-                    {p.name} (স্টক: {p.stock} • ৳{p.sell_price})
+                <option value="">-- Choose Replacement Product --</option>
+                {products.map(p => (
+                  <option key={p.id} value={p.id} disabled={p.stock <= 0}>
+                    {p.name} (Available: {p.stock}, Sell: ৳{p.sell_price}) {p.stock <= 0 ? "[Out of stock]" : ""}
                   </option>
                 ))}
               </select>
             </div>
 
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
-                <Label className="text-[11px] text-muted-foreground">{lang === "bn" ? "নতুন পরিমাণ" : "New Qty"}</Label>
+                <Label className="text-xs font-medium">New Qty *</Label>
                 <Input
                   type="number"
                   min="1"
-                  className="h-8 text-xs rounded-xl"
+                  max={chosenNewProduct ? chosenNewProduct.stock : undefined}
+                  required
                   value={newQty}
                   onChange={e => setNewQty(e.target.value)}
+                  className="h-9 rounded-xl text-xs"
                 />
               </div>
               <div className="space-y-1">
-                <Label className="text-[11px] text-muted-foreground">{lang === "bn" ? "নতুন বিক্রয় মূল্য (৳)" : "Sell Price (৳)"}</Label>
+                <Label className="text-xs font-medium">New Unit Price (৳) *</Label>
                 <Input
                   type="number"
+                  min="0"
                   step="any"
-                  className="h-8 text-xs rounded-xl font-mono"
+                  required
                   value={newSellPrice}
                   onChange={e => setNewSellPrice(e.target.value)}
-                />
-              </div>
-            </div>
-
-            {chosenNewProduct && (
-              <div className="text-[11px] text-muted-foreground">
-                {lang === "bn" ? "বর্তমান স্টক:" : "Current Stock:"}{" "}
-                <span className="font-bold text-foreground">{chosenNewProduct.stock}</span>
-              </div>
-            )}
-          </div>
-
-          {/* Balance & Customer Details */}
-          <div className="p-3.5 rounded-2xl bg-muted/40 border border-border/80 space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-foreground">
-                {lang === "bn" ? "পার্থক্য / ক্যাশ অ্যাডজাস্টমেন্ট:" : "Cash Adjustment:"}
-              </span>
-              <span className={`text-sm font-black font-mono ${cashDifference > 0 ? "text-emerald-600 dark:text-emerald-400" : cashDifference < 0 ? "text-rose-500" : "text-foreground"}`}>
-                {cashDifference > 0
-                  ? (lang === "bn" ? `+৳${fmtMoney(cashDifference)} (কাস্টমার দিবে)` : `+৳${fmtMoney(cashDifference)} (Collect from Customer)`)
-                  : cashDifference < 0
-                  ? (lang === "bn" ? `-৳${fmtMoney(Math.abs(cashDifference))} (কাস্টমারকে ফেরত)` : `-৳${fmtMoney(Math.abs(cashDifference))} (Refund Customer)`)
-                  : (lang === "bn" ? "৳০ (সমান সমান)" : "৳0 (Even Exchange)")}
-              </span>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2">
-              <div className="space-y-1">
-                <Label className="text-[11px] text-muted-foreground">{lang === "bn" ? "ক্রেতার নাম (ঐচ্ছিক)" : "Customer Name"}</Label>
-                <Input
-                  type="text"
-                  className="h-8 text-xs rounded-xl"
-                  placeholder="e.g. Md Rahim"
-                  value={customerName}
-                  onChange={e => setCustomerName(e.target.value)}
-                />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-[11px] text-muted-foreground">{lang === "bn" ? "নোট (ঐচ্ছিক)" : "Note"}</Label>
-                <Input
-                  type="text"
-                  className="h-8 text-xs rounded-xl"
-                  placeholder="e.g. Size exchange"
-                  value={note}
-                  onChange={e => setNote(e.target.value)}
+                  className="h-9 rounded-xl text-xs font-num"
                 />
               </div>
             </div>
           </div>
 
-          <DialogFooter className="gap-2 pt-2">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={busy}
-              onClick={() => onOpenChange(false)}
-              className="rounded-xl text-xs h-9 cursor-pointer"
-            >
-              {lang === "bn" ? "বাতিল" : "Cancel"}
+          {/* Section 3: Live Financial Difference & Cashbox Impact */}
+          <div className="p-3.5 rounded-2xl bg-card border border-border space-y-2 text-xs">
+            <div className="flex justify-between text-muted-foreground">
+              <span>ফেরত মূল্যের মোট (Returned Value):</span>
+              <span className="font-bold text-foreground font-num">৳{returnedTotal}</span>
+            </div>
+            <div className="flex justify-between text-muted-foreground">
+              <span>নতুন পণ্যের মোট (New Value):</span>
+              <span className="font-bold text-foreground font-num">৳{newTotal}</span>
+            </div>
+            <div className="pt-2 border-t border-border flex items-center justify-between font-bold">
+              <span>ক্যাশ সমন্বয় / Cash Adjustment:</span>
+              {cashDifference > 0 ? (
+                <span className="text-emerald-600 dark:text-emerald-400 font-num">
+                  + ৳{cashDifference} (কাস্টমার ক্যাশ দেবে / Inflow)
+                </span>
+              ) : cashDifference < 0 ? (
+                <span className="text-destructive font-num">
+                  - ৳{Math.abs(cashDifference)} (কাস্টমারকে ফেরত দিন / Outflow)
+                </span>
+              ) : (
+                <span className="text-muted-foreground font-num">৳0 (সমান মূল্য / Even)</span>
+              )}
+            </div>
+          </div>
+
+          <div className="space-y-1">
+            <Label className="text-xs font-medium">Customer Name or Note (Optional)</Label>
+            <Input
+              placeholder="e.g. Size exchange for Md Rahim / Phone"
+              value={note}
+              onChange={e => setNote(e.target.value)}
+              className="h-9 rounded-xl text-xs"
+            />
+          </div>
+
+          <DialogFooter className="gap-2 pt-2 border-t">
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+              {t("cancel")}
             </Button>
             <Button
               type="submit"
-              size="sm"
               disabled={busy || !returnedProductId || !newProductId}
-              className="rounded-xl text-xs h-9 font-semibold bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer"
+              className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-sm"
             >
-              {busy
-                ? (lang === "bn" ? "প্রসেস হচ্ছে..." : "Processing...")
-                : (lang === "bn" ? "এক্সচেঞ্জ নিশ্চিত করুন" : "Confirm Exchange")}
+              {busy ? "Processing..." : "Confirm Product Exchange"}
             </Button>
           </DialogFooter>
         </form>

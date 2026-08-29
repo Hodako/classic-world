@@ -1,4 +1,8 @@
 import {
+  getEmployeesFn,
+  getEmployeeSalariesFn,
+  getEmployeeExpensesFn,
+  getEmployeeShoppingsFn,
   getProductsFn,
   getPartiesFn,
   getSalesFn,
@@ -114,3 +118,69 @@ export const getReminders = () => getRemindersFn() as unknown as Promise<Reminde
 export async function signedImage(path: string | null): Promise<string | null> {
   return path || null;
 }
+export type Employee = {
+  id: string;
+  name: string;
+  phone?: string | null;
+  email?: string | null;
+  designation?: string;
+  base_salary?: number;
+  status: "active" | "inactive";
+  permissions?: {
+    can_sales?: boolean;
+    can_customers?: boolean;
+    can_returns?: boolean;
+    can_products?: boolean;
+    can_expenses?: boolean;
+    can_reports?: boolean;
+    can_delete?: boolean;
+    can_discount?: boolean;
+  };
+  notes?: string | null;
+  created_at: string;
+};
+
+export type EmployeeSalary = {
+  id: string;
+  employee_id: string;
+  employee_name: string;
+  month: string;
+  amount: number;
+  base_salary?: number;
+  deductions?: number;
+  bonus?: number;
+  payment_method: string;
+  payment_date: string;
+  status: string;
+  note?: string | null;
+  created_at: string;
+};
+
+export type EmployeeExpense = {
+  id: string;
+  employee_id?: string | null;
+  employee_name: string;
+  category: string;
+  amount: number;
+  payment_method: string;
+  date: string;
+  note?: string | null;
+  created_at: string;
+};
+
+export type EmployeeShopping = {
+  id: string;
+  employee_id?: string | null;
+  employee_name: string;
+  items: { product_id: string; product_name: string; qty: number; unit_price: number; total: number }[];
+  total_amount: number;
+  payment_status: "deduct_from_salary" | "paid_cash" | "gift";
+  date: string;
+  note?: string | null;
+  created_at: string;
+};
+
+export const getEmployees = () => getEmployeesFn() as unknown as Promise<Employee[]>;
+export const getEmployeeSalaries = () => getEmployeeSalariesFn() as unknown as Promise<EmployeeSalary[]>;
+export const getEmployeeExpenses = () => getEmployeeExpensesFn() as unknown as Promise<EmployeeExpense[]>;
+export const getEmployeeShoppings = () => getEmployeeShoppingsFn() as unknown as Promise<EmployeeShopping[]>;

@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useQueryClient } from "@tanstack/react-query";
 import { useCachedQuery } from "@/hooks/use-cached-query";
@@ -39,6 +39,20 @@ export default function ProductsPage() {
   const isMobile = useIsMobile();
   const { data: productsData } = useCachedQuery(["products"], getProducts);
   const salesQuery = useCachedQuery(["sales"], getSales);
+
+  // Employee session check — hide sensitive price info from employees
+  const [isEmployee, setIsEmployee] = useState(() => {
+    if (typeof window === "undefined") return false;
+    try { return !!JSON.parse(localStorage.getItem("cw_active_employee_session") || "null"); } catch { return false; }
+  });
+  useEffect(() => {
+    const h = () => {
+      try { setIsEmployee(!!JSON.parse(localStorage.getItem("cw_active_employee_session") || "null")); } catch {}
+    };
+    window.addEventListener("hz-employee-switched", h);
+    window.addEventListener("storage", h);
+    return () => { window.removeEventListener("hz-employee-switched", h); window.removeEventListener("storage", h); };
+  }, []);
 
   useEffect(() => {
     if (productsData && productsData.length > 0) {
@@ -283,29 +297,30 @@ export default function ProductsPage() {
         : (langCode === "bn" ? "না" : "No")
     ]);
     downloadCsv(`products_${activeTab}_${exportDateStamp()}.csv`, headers, rows);
-    toast.success(langCode === "bn" ? "CSV ফাইল ডাউনলোড সফল হয়েছে!" : "CSV exported successfully!");
+    toast.success(langCode === "bn" ? "CSV ফাইল ডাউনলোড সফল হয়েছে!" : "CSV exported successfully!");
   }
 
   return (
     <div className="space-y-3">
-      {/* Valuation & Top Header - Collapsible */}
-      <div className="flex items-center justify-between bg-secondary/20 px-3 py-1.5 rounded-lg border border-border/40 no-print">
-        <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
-          {lang === "bn" ? "স্টক এবং মূল্যায়ন পরিসংখ্যান" : "Stock & Valuation Statistics"}
-        </span>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-6 text-[10px] hover:bg-transparent text-primary hover:text-primary/80"
-          onClick={() => setStatsExpanded(!statsExpanded)}
-        >
-          {statsExpanded 
-            ? (lang === "bn" ? "লুকান ▲" : "Hide Stats ▲") 
-            : (lang === "bn" ? "পরিসংখ্যান দেখান ▼" : "Show Stats ▼")}
-        </Button>
-      </div>
+      {!isEmployee && (
+        <div className="flex items-center justify-between bg-secondary/20 px-3 py-1.5 rounded-lg border border-border/40 no-print">
+          <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+            {lang === "bn" ? "স্টক এবং মূল্যায়ন পরিসংখ্যান" : "Stock & Valuation Statistics"}
+          </span>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-6 text-[10px] hover:bg-transparent text-primary hover:text-primary/80"
+            onClick={() => setStatsExpanded(!statsExpanded)}
+          >
+            {statsExpanded 
+              ? (lang === "bn" ? "লুকান ▲" : "Hide Stats ▲") 
+              : (lang === "bn" ? "পরিসংখ্যান দেখান ▼" : "Show Stats ▼")}
+          </Button>
+        </div>
+      )}
 
-      {statsExpanded && (
+      {!isEmployee && statsExpanded && (
         <div className="grid grid-cols-3 gap-2 sm:gap-3 transition-all duration-300">
           <Card className="p-2 sm:p-3 bg-gradient-to-br from-indigo-50/50 to-indigo-100/50 dark:from-indigo-950/20 dark:to-indigo-900/10 border-indigo-200/30">
             <div className="text-[8px] sm:text-[10px] text-muted-foreground uppercase tracking-wider">{t("stock_value")} ({t("buy")})</div>
@@ -316,7 +331,7 @@ export default function ProductsPage() {
             <div className="text-xs sm:text-base font-bold font-serif text-emerald-700 dark:text-emerald-400 mt-0.5">{fmtMoney(totalSaleValuation)}</div>
           </Card>
           <Card className="p-2 sm:p-3 bg-gradient-to-br from-amber-50/50 to-amber-100/50 dark:from-amber-950/20 dark:to-amber-900/10 border-amber-200/30">
-            <div className="text-[8px] sm:text-[10px] text-muted-foreground uppercase tracking-wider">{lang === "bn" ? "মোট বিক্রয় লাভ (র' প্রফিট)" : "Raw Sales Profit"}</div>
+            <div className="text-[8px] sm:text-[10px] text-muted-foreground uppercase tracking-wider">{lang === "bn" ? "মোট বিক্রয় লাভ (র' প্রফিট)" : "Raw Sales Profit"}</div>
             <div className="text-xs sm:text-base font-bold font-serif text-amber-700 dark:text-amber-400 mt-0.5">{fmtMoney(totalRawProfit)}</div>
           </Card>
         </div>
@@ -1024,6 +1039,7 @@ function ReturnDialog({
   const { t } = useT();
   const [qty, setQty] = useState("1");
   const [price, setPrice] = useState("");
+  const [buyDate, setBuyDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -1031,6 +1047,7 @@ function ReturnDialog({
     if (product) {
       setQty("1");
       setPrice(String(product.sell_price || ""));
+      setBuyDate(new Date().toISOString().slice(0, 10));
       setNote("");
     }
   }, [product, open]);
@@ -1040,15 +1057,23 @@ function ReturnDialog({
     if (!product) return;
     setBusy(true);
     try {
+      const returnQty = Number(qty) || 0;
+      const returnPrice = Number(price) || 0;
+      const profitPerUnit = returnPrice - (product.buy_price || 0);
       await createDirectProductReturnFn({
         data: {
           product_id: product.id,
-          qty: Number(qty) || 0,
-          return_price: Number(price) || 0,
+          product_name: product.name,
+          qty: returnQty,
+          return_price: returnPrice,
+          buy_price: product.buy_price || 0,
+          profit_adjustment: -(profitPerUnit * returnQty),
+          return_date: buyDate,
           note: note.trim() || null,
+          deduct_cashbox: true,
         },
       });
-      toast.success("Product returned successfully");
+      toast.success(`Product returned. ৳${(Number(price) * Number(qty)).toLocaleString()} deducted from cashbox.`);
       onSuccess();
       onOpenChange(false);
     } catch (err: any) {
@@ -1073,6 +1098,16 @@ function ReturnDialog({
               required
               value={qty}
               onChange={(e) => setQty(e.target.value)}
+            />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs">Original Buy / Sale Date</Label>
+            <Input
+              type="date"
+              required
+              value={buyDate}
+              onChange={(e) => setBuyDate(e.target.value)}
+              max={new Date().toISOString().slice(0, 10)}
             />
           </div>
           <div className="space-y-1">

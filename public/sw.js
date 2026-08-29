@@ -1,10 +1,17 @@
-const CACHE_NAME = "classicworld-pwa-v50";
+const CACHE_NAME = "classicworld-pwa-v51";
 
 const PRECACHE_ASSETS = [
   "/manifest.json",
   "/logo.png",
   "/icon-512.png",
   "/apple-touch-icon.png",
+  "/icons/sales-kpi.svg",
+  "/icons/wallet.svg",
+  "/icons/sell_icon.png",
+  "/icons/profit_icon.png",
+  "/icons/cashbox_icon.png",
+  "/icons/samity_icon.png",
+  "/icons/online_sale_icon.png",
 ];
 
 // ── Install: Pre-cache static assets & skip waiting ──────────────────────────

@@ -55,7 +55,10 @@ export default function AuthPage() {
       window.localStorage.setItem("auth_token", token);
     }
     login(u, token);
-    router.replace("/dashboard");
+    if (typeof window !== "undefined") {
+      sessionStorage.setItem("app_pin_unlocked", "true");
+      window.location.href = "/dashboard";
+    }
   }
 
   // ─── Sign-In (Phone or Email) ───────────────────────────────

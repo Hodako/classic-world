@@ -80,7 +80,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className="antialiased site-bg text-foreground min-h-screen relative overflow-x-hidden" suppressHydrationWarning>
+      <head>
         <script
           id="theme-initializer"
           dangerouslySetInnerHTML={{
@@ -121,7 +121,9 @@ export default function RootLayout({
             `,
           }}
         />
-        <div className="content relative z-10 w-full min-h-screen">
+      </head>
+      <body className="antialiased site-bg text-foreground min-h-screen relative overflow-x-hidden" suppressHydrationWarning>
+        <div className="content relative z-10 w-full min-h-screen" suppressHydrationWarning>
           <Providers>
             {children}
             <PwaInstallPrompt />

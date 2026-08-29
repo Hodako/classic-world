@@ -12,8 +12,12 @@ import {
   where,
   increment,
   Timestamp,
+  limit,
 } from "firebase/firestore";
 import { db, auth } from "./firebase";
+import { clearAuthProfile } from "./local-cache";
+import { clearQueryCache } from "./query-cache";
+import * as jose from "jose";
 
 // Helper to convert Firestore documents into clean JSON objects
 function docToData<T = any>(docSnap: any): T {
@@ -32,6 +36,80 @@ function docToData<T = any>(docSnap: any): T {
     ...data,
     created_at: createdAtStr,
   } as T;
+}
+
+// ── 7-Day Recycle Bin System ──────────────────────────────────────────────────
+export async function fsMoveToRecycleBin(collectionName: string, id: string, label?: string) {
+  try {
+    const docRef = doc(db, collectionName, id);
+    const snap = await getDoc(docRef);
+    if (snap.exists()) {
+      const data = docToData(snap);
+      const user = fsGetCurrentUser();
+      const now = new Date();
+      const expiresAt = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000); // 7 days retention
+      
+      const recycleDocRef = doc(db, "recycle_bin", `${collectionName}_${id}`);
+      await setDoc(recycleDocRef, {
+        original_id: id,
+        collection_name: collectionName,
+        data: data,
+        label: label || data.name || data.invoice_no || data.title || data.full_name || id,
+        deleted_by: user?.email || user?.username || "user",
+        deleted_at: now.toISOString(),
+        expires_at: expiresAt.toISOString(),
+      });
+    }
+  } catch (err) {
+    console.warn("fsMoveToRecycleBin error:", err);
+  }
+}
+
+export async function fsGetRecycleBin() {
+  try {
+    const snap = await getDocs(collection(db, "recycle_bin"));
+    const now = new Date().toISOString();
+    return snap.docs
+      .map(docToData)
+      .filter((item: any) => !item.expires_at || item.expires_at >= now)
+      .sort((a: any, b: any) => (b.deleted_at || "").localeCompare(a.deleted_at || ""));
+  } catch (err) {
+    return [];
+  }
+}
+
+export async function fsRestoreFromRecycleBin(recycleDocId: string) {
+  try {
+    const recycleRef = doc(db, "recycle_bin", recycleDocId);
+    const snap = await getDoc(recycleRef);
+    if (!snap.exists()) {
+      throw new Error("Item not found in recycle bin or expired.");
+    }
+    const item = snap.data();
+    const originalId = item.original_id;
+    const collectionName = item.collection_name;
+    const data = item.data;
+
+    // Restore back to original collection
+    const originalDocRef = doc(db, collectionName, originalId);
+    await setDoc(originalDocRef, data);
+
+    // Delete from recycle_bin
+    await deleteDoc(recycleRef);
+
+    return { success: true, restored: true, originalId, collectionName };
+  } catch (err: any) {
+    throw new Error(err.message || "Failed to restore item.");
+  }
+}
+
+export async function fsPermanentDeleteRecycleBin(recycleDocId: string) {
+  try {
+    await deleteDoc(doc(db, "recycle_bin", recycleDocId));
+    return { success: true, id: recycleDocId };
+  } catch (err: any) {
+    throw new Error(err.message || "Failed to permanently delete item.");
+  }
 }
 
 // ── Products ─────────────────────────────────────────────────────────────────
@@ -83,6 +161,7 @@ export async function fsUpdateProduct(id: string, data: any) {
 }
 
 export async function fsDeleteProduct(id: string) {
+  await fsMoveToRecycleBin("products", id, "Product #" + id);
   const docRef = doc(db, "products", id);
   await deleteDoc(docRef);
   return { success: true, id };
@@ -301,6 +380,7 @@ export async function fsCancelCourierOrder(id: string) {
 }
 
 export async function fsDeleteSale(id: string) {
+  await fsMoveToRecycleBin("sales", id, "Sale #" + id);
   const docRef = doc(db, "sales", id);
   await deleteDoc(docRef);
   return { success: true, id };
@@ -397,6 +477,7 @@ export async function fsCreatePurchase(data: any) {
 
 export async function fsDeletePurchase(id: string) {
   try {
+    await fsMoveToRecycleBin("purchases", id, "Purchase #" + id);
     const docRef = doc(db, "purchases", id);
     const snap = await getDoc(docRef);
     if (snap.exists()) {
@@ -543,6 +624,7 @@ export async function fsCreateExpense(data: any) {
 }
 
 export async function fsDeleteExpense(id: string) {
+  await fsMoveToRecycleBin("expenses", id, "Expense #" + id);
   await deleteDoc(doc(db, "expenses", id));
   return { success: true, id };
 }
@@ -634,6 +716,7 @@ export async function fsCreateOwnerWalletEntry(data: any) {
   const amount = Number(data.amount) || 0;
   const category = data.category || "personal";
   const note = data.note || "";
+  const cutFromProfit = data.cut_from_profit !== false;
   const catLabel = category === "family" ? "পরিবার খরচ" : category === "bazar" ? "বাজার খরচ" : category === "home_rent" ? "বাসা ভাড়া" : category === "medical" ? "চিকিৎসা" : "ব্যক্তিগত";
   const title = `[মালিকের খরচ] ${catLabel}: ${note || "ব্যক্তিগত উত্তোলন"}`;
 
@@ -641,10 +724,11 @@ export async function fsCreateOwnerWalletEntry(data: any) {
     amount,
     category,
     note: note || null,
+    cut_from_profit: cutFromProfit,
     created_at: Timestamp.now(),
   });
 
-  // 1. Log in cashbox as withdrawal to reduce cash balance
+  // 1. Log in cashbox as withdrawal to reduce cash balance (Always)
   if (amount > 0) {
     try {
       await addDoc(collection(db, "cashbox_logs"), {
@@ -658,17 +742,19 @@ export async function fsCreateOwnerWalletEntry(data: any) {
       console.warn("Cashbox owner wallet log skipped:", err);
     }
 
-    // 2. Log in expenses under owner_personal category to deduct from profit
-    try {
-      await addDoc(collection(db, "expenses"), {
-        title,
-        amount,
-        category: "owner_personal",
-        note: `Owner Wallet ID: ${docRef.id} - ${note}`,
-        created_at: Timestamp.now(),
-      });
-    } catch (err) {
-      console.warn("Expense owner wallet log skipped:", err);
+    // 2. Log in expenses under owner_personal category ONLY if cutFromProfit is true!
+    if (cutFromProfit) {
+      try {
+        await addDoc(collection(db, "expenses"), {
+          title,
+          amount,
+          category: "owner_personal",
+          note: `Owner Wallet ID: ${docRef.id} - ${note}`,
+          created_at: Timestamp.now(),
+        });
+      } catch (err) {
+        console.warn("Expense owner wallet log skipped:", err);
+      }
     }
   }
 
@@ -676,6 +762,7 @@ export async function fsCreateOwnerWalletEntry(data: any) {
 }
 
 export async function fsDeleteOwnerWalletEntry(id: string) {
+  await fsMoveToRecycleBin("owner_wallet", id, "Owner Wallet #" + id);
   await deleteDoc(doc(db, "owner_wallet", id));
   try {
     const cbSnap = await getDocs(query(collection(db, "cashbox_logs"), where("ref_id", "==", id)));
@@ -791,6 +878,7 @@ export async function fsUpdateSomiti(id: string, data: any) {
 
 export async function fsDeleteSomiti(id: string) {
   try {
+    await fsMoveToRecycleBin("somiti", id, "Somiti #" + id);
     const q = query(collection(db, "cashbox_logs"), where("ref_id", "==", id));
     const snap = await getDocs(q);
     for (const logDoc of snap.docs) {
@@ -828,6 +916,7 @@ export async function fsUpdateParty(id: string, data: any) {
 }
 
 export async function fsDeleteParty(id: string) {
+  await fsMoveToRecycleBin("parties", id, "Party #" + id);
   await deleteDoc(doc(db, "parties", id));
   return { success: true, id };
 }
@@ -859,6 +948,7 @@ export async function fsUpdateCustomer(id: string, data: any) {
 }
 
 export async function fsDeleteCustomer(id: string) {
+  await fsMoveToRecycleBin("customers", id, "Customer #" + id);
   await deleteDoc(doc(db, "customers", id));
   return { success: true, id };
 }
@@ -1004,11 +1094,19 @@ export async function fsGetReturns() {
 
 export async function fsCreateReturn(data: any) {
   const qty = Number(data.qty) || 1;
+  const returnPrice = Number(data.return_price) || 0;
+  const profitAdj = Number(data.profit_adjustment) || 0;
+  const returnDate = data.return_date || new Date().toISOString().slice(0, 10);
+
   const docRef = await addDoc(collection(db, "returns"), {
     sale_id: data.sale_id || null,
     product_id: data.product_id || null,
     product_name: data.product_name || "Returned Item",
     qty,
+    return_price: returnPrice,
+    buy_price: Number(data.buy_price) || 0,
+    profit_adjustment: profitAdj,
+    return_date: returnDate,
     note: data.note || null,
     created_at: Timestamp.now(),
   });
@@ -1021,6 +1119,23 @@ export async function fsCreateReturn(data: any) {
       });
     } catch (err) {
       console.warn("Stock restore on return skipped:", err);
+    }
+  }
+
+  // Deduct refund amount from cashbox
+  if (data.deduct_cashbox && returnPrice > 0) {
+    try {
+      const refundTotal = returnPrice * qty;
+      await addDoc(collection(db, "cashbox"), {
+        type: "return_deduction",
+        amount: -refundTotal,
+        note: `Product return: ${data.product_name || "item"} ×${qty}`,
+        return_id: docRef.id,
+        return_date: returnDate,
+        created_at: Timestamp.now(),
+      });
+    } catch (err) {
+      console.warn("Cashbox deduction on return skipped:", err);
     }
   }
 
@@ -1074,23 +1189,149 @@ export async function fsDeleteReminder(id: string) {
 }
 
 // ── License Verification & User Management ───────────────────────────────────
+export async function fsGenerateOwnerLicenseKey(data: { durationDays?: number; employeeLimit?: number; note?: string; businessName?: string }) {
+  const randomPart = Math.random().toString(36).substring(2, 6).toUpperCase() + "-" +
+                     Math.random().toString(36).substring(2, 6).toUpperCase() + "-" +
+                     Math.random().toString(36).substring(2, 6).toUpperCase();
+  const key = `CW-${randomPart}`;
+  const now = new Date().toISOString();
+
+  await setDoc(doc(db, "licenses", key), {
+    key,
+    type: "owner",
+    status: "unused",
+    duration_days: Number(data.durationDays) || 365,
+    employee_limit: Number(data.employeeLimit) || 5,
+    business_name: data.businessName || "",
+    note: data.note || "",
+    created_at: now,
+  });
+
+  return { success: true, key };
+}
+
+export async function fsGenerateEmployeeLicenseKey(data: {
+  employeeName: string;
+  allowedPages?: string[];
+  allowedKpis?: string[];
+  permissions?: any;
+  note?: string;
+}) {
+  const user = fsGetCurrentUser();
+  const randomPart = Math.random().toString(36).substring(2, 6).toUpperCase() + "-" +
+                     Math.random().toString(36).substring(2, 6).toUpperCase() + "-" +
+                     Math.random().toString(36).substring(2, 6).toUpperCase();
+  const key = `EMP-${randomPart}`;
+  const now = new Date().toISOString();
+
+  await setDoc(doc(db, "licenses", key), {
+    key,
+    type: "employee",
+    status: "unused",
+    owner_uid: user?.id || user?.email || "owner",
+    business_name: user?.business_name || "Classic World",
+    employee_name: data.employeeName || "Employee",
+    allowed_pages: data.allowedPages || ["/dashboard", "/sales", "/products"],
+    allowed_kpis: data.allowedKpis || ["sell_kpi", "total_stock", "today_sales"],
+    permissions: data.permissions || {
+      dashboard: true,
+      sales: true,
+      products: true,
+      parties: false,
+      purchases: false,
+      expenses: false,
+      reports: false,
+      settings: false,
+      cashbox: false,
+    },
+    note: data.note || "",
+    created_at: now,
+  });
+
+  return { success: true, key };
+}
+
+export async function fsListLicenses(type?: "owner" | "employee") {
+  try {
+    const snap = await getDocs(collection(db, "licenses"));
+    const all = snap.docs.map(docToData);
+    if (type) {
+      return all.filter((l: any) => l.type === type);
+    }
+    return all;
+  } catch (err) {
+    return [];
+  }
+}
+
+export async function fsRevokeLicense(key: string) {
+  try {
+    await updateDoc(doc(db, "licenses", key), {
+      status: "revoked",
+      revoked_at: new Date().toISOString(),
+    });
+    return { success: true, key };
+  } catch (err: any) {
+    throw new Error(err.message || "Failed to revoke license");
+  }
+}
+
 export async function fsValidateAndActivateLicense(licenseKey: string, userUid?: string, userEmail?: string) {
   const cleanKey = (licenseKey || "").trim().toUpperCase();
   if (!cleanKey) {
     throw new Error("License key cannot be empty.");
   }
 
-  // Check if valid license pattern or in Firestore licenses collection
-  const isValidFormat =
-    cleanKey.startsWith("CW-") ||
-    cleanKey.startsWith("EMP-") ||
-    cleanKey.startsWith("HZ-") ||
-    cleanKey.startsWith("CLASSIC-") ||
-    cleanKey.length >= 8;
+  let licenseData: any = null;
+  try {
+    const licSnap = await getDoc(doc(db, "licenses", cleanKey));
+    if (licSnap.exists()) {
+      licenseData = licSnap.data();
+    }
+  } catch (_) {}
 
-  if (!isValidFormat) {
-    throw new Error("Invalid license key format. Keys start with CW- or EMP-.");
+  if (licenseData) {
+    if (licenseData.status === "revoked") {
+      throw new Error("This license key has been revoked.");
+    }
+    if (licenseData.status === "active" && licenseData.used_by && licenseData.used_by !== (userUid || userEmail)) {
+      throw new Error("This license key has already been activated by another account.");
+    }
   }
+
+  const isEmployeeKey = cleanKey.startsWith("EMP-") || (licenseData && licenseData.type === "employee");
+  const role = isEmployeeKey ? "employee" : "owner";
+
+  const defaultOwnerPerms = {
+    dashboard: true,
+    sales: true,
+    products: true,
+    parties: true,
+    purchases: true,
+    expenses: true,
+    reports: true,
+    settings: true,
+    cashbox: true,
+  };
+
+  const defaultEmployeePerms = {
+    dashboard: true,
+    sales: true,
+    products: true,
+    parties: false,
+    purchases: false,
+    expenses: false,
+    reports: false,
+    settings: false,
+    cashbox: false,
+  };
+
+  const permissions = isEmployeeKey
+    ? (licenseData?.permissions || defaultEmployeePerms)
+    : defaultOwnerPerms;
+
+  const allowedPages = licenseData?.allowed_pages || (isEmployeeKey ? ["/dashboard", "/sales", "/products"] : undefined);
+  const allowedKpis = licenseData?.allowed_kpis || (isEmployeeKey ? ["sell_kpi", "total_stock", "today_sales"] : undefined);
 
   // Update user document in Firestore
   if (userUid) {
@@ -1099,7 +1340,12 @@ export async function fsValidateAndActivateLicense(licenseKey: string, userUid?:
       await setDoc(userRef, {
         activated: true,
         license_key: cleanKey,
-        role: cleanKey.startsWith("EMP-") ? "employee" : "owner",
+        role: role,
+        permissions: permissions,
+        allowedPages: allowedPages,
+        allowedKpis: allowedKpis,
+        business_name: licenseData?.business_name || "Classic World",
+        owner_id: licenseData?.owner_uid || (role === "owner" ? userUid : undefined),
         email: userEmail || "",
         activated_at: Timestamp.now(),
       }, { merge: true });
@@ -1108,7 +1354,26 @@ export async function fsValidateAndActivateLicense(licenseKey: string, userUid?:
     }
   }
 
-  return { success: true, activated: true, licenseKey: cleanKey };
+  // Mark license as used/active
+  try {
+    await setDoc(doc(db, "licenses", cleanKey), {
+      key: cleanKey,
+      status: "active",
+      type: role,
+      used_by: userUid || userEmail || "user",
+      activated_at: new Date().toISOString(),
+    }, { merge: true });
+  } catch (_) {}
+
+  return {
+    success: true,
+    activated: true,
+    licenseKey: cleanKey,
+    role,
+    permissions,
+    allowedPages,
+    allowedKpis,
+  };
 }
 
 export async function fsGetUserDoc(userUid: string) {
@@ -1152,6 +1417,7 @@ export async function fsUpdateBankAccount(id: string, data: any) {
 }
 
 export async function fsDeleteBankAccount(id: string) {
+  await fsMoveToRecycleBin("bank_accounts", id, "Bank Account #" + id);
   await deleteDoc(doc(db, "bank_accounts", id));
   return { success: true, id };
 }
@@ -1470,6 +1736,9 @@ export async function fsGetBusinessSettings() {
       invoice_terms: bizData?.invoice_terms || user?.invoice_terms || "",
       status: bizData?.status || user?.status || "active",
       sms_credits: bizData?.sms_credits ?? user?.sms_credits ?? 100,
+      kpi_config: bizData?.kpi_config || null,
+      employee_accounts: bizData?.employee_accounts || [],
+      owner_pin: bizData?.owner_pin || null,
     },
     role: user?.role || "owner",
     permissions: user?.permissions || {
@@ -1491,8 +1760,15 @@ export async function fsGetBusinessSettings() {
 
 export async function fsUpdateBusinessSettings(data: any) {
   try {
-    await setDoc(doc(db, "businesses", "classic-world-settings"), data, { merge: true });
+    const bizDocId = (typeof window !== "undefined" && window.location.pathname.includes("classic")) ? "classic-world-settings" : "classic-world-settings";
+    await setDoc(doc(db, "businesses", bizDocId), data, { merge: true });
   } catch (_) {}
+  // Cloud persistence sync
+  if (typeof window !== "undefined") {
+    if (data.kpi_config) localStorage.setItem("hz_kpi_config", JSON.stringify(data.kpi_config));
+    if (data.employee_accounts) localStorage.setItem("cw_employee_accounts", JSON.stringify(data.employee_accounts));
+    if (data.owner_pin) localStorage.setItem("app_pin_code_val", String(data.owner_pin));
+  }
   const user = fsGetCurrentUser();
   if (user) {
     const updatedUser = { ...user, ...data };
@@ -1521,26 +1797,191 @@ export async function fsDismissAdminPopup(popupId: string) {
 export async function fsFirebaseAuthSync(data: { email: string; fullName?: string; photoUrl?: string; firebaseUid?: string }) {
   const cleanEmail = (data.email || "").toLowerCase().trim();
   const userId = data.firebaseUid || crypto.randomUUID();
-  const userObj = {
-    id: userId,
-    email: cleanEmail,
-    full_name: data.fullName || cleanEmail.split("@")[0],
-    role: "owner",
+
+  let existingUser: any = null;
+  try {
+    const userDocRef = doc(db, "users", userId);
+    const userDocSnap = await getDoc(userDocRef);
+    if (userDocSnap.exists()) {
+      existingUser = { id: userDocSnap.id, ...userDocSnap.data() };
+    } else {
+      const q = query(collection(db, "users"), where("email", "==", cleanEmail), limit(1));
+      const qSnap = await getDocs(q);
+      if (!qSnap.empty) {
+        existingUser = { id: qSnap.docs[0].id, ...qSnap.docs[0].data() };
+      }
+    }
+  } catch (e) {
+    console.warn("Error querying Firestore for existing user:", e);
+  }
+
+  let bizSettings: any = null;
+  try {
+    const bizSnap = await getDoc(doc(db, "businesses", "classic-world-settings"));
+    if (bizSnap.exists()) {
+      bizSettings = bizSnap.data();
+    }
+  } catch (_) {}
+
+  const userObj = existingUser
+    ? {
+        ...existingUser,
+        id: existingUser.id || userId,
+        email: cleanEmail,
+        full_name: existingUser.full_name || data.fullName || cleanEmail.split("@")[0],
+        business_name: existingUser.business_name || bizSettings?.name || "Classic World",
+        logo_url: existingUser.logo_url || bizSettings?.logo_url || data.photoUrl || "/logo.png",
+        avatar_url: data.photoUrl || existingUser.avatar_url || undefined,
+        firebase_uid: data.firebaseUid || existingUser.firebase_uid,
+        activated: true,
+        status: existingUser.status || "active",
+      }
+    : {
+        id: userId,
+        email: cleanEmail,
+        full_name: data.fullName || cleanEmail.split("@")[0],
+        role: "owner",
+        activated: true,
+        business_id: "classic-world-default",
+        business_name: bizSettings?.name || "Classic World",
+        logo_url: data.photoUrl || bizSettings?.logo_url || "/logo.png",
+        avatar_url: data.photoUrl || undefined,
+        firebase_uid: data.firebaseUid,
+        status: "active",
+        sms_credits: 100,
+        profiles: [{ id: "default", name: "Default", created_at: new Date().toISOString() }],
+        activeProfile: "default",
+      };
+
+  try {
+    await setDoc(doc(db, "users", userObj.id), userObj, { merge: true });
+  } catch (e) {
+    console.warn("Error saving user doc:", e);
+  }
+
+  if (typeof window !== "undefined") {
+    clearAuthProfile();
+    clearQueryCache();
+    localStorage.setItem("user", JSON.stringify(userObj));
+    localStorage.setItem("classicworld_auth_profile", JSON.stringify(userObj));
+    localStorage.setItem("auth_token", `token_${userObj.id}`);
+    localStorage.setItem("active_profile", userObj.activeProfile || "default");
+  }
+
+  return { user: userObj, token: `token_${userObj.id}` };
+}
+
+export async function fsLogin(data: { identifier?: string; email?: string; phone?: string; password?: string }) {
+  const ident = (data.identifier || data.email || data.phone || "").trim().toLowerCase();
+  const pwd = (data.password || "").trim();
+  if (!ident || !pwd) {
+    throw new Error("Please enter mobile/email and password");
+  }
+
+  let userDoc: any = null;
+  try {
+    const qEmail = query(collection(db, "users"), where("email", "==", ident), limit(1));
+    const snapEmail = await getDocs(qEmail);
+    if (!snapEmail.empty) {
+      userDoc = { id: snapEmail.docs[0].id, ...snapEmail.docs[0].data() };
+    } else {
+      const qPhone = query(collection(db, "users"), where("phone", "==", ident), limit(1));
+      const snapPhone = await getDocs(qPhone);
+      if (!snapPhone.empty) {
+        userDoc = { id: snapPhone.docs[0].id, ...snapPhone.docs[0].data() };
+      }
+    }
+  } catch (e) {
+    console.warn("Login Firestore query error:", e);
+  }
+
+  if (!userDoc) {
+    const current = fsGetCurrentUser();
+    if (current && (current.email === ident || (current as any).phone === ident)) {
+      userDoc = current;
+    }
+  }
+
+  if (!userDoc) {
+    const newId = crypto.randomUUID();
+    userDoc = {
+      id: newId,
+      email: ident.includes("@") ? ident : `${ident}@classicworld.com`,
+      phone: !ident.includes("@") ? ident : undefined,
+      full_name: ident.split("@")[0],
+      password: pwd,
+      plain_password: pwd,
+      role: "owner",
+      activated: true,
+      business_id: "classic-world-default",
+      business_name: "Classic World",
+      logo_url: "/logo.png",
+      status: "active",
+      sms_credits: 100,
+      profiles: [{ id: "default", name: "Default", created_at: new Date().toISOString() }],
+      activeProfile: "default",
+    };
+    try {
+      await setDoc(doc(db, "users", newId), userDoc);
+    } catch (_) {}
+  } else {
+    if (userDoc.password && userDoc.password !== pwd && userDoc.plain_password !== pwd) {
+      throw new Error("Incorrect password. Please try again.");
+    }
+  }
+
+  if (typeof window !== "undefined") {
+    clearAuthProfile();
+    clearQueryCache();
+    localStorage.setItem("user", JSON.stringify(userDoc));
+    localStorage.setItem("classicworld_auth_profile", JSON.stringify(userDoc));
+    localStorage.setItem("auth_token", `token_${userDoc.id}`);
+    localStorage.setItem("active_profile", userDoc.activeProfile || "default");
+  }
+
+  return { user: userDoc, token: `token_${userDoc.id}` };
+}
+
+export async function fsRegister(data: { identifier?: string; email?: string; phone?: string; password?: string; fullName?: string; role?: string }) {
+  const ident = (data.identifier || data.email || data.phone || "").trim().toLowerCase();
+  const pwd = (data.password || "").trim();
+  const fullName = (data.fullName || "").trim() || ident.split("@")[0];
+  const newId = crypto.randomUUID();
+
+  const userDoc = {
+    id: newId,
+    email: ident.includes("@") ? ident : `${ident}@classicworld.com`,
+    phone: !ident.includes("@") ? ident : undefined,
+    full_name: fullName,
+    password: pwd,
+    plain_password: pwd,
+    role: data.role || "owner",
     activated: true,
     business_id: "classic-world-default",
     business_name: "Classic World",
-    logo_url: data.photoUrl || "/logo.png",
-    avatar_url: data.photoUrl || undefined,
-    firebase_uid: data.firebaseUid,
+    logo_url: "/logo.png",
     status: "active",
     sms_credits: 100,
+    profiles: [{ id: "default", name: "Default", created_at: new Date().toISOString() }],
+    activeProfile: "default",
   };
-  if (typeof window !== "undefined") {
-    localStorage.setItem("user", JSON.stringify(userObj));
-    localStorage.setItem("auth_profile", JSON.stringify(userObj));
-    localStorage.setItem("auth_token", `token_${userId}`);
+
+  try {
+    await setDoc(doc(db, "users", newId), userDoc);
+  } catch (e) {
+    console.warn("Register doc write error:", e);
   }
-  return { user: userObj, token: `token_${userId}` };
+
+  if (typeof window !== "undefined") {
+    clearAuthProfile();
+    clearQueryCache();
+    localStorage.setItem("user", JSON.stringify(userDoc));
+    localStorage.setItem("classicworld_auth_profile", JSON.stringify(userDoc));
+    localStorage.setItem("auth_token", `token_${newId}`);
+    localStorage.setItem("active_profile", "default");
+  }
+
+  return { user: userDoc, token: `token_${newId}` };
 }
 
 // ── Somiti Management ────────────────────────────────────────────────────────
@@ -1658,8 +2099,231 @@ export async function fsToggleGoogleSheetsSync(data: { enabled: boolean; sheetId
   return { success: true };
 }
 
+// Helper to sign Service Account JWT and fetch OAuth2 access token
+async function getGoogleSheetsAccessToken(clientEmail: string, privateKey: string): Promise<string> {
+  const pkcs8Key = privateKey.replace(/\\n/g, "\n");
+  const alg = "RS256";
+
+  const jwt = await new jose.SignJWT({
+    iss: clientEmail,
+    scope: "https://www.googleapis.com/auth/spreadsheets",
+    aud: "https://oauth2.googleapis.com/token",
+    exp: Math.floor(Date.now() / 1000) + 3600,
+    iat: Math.floor(Date.now() / 1000),
+  })
+    .setProtectedHeader({ alg })
+    .sign(await jose.importPKCS8(pkcs8Key, alg));
+
+  const res = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: `grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer&assertion=${jwt}`,
+  });
+
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`Google Auth failed: ${errText}`);
+  }
+
+  const tokenData = await res.json();
+  return tokenData.access_token as string;
+}
+
 export async function fsBulkExportToGoogleSheets() {
-  return { success: true, message: "Google Sheets sync configured successfully." };
+  const biz: any = await fsGetBusinessSettings();
+  let token = biz.google_sheets_access_token;
+
+  if (!token && biz.google_sheets_credentials_json) {
+    try {
+      const creds = JSON.parse(biz.google_sheets_credentials_json.trim());
+      if (creds.client_email && creds.private_key) {
+        token = await getGoogleSheetsAccessToken(creds.client_email, creds.private_key);
+      }
+    } catch (err: any) {
+      throw new Error(`Failed to parse Google Sheets Credentials JSON: ${err.message || err}`);
+    }
+  }
+
+  if (!token) {
+    throw new Error("Google Sheets Credentials (Service Account JSON) missing. Please add your credentials in Settings > Google Sheets.");
+  }
+
+  let spreadsheetId = biz.google_sheets_spreadsheet_id || biz.google_sheet_id;
+
+  // If no spreadsheet exists yet, create a brand new Google Spreadsheet!
+  if (!spreadsheetId) {
+    const createRes = await fetch("https://sheets.googleapis.com/v4/spreadsheets", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        properties: {
+          title: `${biz.shop_name || "Classic World"} - POS Cloud Records`,
+        },
+      }),
+    });
+
+    if (!createRes.ok) {
+      const errText = await createRes.text();
+      throw new Error(`Failed to create Google Spreadsheet: ${errText}`);
+    }
+
+    const newSheetData = await createRes.json();
+    spreadsheetId = newSheetData.spreadsheetId;
+
+    // Save newly created spreadsheet ID into business settings
+    await fsUpdateBusinessSettings({
+      google_sheets_spreadsheet_id: spreadsheetId,
+      google_sheet_id: spreadsheetId,
+      google_sheets_sync: true,
+      google_sheets_sync_enabled: true,
+    });
+  }
+
+  // Fetch all collections to export
+  const [sales, products, expenses, cashbox, purchases, parties] = await Promise.all([
+    fsGetSales(),
+    fsGetProducts(),
+    fsGetExpenses(),
+    fsGetCashbox(),
+    fsGetPurchases(),
+    fsGetParties(),
+  ]);
+
+  const partyMap = new Map(parties.map((p: any) => [String(p.id), p.name || p.phone || ""]));
+
+  const dataSets = [
+    {
+      tab: "Sales",
+      headers: ["Sale ID", "Date & Time", "Product Name", "Qty", "Sell Price (৳)", "Total (৳)", "Payment Type", "Customer / Party", "Paid Amount (৳)", "Due Amount (৳)", "Courier Status", "Note"],
+      rows: sales.map((s: any) => [
+        String(s.id),
+        s.created_at ? new Date(s.created_at).toLocaleString("en-GB") : "",
+        s.product_name || "",
+        s.qty ?? 1,
+        s.sell_price ?? 0,
+        (Number(s.sell_price) || 0) * (Number(s.qty) || 1) - (Number(s.discount) || 0),
+        (s.type || "cash").toUpperCase(),
+        s.parties?.name || partyMap.get(String(s.party_id)) || (s.party_id ? String(s.party_id) : "Walk-in"),
+        s.paid_amount ?? 0,
+        s.due_amount ?? 0,
+        s.courier_status || (s.type === "online" ? "pending" : "completed"),
+        s.note || "",
+      ]),
+    },
+    {
+      tab: "Products",
+      headers: ["Product ID", "Product Name", "Buy Price (৳)", "Sell Price (৳)", "Stock Qty", "Min Alert Stock", "Category", "Created At"],
+      rows: products.map((p: any) => [
+        String(p.id),
+        p.name || "",
+        p.buy_price ?? 0,
+        p.sell_price ?? 0,
+        p.stock ?? 0,
+        p.min_stock ?? 5,
+        p.category || "",
+        p.created_at ? new Date(p.created_at).toLocaleString("en-GB") : "",
+      ]),
+    },
+    {
+      tab: "Expenses",
+      headers: ["Expense ID", "Expense Title", "Amount (৳)", "Note / Category", "Date & Time"],
+      rows: expenses.map((e: any) => [
+        String(e.id),
+        e.title || "",
+        e.amount ?? 0,
+        e.note || "",
+        e.created_at ? new Date(e.created_at).toLocaleString("en-GB") : "",
+      ]),
+    },
+    {
+      tab: "Cashbox",
+      headers: ["Entry ID", "Kind / Source", "Amount (৳)", "Description / Note", "Reference ID", "Date & Time"],
+      rows: cashbox.map((c: any) => [
+        String(c.id),
+        (c.kind || "").toUpperCase(),
+        c.amount ?? 0,
+        c.note || "",
+        c.ref_id || "",
+        c.created_at ? new Date(c.created_at).toLocaleString("en-GB") : "",
+      ]),
+    },
+    {
+      tab: "Purchases",
+      headers: ["Purchase ID", "Product Name", "Quantity", "Unit Cost (৳)", "Total Cost (৳)", "Supplier / Note", "Date & Time"],
+      rows: purchases.map((p: any) => [
+        String(p.id),
+        p.product_name || "",
+        p.qty ?? 1,
+        p.unit_cost ?? 0,
+        p.total ?? 0,
+        p.note || "",
+        p.created_at ? new Date(p.created_at).toLocaleString("en-GB") : "",
+      ]),
+    },
+  ];
+
+  for (const ds of dataSets) {
+    try {
+      const createTabUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}:batchUpdate`;
+      await fetch(createTabUrl, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          requests: [
+            {
+              addSheet: {
+                properties: {
+                  title: ds.tab,
+                },
+              },
+            },
+          ],
+        }),
+      });
+    } catch (_) {
+      // Tab already exists
+    }
+
+    // Clear existing sheet values
+    try {
+      const clearUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/'${ds.tab}'!A:Z:clear`;
+      await fetch(clearUrl, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+    } catch (_) {}
+
+    // Write headers and rows
+    const writeUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/'${ds.tab}'!A1?valueInputOption=USER_ENTERED`;
+    const values = [ds.headers, ...ds.rows];
+    await fetch(writeUrl, {
+      method: "PUT",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        values,
+      }),
+    });
+  }
+
+  const sheetUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}`;
+  return {
+    success: true,
+    count: sales.length,
+    spreadsheetId,
+    url: sheetUrl,
+    message: "Google Sheets created and all records synchronized successfully!",
+  };
 }
 
 // ── Employee Management & Invitations ────────────────────────────────────────

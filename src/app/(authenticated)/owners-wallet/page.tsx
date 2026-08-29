@@ -32,6 +32,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 import { createOwnerWalletEntryFn, updateOwnerWalletEntryFn, deleteOwnerWalletEntryFn } from "@/lib/rpc";
 
@@ -70,6 +71,7 @@ export default function OwnersWalletPage() {
   const [category, setCategory] = useState("family");
   const [note, setNote] = useState("");
   const [entryDate, setEntryDate] = useState(new Date().toISOString().slice(0, 10));
+  const [cutFromProfit, setCutFromProfit] = useState(true);
   const [busy, setBusy] = useState(false);
 
   // Edit / Delete States
@@ -164,10 +166,15 @@ export default function OwnersWalletPage() {
           category,
           note: note.trim() || null,
           created_at: new Date(entryDate).toISOString(),
+          cut_from_profit: cutFromProfit,
         },
       });
 
-      toast.success(lang === "bn" ? "মালিকের ব্যক্তিগত খরচ যুক্ত হয়েছে (ক্যাশবাক্স ও লাভ থেকে কর্তিত)" : "Owner expense added (deducted from cashbox & profit)");
+      toast.success(
+        lang === "bn"
+          ? (cutFromProfit ? "মালিকের ব্যক্তিগত খরচ যুক্ত হয়েছে (ক্যাশবাক্স ও নিট লাভ থেকে কর্তিত)" : "মালিকের ব্যক্তিগত খরচ যুক্ত হয়েছে (ক্যাশবাক্স থেকে কর্তিত)")
+          : (cutFromProfit ? "Owner expense added (deducted from cashbox & profit)" : "Owner expense added (deducted from cashbox)")
+      );
       qc.invalidateQueries({ queryKey: ["owner_wallet"] });
       qc.invalidateQueries({ queryKey: ["cashbox"] });
       qc.invalidateQueries({ queryKey: ["expenses"] });
@@ -178,6 +185,7 @@ export default function OwnersWalletPage() {
       setAmount("");
       setNote("");
       setCategory("family");
+      setCutFromProfit(true);
       setEntryDate(new Date().toISOString().slice(0, 10));
     } catch (err: any) {
       toast.error(err?.message || "Failed to save entry");
@@ -630,10 +638,19 @@ export default function OwnersWalletPage() {
               />
             </div>
 
-            <div className="p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-[11px] text-amber-900 dark:text-amber-200">
-              {lang === "bn"
-                ? "💡 এই টাকা ক্যাশবাক্স থেকে উত্তোলন হিসেবে রেকর্ড হবে এবং চলতি মাসের নিট লাভ থেকে বিয়োগ হবে।"
-                : "💡 This amount is recorded as a cash withdrawal and deducted from business net profit."}
+            {/* Also cut from profit checkbox */}
+            <div className="flex items-center space-x-2 py-1 px-1 bg-muted/40 rounded-lg border border-border/50">
+              <Checkbox
+                id="cut-from-profit"
+                checked={cutFromProfit}
+                onCheckedChange={v => setCutFromProfit(Boolean(v))}
+              />
+              <Label
+                htmlFor="cut-from-profit"
+                className="text-xs font-bold font-balooda cursor-pointer text-foreground select-none"
+              >
+                {lang === "bn" ? "লাভ থেকেও কর্তন হবে (Also cut from Net Profit)" : "Also cut from Net Profit"}
+              </Label>
             </div>
 
             <DialogFooter className="pt-2">

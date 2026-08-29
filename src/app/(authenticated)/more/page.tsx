@@ -53,6 +53,7 @@ const financeLinks = [
   { to: "/profits",        labelKey: "profit",          desc: "Sales margins & net profits", icon: TrendingUp, imageUrl: "/icons/profit_icon.png",  perm: "reports"    as const },
   { to: "/losses",         labelKey: "losses",          desc: "Analyze transactional losses", icon: TrendingDown, perm: "reports" as const },
   { to: "/trackback",      labelKey: "trackback",       desc: "Comparative metrics chart", icon: BarChart3,    perm: "reports"    as const },
+  { to: "/product-analytics", labelKey: "product_analytics" as any, desc: "Top sellers, trending, stock & growth intelligence", icon: BarChart3, imageUrl: "/icons/sell_icon.png", perm: "reports" as const },
   { to: "/reports",        labelKey: "reports_generator", desc: "Generate custom PDF reports", icon: FileText, perm: "reports"    as const },
   { to: "/ai-audits",      labelKey: "ai_audits",       desc: "Chat with AI about your business", icon: Sparkles, perm: "reports"    as const },
 ] as const;

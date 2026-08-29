@@ -323,6 +323,8 @@ const fsActionMap: Record<string, (args?: any) => Promise<any>> = {
   verifyOwnerPasswordFn: async (args: any) => fs.fsVerifyOwnerPassword(args?.data || args),
   changeMyPasswordFn: async (args: any) => fs.fsChangeMyPassword(args?.data || args),
 
+  loginFn: async (args: any) => fs.fsLogin(args?.data || args),
+  registerFn: async (args: any) => fs.fsRegister(args?.data || args),
   getMeFn: async () => fs.fsGetMe(),
   getBusinessSettingsFn: async () => fs.fsGetBusinessSettings(),
   updateBusinessSettingsFn: async (args: any) => fs.fsUpdateBusinessSettings(args?.data || args),
@@ -347,6 +349,19 @@ const fsActionMap: Record<string, (args?: any) => Promise<any>> = {
   sendSmsCampaignFn: async (args: any) => fs.fsSendSmsCampaign(args?.data || args),
   checkSmsDeliveryStatusFn: async (args: any) => fs.fsCheckSmsDeliveryStatus(args?.data || args),
   deleteSmsLogFn: async (args: any) => fs.fsDeleteSmsLog(args?.data?.id || args?.id),
+
+  // ── 7-Day Recycle Bin System ──
+  getRecycleBinFn: async () => fs.fsGetRecycleBin(),
+  restoreFromRecycleBinFn: async (args: any) => fs.fsRestoreFromRecycleBin(args?.data?.id || args?.id),
+  permanentDeleteRecycleBinFn: async (args: any) => fs.fsPermanentDeleteRecycleBin(args?.data?.id || args?.id),
+
+  // ── License Key Engine ──
+  generateOwnerLicenseKeyFn: async (args: any) => fs.fsGenerateOwnerLicenseKey(args?.data || args),
+  generateEmployeeLicenseKeyFn: async (args: any) => fs.fsGenerateEmployeeLicenseKey(args?.data || args),
+  listLicensesFn: async (args: any) => fs.fsListLicenses(args?.data?.type || args?.type),
+  revokeLicenseFn: async (args: any) => fs.fsRevokeLicense(args?.data?.key || args?.key),
+  validateAndActivateLicenseFn: async (args: any) => fs.fsValidateAndActivateLicense(args?.data?.licenseKey || args?.licenseKey, args?.data?.userUid || args?.userUid, args?.data?.userEmail || args?.userEmail),
+  activateLicenseFn: async (args: any) => fs.fsValidateAndActivateLicense(args?.data?.licenseKey || args?.licenseKey, args?.data?.userUid || args?.userUid, args?.data?.userEmail || args?.userEmail),
 };
 
 async function executeAction(name: string, args: any): Promise<any> {
@@ -583,3 +598,19 @@ export const removeEmployeeFn = makeWriteAction("removeEmployeeFn");
 export const connectGoogleSheetsOAuthFn = makeWriteAction("connectGoogleSheetsOAuthFn");
 export const disconnectGoogleSheetsFn = makeWriteAction("disconnectGoogleSheetsFn");
 
+// ── 7-Day Recycle Bin System ─────────────────────────────────────────────
+export const getRecycleBinFn = makeReadAction("getRecycleBinFn");
+export const restoreFromRecycleBinFn = makeWriteAction("restoreFromRecycleBinFn");
+export const permanentDeleteRecycleBinFn = makeWriteAction("permanentDeleteRecycleBinFn");
+
+// ── License Key Engine ───────────────────────────────────────────────────
+export const generateOwnerLicenseKeyFn = makeWriteAction("generateOwnerLicenseKeyFn");
+export const generateEmployeeLicenseKeyFn = makeWriteAction("generateEmployeeLicenseKeyFn");
+export const listLicensesFn = makeReadAction("listLicensesFn");
+export const revokeLicenseFn = makeWriteAction("revokeLicenseFn");
+export const validateAndActivateLicenseFn = makeWriteAction("validateAndActivateLicenseFn");
+export const activateLicenseFn = makeWriteAction("activateLicenseFn");
+
+
+export const updateBusinessSettingsFn = makeWriteAction("updateBusinessSettingsFn");
+export const getBusinessSettingsFn = makeReadAction("getBusinessSettingsFn");

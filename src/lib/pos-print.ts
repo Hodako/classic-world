@@ -17,7 +17,7 @@ export const DEFAULT_POS_CONFIG: PosPaperSettings = {
 export function getPosPaperConfig(): PosPaperSettings {
   if (typeof window === "undefined") return DEFAULT_POS_CONFIG;
   try {
-    const saved = localStorage.getItem("dreamfashion_pos_paper_config");
+    const saved = localStorage.getItem("cw_pos_paper_config") || localStorage.getItem("dreamfashion_pos_paper_config");
     if (saved) {
       const parsed = JSON.parse(saved);
       return {
@@ -38,7 +38,7 @@ export function savePosPaperConfig(config: Partial<PosPaperSettings>): PosPaperS
     ...config,
   };
   if (typeof window !== "undefined") {
-    localStorage.setItem("dreamfashion_pos_paper_config", JSON.stringify(updated));
+    localStorage.setItem("cw_pos_paper_config", JSON.stringify(updated));
     window.dispatchEvent(new Event("hz-pos-config-updated"));
   }
   return updated;

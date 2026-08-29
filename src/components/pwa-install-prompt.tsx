@@ -87,7 +87,7 @@ export function PwaInstallPrompt() {
           </div>
           <div>
             <h4 className="text-xs font-bold text-foreground flex items-center gap-1.5">
-              <span>Dream Fashion POS</span>
+              <span>Classic World POS</span>
               <Sparkles className="size-3 text-amber-500" />
             </h4>
             <p className="text-[11px] text-muted-foreground leading-tight mt-0.5">

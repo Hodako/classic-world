@@ -207,13 +207,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const { signOut } = await import("firebase/auth");
       await signOut(auth);
     } catch (_) {}
-    if (typeof window !== "undefined") {
-      window.localStorage.removeItem("auth_token");
-      window.localStorage.removeItem("active_profile");
-    }
     setUser(null);
     clearAuthProfile();
     setLoading(false);
+    if (typeof window !== "undefined") {
+      window.location.href = "/auth";
+    }
   };
 
   const uploadProfilePic = async (file: File) => {

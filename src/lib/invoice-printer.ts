@@ -144,7 +144,6 @@ export function printPwaInvoice(data: PrintInvoiceParams) {
       ${data.tagline ? `<div style="font-size: 8pt; font-weight: 600; color: #3f3f46; margin-top: 1.5px;">${data.tagline}</div>` : ""}
       ${data.shopAddress ? `<div style="font-size: 7.5pt; color: #52525b; margin-top: 1.5px;">${data.shopAddress}</div>` : ""}
       ${data.shopPhoneNumbers ? `<div style="font-size: 8pt; font-family: monospace; font-weight: 700; color: #000000; margin-top: 1.5px;">মোবাইল: ${data.shopPhoneNumbers}</div>` : ""}
-      ${data.userEmail ? `<div style="font-size: 7pt; color: #52525b; margin-top: 1px;">${data.userEmail}</div>` : ""}
     </div>
 
     <div class="dashed-line"></div>
@@ -365,7 +364,7 @@ export async function downloadPwaInvoicePdf(data: PrintInvoiceParams, openInNewT
     pdf.setFont("helvetica", "bold");
     pdf.setFontSize(isThermal58 ? 12 : 14);
     pdf.setTextColor(0, 0, 0);
-    pdf.text((data.businessName || "DREAM FASHION").toUpperCase(), pageWidth / 2, currentY, { align: "center" });
+    pdf.text((data.businessName || "CLASSIC WORLD").toUpperCase(), pageWidth / 2, currentY, { align: "center" });
     currentY += 4.5;
 
     pdf.setFont("helvetica", "normal");
@@ -490,7 +489,7 @@ export async function downloadPwaInvoicePdf(data: PrintInvoiceParams, openInNewT
     pdf.setFont("helvetica", "bold");
     pdf.setFontSize(18);
     pdf.setTextColor(15, 23, 42);
-    pdf.text((data.businessName || "DREAM FASHION").toUpperCase(), margin, currentY + 4);
+    pdf.text((data.businessName || "CLASSIC WORLD").toUpperCase(), margin, currentY + 4);
 
     pdf.setFont("helvetica", "normal");
     pdf.setFontSize(8.5);

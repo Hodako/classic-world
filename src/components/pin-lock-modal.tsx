@@ -6,6 +6,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { useT } from "@/lib/i18n";
 import { toast } from "sonner";
 import { playTapSound, playErrorSound, playSaleSuccessSound } from "@/lib/audio";
+import { clearAuthProfile } from "@/lib/local-cache";
 
 export function PinLockModal() {
   const { lang } = useT();
@@ -18,17 +19,24 @@ export function PinLockModal() {
   // Check pin lock configuration
   const checkLockState = useCallback(() => {
     if (typeof window === "undefined") return;
-    const enabled = localStorage.getItem("app_pin_code_enabled") === "true";
-    const pin = localStorage.getItem("app_pin_code_val");
+    const uid = user?.id ? `_${user.id}` : "";
+    const enabled =
+      localStorage.getItem(`app_pin_code_enabled${uid}`) === "true" ||
+      localStorage.getItem("app_pin_code_enabled") === "true";
+    const pin =
+      localStorage.getItem(`app_pin_code_val${uid}`) ||
+      localStorage.getItem("app_pin_code_val");
     setSavedPin(pin);
 
     if (enabled && pin) {
-      const unlocked = sessionStorage.getItem("app_pin_unlocked") === "true";
+      const unlocked =
+        sessionStorage.getItem(`app_pin_unlocked${uid}`) === "true" ||
+        sessionStorage.getItem("app_pin_unlocked") === "true";
       setIsLocked(!unlocked);
     } else {
       setIsLocked(false);
     }
-  }, []);
+  }, [user]);
 
   useEffect(() => {
     checkLockState();
@@ -99,13 +107,42 @@ export function PinLockModal() {
   };
 
   const verifyPin = (inputToVerify: string) => {
-    const currentPin = savedPin || localStorage.getItem("app_pin_code_val") || "1234";
-    if (inputToVerify === currentPin) {
+    const ownerPin = savedPin || localStorage.getItem("app_pin_code_val") || "1234";
+
+    // Check Employee accounts
+    let matchedEmployee: any = null;
+    try {
+      const empsRaw = localStorage.getItem("cw_employee_accounts");
+      if (empsRaw) {
+        const emps = JSON.parse(empsRaw);
+        if (Array.isArray(emps)) {
+          matchedEmployee = emps.find((e: any) => String(e.pin).trim() === inputToVerify.trim());
+        }
+      }
+    } catch (_) {}
+
+    if (inputToVerify === ownerPin) {
       playSaleSuccessSound();
       sessionStorage.setItem("app_pin_unlocked", "true");
+      localStorage.removeItem("cw_active_employee_session");
+      localStorage.setItem("cw_active_session_role", "owner");
+      window.dispatchEvent(new Event("hz-employee-switched"));
       setIsLocked(false);
       setPinInput("");
-      toast.success(lang === "bn" ? "পিন কোড সঠিক হয়েছে! স্বাগতম।" : "PIN code verified! Welcome.");
+      toast.success(lang === "bn" ? "স্বত্বাধিকারী (Owner) পিন কোড সঠিক হয়েছে! স্বাগতম।" : "Owner PIN verified! Welcome.");
+    } else if (matchedEmployee) {
+      playSaleSuccessSound();
+      sessionStorage.setItem("app_pin_unlocked", "true");
+      localStorage.setItem("cw_active_employee_session", JSON.stringify(matchedEmployee));
+      localStorage.setItem("cw_active_session_role", "employee");
+      window.dispatchEvent(new Event("hz-employee-switched"));
+      setIsLocked(false);
+      setPinInput("");
+      toast.success(
+        lang === "bn"
+          ? `কর্মচারী (${matchedEmployee.name}) পিন কোড সঠিক হয়েছে! স্বাগতম।`
+          : `Employee (${matchedEmployee.name}) PIN verified! Welcome.`
+      );
     } else {
       playErrorSound();
       setErrorShake(true);
@@ -215,16 +252,15 @@ export function PinLockModal() {
           <button
             type="button"
             onClick={() => {
-              if (confirm(lang === "bn" ? "আপনি কি অন্য একাউন্টে সুইচ করতে চান?" : "Switch to another profile or ID?")) {
-                localStorage.removeItem("token");
-                sessionStorage.clear();
+              if (confirm(lang === "bn" ? "আপনি কি লগআউট করে অন্য একাউন্টে লগইন করতে চান?" : "Switch to another profile or account?")) {
+                clearAuthProfile();
                 window.location.href = "/auth";
               }
             }}
             className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-primary transition-colors cursor-pointer py-1 px-3 rounded-lg hover:bg-muted/50 font-medium"
           >
             <UserCheck className="size-3.5" />
-            {lang === "bn" ? "আইডি সুইচ করুন (Switch Profile / User)" : "Switch Profile / User ID"}
+            {lang === "bn" ? "অন্য একাউন্টে লগইন (Switch Account)" : "Switch Account / User ID"}
           </button>
         </div>
       </div>

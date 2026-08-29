@@ -112,11 +112,11 @@ export default function ExpensesPage() {
   // Load custom, pinned, and renamed categories from localStorage
   useEffect(() => {
     try {
-      const storedCustom = localStorage.getItem("dreamfashion_custom_expense_categories");
+      const storedCustom = localStorage.getItem("cw_custom_expense_categories") || localStorage.getItem("dreamfashion_custom_expense_categories");
       if (storedCustom) setCustomCategories(JSON.parse(storedCustom));
-      const storedPinned = localStorage.getItem("dreamfashion_pinned_expense_categories");
+      const storedPinned = localStorage.getItem("cw_pinned_expense_categories") || localStorage.getItem("dreamfashion_pinned_expense_categories");
       if (storedPinned) setPinnedCategories(JSON.parse(storedPinned));
-      const storedRenamed = localStorage.getItem("dreamfashion_renamed_expense_categories");
+      const storedRenamed = localStorage.getItem("cw_renamed_expense_categories") || localStorage.getItem("dreamfashion_renamed_expense_categories");
       if (storedRenamed) setRenamedCategories(JSON.parse(storedRenamed));
     } catch {}
   }, []);
@@ -124,15 +124,15 @@ export default function ExpensesPage() {
   // Save changes
   const saveCustomCats = (cats: ExpenseCategoryItem[]) => {
     setCustomCategories(cats);
-    localStorage.setItem("dreamfashion_custom_expense_categories", JSON.stringify(cats));
+    localStorage.setItem("cw_custom_expense_categories", JSON.stringify(cats));
   };
   const savePinnedCats = (pinned: string[]) => {
     setPinnedCategories(pinned);
-    localStorage.setItem("dreamfashion_pinned_expense_categories", JSON.stringify(pinned));
+    localStorage.setItem("cw_pinned_expense_categories", JSON.stringify(pinned));
   };
   const saveRenamedCats = (renamed: Record<string, string>) => {
     setRenamedCategories(renamed);
-    localStorage.setItem("dreamfashion_renamed_expense_categories", JSON.stringify(renamed));
+    localStorage.setItem("cw_renamed_expense_categories", JSON.stringify(renamed));
   };
 
   // Merge default + custom categories, apply renames, and sort pinned to top
@@ -435,7 +435,7 @@ export default function ExpensesPage() {
         <div className="flex items-center justify-between flex-wrap gap-2">
           <div className="flex items-center gap-1.5 text-xs font-bold text-foreground">
             <Calendar className="size-4 text-primary" />
-            <span>{lang === "bn" ? "তারিখ ফিল্টার (ডিফল্ট: আজ):" : "Date Filter (Default: Today):"}</span>
+            <span>{lang === "bn" ? "তারিখ ফিল্টার:" : "Date Filter:"}</span>
           </div>
 
           <div className="flex items-center gap-1.5 flex-wrap">

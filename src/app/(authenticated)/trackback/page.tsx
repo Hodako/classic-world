@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { Download, BarChart3, Trash2 } from "lucide-react";
+import { useMemo, useState, useEffect } from "react";
+import { Download, BarChart3, Trash2, Lock } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from "recharts";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Card } from "@/components/ui/card";
@@ -17,6 +17,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { deleteSaleFn, deletePurchaseFn, deleteExpenseFn, deleteReturnFn } from "@/lib/rpc";
 import { ConfirmDeleteDialog } from "@/components/confirm-delete-dialog";
+import { useAuth } from "@/hooks/use-auth";
+import { useRouter } from "next/navigation";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -45,11 +47,51 @@ function inRange(dateStr: string, range: Range, from?: string, to?: string) {
 export default function TrackbackPage() {
   const { lang, t } = useT();
   const qc = useQueryClient();
+  const router = useRouter();
+  const { user } = useAuth();
   const [range, setRange] = useState<Range>("today");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [page, setPage] = useState(1);
   const pageSize = 15;
+
+  // Check if an employee session is active
+  const [activeEmpSession, setActiveEmpSession] = useState<any>(() => {
+    if (typeof window === "undefined") return null;
+    try { return JSON.parse(localStorage.getItem("cw_active_employee_session") || "null"); } catch { return null; }
+  });
+  useEffect(() => {
+    const h = () => {
+      try { setActiveEmpSession(JSON.parse(localStorage.getItem("cw_active_employee_session") || "null")); } catch {}
+    };
+    window.addEventListener("hz-employee-switched", h);
+    window.addEventListener("storage", h);
+    return () => { window.removeEventListener("hz-employee-switched", h); window.removeEventListener("storage", h); };
+  }, []);
+
+  const isEmployee = activeEmpSession != null || user?.role === "employee";
+
+  // If employee: show access denied, no redirect needed (keeps URL clean)
+  if (isEmployee) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4 text-center p-6">
+        <div className="p-5 rounded-2xl bg-rose-500/10 border border-rose-500/20">
+          <Lock className="size-10 text-rose-500" />
+        </div>
+        <h2 className="text-xl font-bold text-foreground">
+          {lang === "bn" ? "এই পেজে প্রবেশাধিকার নেই" : "Access Restricted"}
+        </h2>
+        <p className="text-sm text-muted-foreground max-w-xs">
+          {lang === "bn"
+            ? "ট্র্যাকব্যাক রিপোর্ট শুধুমাত্র ব্যবসার মালিক দেখতে পারবেন। কর্মচারীরা এই পেজ অ্যাক্সেস করতে পারবেন না।"
+            : "The Trackback report is restricted to business owners only. Employees cannot access this page."}
+        </p>
+        <Button variant="outline" className="rounded-xl" onClick={() => router.replace("/dashboard")}>
+          {lang === "bn" ? "ড্যাশবোর্ডে ফিরুন" : "Return to Dashboard"}
+        </Button>
+      </div>
+    );
+  }
 
   const [deleteTarget, setDeleteTarget] = useState<{
     id: string;

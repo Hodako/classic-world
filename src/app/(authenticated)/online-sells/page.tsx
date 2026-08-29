@@ -202,7 +202,7 @@ export default function OnlineSellsPage() {
 
     try {
       printPwaInvoice({
-        businessName: user?.business_name || "Dream Fashion",
+        businessName: user?.business_name || "Classic World",
         userEmail: user?.business_emails || user?.email || "",
         shopAddress: user?.business_address || "",
         shopPhoneNumbers: user?.business_phone_numbers || "",

@@ -761,7 +761,7 @@ export default function BankPage() {
               <Label>{lang === "bn" ? "একাউন্ট হোল্ডারের নাম *" : "Account Name *"}</Label>
               <Input
                 required
-                placeholder={lang === "bn" ? "যেমন: ড্রিম ফ্যাশন / মোঃ স্বত্বাধিকারী" : "e.g. Dream Fashion"}
+                placeholder={lang === "bn" ? "যেমন: ক্লাসিক ওয়ার্ল্ড / মোঃ স্বত্বাধিকারী" : "e.g. Classic World"}
                 value={accountForm.account_name}
                 onChange={e => setAccountForm({ ...accountForm, account_name: e.target.value })}
               />

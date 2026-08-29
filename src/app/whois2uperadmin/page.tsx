@@ -37,6 +37,14 @@ import {
   directSendSmsAsAdminFn,
 } from "@/lib/rpc-admin";
 import {
+  generateOwnerLicenseKeyFn,
+  listLicensesFn,
+  revokeLicenseFn,
+  getRecycleBinFn,
+  restoreFromRecycleBinFn,
+  permanentDeleteRecycleBinFn,
+} from "@/lib/rpc";
+import {
   Trash2,
   RotateCcw,
   Activity,
@@ -78,9 +86,16 @@ export default function SuperAdminPage() {
   const [username, setUsername] = useState("superadmin");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
-  const [activeTab, setActiveTab] = useState<"feed" | "businesses" | "users" | "sms_gateway" | "settings">("feed");
+  const [activeTab, setActiveTab] = useState<"feed" | "businesses" | "users" | "licenses" | "recycle_bin" | "sms_gateway" | "settings">("feed");
   const [searchQuery, setSearchQuery] = useState("");
   const [bizStatusFilter, setBizStatusFilter] = useState<"all" | "active" | "frozen">("all");
+
+  // 11. Licenses & 7-Day Recycle Bin State
+  const [newOwnerBizName, setNewOwnerBizName] = useState("");
+  const [newOwnerDuration, setNewOwnerDuration] = useState("365");
+  const [newOwnerEmpLimit, setNewOwnerEmpLimit] = useState("10");
+  const [newOwnerNote, setNewOwnerNote] = useState("");
+  const [isGeneratingLicense, setIsGeneratingLicense] = useState(false);
 
   // ─── Modal States ─────────────────────────────────────────────────────────
 
@@ -197,12 +212,82 @@ export default function SuperAdminPage() {
     enabled: auth.data?.authenticated === true,
   });
 
+  const licensesQuery = useQuery({
+    queryKey: ["super-admin-licenses"],
+    queryFn: () => listLicensesFn(),
+    enabled: auth.data?.authenticated === true,
+  });
+
+  const recycleBinQuery = useQuery({
+    queryKey: ["super-admin-recycle-bin"],
+    queryFn: () => getRecycleBinFn(),
+    enabled: auth.data?.authenticated === true,
+  });
+
+  const handleGenerateLicense = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsGeneratingLicense(true);
+    try {
+      const res = await generateOwnerLicenseKeyFn({
+        data: {
+          businessName: newOwnerBizName.trim(),
+          durationDays: Number(newOwnerDuration) || 365,
+          employeeLimit: Number(newOwnerEmpLimit) || 10,
+          note: newOwnerNote.trim(),
+        },
+      });
+      toast.success(`Owner license generated: ${res.key}`);
+      setNewOwnerBizName("");
+      setNewOwnerNote("");
+      licensesQuery.refetch();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to generate license key");
+    } finally {
+      setIsGeneratingLicense(false);
+    }
+  };
+
+  const handleRevokeLicense = async (key: string) => {
+    if (!confirm(`Are you sure you want to revoke license "${key}"?`)) return;
+    try {
+      await revokeLicenseFn({ data: { key } });
+      toast.success(`License ${key} revoked`);
+      licensesQuery.refetch();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to revoke license");
+    }
+  };
+
+  const handleRestoreRecycleItem = async (id: string, label: string) => {
+    try {
+      await restoreFromRecycleBinFn({ data: { id } });
+      toast.success(`Restored "${label}" successfully!`);
+      recycleBinQuery.refetch();
+      qc.invalidateQueries();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to restore item");
+    }
+  };
+
+  const handlePermanentDeleteRecycleItem = async (id: string) => {
+    if (!confirm("Permanently delete this item from recycle bin? This cannot be undone.")) return;
+    try {
+      await permanentDeleteRecycleBinFn({ data: { id } });
+      toast.success("Item permanently deleted");
+      recycleBinQuery.refetch();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to delete item");
+    }
+  };
+
   const handleRefreshAll = () => {
     qc.invalidateQueries({ queryKey: ["platform-stats"] });
     qc.invalidateQueries({ queryKey: ["platform-activities"] });
     qc.invalidateQueries({ queryKey: ["businesses-admin"] });
     qc.invalidateQueries({ queryKey: ["users-admin"] });
     qc.invalidateQueries({ queryKey: ["admin-popups-list"] });
+    licensesQuery.refetch();
+    recycleBinQuery.refetch();
     toast.success("Surveillance dashboard refreshed!");
   };
 
@@ -439,12 +524,30 @@ export default function SuperAdminPage() {
               Users ({filteredUsers.length})
             </button>
             <button
+              onClick={() => setActiveTab("licenses")}
+              className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-all flex items-center shrink-0 ${
+                activeTab === "licenses" ? "bg-card text-foreground shadow-xs border border-border/60" : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <Key className="size-3.5 inline mr-1.5 text-amber-500" />
+              Licenses ({licensesQuery.data?.length ?? 0})
+            </button>
+            <button
+              onClick={() => setActiveTab("recycle_bin")}
+              className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-all flex items-center shrink-0 ${
+                activeTab === "recycle_bin" ? "bg-card text-foreground shadow-xs border border-border/60" : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <RotateCcw className="size-3.5 inline mr-1.5 text-rose-500" />
+              Recycle Bin ({recycleBinQuery.data?.length ?? 0})
+            </button>
+            <button
               onClick={() => setActiveTab("sms_gateway")}
               className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-all flex items-center shrink-0 ${
                 activeTab === "sms_gateway" ? "bg-card text-foreground shadow-xs border border-border/60" : "text-muted-foreground hover:text-foreground"
               }`}
             >
-              <MessageSquare className="size-3.5 inline mr-1.5 text-amber-500" />
+              <MessageSquare className="size-3.5 inline mr-1.5 text-cyan-500" />
               Master SMS & Popups
             </button>
             <button
@@ -811,6 +914,258 @@ export default function SuperAdminPage() {
                 </Card>
               ))}
             </div>
+          </div>
+        )}
+
+        {/* ─── TAB: LICENSES GENERATOR & MANAGEMENT ──────────────────── */}
+        {activeTab === "licenses" && (
+          <div className="space-y-6">
+            {/* Generate Owner License Key Form */}
+            <Card className="p-5 sm:p-6 rounded-2xl bg-card border-border/80 shadow-xs space-y-4">
+              <div className="space-y-1">
+                <h3 className="text-base font-bold flex items-center gap-2">
+                  <Key className="size-5 text-amber-500" />
+                  Generate Owner License Key (ব্যবসায় মালিক লাইসেন্স কি)
+                </h3>
+                <p className="text-xs text-muted-foreground">
+                  Superadmin generates unique Owner license keys for new store owners to register and activate Classic World.
+                </p>
+              </div>
+
+              <form onSubmit={handleGenerateLicense} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-2">
+                <div className="space-y-1">
+                  <Label className="text-xs font-semibold">Business / Shop Name</Label>
+                  <Input
+                    placeholder="e.g. Classic World Chittagong"
+                    value={newOwnerBizName}
+                    onChange={(e) => setNewOwnerBizName(e.target.value)}
+                    className="rounded-xl text-xs h-9"
+                    required
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs font-semibold">Validity (Days)</Label>
+                  <Input
+                    type="number"
+                    placeholder="365"
+                    value={newOwnerDuration}
+                    onChange={(e) => setNewOwnerDuration(e.target.value)}
+                    className="rounded-xl text-xs h-9"
+                    required
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs font-semibold">Employee Limit</Label>
+                  <Input
+                    type="number"
+                    placeholder="10"
+                    value={newOwnerEmpLimit}
+                    onChange={(e) => setNewOwnerEmpLimit(e.target.value)}
+                    className="rounded-xl text-xs h-9"
+                    required
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs font-semibold">Note / Memo</Label>
+                  <Input
+                    placeholder="e.g. VIP Subscription"
+                    value={newOwnerNote}
+                    onChange={(e) => setNewOwnerNote(e.target.value)}
+                    className="rounded-xl text-xs h-9"
+                  />
+                </div>
+                <div className="sm:col-span-2 lg:col-span-4 pt-1">
+                  <Button
+                    type="submit"
+                    disabled={isGeneratingLicense}
+                    className="w-full sm:w-auto rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold"
+                  >
+                    <Plus className="size-4 mr-1.5" />
+                    {isGeneratingLicense ? "Generating Key..." : "Generate Owner License Key (CW-XXXX-XXXX)"}
+                  </Button>
+                </div>
+              </form>
+            </Card>
+
+            {/* List of Platform Licenses */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h4 className="text-sm font-bold text-foreground flex items-center gap-1.5">
+                  <Key className="size-4 text-primary" />
+                  All Generated Licenses ({licensesQuery.data?.length ?? 0})
+                </h4>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => licensesQuery.refetch()}
+                  className="rounded-xl text-xs h-8"
+                >
+                  <RefreshCw className="size-3 mr-1" />
+                  Refresh
+                </Button>
+              </div>
+
+              {licensesQuery.isLoading ? (
+                <div className="py-8 text-center text-xs text-muted-foreground">Loading licenses...</div>
+              ) : !licensesQuery.data || licensesQuery.data.length === 0 ? (
+                <Card className="p-8 text-center rounded-2xl bg-card border-dashed border-border/80">
+                  <Key className="size-8 mx-auto text-muted-foreground/40 mb-2" />
+                  <p className="text-xs text-muted-foreground">No license keys generated yet.</p>
+                </Card>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {licensesQuery.data.map((lic: any) => {
+                    const isOwner = lic.type === "owner";
+                    const isUsed = lic.status === "active";
+                    const isRevoked = lic.status === "revoked";
+
+                    return (
+                      <Card key={lic.id || lic.key} className="p-4 rounded-2xl bg-card border-border/80 shadow-xs space-y-3">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <span className="font-mono text-xs font-bold text-foreground select-all bg-muted/60 px-2 py-0.5 rounded border border-border/50">
+                              {lic.key}
+                            </span>
+                            <p className="text-xs font-semibold text-foreground mt-1 truncate">
+                              {lic.business_name || (isOwner ? "Store Owner" : `Employee: ${lic.employee_name || "Staff"}`)}
+                            </p>
+                          </div>
+                          <Badge
+                            variant={isRevoked ? "destructive" : isUsed ? "default" : "secondary"}
+                            className="text-[10px] font-bold uppercase shrink-0"
+                          >
+                            {isRevoked ? "Revoked" : isUsed ? "Active / Used" : "Unused"}
+                          </Badge>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-1 text-[11px] text-muted-foreground pt-1 border-t border-border/40">
+                          <div>Type: <span className="font-semibold text-foreground capitalize">{lic.type || "owner"}</span></div>
+                          <div>Validity: <span className="font-semibold text-foreground">{lic.duration_days ?? 365} Days</span></div>
+                          {lic.employee_limit && (
+                            <div>Emp Limit: <span className="font-semibold text-foreground">{lic.employee_limit}</span></div>
+                          )}
+                          {lic.created_at && (
+                            <div>Created: <span className="font-semibold text-foreground">{lic.created_at.slice(0, 10)}</span></div>
+                          )}
+                        </div>
+
+                        <div className="flex items-center justify-between pt-2 border-t border-border/40 gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              navigator.clipboard.writeText(lic.key);
+                              toast.success(`Copied license key: ${lic.key}`);
+                            }}
+                            className="h-7 text-[11px] rounded-lg flex-1"
+                          >
+                            Copy Key
+                          </Button>
+                          {!isRevoked && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => handleRevokeLicense(lic.key)}
+                              className="h-7 text-[11px] text-destructive hover:bg-destructive/10 rounded-lg px-2"
+                            >
+                              Revoke
+                            </Button>
+                          )}
+                        </div>
+                      </Card>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ─── TAB: 7-DAY RECYCLE BIN & SYSTEM UNDO ────────────────────── */}
+        {activeTab === "recycle_bin" && (
+          <div className="space-y-4">
+            <Card className="p-5 sm:p-6 rounded-2xl bg-card border-border/80 shadow-xs space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="space-y-1">
+                  <h3 className="text-base font-bold flex items-center gap-2">
+                    <RotateCcw className="size-5 text-rose-500" />
+                    7-Day System Recycle Bin (সিস্টেম রিসাইকেল বিন ও আনডু)
+                  </h3>
+                  <p className="text-xs text-muted-foreground">
+                    All deleted sales, products, expenses, somiti, purchases, parties, and accounts remain stored here for 7 days. Superadmin can restore/undo any item instantly.
+                  </p>
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => recycleBinQuery.refetch()}
+                  className="rounded-xl text-xs h-8"
+                >
+                  <RefreshCw className="size-3 mr-1" />
+                  Refresh
+                </Button>
+              </div>
+            </Card>
+
+            {recycleBinQuery.isLoading ? (
+              <div className="py-12 text-center text-xs text-muted-foreground">Loading recycle bin...</div>
+            ) : !recycleBinQuery.data || recycleBinQuery.data.length === 0 ? (
+              <Card className="p-12 text-center rounded-2xl bg-card border-dashed border-border/80">
+                <RotateCcw className="size-10 mx-auto text-muted-foreground/30 mb-3" />
+                <p className="text-sm font-semibold text-foreground">Recycle Bin is Empty</p>
+                <p className="text-xs text-muted-foreground mt-1">No items have been deleted in the past 7 days.</p>
+              </Card>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                {recycleBinQuery.data.map((item: any) => {
+                  const deletedDate = item.deleted_at ? new Date(item.deleted_at).toLocaleString() : "Recently";
+                  const expiresDate = item.expires_at ? new Date(item.expires_at).toLocaleDateString() : "7 days";
+
+                  return (
+                    <Card key={item.id} className="p-4 rounded-2xl bg-card border-border/80 shadow-xs space-y-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <Badge variant="outline" className="text-[10px] font-bold uppercase tracking-wider text-rose-500 border-rose-500/30 bg-rose-500/10">
+                            {item.collection_name}
+                          </Badge>
+                          <h4 className="text-xs font-bold text-foreground mt-1.5 truncate">
+                            {item.label || item.original_id}
+                          </h4>
+                          <p className="text-[10px] text-muted-foreground font-mono truncate">
+                            Deleted by: {item.deleted_by || "User"}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="text-[10px] text-muted-foreground space-y-0.5 pt-1 border-t border-border/40">
+                        <div>Deleted At: <span className="font-semibold text-foreground">{deletedDate}</span></div>
+                        <div>Auto-purges on: <span className="font-semibold text-amber-500">{expiresDate}</span></div>
+                      </div>
+
+                      <div className="flex items-center justify-between pt-2 border-t border-border/40 gap-2">
+                        <Button
+                          size="sm"
+                          onClick={() => handleRestoreRecycleItem(item.id, item.label || item.original_id)}
+                          className="h-8 text-xs rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold flex-1"
+                        >
+                          <RotateCcw className="size-3.5 mr-1.5" />
+                          Undo / Restore (পুনরুদ্ধার)
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => handlePermanentDeleteRecycleItem(item.id)}
+                          className="h-8 text-xs text-destructive hover:bg-destructive/10 rounded-xl px-2.5"
+                          title="Permanently Delete"
+                        >
+                          <Trash2 className="size-3.5" />
+                        </Button>
+                      </div>
+                    </Card>
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
 

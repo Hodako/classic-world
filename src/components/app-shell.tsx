@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
@@ -10,17 +10,23 @@ import {
   LogOut, Languages, Banknote, DollarSign, Settings,
   BarChart3, Receipt, PiggyBank, ShoppingCart, Moon, Sun, FileText,
   TrendingUp, TrendingDown, Sparkles, Palette, MessageSquare, HelpCircle,
-  RefreshCw, Lock, Wallet,
+  RefreshCw, Lock, Wallet, Plus, ChevronDown, Check, Crown, User,
 } from "lucide-react";
 import { useTheme } from "@/hooks/use-theme";
 import { useT } from "@/lib/i18n";
 import { useAuth } from "@/hooks/use-auth";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { AppLogo } from "@/components/app-logo";
 import { SpeedLoader } from "@/components/speed-loader";
 import { UniversalSearch } from "@/components/universal-search";
+import { toast } from "sonner";
+import { createProfileFn, switchProfileFn } from "@/lib/rpc";
+import { clearQueryCache } from "@/lib/query-cache";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
   DropdownMenuSeparator, DropdownMenuTrigger,
@@ -35,6 +41,7 @@ import { canAccess, resolvePermissions } from "@/lib/permissions";
 import { PermissionGuard } from "@/components/permission-guard";
 import { FloatingAiChat } from "@/components/floating-ai-chat";
 import { PWAInstallButton } from "@/components/pwa-install-button";
+import { ModeSwitcherDialog } from "@/components/mode-switcher-dialog";
 
 import { CustomHomeIcon } from "@/components/custom-home-icon";
 import { AdminPopupDialog } from "@/components/admin-popup-dialog";
@@ -77,6 +84,7 @@ const desktopNavGroups: NavGroup[] = [
     labelKey: "reports",
     items: [
       { to: "/reports", labelKey: "reports_generator", icon: FileText, perm: "reports" },
+      { to: "/product-analytics", labelKey: "product_analytics" as any, icon: BarChart3, perm: "reports" },
       { to: "/profits", labelKey: "profit", icon: TrendingUp, perm: "reports" },
       { to: "/losses", labelKey: "losses", icon: TrendingDown, perm: "reports" },
       { to: "/trackback", labelKey: "trackback", icon: BarChart3, perm: "reports" },
@@ -220,14 +228,112 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   if (!user) return null;
 
   const perms = resolvePermissions(user.role, user.permissions);
-  const isEmployee = user.role === "employee";
+  const [activeEmpSession, setActiveEmpSession] = useState<any>(() => {
+    if (typeof window === "undefined") return null;
+    try {
+      return JSON.parse(localStorage.getItem("cw_active_employee_session") || "null");
+    } catch {
+      return null;
+    }
+  });
+
+  useEffect(() => {
+    const handleEmpSwitch = () => {
+      try {
+        setActiveEmpSession(JSON.parse(localStorage.getItem("cw_active_employee_session") || "null"));
+      } catch {}
+    };
+    window.addEventListener("hz-employee-switched", handleEmpSwitch);
+    window.addEventListener("storage", handleEmpSwitch);
+    return () => {
+      window.removeEventListener("hz-employee-switched", handleEmpSwitch);
+      window.removeEventListener("storage", handleEmpSwitch);
+    };
+  }, []);
+
+  const isEmployee = activeEmpSession ? true : user.role === "employee";
+  const allowedPages = activeEmpSession?.allowedPages || (user as any).allowedPages;
+
+  // Pages hidden from employees by default (when no explicit allowedPages list is set)
+  const EMPLOYEE_DEFAULT_HIDDEN = new Set([
+    "/trackback", "/profits", "/losses", "/reports", "/ai-audits",
+    "/purchase-reports", "/somiti", "/parties",
+    "/dues", "/customers", "/bank", "/cash-management",
+  ]);
+
   const sidebarGroups = filterGroups(desktopNavGroups, perms).map(group => ({
     ...group,
-    items: group.items.filter(item => !(isEmployee && (item.to === "/somiti" || item.to === "/parties" || item.to === "/dues" || item.to === "/customers")))
+    items: group.items.filter(item => {
+      if (isEmployee && allowedPages && Array.isArray(allowedPages) && allowedPages.length > 0) {
+        return allowedPages.includes(item.to);
+      }
+      if (isEmployee && EMPLOYEE_DEFAULT_HIDDEN.has(item.to)) {
+        return false;
+      }
+      return true;
+    })
   })).filter(group => group.items.length > 0);
-  const bottomNav = filterNav(mobileNav, perms).filter(item => !(isEmployee && (item.to === "/somiti" || item.to === "/parties" || item.to === "/dues" || item.to === "/customers")));
+
+  const bottomNav = filterNav(mobileNav, perms).filter(item => {
+    if (isEmployee && allowedPages && Array.isArray(allowedPages) && allowedPages.length > 0) {
+      return allowedPages.includes(item.to) || item.to === "/more";
+    }
+    if (isEmployee && EMPLOYEE_DEFAULT_HIDDEN.has(item.to)) {
+      return false;
+    }
+    return true;
+  });
+
   const brandName = user.business_name || "Classic World";
   const userInitials = user.email?.slice(0, 2).toUpperCase() ?? "CW";
+
+  // Profile / ID Switcher State
+  const [modeSwitcherOpen, setModeSwitcherOpen] = useState(false);
+  const [createProfileOpen, setCreateProfileOpen] = useState(false);
+  const [newProfileName, setNewProfileName] = useState("");
+  const [isSwitchingProfile, setIsSwitchingProfile] = useState(false);
+
+  const activeProfileId = user.activeProfile || "default";
+  const profiles = user.profiles && user.profiles.length > 0
+    ? user.profiles
+    : [{ id: "default", name: "Main ID", created_at: new Date().toISOString() }];
+  const currentProfile = profiles.find(p => p.id === activeProfileId) || profiles[0];
+
+  const handleSwitchProfile = async (profileId: string) => {
+    if (isSwitchingProfile) return;
+    setIsSwitchingProfile(true);
+    try {
+      await switchProfileFn({ data: { profileId } });
+      const pName = profiles.find(p => p.id === profileId)?.name || "Default";
+      toast.success(lang === "bn" ? `আইডি "${pName}" এ পরিবর্তন করা হয়েছে` : `Switched to ID "${pName}"`);
+      clearQueryCache();
+      qc.clear();
+      window.location.reload();
+    } catch (err: any) {
+      toast.error(err.message || String(err));
+    } finally {
+      setIsSwitchingProfile(false);
+    }
+  };
+
+  const handleCreateProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newProfileName.trim() || isSwitchingProfile) return;
+    setIsSwitchingProfile(true);
+    try {
+      await createProfileFn({ data: { name: newProfileName.trim() } });
+      toast.success(lang === "bn" ? `নতুন আইডি "${newProfileName}" তৈরি করা হয়েছে` : `New ID "${newProfileName}" created & switched`);
+      setNewProfileName("");
+      setCreateProfileOpen(false);
+      clearQueryCache();
+      qc.clear();
+      window.location.reload();
+    } catch (err: any) {
+      toast.error(err.message || String(err));
+    } finally {
+      setIsSwitchingProfile(false);
+    }
+  };
 
   async function handleSignOut() {
     await logout();
@@ -242,9 +348,23 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     <div className="min-h-screen min-h-dvh bg-transparent flex w-full app-shell">
       {!isMobile && (
         <Sidebar collapsible="icon" style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}>
-          <SidebarHeader className="border-b border-sidebar-border px-3 py-3">
+          <SidebarHeader className="border-b border-sidebar-border px-3 py-3 space-y-2">
             <div className="flex items-center overflow-hidden group-data-[collapsible=icon]:justify-center">
-              <AppLogo size="md" className="h-9 max-w-[180px]" />
+              <AppLogo size="md" className="h-11 max-w-[210px]" />
+            </div>
+            {/* Sidebar ID Switcher badge */}
+            <div className="group-data-[collapsible=icon]:hidden flex items-center justify-between px-2 py-1 rounded-lg bg-indigo-500/10 border border-indigo-500/20 text-xs">
+              <span className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 truncate">
+                ID: {currentProfile?.name || "Main ID"}
+              </span>
+              <button
+                type="button"
+                onClick={() => setCreateProfileOpen(true)}
+                className="text-[10px] text-muted-foreground hover:text-indigo-600 font-bold"
+                title={lang === "bn" ? "নতুন আইডি" : "New ID"}
+              >
+                + {lang === "bn" ? "নতুন" : "New"}
+              </button>
             </div>
           </SidebarHeader>
 
@@ -321,20 +441,193 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <div className="flex items-center h-12 px-3 gap-2">
             <div className="flex items-center gap-2 min-w-0 flex-1">
               {isMobile ? (
-                <div className="flex items-center min-w-0">
-                  <AppLogo size="sm" className="h-8 max-w-[150px]" />
+                <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                  <AppLogo size="sm" className="h-8.5 max-w-[140px]" />
+                  {/* Mobile ID Switcher Button */}
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <button
+                        type="button"
+                        disabled={isSwitchingProfile}
+                        className="inline-flex items-center gap-1 h-7 px-2 text-[11px] font-bold rounded-lg bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/30 truncate max-w-[110px]"
+                      >
+                        <RefreshCw className={`size-3 shrink-0 ${isSwitchingProfile ? "animate-spin" : ""}`} />
+                        <span className="truncate">{currentProfile?.name || "ID"}</span>
+                        <ChevronDown className="size-2.5 opacity-60" />
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start" className="w-56 p-1.5 shadow-xl rounded-2xl border-border/80">
+                      <DropdownMenuLabel className="text-xs text-muted-foreground font-semibold px-2 py-1">
+                        {lang === "bn" ? "আইডি / ব্রাঞ্চ পরিবর্তন করুন" : "Switch ID / Branch"}
+                      </DropdownMenuLabel>
+                      <DropdownMenuSeparator />
+                      {profiles.map(p => {
+                        const isActive = p.id === activeProfileId;
+                        return (
+                          <DropdownMenuItem
+                            key={p.id}
+                            onClick={() => !isActive && handleSwitchProfile(p.id)}
+                            className={`flex items-center justify-between text-xs rounded-xl cursor-pointer px-2.5 py-1.5 ${
+                              isActive ? "font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-500/10" : ""
+                            }`}
+                          >
+                            <span className="truncate">{p.name}</span>
+                            {isActive && (
+                              <span className="text-[9px] bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 px-1.5 py-0.5 rounded-md font-bold">
+                                {lang === "bn" ? "সক্রিয়" : "Active"}
+                              </span>
+                            )}
+                          </DropdownMenuItem>
+                        );
+                      })}
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        onClick={() => setCreateProfileOpen(true)}
+                        className="text-xs font-bold text-indigo-600 dark:text-indigo-400 rounded-xl cursor-pointer px-2.5 py-1.5 hover:bg-indigo-500/10"
+                      >
+                        <Plus className="size-3.5 mr-1.5" />
+                        {lang === "bn" ? "নতুন আইডি যোগ করুন" : "Add New ID / Branch"}
+                      </DropdownMenuItem>
+                      {activeEmpSession && (
+                        <DropdownMenuItem
+                          onClick={() => {
+                            sessionStorage.removeItem("app_pin_unlocked");
+                            window.dispatchEvent(new Event("app_lock_screen"));
+                          }}
+                          className="text-xs font-bold text-amber-600 dark:text-amber-400 rounded-xl cursor-pointer px-2.5 py-1.5 hover:bg-amber-500/10"
+                        >
+                          <Lock className="size-3.5 mr-1.5" />
+                          {lang === "bn" ? "মালিক মোডে ফিরুন (PIN)" : "Switch to Owner (Enter PIN)"}
+                        </DropdownMenuItem>
+                      )}
+                      <DropdownMenuItem
+                        onClick={() => {
+                          if (confirm(lang === "bn" ? "আপনি কি অন্য একাউন্ট বা কর্মচারী আইডিতে লগইন করতে চান?" : "Log in with another user or employee ID?")) {
+                            handleSignOut();
+                          }
+                        }}
+                        className="text-xs font-semibold text-muted-foreground hover:text-foreground rounded-xl cursor-pointer px-2.5 py-1.5 hover:bg-muted"
+                      >
+                        <Users className="size-3.5 mr-1.5 text-primary" />
+                        {lang === "bn" ? "অন্য আইডি / কর্মচারী লগইন" : "Login with Other / Employee ID"}
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </div>
               ) : (
                 <>
                   <SidebarTrigger className="size-7 shrink-0" />
-                  <div className="min-w-0 flex flex-col justify-center">
+                  <div className="min-w-0 flex items-center gap-2">
+                    <AppLogo size="sm" className="h-8.5 max-w-[170px] hidden md:block" />
                     <h1 className="font-serif font-semibold text-base truncate leading-none hidden sm:block">{brandName}</h1>
+                    
+                    {/* ID Switcher for PC / Desktop Version */}
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={isSwitchingProfile}
+                          className="hidden sm:inline-flex items-center gap-1.5 h-7.5 px-2.5 text-xs font-semibold rounded-xl beveled-button bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 border-indigo-500/30 shrink-0 cursor-pointer"
+                          title={lang === "bn" ? "আইডি / প্রোফাইল সুইচার" : "ID / Profile Switcher"}
+                        >
+                          <RefreshCw className={`size-3.5 shrink-0 ${isSwitchingProfile ? "animate-spin" : ""}`} />
+                          <span className="truncate max-w-[110px] font-bold">
+                            {currentProfile?.name || (lang === "bn" ? "মেইন আইডি" : "Main ID")}
+                          </span>
+                          <span className="text-[8px] bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 font-bold px-1 py-0.2 rounded uppercase">
+                            ID
+                          </span>
+                          <ChevronDown className="size-3 opacity-60 ml-0.5" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="start" className="w-56 p-1.5 shadow-xl rounded-2xl border-border/80">
+                        <DropdownMenuLabel className="text-xs text-muted-foreground font-semibold px-2 py-1">
+                          {lang === "bn" ? "আইডি / ব্রাঞ্চ পরিবর্তন করুন" : "Switch ID / Branch"}
+                        </DropdownMenuLabel>
+                        <DropdownMenuSeparator />
+                        {profiles.map(p => {
+                          const isActive = p.id === activeProfileId;
+                          return (
+                            <DropdownMenuItem
+                              key={p.id}
+                              onClick={() => !isActive && handleSwitchProfile(p.id)}
+                              className={`flex items-center justify-between text-xs rounded-xl cursor-pointer px-2.5 py-1.5 ${
+                                isActive ? "font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-500/10" : ""
+                              }`}
+                            >
+                              <span className="truncate">{p.name}</span>
+                              {isActive && (
+                                <span className="text-[9px] bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 px-1.5 py-0.5 rounded-md font-bold">
+                                  {lang === "bn" ? "সক্রিয়" : "Active"}
+                                </span>
+                              )}
+                            </DropdownMenuItem>
+                          );
+                        })}
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem
+                          onClick={() => setCreateProfileOpen(true)}
+                          className="text-xs font-bold text-indigo-600 dark:text-indigo-400 rounded-xl cursor-pointer px-2.5 py-1.5 hover:bg-indigo-500/10"
+                        >
+                          <Plus className="size-3.5 mr-1.5" />
+                          {lang === "bn" ? "নতুন আইডি যোগ করুন" : "Add New ID / Branch"}
+                        </DropdownMenuItem>
+                        {activeEmpSession && (
+                          <DropdownMenuItem
+                            onClick={() => {
+                              sessionStorage.removeItem("app_pin_unlocked");
+                              window.dispatchEvent(new Event("app_lock_screen"));
+                            }}
+                            className="text-xs font-bold text-amber-600 dark:text-amber-400 rounded-xl cursor-pointer px-2.5 py-1.5 hover:bg-amber-500/10"
+                          >
+                            <Lock className="size-3.5 mr-1.5" />
+                            {lang === "bn" ? "মালিক মোডে ফিরুন (PIN)" : "Switch to Owner (Enter PIN)"}
+                          </DropdownMenuItem>
+                        )}
+                        <DropdownMenuItem
+                          onClick={() => {
+                            if (confirm(lang === "bn" ? "আপনি কি অন্য একাউন্ট বা কর্মচারী আইডিতে লগইন করতে চান?" : "Log in with another user or employee ID?")) {
+                              handleSignOut();
+                            }
+                          }}
+                          className="text-xs font-semibold text-muted-foreground hover:text-foreground rounded-xl cursor-pointer px-2.5 py-1.5 hover:bg-muted"
+                        >
+                          <Users className="size-3.5 mr-1.5 text-primary" />
+                          {lang === "bn" ? "অন্য আইডি / কর্মচারী লগইন" : "Login with Other / Employee ID"}
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </div>
                 </>
               )}
             </div>
 
             <div className="flex items-center gap-1 shrink-0">
+              {/* Minimalist Top Owner/Employee Switcher Pill */}
+              {activeEmpSession ? (
+                <button
+                  type="button"
+                  onClick={() => setModeSwitcherOpen(true)}
+                  className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-full bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/35 text-amber-700 dark:text-amber-400 text-[11px] font-bold transition-all cursor-pointer shrink-0 shadow-2xs"
+                  title={lang === "bn" ? "মোড পরিবর্তন করুন (মালিক/কর্মচারী)" : "Switch Mode (Owner/Employee)"}
+                >
+                  <User className="size-3 text-amber-600 dark:text-amber-400" />
+                  <span className="truncate max-w-[80px] sm:max-w-[120px]">{activeEmpSession.name}</span>
+                  <span className="text-[9px] opacity-70">⇄</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setModeSwitcherOpen(true)}
+                  className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-full bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/25 text-indigo-600 dark:text-indigo-400 text-[11px] font-bold transition-all cursor-pointer shrink-0 shadow-2xs"
+                  title={lang === "bn" ? "মোড পরিবর্তন করুন (মালিক/কর্মচারী)" : "Switch Mode (Owner/Employee)"}
+                >
+                  <Crown className="size-3 text-indigo-600 dark:text-indigo-400" />
+                  <span className="hidden min-[400px]:inline">{lang === "bn" ? "মালিক" : "Owner"}</span>
+                  <span className="text-[9px] opacity-60">⇄</span>
+                </button>
+              )}
               <PWAInstallButton variant="outline" className="hidden sm:inline-flex h-8 px-2.5 text-xs" />
               <UniversalSearch role={user.role} permissions={user.permissions} />
               <Link href="/more" title={lang === "bn" ? "হেল্প ও সাপোর্ট" : "Help & Support"}>
@@ -396,6 +689,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
                     <DropdownMenuItem
                       onClick={() => {
+                        // Lock screen before entering Settings — owner must re-enter PIN
+                        const pinEnabled = localStorage.getItem("app_pin_code_enabled") === "true";
+                        const pinVal = localStorage.getItem("app_pin_code_val");
+                        if (pinEnabled && pinVal) {
+                          sessionStorage.removeItem("app_pin_unlocked");
+                          window.dispatchEvent(new Event("app_lock_screen"));
+                        }
                         router.push("/settings");
                       }}
                       className="text-xs font-medium cursor-pointer"
@@ -435,6 +735,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </PermissionGuard>
           </div>
           <div className="md:hidden mobile-bottom-spacer" aria-hidden />
+          <ModeSwitcherDialog open={modeSwitcherOpen} onOpenChange={setModeSwitcherOpen} />
         </main>
       </div>
 
@@ -475,6 +776,40 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <FloatingAiChat />
       )}
       <AdminPopupDialog />
+
+      {/* Create New Profile / ID Modal Dialog */}
+      <Dialog open={createProfileOpen} onOpenChange={setCreateProfileOpen}>
+        <DialogContent className="sm:max-w-md rounded-2xl">
+          <DialogHeader>
+            <DialogTitle className="text-base font-bold flex items-center gap-2">
+              <Plus className="size-4 text-indigo-600" />
+              {lang === "bn" ? "নতুন আইডি / প্রোফাইল তৈরি করুন" : "Create New ID / Branch Profile"}
+            </DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleCreateProfile} className="space-y-4 pt-2">
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">
+                {lang === "bn" ? "আইডি / প্রোফাইলের নাম" : "ID / Profile Name"}
+              </Label>
+              <Input
+                required
+                placeholder={lang === "bn" ? "যেমন: শাখা ২, ব্রাঞ্চ বা শোরুম..." : "e.g. Branch 2, Showroom..."}
+                value={newProfileName}
+                onChange={e => setNewProfileName(e.target.value)}
+                className="h-9 text-xs"
+              />
+            </div>
+            <DialogFooter className="pt-2">
+              <Button type="button" variant="outline" onClick={() => setCreateProfileOpen(false)}>
+                {t("cancel")}
+              </Button>
+              <Button type="submit" disabled={isSwitchingProfile} className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold">
+                {isSwitchingProfile ? (lang === "bn" ? "তৈরি হচ্ছে..." : "Creating...") : (lang === "bn" ? "তৈরি করুন" : "Create ID")}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

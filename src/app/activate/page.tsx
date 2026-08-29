@@ -11,18 +11,22 @@ import { Card } from "@/components/ui/card";
 import { AppLogo } from "@/components/app-logo";
 import { SpeedLoader } from "@/components/speed-loader";
 import { toast } from "sonner";
-import { activateLicenseFn } from "@/lib/rpc-admin";
+import { activateLicenseFn } from "@/lib/rpc";
 
 export default function ActivatePage() {
   const { user, loading, refresh, login } = useAuth();
-  const { t } = useT();
+  const { t, lang } = useT();
   const router = useRouter();
   const [key, setKey] = useState("");
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     if (!loading && user?.activated) {
-      router.replace("/dashboard");
+      if (typeof window !== "undefined") {
+        window.location.href = "/dashboard";
+      } else {
+        router.replace("/dashboard");
+      }
     }
   }, [user, loading, router]);
 
@@ -30,19 +34,40 @@ export default function ActivatePage() {
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (!key.trim()) {
-      toast.error("Please enter a valid license key");
+    const cleanKey = key.trim().toUpperCase();
+    if (!cleanKey) {
+      toast.error(lang === "bn" ? "অনুগ্রহ করে একটি সঠিক লাইসেন্স কি লিখুন" : "Please enter a valid license key");
       return;
     }
     setBusy(true);
     try {
-      await activateLicenseFn({ data: { licenseKey: key.trim() } });
+      const res = await activateLicenseFn({
+        data: {
+          licenseKey: cleanKey,
+          userUid: user?.id,
+          userEmail: user?.email,
+        },
+      });
+
       if (user) {
-        login({ ...user, activated: true });
+        login({
+          ...user,
+          activated: true,
+          role: res.role || (cleanKey.startsWith("EMP-") ? "employee" : "owner"),
+          license_key: cleanKey,
+          permissions: res.permissions || user.permissions,
+          allowedPages: res.allowedPages,
+          allowedKpis: res.allowedKpis,
+        } as any);
       }
-      await refresh();
-      toast.success("License activated successfully! Welcome to Classic World.");
-      router.replace("/dashboard");
+      toast.success(lang === "bn" ? "লাইসেন্স সফলভাবে অ্যাক্টিভেট হয়েছে! স্বাগতম।" : "License activated successfully! Welcome to Classic World.");
+      
+      if (typeof window !== "undefined") {
+        sessionStorage.setItem("app_pin_unlocked", "true");
+        window.location.href = "/dashboard";
+      } else {
+        router.replace("/dashboard");
+      }
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : String(err));
     } finally {

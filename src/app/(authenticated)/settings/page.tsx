@@ -12,6 +12,7 @@ import { useT } from "@/lib/i18n";
 import { useAuth } from "@/hooks/use-auth";
 import { toast } from "sonner";
 import {
+  disconnectGoogleSheetsFn,
   getBusinessSettingsFn,
   updateBusinessSettingsFn,
   removeEmployeeFn,
@@ -46,6 +47,7 @@ import {
   Users,
   Eye,
   EyeOff,
+  Key,
 } from "lucide-react";
 import { getPosPaperConfig, savePosPaperConfig, DEFAULT_POS_CONFIG, type PosPaperSettings } from "@/lib/pos-print";
 import { DEFAULT_EMPLOYEE_PERMISSIONS, type PermissionSet } from "@/lib/permissions";
@@ -64,10 +66,15 @@ import {
   resetPartiesFn,
   changeMyPasswordFn,
   connectGoogleSheetsOAuthFn,
-  disconnectGoogleSheetsFn,
   sendEmployeeInvitationFn,
   listEmployeeInvitationsFn,
   cancelEmployeeInvitationFn,
+  generateEmployeeLicenseKeyFn,
+  listLicensesFn,
+  revokeLicenseFn,
+  getRecycleBinFn,
+  restoreFromRecycleBinFn,
+  permanentDeleteRecycleBinFn,
 } from "@/lib/rpc";
 import { auth } from "@/lib/firebase";
 import { signInWithPopup, GoogleAuthProvider } from "firebase/auth";
@@ -86,7 +93,7 @@ import {
 
 const BUSINESS_TYPES = ["retail", "wholesale", "fashion", "grocery", "services"];
 
-type SettingsTab = "profile" | "printing" | "sheets" | "staff" | "appearance" | "security";
+type SettingsTab = "profile" | "kpis" | "printing" | "sheets" | "staff" | "recycle_bin" | "appearance" | "security";
 
 export default function SettingsPage() {
   const { lang, t } = useT();
@@ -96,33 +103,391 @@ export default function SettingsPage() {
   const qc = useQueryClient();
   
   const settings = useQuery({ queryKey: ["business-settings"], queryFn: getBusinessSettingsFn });
-  const invitations = useQuery({ queryKey: ["employee-invitations"], queryFn: listEmployeeInvitationsFn });
+  const [isUnlocked, setIsUnlocked] = useState(false);
+  const biz = settings.data?.business || (settings.data as any) || {};
+  const isOwner = user?.role === "owner" || (user as any)?.role !== "employee";
+  const hasDangerZoneAccess = isOwner || isUnlocked;
+
+  // Store Logo State
+  const [logoUrl, setLogoUrl] = useState<string>(() => biz?.logo_url || "/logo.png");
+  useEffect(() => {
+    if (biz?.logo_url) setLogoUrl(biz.logo_url);
+  }, [biz?.logo_url]);
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      setCropImageSrc(reader.result as string);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // KPI Configuration & Ordering State
+  const DEFAULT_KPI_ORDER = [
+    "total_sales", "cash_sale", "sell_kpi", "credit_sale", "online_sell",
+    "owner_wallet", "purchases", "profit", "loss", "expense", "due", "cashbox", "somiti"
+  ];
+
+  const normalizeKpiOrderList = (order?: string[]) => {
+    const defaultList = [...DEFAULT_KPI_ORDER];
+    if (!order || !Array.isArray(order) || order.length === 0) return defaultList;
+    const list = order.map(k => (k === "bkash_bank" ? "sell_kpi" : k === "owners_wallet" ? "owner_wallet" : k));
+    for (const key of defaultList) {
+      if (!list.includes(key)) list.push(key);
+    }
+    return list.filter(k => defaultList.includes(k));
+  };
+
+  const [kpiConfig, setKpiConfig] = useState<{
+    align: string;
+    size: string;
+    columns: number;
+    variant: string;
+    shadow: string;
+    borderStyle: string;
+    curve: string;
+    bentoGrid: boolean;
+    order: string[];
+    hiddenKpis?: string[];
+  }>({
+    align: "left",
+    size: "small",
+    columns: 2,
+    variant: "glass",
+    shadow: "glow",
+    borderStyle: "subtle",
+    curve: "none",
+    bentoGrid: true,
+    order: DEFAULT_KPI_ORDER,
+    hiddenKpis: [],
+  });
+
+  const [draggedKpiIdx, setDraggedKpiIdx] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("hz_kpi_config");
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          setKpiConfig(prev => ({
+            ...prev,
+            ...parsed,
+            order: parsed.order ? normalizeKpiOrderList(parsed.order) : prev.order,
+          }));
+        } catch (_) {}
+      }
+    }
+  }, []);
+
+  const updateKpiConfig = (newSettings: Partial<typeof kpiConfig>) => {
+    setKpiConfig(prev => {
+      const updated = {
+        ...prev,
+        ...newSettings,
+        order: newSettings.order ? normalizeKpiOrderList(newSettings.order) : prev.order,
+      };
+      localStorage.setItem("hz_kpi_config", JSON.stringify(updated));
+      window.dispatchEvent(new Event("hz-kpi-config-updated"));
+      try {
+        updateBusinessSettingsFn({ data: { kpi_config: updated } });
+      } catch (_) {}
+      return updated;
+    });
+  };
+
+  const moveKpiPosition = (fromIdx: number, toIdx: number) => {
+    const currentOrder = normalizeKpiOrderList(kpiConfig.order);
+    if (toIdx < 0 || toIdx >= currentOrder.length) return;
+    const list = [...currentOrder];
+    const [movedItem] = list.splice(fromIdx, 1);
+    list.splice(toIdx, 0, movedItem);
+    updateKpiConfig({ order: list });
+    toast.success(lang === "bn" ? "KPI পজিশন সফলভাবে পরিবর্তন করা হয়েছে" : "KPI position updated");
+  };
+
+  const handleKpiDragStart = (idx: number) => setDraggedKpiIdx(idx);
+  const handleKpiDragOver = (e: React.DragEvent, idx: number) => {
+    e.preventDefault();
+    if (draggedKpiIdx === null || draggedKpiIdx === idx) return;
+    const currentOrder = normalizeKpiOrderList(kpiConfig.order);
+    const list = [...currentOrder];
+    const item = list[draggedKpiIdx];
+    list.splice(draggedKpiIdx, 1);
+    list.splice(idx, 0, item);
+    setDraggedKpiIdx(idx);
+    setKpiConfig(prev => ({ ...prev, order: list }));
+  };
+  const handleKpiDragEnd = () => {
+    setDraggedKpiIdx(null);
+    localStorage.setItem("hz_kpi_config", JSON.stringify(kpiConfig));
+    window.dispatchEvent(new Event("hz-kpi-config-updated"));
+    try {
+      updateBusinessSettingsFn({ data: { kpi_config: kpiConfig } });
+    } catch (_) {}
+    toast.success(lang === "bn" ? "KPI পজিশন সফলভাবে সাজানো হয়েছে!" : "KPI layout order updated!");
+  };
+
+  const resetKpiToDefault = () => {
+    updateKpiConfig({ order: DEFAULT_KPI_ORDER });
+    toast.success(lang === "bn" ? "KPI ক্রম ডিফল্ট আকারে রিসেট করা হয়েছে" : "KPI layout reset to default");
+  };
+
+  const updatePosConfig = (updates: any) => {
+    setPosConfig(prev => ({ ...prev, ...updates }));
+    toast.success(lang === "bn" ? "প্রিন্টার পেপার সাইজ সংরক্ষিত হয়েছে!" : "POS Printer Paper Settings Saved!");
+  };
+
+  const invitations = { data: [] as any[] };
+
+  // (biz already declared)
+  // (isOwner already declared)
+  // (hasDangerZoneAccess already declared)
+
+  // Invoice & POS Formatting State
+  const [fontSize, setFontSize] = useState("22px");
+  const [fontScale, setFontScale] = useState("100%");
+  const [lineSpacing, setLineSpacing] = useState("6px");
+  const [posConfig, setPosConfig] = useState<{ widthMm: number; paperType: string }>({ widthMm: 80, paperType: "receipt" });
+
+  // PIN Lock & Password States
+  const [pinLockEnabled, setPinLockEnabled] = useState(false);
+  const [pinCodeVal, setPinCodeVal] = useState("1234");
+  const [pinTimeoutVal, setPinTimeoutVal] = useState("10");
+  const [pwBusy, setPwBusy] = useState(false);
+
+  // Sheets Sync States
+  const [isSheetsSaving, setIsSheetsSaving] = useState(false);
+  const [isBulkExporting, setIsBulkExporting] = useState(false);
+
+  // Employee Permissions State
+  const [editingPermissionsEmp, setEditingPermissionsEmp] = useState<any>(null);
+  const [empPermissions, setEmpPermissions] = useState<any>({});
+  const [isUpdatingPerms, setIsUpdatingPerms] = useState(false);
+
 
   const [busy, setBusy] = useState(false);
   const [settingsTab, setSettingsTab] = useState<SettingsTab>("profile");
 
-  // Invite Employee Form State
-  const [inviteEmail, setInviteEmail] = useState("");
-  const [inviteName, setInviteName] = useState("");
-  const [inviteDesignation, setInviteDesignation] = useState("Sales Staff");
-  const [inviteSending, setInviteSending] = useState(false);
+  // Employee License Key Generator State
+  const [empLicName, setEmpLicName] = useState("");
+  const [empLicAllowedPages, setEmpLicAllowedPages] = useState<string[]>([
+    "/dashboard", "/sales", "/products", "/invoices"
+  ]);
+  const [empLicAllowedKpis, setEmpLicAllowedKpis] = useState<string[]>([
+    "sell_kpi", "total_sales", "cash_sale"
+  ]);
+  const [empLicPermissions, setEmpLicPermissions] = useState<PermissionSet>({
+    dashboard: true,
+    sales: true,
+    products: true,
+    parties: false,
+    purchases: false,
+    expenses: false,
+    reports: false,
+    settings: false,
+    cashbox: false,
+    danger_zone: false,
+  });
+  const [empLicNote, setEmpLicNote] = useState("");
+  const [empLicBusy, setEmpLicBusy] = useState(false);
+
+  const employeeLicenses = useQuery({
+    queryKey: ["employee-licenses-list"],
+    queryFn: () => listLicensesFn({ data: { type: "employee" } }),
+  });
+
+  const recycleBinQuery = useQuery({
+    queryKey: ["user-recycle-bin"],
+    queryFn: () => getRecycleBinFn(),
+  });
+
+  const handleGenerateEmpLicense = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!empLicName.trim()) {
+      toast.error(lang === "bn" ? "কর্মচারীর নাম দিন" : "Please enter employee name");
+      return;
+    }
+    setEmpLicBusy(true);
+    try {
+      const res = await generateEmployeeLicenseKeyFn({
+        data: {
+          employeeName: empLicName.trim(),
+          allowedPages: empLicAllowedPages,
+          allowedKpis: empLicAllowedKpis,
+          permissions: empLicPermissions,
+          note: empLicNote.trim(),
+        },
+      });
+      toast.success(lang === "bn" ? `কর্মচারী লাইসেন্স তৈরি হয়েছে: ${res.key}` : `Employee license generated: ${res.key}`);
+      setEmpLicName("");
+      setEmpLicNote("");
+      employeeLicenses.refetch();
+    } catch (err: any) {
+      toast.error(err.message || String(err));
+    } finally {
+      setEmpLicBusy(false);
+    }
+  };
+
+  const handleRevokeEmpLicense = async (key: string) => {
+    if (!confirm(lang === "bn" ? `আপনি কি লাইসেন্স "${key}" বাতিল করতে চান?` : `Revoke license "${key}"?`)) return;
+    try {
+      await revokeLicenseFn({ data: { key } });
+      toast.success(lang === "bn" ? "লাইসেন্স বাতিল করা হয়েছে" : "License revoked");
+      employeeLicenses.refetch();
+    } catch (err: any) {
+      toast.error(err.message || String(err));
+    }
+  };
+
+  // Danger Zone & Reset State
+  const [resetType, setResetType] = useState<string | null>(null);
+  const [resetLoading, setResetLoading] = useState(false);
+  const [confirmText, setConfirmText] = useState("");
+  const [isUnlockDialogOpen, setIsUnlockDialogOpen] = useState(false);
+  const [unlockPassword, setUnlockPassword] = useState("");
+  const [unlockLoading, setUnlockLoading] = useState(false);
+  // (isUnlocked already declared)
+
+  // Logo Cropper State
+  const [cropImageSrc, setCropImageSrc] = useState<string | null>(null);
+  const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [imgSize, setImgSize] = useState({ width: 256, height: 256 });
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const imageRef = useRef<HTMLImageElement>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+
+  const isGoogleUser = !!(auth.currentUser?.providerData?.some(p => p.providerId === "google.com") || user?.email?.endsWith("@gmail.com"));
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    setIsDragging(true);
+    setDragStart({ x: e.clientX - pan.x, y: e.clientY - pan.y });
+  };
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!isDragging) return;
+    setPan({ x: e.clientX - dragStart.x, y: e.clientY - dragStart.y });
+  };
+  const handleMouseUp = () => setIsDragging(false);
+  const handleTouchStart = (e: React.TouchEvent) => {
+    if (e.touches.length === 1) {
+      setIsDragging(true);
+      setDragStart({ x: e.touches[0].clientX - pan.x, y: e.touches[0].clientY - pan.y });
+    }
+  };
+  const handleImageLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
+    const img = e.currentTarget;
+    setImgSize({ width: img.naturalWidth || 256, height: img.naturalHeight || 256 });
+  };
+  const handleCropSave = async () => {
+    if (!cropImageSrc) return;
+    try {
+      await updateBusinessSettingsFn({ data: { logo_url: cropImageSrc } });
+      qc.invalidateQueries({ queryKey: ["business-settings"] });
+      setCropImageSrc(null);
+      toast.success(lang === "bn" ? "লোগো সফলভাবে আপডেট হয়েছে!" : "Logo updated successfully!");
+    } catch (err: any) {
+      toast.error(err.message || String(err));
+    }
+  };
+
+  // Multi-ID Employee PIN Accounts State
+  const [employeeAccounts, setEmployeeAccounts] = useState<any[]>(() => {
+    if (typeof window === "undefined") return [];
+    try {
+      return JSON.parse(localStorage.getItem("cw_employee_accounts") || "[]");
+    } catch {
+      return [];
+    }
+  });
+
+  const [newEmpAccountName, setNewEmpAccountName] = useState("");
+  const [newEmpAccountRole, setNewEmpAccountRole] = useState("Sales Staff");
+  const [newEmpAccountPin, setNewEmpAccountPin] = useState("");
+  const [newEmpAccountPages, setNewEmpAccountPages] = useState<string[]>([
+    "/dashboard", "/sales", "/products", "/invoices"
+  ]);
+  const [newEmpAccountKpis, setNewEmpAccountKpis] = useState<string[]>([
+    "sell_kpi", "total_sales", "cash_sale"
+  ]);
+
+  const saveEmployeeAccounts = (accounts: any[]) => {
+    setEmployeeAccounts(accounts);
+    localStorage.setItem("cw_employee_accounts", JSON.stringify(accounts));
+    window.dispatchEvent(new Event("storage"));
+    window.dispatchEvent(new Event("hz-employee-switched"));
+  };
+
+  const handleCreateEmpAccount = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newEmpAccountName.trim() || !newEmpAccountPin.trim()) {
+      toast.error(lang === "bn" ? "কর্মচারীর নাম ও ৪ সংখ্যার পিন দিন" : "Please enter name and PIN");
+      return;
+    }
+    if (newEmpAccountPin.trim().length < 4) {
+      toast.error(lang === "bn" ? "পিন কোড অন্তত ৪ সংখ্যা হতে হবে" : "PIN must be at least 4 digits");
+      return;
+    }
+    const newAcc = {
+      id: `emp_${Date.now()}`,
+      name: newEmpAccountName.trim(),
+      role: newEmpAccountRole,
+      pin: newEmpAccountPin.trim(),
+      allowedPages: newEmpAccountPages,
+      allowedKpis: newEmpAccountKpis,
+      created_at: new Date().toISOString(),
+    };
+    const updated = [...employeeAccounts, newAcc];
+    saveEmployeeAccounts(updated);
+    toast.success(lang === "bn" ? `কর্মচারী ${newEmpAccountName} ও পিন কোড সংরক্ষিত হয়েছে!` : `Employee account & PIN saved!`);
+    setNewEmpAccountName("");
+    setNewEmpAccountPin("");
+  };
+
+  const handleDeleteEmpAccount = (id: string, name: string) => {
+    if (!confirm(lang === "bn" ? `আপনি কি কর্মচারী "${name}" মুছে ফেলতে চান?` : `Delete employee account "${name}"?`)) return;
+    const updated = employeeAccounts.filter(a => a.id !== id);
+    saveEmployeeAccounts(updated);
+    toast.success(lang === "bn" ? "কর্মচারী একাউন্ট মুছে ফেলা হয়েছে" : "Employee account deleted");
+  };
+
+  const handleUpdateEmpAccountPin = (id: string, newPin: string) => {
+    if (!newPin || newPin.length < 4) return;
+    const updated = employeeAccounts.map(a => a.id === id ? { ...a, pin: newPin } : a);
+    saveEmployeeAccounts(updated);
+    toast.success(lang === "bn" ? "পিন কোড পরিবর্তন হয়েছে" : "PIN code updated");
+  };
+
+  const handleRestoreRecycleItem = async (id: string, label: string) => {
+    try {
+      await restoreFromRecycleBinFn({ data: { id } });
+      toast.success(lang === "bn" ? `"${label}" সফলভাবে ফিরিয়ে আনা হয়েছে!` : `Restored "${label}" successfully!`);
+      recycleBinQuery.refetch();
+      qc.invalidateQueries();
+    } catch (err: any) {
+      toast.error(err.message || String(err));
+    }
+  };
+
+  const handlePermanentDeleteRecycleItem = async (id: string) => {
+    if (!confirm(lang === "bn" ? "স্থায়ীভাবে ডিলিট করতে চান? এটি আর ফিরিয়ে আনা যাবে না।" : "Permanently delete item? This cannot be undone.")) return;
+    try {
+      await permanentDeleteRecycleBinFn({ data: { id } });
+      toast.success(lang === "bn" ? "স্থায়ীভাবে মুছে ফেলা হয়েছে" : "Item permanently deleted");
+      recycleBinQuery.refetch();
+    } catch (err: any) {
+      toast.error(err.message || String(err));
+    }
+  };
+
 
   // KPI Reordering & Configuration Constants
-  const DEFAULT_KPI_ORDER = [
-    "total_sales",
-    "cash_sale",
-    "sell_kpi",
-    "credit_sale",
-    "online_sell",
-    "owner_wallet",
-    "purchases",
-    "profit",
-    "loss",
-    "expense",
-    "due",
-    "cashbox",
-    "somiti",
-  ];
+  // (DEFAULT_KPI_ORDER already declared at top)
+
 
   const KPI_METADATA: Record<
     string,
@@ -130,7 +495,7 @@ export default function SettingsPage() {
   > = {
     total_sales: {
       nameEn: "Total Sales",
-      nameBn: "আজকের মোট বিক্রয়",
+      nameBn: "মোট বিক্রি",
       descEn: "Combined total of all sales orders",
       descBn: "সকল ক্যাশ, বাকি ও অনলাইন বিক্রির মোট যোগফল",
       badge: "Total",
@@ -139,7 +504,7 @@ export default function SettingsPage() {
     },
     cash_sale: {
       nameEn: "Cash Sale",
-      nameBn: "নগদ বিক্রয়",
+      nameBn: "নগদ বিক্রি",
       descEn: "Instant cash payments received",
       descBn: "নগদে সংগৃহীত মোট বিক্রয়",
       badge: "Cash",
@@ -147,18 +512,18 @@ export default function SettingsPage() {
       bg: "bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-400",
     },
     sell_kpi: {
-      nameEn: "Sell KPI (Collections)",
-      nameBn: "বিক্রয় ও ডিজিটাল আদায় (Sell KPI)",
-      descEn: "Digital, card & cash breakdown like Sales page",
-      descBn: "বিক্রয় পাতা অনুসারে ডিজিটাল ও আদায় সারাংশ",
-      badge: "Sell KPI",
+      nameEn: "Sell (Collection)",
+      nameBn: "বিক্রয় ও আদায়",
+      descEn: "Total sales with bKash, bank & online collection breakdown",
+      descBn: "মোট বিক্রয় ও বিকাশ, ব্যাংক ও অনলাইন পেন্ডিং হিসাব",
+      badge: "Sell",
       color: "text-pink-600",
       bg: "bg-pink-500/10 border-pink-500/30 text-pink-600 dark:text-pink-400",
     },
     credit_sale: {
       nameEn: "Credit Sale",
-      nameBn: "বাকি বিক্রয়",
-      descEn: "Sales made on store credit / dues",
+      nameBn: "বাকি বিক্রি",
+      descEn: "Sales made on customer store credit",
       descBn: "বাকিতে করা বিক্রয়",
       badge: "Credit",
       color: "text-amber-500",
@@ -166,7 +531,7 @@ export default function SettingsPage() {
     },
     online_sell: {
       nameEn: "Online Sale",
-      nameBn: "অনলাইন বিক্রয়",
+      nameBn: "অনলাইন বিক্রি",
       descEn: "Web orders & courier deliveries",
       descBn: "কুরিয়ার ও অনলাইন অর্ডারের হিসাব",
       badge: "Online",
@@ -175,8 +540,8 @@ export default function SettingsPage() {
     },
     owner_wallet: {
       nameEn: "Owner's Expense",
-      nameBn: "মালিকের খরচ (ওয়ালেট)",
-      descEn: "Owner's personal & family withdrawals",
+      nameBn: "মালিকের খরচ",
+      descEn: "Owner's personal withdrawals and family expenses",
       descBn: "মালিকের ব্যক্তিগত ও পরিবার খরচের মোট হিসাব",
       badge: "Owner",
       color: "text-amber-600",
@@ -184,7 +549,7 @@ export default function SettingsPage() {
     },
     purchases: {
       nameEn: "Purchases (BUY)",
-      nameBn: "মাল ক্রয় (BUY)",
+      nameBn: "পণ্য ক্রয় (BUY)",
       descEn: "Total spent on restock & buying stock",
       descBn: "দোকানের জন্য পাইকারি মাল কেনার খরচ",
       badge: "Buy",
@@ -202,16 +567,16 @@ export default function SettingsPage() {
     },
     loss: {
       nameEn: "Total Loss",
-      nameBn: "মোট ক্ষতি",
-      descEn: "Loss incurred from discounts or returns",
+      nameBn: "লোকসান",
+      descEn: "Loss incurred from discounts or damages",
       descBn: "ছাড় বা লস জনিত মোট ক্ষতি",
       badge: "Loss",
       color: "text-rose-500",
       bg: "bg-rose-500/10 border-rose-500/30 text-rose-600 dark:text-rose-400",
     },
     expense: {
-      nameEn: "Total Expenses",
-      nameBn: "মোট খরচ",
+      nameEn: "Shop Expenses",
+      nameBn: "দোকান খরচ",
       descEn: "Daily operational & shop expenses",
       descBn: "দোকানের দৈনন্দিন খরচ ও বিল",
       badge: "Expense",
@@ -219,7 +584,7 @@ export default function SettingsPage() {
       bg: "bg-red-500/10 border-red-500/30 text-red-600 dark:text-red-400",
     },
     due: {
-      nameEn: "Customer Due",
+      nameEn: "Customer Dues",
       nameBn: "ক্রেতার বাকি",
       descEn: "Outstanding money owed by parties",
       descBn: "কাস্টমার ও পার্টির কাছে বকেয়া পাওনা",
@@ -230,357 +595,21 @@ export default function SettingsPage() {
     cashbox: {
       nameEn: "Cashbox Balance",
       nameBn: "ক্যাশবক্স ব্যালেন্স",
-      descEn: "Real-time physical money inside cashbox",
-      descBn: "ক্যাশবক্সে উপস্থিত মোট নগদ টাকা",
+      descEn: "Live drawer balance and cash reserve",
+      descBn: "ক্যাশ ড্রয়ারের বর্তমান নগদ টাকা ও ব্যালেন্স",
       badge: "Cashbox",
       color: "text-teal-500",
       bg: "bg-teal-500/10 border-teal-500/30 text-teal-600 dark:text-teal-400",
     },
     somiti: {
-      nameEn: "Samity Savings",
+      nameEn: "Samity (Savings)",
       nameBn: "সমিতি ও সঞ্চয়",
-      descEn: "Total deposits saved in samity funds",
-      descBn: "সমিতিতে জমা ও সঞ্চয়ের মোট ব্যালেন্স",
+      descEn: "Samity monthly deposits and installments",
+      descBn: "সমিতিতে জমা ও সঞ্চয়ের নিট হিসাব",
       badge: "Samity",
       color: "text-cyan-500",
       bg: "bg-cyan-500/10 border-cyan-500/30 text-cyan-600 dark:text-cyan-400",
     },
-  };
-
-  const normalizeKpiOrderList = (order?: string[]) => {
-    const defaultList = [...DEFAULT_KPI_ORDER];
-    if (!order || !Array.isArray(order) || order.length === 0) return defaultList;
-    const list = order.map(k => (k === "bkash_bank" ? "sell_kpi" : k === "owners_wallet" ? "owner_wallet" : k));
-    for (const key of defaultList) {
-      if (!list.includes(key)) list.push(key);
-    }
-    return list.filter(k => defaultList.includes(k));
-  };
-
-  // KPI Configuration state
-  const [kpiConfig, setKpiConfig] = useState<{
-    align: string;
-    size: string;
-    columns: number;
-    variant: string;
-    shadow: string;
-    borderStyle: string;
-    curve: string;
-    order: string[];
-    hiddenKpis?: string[];
-  }>({
-    align: "left",
-    size: "small",
-    columns: 2,
-    variant: "glass",
-    shadow: "glow",
-    borderStyle: "subtle",
-    curve: "none",
-    order: DEFAULT_KPI_ORDER,
-    hiddenKpis: [],
-  });
-
-  const [draggedKpiIdx, setDraggedKpiIdx] = useState<number | null>(null);
-
-  // Admin PIN Code Lock State
-  const [pinLockEnabled, setPinLockEnabled] = useState(false);
-  const [pinCodeVal, setPinCodeVal] = useState("1234");
-  const [pinTimeoutVal, setPinTimeoutVal] = useState("10");
-
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      setPinLockEnabled(localStorage.getItem("app_pin_code_enabled") === "true");
-      setPinCodeVal(localStorage.getItem("app_pin_code_val") || "1234");
-      setPinTimeoutVal(localStorage.getItem("app_pin_timeout") || "10");
-    }
-  }, []);
-
-  useEffect(() => {
-    const saved = localStorage.getItem("hz_kpi_config");
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        setKpiConfig(prev => ({
-          ...prev,
-          ...parsed,
-          order: normalizeKpiOrderList(parsed.order),
-          hiddenKpis: parsed.hiddenKpis || [],
-        }));
-      } catch (e) {}
-    }
-  }, []);
-
-  // POS Thermal Printer Paper Configuration state
-  const [posConfig, setPosConfig] = useState<PosPaperSettings>(DEFAULT_POS_CONFIG);
-
-  useEffect(() => {
-    setPosConfig(getPosPaperConfig());
-  }, []);
-
-  const updatePosConfig = (updates: Partial<PosPaperSettings>) => {
-    const updated = savePosPaperConfig(updates);
-    setPosConfig(updated);
-    toast.success(lang === "bn" ? "প্রিন্টার পেপার সাইজ সংরক্ষিত হয়েছে!" : "POS Printer Paper Settings Saved!");
-  };
-
-  const updateKpiConfig = (newSettings: Partial<typeof kpiConfig>) => {
-    setKpiConfig(prev => {
-      const updated = {
-        ...prev,
-        ...newSettings,
-        order: newSettings.order ? normalizeKpiOrderList(newSettings.order) : prev.order,
-      };
-      localStorage.setItem("hz_kpi_config", JSON.stringify(updated));
-      window.dispatchEvent(new Event("hz-kpi-config-updated"));
-      return updated;
-    });
-  };
-
-  const moveKpiPosition = (fromIdx: number, toIdx: number) => {
-    const currentOrder = normalizeKpiOrderList(kpiConfig.order);
-    if (toIdx < 0 || toIdx >= currentOrder.length) return;
-    const list = [...currentOrder];
-    const [movedItem] = list.splice(fromIdx, 1);
-    list.splice(toIdx, 0, movedItem);
-    updateKpiConfig({ order: list });
-    toast.success(lang === "bn" ? "KPI পজিশন সফলভাবে পরিবর্তন করা হয়েছে" : "KPI position updated");
-  };
-
-  const handleKpiDragStart = (idx: number) => {
-    setDraggedKpiIdx(idx);
-  };
-
-  const handleKpiDragOver = (e: React.DragEvent, idx: number) => {
-    e.preventDefault();
-    if (draggedKpiIdx === null || draggedKpiIdx === idx) return;
-    const currentOrder = normalizeKpiOrderList(kpiConfig.order);
-    const list = [...currentOrder];
-    const item = list[draggedKpiIdx];
-    list.splice(draggedKpiIdx, 1);
-    list.splice(idx, 0, item);
-    setDraggedKpiIdx(idx);
-    setKpiConfig(prev => ({ ...prev, order: list }));
-  };
-
-  const handleKpiDragEnd = () => {
-    setDraggedKpiIdx(null);
-    localStorage.setItem("hz_kpi_config", JSON.stringify(kpiConfig));
-    window.dispatchEvent(new Event("hz-kpi-config-updated"));
-    toast.success(lang === "bn" ? "KPI পজিশন সফলভাবে সাজানো হয়েছে!" : "KPI layout order updated!");
-  };
-
-  const resetKpiToDefault = () => {
-    updateKpiConfig({ order: DEFAULT_KPI_ORDER });
-    toast.success(lang === "bn" ? "KPI ক্রম ডিফল্ট আকারে রিসেট করা হয়েছে" : "KPI layout reset to default");
-  };
-
-  // Safety settings states
-  const [isUnlocked, setIsUnlocked] = useState(false);
-  const [isUnlockDialogOpen, setIsUnlockDialogOpen] = useState(false);
-  const [unlockPassword, setUnlockPassword] = useState("");
-  const [unlockLoading, setUnlockLoading] = useState(false);
-
-  // Employee permissions editing state
-  const [editingPermissionsEmp, setEditingPermissionsEmp] = useState<any | null>(null);
-  const [empPermissions, setEmpPermissions] = useState<PermissionSet>(DEFAULT_EMPLOYEE_PERMISSIONS);
-  const [isUpdatingPerms, setIsUpdatingPerms] = useState(false);
-
-  // Sheets sync states
-  const [isSheetsSaving, setIsSheetsSaving] = useState(false);
-  const [isBulkExporting, setIsBulkExporting] = useState(false);
-
-  // Reset states
-  const [resetType, setResetType] = useState<"cashbox" | "products" | "sales" | "purchases" | "somiti" | "expenses" | "parties" | "all" | null>(null);
-  const [confirmText, setConfirmText] = useState("");
-  const [resetLoading, setResetLoading] = useState(false);
-
-  const [pwBusy, setPwBusy] = useState(false);
-
-  const biz = settings.data?.business;
-  const isOwner = settings.data?.role === "owner";
-  const hasDangerZoneAccess = isOwner || settings.data?.permissions?.danger_zone === true;
-  const isGoogleUser = Boolean(
-    settings.data?.provider === "google" ||
-    settings.data?.auth_provider === "google" ||
-    settings.data?.firebase_uid ||
-    (typeof window !== "undefined" && auth?.currentUser?.providerData?.some(p => p.providerId === "google.com")) ||
-    (!settings.data?.has_password && !settings.data?.password && !settings.data?.plain_password)
-  );
-
-  const [logoUrl, setLogoUrl] = useState("");
-  const [fontSize, setFontSize] = useState("22px");
-  const [fontScale, setFontScale] = useState("100%");
-  const [lineSpacing, setLineSpacing] = useState("6px");
-
-  useEffect(() => {
-    if (biz?.logo_url) {
-      setLogoUrl(biz.logo_url);
-    }
-    if (biz?.invoice_font_size) {
-      setFontSize(biz.invoice_font_size);
-    }
-    if (biz?.invoice_scale) {
-      setFontScale(biz.invoice_scale);
-    }
-    if (biz?.invoice_line_spacing) {
-      setLineSpacing(biz.invoice_line_spacing);
-    }
-  }, [biz?.logo_url, biz?.invoice_font_size, biz?.invoice_scale, biz?.invoice_line_spacing]);
-
-  // Cropper states
-  const [cropImageSrc, setCropImageSrc] = useState<string | null>(null);
-  const [cropImageName, setCropImageName] = useState<string>("");
-  const [cropImageType, setCropImageType] = useState<string>("image/png");
-
-  const [zoom, setZoom] = useState(1);
-  const [pan, setPan] = useState({ x: 0, y: 0 });
-  const [imgSize, setImgSize] = useState({ width: 256, height: 256 });
-
-  const [isDragging, setIsDragging] = useState(false);
-  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
-  const [panStart, setPanStart] = useState({ x: 0, y: 0 });
-
-  const [isTouchDragging, setIsTouchDragging] = useState(false);
-  const [touchDragStart, setTouchDragStart] = useState({ x: 0, y: 0 });
-  const [touchPanStart, setTouchPanStart] = useState({ x: 0, y: 0 });
-
-  const viewportRef = useRef<HTMLDivElement>(null);
-  const imageRef = useRef<HTMLImageElement>(null);
-
-  const handleImageLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
-    const img = e.currentTarget;
-    const natW = img.naturalWidth;
-    const natH = img.naturalHeight;
-
-    let w = 256;
-    let h = 256;
-    if (natW > natH) {
-      w = (natW / natH) * 256;
-    } else {
-      h = (natH / natW) * 256;
-    }
-
-    setImgSize({ width: w, height: h });
-    setPan({ x: (256 - w) / 2, y: (256 - h) / 2 });
-    setZoom(1);
-  };
-
-  const handleMouseDown = (e: React.MouseEvent) => {
-    setIsDragging(true);
-    setDragStart({ x: e.clientX, y: e.clientY });
-    setPanStart({ x: pan.x, y: pan.y });
-  };
-
-  const handleTouchStart = (e: React.TouchEvent) => {
-    const touch = e.touches[0];
-    if (!touch) return;
-    setIsTouchDragging(true);
-    setTouchDragStart({ x: touch.clientX, y: touch.clientY });
-    setTouchPanStart({ x: pan.x, y: pan.y });
-  };
-
-  useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
-      if (!isDragging) return;
-      const dx = e.clientX - dragStart.x;
-      const dy = e.clientY - dragStart.y;
-      setPan({ x: panStart.x + dx, y: panStart.y + dy });
-    };
-
-    const handleMouseUp = () => {
-      setIsDragging(false);
-    };
-
-    const handleTouchMove = (e: TouchEvent) => {
-      if (!isTouchDragging) return;
-      const touch = e.touches[0];
-      if (!touch) return;
-      const dx = touch.clientX - touchDragStart.x;
-      const dy = touch.clientY - touchDragStart.y;
-      setPan({ x: touchPanStart.x + dx, y: touchPanStart.y + dy });
-    };
-
-    const handleTouchEnd = () => {
-      setIsTouchDragging(false);
-    };
-
-    if (isDragging) {
-      window.addEventListener("mousemove", handleMouseMove);
-      window.addEventListener("mouseup", handleMouseUp);
-    }
-    if (isTouchDragging) {
-      window.addEventListener("touchmove", handleTouchMove);
-      window.addEventListener("touchend", handleTouchEnd);
-    }
-
-    return () => {
-      window.removeEventListener("mousemove", handleMouseMove);
-      window.removeEventListener("mouseup", handleMouseUp);
-      window.removeEventListener("touchmove", handleTouchMove);
-      window.removeEventListener("touchend", handleTouchEnd);
-    };
-  }, [isDragging, dragStart, panStart, isTouchDragging, touchDragStart, touchPanStart]);
-
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    if (!file.type.startsWith("image/")) {
-      toast.error("Please upload an image file");
-      return;
-    }
-
-    setCropImageName(file.name);
-    setCropImageType(file.type);
-
-    const reader = new FileReader();
-    reader.onload = () => {
-      setCropImageSrc(reader.result as string);
-    };
-    reader.readAsDataURL(file);
-    e.target.value = "";
-  };
-
-  const handleCropSave = async () => {
-    if (!cropImageSrc || !imageRef.current) return;
-
-    const canvas = document.createElement("canvas");
-    canvas.width = 256;
-    canvas.height = 256;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(0, 0, 256, 256);
-
-    const img = imageRef.current;
-    const renderedWidth = imgSize.width * zoom;
-    const renderedHeight = imgSize.height * zoom;
-    const drawX = pan.x;
-    const drawY = pan.y;
-
-    ctx.drawImage(img, drawX, drawY, renderedWidth, renderedHeight);
-
-    const dataUrl = canvas.toDataURL(cropImageType || "image/png");
-    const loadId = toast.loading("Uploading cropped logo...");
-    try {
-      const res: any = await uploadImageFn({ data: { base64: dataUrl, fileName: cropImageName || "logo.png" } });
-      const url = res?.url || res?.data?.url;
-      if (url) {
-        setLogoUrl(url);
-        await updateBusinessSettingsFn({
-          data: { logo_url: url },
-        });
-        qc.invalidateQueries({ queryKey: ["business-settings"] });
-        toast.success("Logo uploaded and updated successfully!", { id: loadId });
-      } else {
-        toast.error("Upload failed", { id: loadId });
-      }
-    } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : "Failed to upload image", { id: loadId });
-    } finally {
-      setCropImageSrc(null);
-    }
   };
 
   async function saveBusiness(e: React.FormEvent<HTMLFormElement>) {
@@ -802,62 +831,6 @@ export default function SettingsPage() {
     }
   }
 
-  // Handle Sending Staff Invitation by Email
-  async function handleSendStaffInvitation(e: React.FormEvent) {
-    e.preventDefault();
-    if (!isOwner) return;
-    if (!inviteEmail.trim()) {
-      toast.error("Please enter employee email");
-      return;
-    }
-
-    setInviteSending(true);
-    try {
-      await sendEmployeeInvitationFn({
-        data: {
-          email: inviteEmail.trim(),
-          fullName: inviteName.trim() || undefined,
-          designation: inviteDesignation,
-          permissions: DEFAULT_EMPLOYEE_PERMISSIONS,
-        },
-      });
-      toast.success(
-        lang === "bn"
-          ? `${inviteEmail} ঠিকানায় আমন্ত্রণ সফলভাবে পাঠানো হয়েছে!`
-          : `Staff invitation successfully sent to ${inviteEmail}!`
-      );
-      setInviteEmail("");
-      setInviteName("");
-      qc.invalidateQueries({ queryKey: ["employee-invitations"] });
-      qc.invalidateQueries({ queryKey: ["business-settings"] });
-    } catch (err: any) {
-      toast.error(err?.message || "Failed to send employee invitation");
-    } finally {
-      setInviteSending(false);
-    }
-  }
-
-  async function handleCancelInvitation(invitationId: string) {
-    try {
-      await cancelEmployeeInvitationFn({ data: { invitationId } });
-      toast.success("Invitation cancelled");
-      qc.invalidateQueries({ queryKey: ["employee-invitations"] });
-    } catch (err: any) {
-      toast.error(err?.message || "Failed to cancel invitation");
-    }
-  }
-
-  async function handleRemoveEmployee(employeeId: string) {
-    if (!confirm("Are you sure you want to remove this employee from your shop?")) return;
-    try {
-      await removeEmployeeFn({ data: { employeeId } });
-      toast.success("Staff access removed");
-      qc.invalidateQueries({ queryKey: ["business-settings"] });
-    } catch (err: any) {
-      toast.error(err?.message || "Failed to remove employee");
-    }
-  }
-
   async function handleResetAction() {
     if (!resetType || !hasDangerZoneAccess) return;
     if (confirmText !== "CONFIRM") {
@@ -943,9 +916,11 @@ export default function SettingsPage() {
 
   const navTabs: { id: SettingsTab; label: string; icon: any; count?: number }[] = [
     { id: "profile", label: lang === "bn" ? "দোকান প্রোফাইল" : "Shop Profile", icon: Store },
+    { id: "kpis", label: lang === "bn" ? "কেপিআই দৃশ্যমানতা" : "KPI Visibility", icon: LayoutGrid },
     { id: "printing", label: lang === "bn" ? "প্রিন্ট ও ইনভয়েস" : "POS & Printing", icon: Printer },
     { id: "sheets", label: lang === "bn" ? "গুগল শিট ও ক্লাউড" : "Google Sheets & Cloud", icon: FileSpreadsheet },
-    { id: "staff", label: lang === "bn" ? "কর্মচারী ও আমন্ত্রণ" : "Staff & Invitations", icon: Users, count: activeEmployees.length + pendingInvites.length },
+    { id: "staff", label: lang === "bn" ? "কর্মচারী ও পিন কোড" : "Staff & Employee PINs", icon: Users, count: activeEmployees.length + employeeAccounts.length + (employeeLicenses.data?.length ?? 0) },
+    { id: "recycle_bin", label: lang === "bn" ? "রিসাইকেল বিন (৭ দিন)" : "7-Day Recycle Bin", icon: RotateCcw, count: recycleBinQuery.data?.length },
     { id: "appearance", label: lang === "bn" ? "থিম ও ডিসপ্লে" : "Appearance & Themes", icon: Sparkles },
     { id: "security", label: lang === "bn" ? "নিরাপত্তা ও রিসেট" : "Security & Reset", icon: ShieldAlert },
   ];
@@ -1017,7 +992,7 @@ export default function SettingsPage() {
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-1.5">
                       <Label className="text-xs font-semibold">Company / Shop Name</Label>
-                      <Input name="name" defaultValue={biz.name} placeholder="Dream IT POS" className="h-10 rounded-xl text-xs" />
+                      <Input name="name" defaultValue={biz.name} placeholder="Classic World POS" className="h-10 rounded-xl text-xs" />
                     </div>
                     <div className="space-y-1.5">
                       <Label className="text-xs font-semibold">Business Category</Label>
@@ -1103,6 +1078,259 @@ export default function SettingsPage() {
                     />
                   </label>
                   <p className="text-[10px] text-muted-foreground">Supports PNG, JPG, WEBP. Drag and zoom in the cropper modal.</p>
+                </div>
+              </Card>
+            </div>
+          )}
+
+          {/* ── TAB: DASHBOARD KPI VISIBILITY & METRICS CONTROL ───────────────── */}
+          {settingsTab === "kpis" && (
+            <div className="space-y-6">
+              <Card className="p-5 sm:p-6 rounded-3xl bg-card border-border/80 shadow-xs space-y-6">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border/60 pb-4">
+                  <div className="flex items-center gap-2.5 text-primary">
+                    <div className="p-2 rounded-xl bg-primary/10 border border-primary/20">
+                      <LayoutGrid className="size-5" />
+                    </div>
+                    <div>
+                      <h2 className="text-base sm:text-lg font-bold text-foreground">
+                        {lang === "bn" ? "ড্যাশবোর্ড কেপিআই দৃশ্যমানতা ও লেআউট নিয়ন্ত্রণ" : "Dashboard KPI Visibility, Layout & Sequence"}
+                      </h2>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {lang === "bn"
+                          ? "যে কোনো কেপিআই কার্ড প্রদর্শন বা গোপন করুন এবং পছন্দের ক্রমানুসারে সাজান"
+                          : "Toggle visibility, card styles, and reorder KPI summary cards across your dashboard"}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        updateKpiConfig({ hiddenKpis: [] });
+                        toast.success(lang === "bn" ? "সকল কেপিআই দৃশ্যমান করা হয়েছে!" : "All KPIs are now visible!");
+                      }}
+                      className="h-8 rounded-xl text-xs font-semibold gap-1.5 cursor-pointer bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30"
+                    >
+                      <Eye className="size-3.5" />
+                      <span>{lang === "bn" ? "সব দেখান" : "Show All"}</span>
+                    </Button>
+
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        const sensitive = ["profit", "loss", "somiti", "owner_wallet"];
+                        updateKpiConfig({ hiddenKpis: sensitive });
+                        toast.success(lang === "bn" ? "গোপনীয় লাভ, ক্ষতি ও সমিতি লুকানো হয়েছে!" : "Hidden Profit, Loss & Samity KPIs!");
+                      }}
+                      className="h-8 rounded-xl text-xs font-semibold gap-1.5 cursor-pointer bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30"
+                    >
+                      <EyeOff className="size-3.5" />
+                      <span>{lang === "bn" ? "লাভ ও সমিতি লুকান" : "Hide Profit & Samity"}</span>
+                    </Button>
+
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={resetKpiToDefault}
+                      className="h-8 rounded-xl text-xs font-semibold gap-1.5 cursor-pointer"
+                    >
+                      <RotateCcw className="size-3.5" />
+                      <span>{lang === "bn" ? "ডিফল্ট রিসেট" : "Reset Default"}</span>
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Visual Customizer Bar */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-muted/25 p-3.5 rounded-2xl border border-border/60">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold">{lang === "bn" ? "গ্রিড কলাম সংখ্যা" : "Grid Columns"}</Label>
+                    <select
+                      value={kpiConfig.columns}
+                      onChange={e => updateKpiConfig({ columns: parseInt(e.target.value) })}
+                      className="w-full h-9 rounded-xl border border-input bg-input px-2 text-xs font-medium"
+                    >
+                      <option value={1}>1 {lang === "bn" ? "কলাম" : "Column"}</option>
+                      <option value={2}>2 {lang === "bn" ? "কলাম" : "Columns"}</option>
+                      <option value={3}>3 {lang === "bn" ? "কলাম" : "Columns"}</option>
+                      <option value={4}>4 {lang === "bn" ? "কলাম" : "Columns"}</option>
+                    </select>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold">{lang === "bn" ? "কার্ড সাইজ" : "Card Size"}</Label>
+                    <select
+                      value={kpiConfig.size}
+                      onChange={e => updateKpiConfig({ size: e.target.value })}
+                      className="w-full h-9 rounded-xl border border-input bg-input px-2 text-xs font-medium"
+                    >
+                      <option value="small">{lang === "bn" ? "কম্প্যাক্ট (Compact)" : "Compact"}</option>
+                      <option value="medium">{lang === "bn" ? "স্ট্যান্ডার্ড (Standard)" : "Standard"}</option>
+                      <option value="large">{lang === "bn" ? "বড় (Large)" : "Large"}</option>
+                    </select>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold">{lang === "bn" ? "কার্ড সারফেস" : "Surface Style"}</Label>
+                    <select
+                      value={kpiConfig.variant}
+                      onChange={e => updateKpiConfig({ variant: e.target.value })}
+                      className="w-full h-9 rounded-xl border border-input bg-input px-2 text-xs font-medium"
+                    >
+                      <option value="solid">{lang === "bn" ? "সলিড (Solid)" : "Solid"}</option>
+                      <option value="glass">{lang === "bn" ? "গ্লাস (Glass)" : "Glass / Frosted"}</option>
+                      <option value="outline">{lang === "bn" ? "আউটলাইন (Outline)" : "Outlined"}</option>
+                    </select>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold">{lang === "bn" ? "কর্নার কার্ভ" : "Corner Curvature"}</Label>
+                    <select
+                      value={kpiConfig.curve}
+                      onChange={e => updateKpiConfig({ curve: e.target.value })}
+                      className="w-full h-9 rounded-xl border border-input bg-input px-2 text-xs font-medium"
+                    >
+                      <option value="none">{lang === "bn" ? "রাউন্ডেড (Rounded)" : "Rounded"}</option>
+                      <option value="soft">{lang === "bn" ? "সফট (Soft)" : "Soft"}</option>
+                      <option value="pill">{lang === "bn" ? "পিল (Pill)" : "Pill"}</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* 13 KPI Cards Grid with Instant Toggle Switches & Reordering */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                      <ArrowUpDown className="size-3.5 text-primary" />
+                      <span>{lang === "bn" ? "কেপিআই কার্ডসমূহ ও অবস্থান ক্রম (↑ / ↓ কি বা বাটন)" : "KPI Cards & Sequence (↑ / ↓ Arrow Keys or Drag)"}</span>
+                    </h3>
+                    <span className="text-[11px] text-muted-foreground">
+                      {lang === "bn" ? "মোট ১৩টি মেট্রিক কার্ড" : "13 Total Metric Cards"}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {normalizeKpiOrderList(kpiConfig.order).map((kpiKey, idx, arr) => {
+                      const meta = KPI_METADATA[kpiKey] || {
+                        nameEn: kpiKey,
+                        nameBn: kpiKey,
+                        descEn: "",
+                        descBn: "",
+                        badge: "KPI",
+                        color: "text-primary",
+                        bg: "bg-primary/10 border-primary/20 text-primary",
+                      };
+                      const isHidden = (kpiConfig.hiddenKpis || []).includes(kpiKey);
+                      const isBeingDragged = draggedKpiIdx === idx;
+
+                      return (
+                        <div
+                          key={kpiKey}
+                          tabIndex={0}
+                          role="listitem"
+                          aria-label={`${meta.nameEn}, position ${idx + 1} of ${arr.length}`}
+                          onKeyDown={(e) => {
+                            if (e.key === "ArrowUp") {
+                              e.preventDefault();
+                              if (idx > 0) moveKpiPosition(idx, idx - 1);
+                            } else if (e.key === "ArrowDown") {
+                              e.preventDefault();
+                              if (idx < arr.length - 1) moveKpiPosition(idx, idx + 1);
+                            }
+                          }}
+                          draggable
+                          onDragStart={() => handleKpiDragStart(idx)}
+                          onDragOver={(e) => handleKpiDragOver(e, idx)}
+                          onDragEnd={handleKpiDragEnd}
+                          className={`group p-3.5 rounded-2xl border transition-all flex items-center justify-between gap-3 select-none ${
+                            isBeingDragged
+                              ? "opacity-50 border-primary bg-primary/15 scale-[0.98]"
+                              : isHidden
+                              ? "bg-muted/20 border-border/60 opacity-65"
+                              : "bg-card border-border/80 shadow-xs hover:border-primary/40"
+                          }`}
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                            <div className="p-1 text-muted-foreground group-hover:text-primary transition-colors cursor-grab active:cursor-grabbing shrink-0">
+                              <GripVertical className="size-4" />
+                            </div>
+
+                            <span className="flex items-center justify-center size-6 rounded-lg bg-muted text-[11px] font-bold font-mono text-muted-foreground shrink-0">
+                              {idx + 1}
+                            </span>
+
+                            <div className="min-w-0 flex-1 space-y-0.5">
+                              <div className="flex items-center gap-1.5">
+                                <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-md border shrink-0 ${meta.bg}`}>
+                                  {meta.badge}
+                                </span>
+                                <p className="text-xs font-bold truncate text-foreground">
+                                  {lang === "bn" ? meta.nameBn : meta.nameEn}
+                                </p>
+                              </div>
+                              <p className="text-[10px] text-muted-foreground truncate">
+                                {lang === "bn" ? meta.descBn : meta.descEn}
+                              </p>
+                              <div>
+                                <span className={`text-[9px] font-bold ${isHidden ? "text-rose-500" : "text-emerald-600 dark:text-emerald-400"}`}>
+                                  {isHidden ? (lang === "bn" ? "● লুকানো (মাস্ক)" : "● Hidden (Masked)") : (lang === "bn" ? "● দৃশ্যমান" : "● Visible")}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="shrink-0 flex items-center gap-1.5">
+                            <Switch
+                              checked={!isHidden}
+                              onCheckedChange={(checked) => {
+                                const hidden = kpiConfig.hiddenKpis || [];
+                                const updated = !checked
+                                  ? (hidden.includes(kpiKey) ? hidden : [...hidden, kpiKey])
+                                  : hidden.filter(k => k !== kpiKey);
+                                updateKpiConfig({ hiddenKpis: updated });
+                                toast.success(
+                                  !checked
+                                    ? (lang === "bn" ? `"${meta.nameBn}" লুকানো হয়েছে` : `Hidden "${meta.nameEn}"`)
+                                    : (lang === "bn" ? `"${meta.nameBn}" দৃশ্যমান করা হয়েছে` : `Showing "${meta.nameEn}"`)
+                                );
+                              }}
+                            />
+
+                            <div className="flex flex-col gap-0.5">
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="ghost"
+                                disabled={idx === 0}
+                                onClick={() => moveKpiPosition(idx, idx - 1)}
+                                className="size-5 p-0 text-muted-foreground hover:text-foreground rounded disabled:opacity-20 cursor-pointer"
+                                title={lang === "bn" ? "উপরে নিন" : "Move Up"}
+                              >
+                                <ChevronUp className="size-3" />
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="ghost"
+                                disabled={idx === arr.length - 1}
+                                onClick={() => moveKpiPosition(idx, idx + 1)}
+                                className="size-5 p-0 text-muted-foreground hover:text-foreground rounded disabled:opacity-20 cursor-pointer"
+                                title={lang === "bn" ? "নিচে নিন" : "Move Down"}
+                              >
+                                <ChevronDown className="size-3" />
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               </Card>
             </div>
@@ -1213,7 +1441,7 @@ export default function SettingsPage() {
                 
                 <div className="p-4 rounded-2xl bg-white text-black font-mono text-[11px] border border-border shadow-xs space-y-2">
                   <div className="text-center space-y-0.5">
-                    <p className="font-bold text-xs" style={{ fontSize }}>{biz.name || "Dream IT Shop"}</p>
+                    <p className="font-bold text-xs" style={{ fontSize }}>{biz.name || "Classic World Shop"}</p>
                     <p className="text-[10px] text-gray-600">{biz.address || "Road #1, Dhaka"}</p>
                     <p className="text-[10px] text-gray-600">Mob: {biz.phone_numbers || "+8801700000000"}</p>
                   </div>
@@ -1468,512 +1696,423 @@ export default function SettingsPage() {
             </div>
           )}
 
-          {/* ── TAB 4: EMPLOYEE INVITATIONS & STAFF ACCESS ──────────────────── */}
+          {/* ── TAB 4: STAFF EMPLOYEE PINs ──────────────────── */}
           {settingsTab === "staff" && (
             <div className="space-y-6">
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-                {/* Send Employee Invitation Form */}
-                <Card className="lg:col-span-6 p-5 sm:p-6 rounded-3xl bg-card border-border/80 shadow-xs space-y-5">
-                  <div className="flex items-center justify-between border-b border-border/60 pb-3">
-                    <div className="flex items-center gap-2.5 text-primary">
-                      <div className="p-2 rounded-xl bg-primary/10 border border-primary/20">
-                        <UserPlus className="size-5" />
-                      </div>
-                      <div>
-                        <h2 className="text-base font-bold text-foreground">
-                          {lang === "bn" ? "নতুন কর্মচারী আমন্ত্রণ" : "Invite Employee by Email"}
-                        </h2>
-                        <p className="text-xs text-muted-foreground">
-                          {lang === "bn"
-                            ? "কর্মচারীর ইমেইল দিয়ে আমন্ত্রণ পাঠান। তিনি লগইন করলেই একাউন্টে নোটিফিকেশন পাবেন।"
-                            : "Enter staff email. When they log in or create an account, they get a joining popup."}
-                        </p>
-                      </div>
+              {/* Multi-ID Employee Accounts with Distinct PIN Passwords */}
+              <Card className="p-5 sm:p-6 rounded-3xl bg-card border-border/80 shadow-xs space-y-5">
+                <div className="flex items-center justify-between border-b border-border/60 pb-3">
+                  <div className="flex items-center gap-2.5 text-primary">
+                    <div className="p-2 rounded-xl bg-primary/10 border border-primary/20">
+                      <Lock className="size-5" />
+                    </div>
+                    <div>
+                      <h2 className="text-base font-bold text-foreground">
+                        {lang === "bn" ? "একই জিমেইলে একাধিক কর্মচারী আইডি ও পিন পাসওয়ার্ড" : "Employee ID Accounts & Distinct PIN Passwords"}
+                      </h2>
+                      <p className="text-xs text-muted-foreground">
+                        {lang === "bn"
+                          ? "মালিক ও কর্মচারী একই জিমেইল বা ডিভাইসে লগইন থাকলেও, প্রত্যেকে নিজের আলাদা ৪ সংখ্যার পিন কোড দিয়ে ঢুকতে পারবে। মালিক সব কর্মচারীর পিন ও এক্সেস নিয়ন্ত্রণ করতে পারবেন।"
+                          : "Even if owner and employees share the same Google account, each employee uses their own distinct PIN to unlock and access the POS with specific permissions."}
+                      </p>
                     </div>
                   </div>
+                </div>
 
-                  <form onSubmit={handleSendStaffInvitation} className="space-y-3.5">
+                {/* Add New Employee Account with PIN Form */}
+                <form onSubmit={handleCreateEmpAccount} className="p-4 rounded-2xl bg-muted/25 border border-border/60 space-y-4">
+                  <h3 className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                    <UserPlus className="size-4 text-primary" />
+                    <span>{lang === "bn" ? "নতুন কর্মচারী যোগ করুন এবং ৪ সংখ্যার পিন সেট করুন" : "Add Employee & Set Security PIN"}</span>
+                  </h3>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <div className="space-y-1.5">
-                      <Label className="text-xs font-semibold">Employee Email Address *</Label>
+                      <Label className="text-xs font-semibold">{lang === "bn" ? "কর্মচারীর নাম *" : "Staff Name *"}</Label>
                       <Input
-                        type="email"
                         required
-                        value={inviteEmail}
-                        onChange={e => setInviteEmail(e.target.value)}
-                        placeholder="employee@gmail.com"
+                        value={newEmpAccountName}
+                        onChange={e => setNewEmpAccountName(e.target.value)}
+                        placeholder={lang === "bn" ? "যেমন: মোহাম্মদ রহিম" : "e.g. Shakil Ahmed"}
                         className="h-10 rounded-xl text-xs"
                       />
                     </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <div className="space-y-1.5">
-                        <Label className="text-xs font-semibold">Full Name (Optional)</Label>
-                        <Input
-                          value={inviteName}
-                          onChange={e => setInviteName(e.target.value)}
-                          placeholder="e.g. Shakil Ahmed"
-                          className="h-10 rounded-xl text-xs"
-                        />
-                      </div>
-                      <div className="space-y-1.5">
-                        <Label className="text-xs font-semibold">Role / Designation</Label>
-                        <select
-                          value={inviteDesignation}
-                          onChange={e => setInviteDesignation(e.target.value)}
-                          className="w-full h-10 rounded-xl border border-input bg-input px-3 text-xs"
-                        >
-                          <option value="Sales Staff">Sales Staff</option>
-                          <option value="Cashier">Cashier</option>
-                          <option value="Store Manager">Store Manager</option>
-                          <option value="Inventory Officer">Inventory Officer</option>
-                        </select>
-                      </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-semibold">{lang === "bn" ? "পদবি / রোল" : "Designation / Role"}</Label>
+                      <select
+                        value={newEmpAccountRole}
+                        onChange={e => setNewEmpAccountRole(e.target.value)}
+                        className="w-full h-10 rounded-xl border border-input bg-input px-3 text-xs"
+                      >
+                        <option value="Sales Staff">Sales Staff (বিক্রয় কর্মী)</option>
+                        <option value="Cashier">Cashier (ক্যাশিয়ার)</option>
+                        <option value="Store Manager">Store Manager (ম্যানেজার)</option>
+                        <option value="Stock Manager">Stock Manager (স্টক অফিসার)</option>
+                      </select>
                     </div>
-
-                    <Button
-                      type="submit"
-                      disabled={inviteSending || !inviteEmail.trim()}
-                      className="w-full h-10 rounded-xl bg-primary text-primary-foreground font-bold text-xs gap-2 shadow-sm mt-2"
-                    >
-                      {inviteSending ? (
-                        <>
-                          <RefreshCw className="size-3.5 animate-spin" />
-                          <span>Sending Invitation...</span>
-                        </>
-                      ) : (
-                        <>
-                          <Mail className="size-3.5" />
-                          <span>{lang === "bn" ? "আমন্ত্রণ পাঠান" : "Send Staff Invitation"}</span>
-                        </>
-                      )}
-                    </Button>
-                  </form>
-                </Card>
-
-                {/* Pending Email Invitations */}
-                <Card className="lg:col-span-6 p-5 sm:p-6 rounded-3xl bg-card border-border/80 shadow-xs space-y-4">
-                  <div className="flex items-center justify-between border-b border-border/60 pb-3">
-                    <div className="flex items-center gap-2">
-                      <Clock className="size-4 text-amber-500" />
-                      <h3 className="font-bold text-sm text-foreground">
-                        {lang === "bn" ? "অপেক্ষারত আমন্ত্রণসমূহ" : "Pending Email Invitations"}
-                      </h3>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-semibold">{lang === "bn" ? "৪ সংখ্যার সিকিউরিটি পিন *" : "4-Digit Security PIN *"}</Label>
+                      <Input
+                        required
+                        type="password"
+                        maxLength={6}
+                        value={newEmpAccountPin}
+                        onChange={e => setNewEmpAccountPin(e.target.value.replace(/[^0-9]/g, ""))}
+                        placeholder="e.g. 5678"
+                        className="h-10 rounded-xl text-xs font-mono font-bold tracking-widest text-center"
+                      />
                     </div>
-                    <Badge variant="outline" className="bg-amber-500/10 text-amber-600 border-amber-500/30 text-xs">
-                      {pendingInvites.length} Pending
-                    </Badge>
                   </div>
 
-                  {pendingInvites.length > 0 ? (
-                    <div className="space-y-2.5 max-h-[260px] overflow-y-auto pr-1">
-                      {pendingInvites.map((inv: any) => (
-                        <div
-                          key={inv.id}
-                          className="flex items-center justify-between p-3 rounded-2xl bg-muted/40 border border-border/80 text-xs"
-                        >
-                          <div className="space-y-0.5 min-w-0 pr-2">
-                            <p className="font-bold text-foreground truncate">{inv.employee_email}</p>
-                            <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
-                              <span>{inv.designation || "Staff"}</span>
-                              {inv.created_at && <span>• {new Date(inv.created_at).toLocaleDateString()}</span>}
-                            </div>
-                          </div>
-
-                          <Button
+                  {/* Allowed Pages Checkboxes */}
+                  <div className="space-y-2 pt-2 border-t border-border/40">
+                    <Label className="text-xs font-bold text-foreground">
+                      {lang === "bn" ? "এই কর্মচারীর জন্য অনুমোদিত পেজসমূহ (Allowed Pages):" : "Permitted Navigation Pages:"}
+                    </Label>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                      {[
+                        { to: "/dashboard", label: "Dashboard (ড্যাশবোর্ড)" },
+                        { to: "/sales", label: "Sales & POS (বিক্রয়)" },
+                        { to: "/products", label: "Products (পণ্য)" },
+                        { to: "/invoices", label: "Invoices (চালান)" },
+                        { to: "/dues", label: "Dues (বকেয়া)" },
+                        { to: "/customers", label: "Customers (গ্রাহক)" },
+                        { to: "/purchases", label: "Purchases (ক্রয়)" },
+                        { to: "/expenses", label: "Expenses (খরচ)" },
+                        { to: "/owners-wallet", label: "Owner Wallet ⚠️ (মালিকের খরচ)" },
+                        { to: "/cash-management", label: "Cashbox ⚠️ (ক্যাশবক্স)" },
+                        { to: "/sms", label: "SMS (এসএমএস)" },
+                        { to: "/somiti", label: "Somiti ⚠️ (সমিতি)" },
+                      ].map((pageItem) => {
+                        const isChecked = newEmpAccountPages.includes(pageItem.to);
+                        return (
+                          <button
+                            key={pageItem.to}
                             type="button"
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleCancelInvitation(inv.id)}
-                            className="h-8 px-2.5 rounded-xl text-destructive hover:bg-destructive/10 text-xs font-semibold shrink-0"
+                            onClick={() => {
+                              setNewEmpAccountPages(prev =>
+                                isChecked ? prev.filter(p => p !== pageItem.to) : [...prev, pageItem.to]
+                              );
+                            }}
+                            className={`p-2 rounded-xl border text-left text-xs font-semibold transition-all cursor-pointer flex items-center justify-between ${
+                              isChecked
+                                ? "bg-primary/10 border-primary/40 text-primary"
+                                : "bg-card border-border/70 text-muted-foreground hover:text-foreground"
+                            }`}
                           >
-                            Revoke
-                          </Button>
-                        </div>
-                      ))}
+                            <span className="truncate">{pageItem.label}</span>
+                            <span>{isChecked ? "✓" : "+"}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Allowed KPIs Checkboxes */}
+                  <div className="space-y-2 pt-2 border-t border-border/40">
+                    <Label className="text-xs font-bold text-foreground">
+                      {lang === "bn" ? "এই কর্মচারীর জন্য অনুমোদিত ড্যাশবোর্ড KPI (Allowed KPIs):" : "Permitted Dashboard KPIs:"}
+                    </Label>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                      {[
+                        { id: "sell_kpi", label: "Sell KPI (বিক্রয়)" },
+                        { id: "total_sales", label: "Total Sales (মোট বিক্রি)" },
+                        { id: "cash_sale", label: "Cash Sale (নগদ)" },
+                        { id: "credit_sale", label: "Credit Sale (বাকি)" },
+                        { id: "due", label: "Dues (বকেয়া)" },
+                        { id: "cashbox", label: "Cashbox (ক্যাশবাক্স)" },
+                        { id: "profit", label: "Profit (লাভ - গোপনীয়)" },
+                        { id: "somiti", label: "Somiti (সমিতি - গোপনীয়)" },
+                      ].map((kpiItem) => {
+                        const isChecked = newEmpAccountKpis.includes(kpiItem.id);
+                        return (
+                          <button
+                            key={kpiItem.id}
+                            type="button"
+                            onClick={() => {
+                              setNewEmpAccountKpis(prev =>
+                                isChecked ? prev.filter(k => k !== kpiItem.id) : [...prev, kpiItem.id]
+                              );
+                            }}
+                            className={`p-2 rounded-xl border text-left text-xs font-semibold transition-all cursor-pointer flex items-center justify-between ${
+                              isChecked
+                                ? "bg-emerald-500/10 border-emerald-500/40 text-emerald-600 dark:text-emerald-400"
+                                : "bg-card border-border/70 text-muted-foreground hover:text-foreground"
+                            }`}
+                          >
+                            <span className="truncate">{kpiItem.label}</span>
+                            <span>{isChecked ? "✓" : "+"}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <Button
+                    type="submit"
+                    className="h-10 px-6 rounded-xl bg-primary text-primary-foreground font-bold text-xs gap-2 cursor-pointer shadow-sm"
+                  >
+                    <Plus className="size-4" />
+                    <span>{lang === "bn" ? "কর্মচারী একাউন্ট ও পিন সংরক্ষণ করুন" : "Save Employee Account & PIN"}</span>
+                  </Button>
+                </form>
+
+                {/* List of Configured Employee PIN Accounts */}
+                <div className="space-y-3 pt-3 border-t border-border/60">
+                  <h3 className="text-xs font-bold text-foreground flex items-center justify-between">
+                    <span>{lang === "bn" ? "সংরক্ষিত কর্মচারী পিন একাউন্টসমূহ" : "Active Employee PIN Accounts"} ({employeeAccounts.length})</span>
+                    <span className="text-[10px] text-muted-foreground font-normal">
+                      {lang === "bn" ? "মালিক এখান থেকে যে কারো পিন পরিবর্তন করতে পারবেন" : "Owner can view, edit, or reset staff PINs"}
+                    </span>
+                  </h3>
+
+                  {employeeAccounts.length === 0 ? (
+                    <div className="text-center py-6 border border-dashed border-border/80 rounded-2xl">
+                      <Lock className="size-6 text-muted-foreground/40 mx-auto mb-1.5" />
+                      <p className="text-xs text-muted-foreground">
+                        {lang === "bn" ? "এখনও কোন কর্মচারী পিন একাউন্ট তৈরি করা হয়নি।" : "No employee PIN accounts configured yet."}
+                      </p>
                     </div>
                   ) : (
-                    <div className="text-center py-8 space-y-1.5 border border-dashed border-border/80 rounded-2xl">
-                      <Mail className="size-6 text-muted-foreground mx-auto opacity-50" />
-                      <p className="text-xs text-muted-foreground">No pending invitations.</p>
-                    </div>
-                  )}
-                </Card>
-              </div>
-
-              {/* Active Staff Members Table */}
-              <Card className="p-5 sm:p-6 rounded-3xl bg-card border-border/80 shadow-xs space-y-4">
-                <div className="flex items-center justify-between border-b border-border/60 pb-3">
-                  <div className="flex items-center gap-2.5 text-primary">
-                    <Users className="size-5" />
-                    <div>
-                      <h3 className="font-bold text-sm text-foreground">
-                        {lang === "bn" ? "সক্রিয় কর্মচারীবৃন্দ" : "Active Staff Members"}
-                      </h3>
-                      <p className="text-xs text-muted-foreground">Employees with access to this shop</p>
-                    </div>
-                  </div>
-                  <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/30 text-xs">
-                    {activeEmployees.length} Active Staff
-                  </Badge>
-                </div>
-
-                {activeEmployees.length > 0 ? (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                      {activeEmployees.map((emp: any) => (
+                      {employeeAccounts.map((emp) => (
                         <div
                           key={emp.id}
-                          className="p-3.5 rounded-2xl bg-muted/40 border border-border/80 flex flex-col justify-between gap-3 text-xs"
+                          className="p-4 rounded-2xl bg-card border border-border/80 shadow-xs flex flex-col justify-between gap-3 text-xs"
                         >
-                          <div className="space-y-1 min-w-0">
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                              <span className="font-bold text-foreground truncate">
-                                {emp.full_name || emp.email.split("@")[0]}
-                              </span>
-                              <Badge variant="outline" className="text-[10px] bg-emerald-500/10 text-emerald-600 border-emerald-500/30 px-1.5 py-0 h-4">
-                                Active
+                          <div className="space-y-1.5">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="font-bold text-sm text-foreground truncate">{emp.name}</span>
+                              <Badge variant="outline" className="text-[10px] bg-primary/10 text-primary border-primary/30 font-semibold">
+                                {emp.role || "Staff"}
                               </Badge>
-                              {emp.permissions?.danger_zone && (
-                                <Badge variant="outline" className="text-[10px] bg-red-500/10 text-red-600 border-red-500/30 px-1.5 py-0 h-4 font-bold">
-                                  Danger Zone
-                                </Badge>
-                              )}
                             </div>
-                            <p className="text-[11px] text-muted-foreground truncate">{emp.email}</p>
+
+                            <div className="flex items-center gap-2 text-xs bg-muted/40 p-2 rounded-xl border border-border/60">
+                              <span className="text-muted-foreground">{lang === "bn" ? "পিন কোড:" : "PIN Code:"}</span>
+                              <span className="font-mono font-bold tracking-widest text-primary bg-background px-2 py-0.5 rounded border border-border/80">
+                                {emp.pin}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const newP = prompt(lang === "bn" ? `কর্মচারী ${emp.name} এর নতুন ৪ সংখ্যার পিন দিন:` : `Enter new PIN for ${emp.name}:`, emp.pin);
+                                  if (newP && newP.length >= 4) {
+                                    handleUpdateEmpAccountPin(emp.id, newP);
+                                  }
+                                }}
+                                className="text-[10px] text-indigo-600 dark:text-indigo-400 hover:underline font-bold ml-auto cursor-pointer"
+                              >
+                                {lang === "bn" ? "পিন পরিবর্তন" : "Change PIN"}
+                              </button>
+                            </div>
+
+                            <div className="text-[10px] text-muted-foreground space-y-0.5 pt-1">
+                              <div>{lang === "bn" ? "অনুমোদিত পেজ:" : "Allowed Pages:"} <span className="font-semibold text-foreground">{(emp.allowedPages || []).length} টি</span></div>
+                              <div>{lang === "bn" ? "অনুমোদিত KPI:" : "Allowed KPIs:"} <span className="font-semibold text-foreground">{(emp.allowedKpis || []).length} টি</span></div>
+                            </div>
                           </div>
 
-                          <div className="flex items-center justify-between gap-2 pt-2 border-t border-border/50">
+                          <div className="flex items-center justify-end gap-2 pt-2 border-t border-border/40">
                             <Button
                               type="button"
-                              variant="outline"
                               size="sm"
-                              onClick={() => openPermissionsModal(emp)}
-                              className="h-8 px-2.5 rounded-xl border-primary/30 hover:bg-primary/10 text-primary text-xs font-semibold gap-1.5 cursor-pointer"
-                              title="Manage Access & Permissions"
-                            >
-                              <Shield className="size-3.5" />
-                              <span>{lang === "bn" ? "পারমিশন কন্ট্রোল" : "Access & Permissions"}</span>
-                            </Button>
-                            <Button
-                              type="button"
                               variant="ghost"
-                              size="sm"
-                              onClick={() => handleRemoveEmployee(emp.id)}
-                              className="h-8 px-2 text-destructive hover:bg-destructive/10 rounded-xl shrink-0 cursor-pointer"
-                              title="Remove Staff Access"
+                              onClick={() => handleDeleteEmpAccount(emp.id, emp.name)}
+                              className="h-7 text-xs text-destructive hover:bg-destructive/10 rounded-lg px-2 cursor-pointer font-semibold"
                             >
-                              <Trash2 className="size-3.5" />
+                              <Trash2 className="size-3.5 mr-1" />
+                              {lang === "bn" ? "মুছে ফেলুন" : "Delete"}
                             </Button>
                           </div>
                         </div>
                       ))}
                     </div>
-                ) : (
-                  <div className="text-center py-8 space-y-1.5 border border-dashed border-border/80 rounded-2xl">
-                    <Users className="size-7 text-muted-foreground mx-auto opacity-50" />
-                    <p className="text-xs text-muted-foreground">No active employees joined yet.</p>
-                    <p className="text-[11px] text-muted-foreground">Send an invitation above to add your team members.</p>
-                  </div>
-                )}
+                  )}
+                </div>
               </Card>
+            </div>
+          )}
+
+          {/* ── TAB: 7-DAY RECYCLE BIN & UNDO SYSTEM ───────────────────────── */}
+          {settingsTab === "recycle_bin" && (
+            <div className="space-y-6">
+              <Card className="p-5 sm:p-6 rounded-3xl bg-card border-border/80 shadow-xs space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-1">
+                    <h3 className="text-base font-bold flex items-center gap-2 text-rose-500">
+                      <RotateCcw className="size-5" />
+                      <span>{lang === "bn" ? "৭ দিনের রিসাইকেল বিন ও রিস্টোর" : "7-Day Recycle Bin & Undo System"}</span>
+                    </h3>
+                    <p className="text-xs text-muted-foreground">
+                      {lang === "bn"
+                        ? "ভুলবশত মুছে ফেলা যে কোন পণ্য, বিক্রি, খরচ, সমিতি বা পার্টির তথ্য ৭ দিন পর্যন্ত এখানে সংরক্ষিত থাকে। ১ ক্লিকেই পুনরুদ্ধার করতে পারবেন।"
+                        : "Any deleted products, sales, expenses, somiti, or party ledgers are safely kept for 7 days. Restore any item with 1 click."}
+                    </p>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => recycleBinQuery.refetch()}
+                    className="rounded-xl text-xs h-8 cursor-pointer"
+                  >
+                    <RefreshCw className="size-3 mr-1" />
+                    {lang === "bn" ? "রিফ্রেশ" : "Refresh"}
+                  </Button>
+                </div>
+              </Card>
+
+              {recycleBinQuery.isLoading ? (
+                <div className="py-12 text-center text-xs text-muted-foreground">
+                  {lang === "bn" ? "রিসাইকেল বিন লোড হচ্ছে..." : "Loading recycle bin..."}
+                </div>
+              ) : !recycleBinQuery.data || recycleBinQuery.data.length === 0 ? (
+                <Card className="p-12 text-center rounded-3xl bg-card border-dashed border-border/80">
+                  <RotateCcw className="size-10 mx-auto text-muted-foreground/30 mb-3" />
+                  <p className="text-sm font-semibold text-foreground">
+                    {lang === "bn" ? "রিসাইকেল বিন সম্পূর্ণ খালি" : "Recycle Bin is Empty"}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {lang === "bn"
+                      ? "বিগত ৭ দিনের মধ্যে কোন তথ্য মুছে ফেলা হয়নি।"
+                      : "No items have been deleted in the past 7 days."}
+                  </p>
+                </Card>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+                  {recycleBinQuery.data.map((item: any) => {
+                    const deletedDate = item.deleted_at ? new Date(item.deleted_at).toLocaleString() : "Recently";
+                    const expiresDate = item.expires_at ? new Date(item.expires_at).toLocaleDateString() : "7 days";
+
+                    return (
+                      <Card key={item.id} className="p-4 rounded-2xl bg-card border-border/80 shadow-xs space-y-3">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <Badge variant="outline" className="text-[10px] font-bold uppercase tracking-wider text-rose-500 border-rose-500/30 bg-rose-500/10">
+                              {item.collection_name}
+                            </Badge>
+                            <h4 className="text-xs font-bold text-foreground mt-1.5 truncate">
+                              {item.label || item.original_id}
+                            </h4>
+                            <p className="text-[10px] text-muted-foreground font-mono truncate">
+                              {lang === "bn" ? "মুছেছেন: " : "Deleted by: "} {item.deleted_by || "User"}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="text-[10px] text-muted-foreground space-y-0.5 pt-1 border-t border-border/40">
+                          <div>{lang === "bn" ? "মুছার তারিখ: " : "Deleted At: "} <span className="font-semibold text-foreground">{deletedDate}</span></div>
+                          <div>{lang === "bn" ? "অটো-পার্জ হবে: " : "Auto-purges on: "} <span className="font-semibold text-amber-500">{expiresDate}</span></div>
+                        </div>
+
+                        <div className="flex items-center justify-between pt-2 border-t border-border/40 gap-2">
+                          <Button
+                            size="sm"
+                            onClick={() => handleRestoreRecycleItem(item.id, item.label || item.original_id)}
+                            className="h-8 text-xs rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold flex-1 cursor-pointer"
+                          >
+                            <RotateCcw className="size-3.5 mr-1.5" />
+                            {lang === "bn" ? "পূর্বাবস্থায় ফিরিয়ে আনুন (Undo)" : "Undo / Restore"}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => handlePermanentDeleteRecycleItem(item.id)}
+                            className="h-8 text-xs text-destructive hover:bg-destructive/10 rounded-xl px-2.5 cursor-pointer"
+                            title="Permanently Delete"
+                          >
+                            <Trash2 className="size-3.5" />
+                          </Button>
+                        </div>
+                      </Card>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
 
           {/* ── TAB 5: APPEARANCE & THEMES ───────────────────────────────────── */}
           {settingsTab === "appearance" && (
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-              <Card className="lg:col-span-6 p-5 sm:p-6 rounded-3xl bg-card border-border/80 shadow-xs space-y-5">
+              <Card className="lg:col-span-12 p-5 sm:p-6 rounded-3xl bg-card border-border/80 shadow-xs space-y-6">
                 <div className="border-b border-border/60 pb-3">
                   <h2 className="text-base font-bold text-foreground flex items-center gap-2">
                     <Sparkles className="size-4 text-primary" />
-                    <span>{lang === "bn" ? "থিম ও ডিসপ্লে মোড" : "Theme Mode & Colors"}</span>
+                    <span>{lang === "bn" ? "থিম ও ডিসপ্লে মোড" : "Theme Mode & System Colors"}</span>
                   </h2>
-                  <p className="text-xs text-muted-foreground mt-0.5">Customize UI theme mode and system accent colors</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">Customize UI dark/light theme mode and system accent colors</p>
                 </div>
 
-                {/* Theme Mode */}
-                <div className="space-y-2">
-                  <Label className="text-xs font-semibold">Theme Mode</Label>
-                  <div className="grid grid-cols-3 gap-2">
-                    {(["light", "dark", "system"] as ThemeMode[]).map(mode => (
-                      <button
-                        key={mode}
-                        type="button"
-                        onClick={() => setTheme(mode)}
-                        className={`p-3 rounded-2xl border text-center font-bold text-xs capitalize transition-all cursor-pointer ${
-                          theme === mode
-                            ? "bg-primary/10 border-primary text-primary shadow-xs"
-                            : "bg-muted/30 border-border/80 text-foreground hover:bg-muted/60"
-                        }`}
-                      >
-                        {mode}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Accent Colors */}
-                <div className="space-y-2 pt-2">
-                  <Label className="text-xs font-semibold">System Accent Color</Label>
-                  <div className="flex flex-wrap gap-2.5">
-                    {[
-                      { id: "emerald", label: "Emerald", color: "#10b981" },
-                      { id: "violet", label: "Violet", color: "#8b5cf6" },
-                      { id: "rose", label: "Rose", color: "#f43f5e" },
-                      { id: "cyan", label: "Cyan", color: "#06b6d4" },
-                      { id: "amber", label: "Amber", color: "#f59e0b" },
-                    ].map(acc => (
-                      <button
-                        key={acc.id}
-                        type="button"
-                        onClick={() => setAccentColor(acc.id as AccentColor)}
-                        className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-semibold transition-all cursor-pointer ${
-                          accentColor === acc.id
-                            ? "border-primary bg-primary/10 text-primary shadow-xs"
-                            : "border-border/80 bg-muted/20 text-foreground hover:bg-muted/50"
-                        }`}
-                      >
-                        <span className="size-3.5 rounded-full" style={{ backgroundColor: acc.color }} />
-                        <span>{acc.label}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Background Pattern */}
-                <div className="space-y-2 pt-2">
-                  <Label className="text-xs font-semibold">Background Texture</Label>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                    {(["clean", "mesh", "dots", "grid"] as BgStyle[]).map(bg => (
-                      <button
-                        key={bg}
-                        type="button"
-                        onClick={() => setBgStyle(bg)}
-                        className={`p-2.5 rounded-xl border text-center text-xs capitalize font-semibold transition-all cursor-pointer ${
-                          bgStyle === bg
-                            ? "bg-primary/10 border-primary text-primary shadow-xs"
-                            : "bg-muted/30 border-border/80 text-foreground hover:bg-muted/60"
-                        }`}
-                      >
-                        {bg}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </Card>
-
-              {/* KPI Configuration & Drag-and-Drop Card Position Manager */}
-              <Card className="lg:col-span-12 p-5 sm:p-6 rounded-3xl bg-card border-border/80 shadow-xs space-y-6">
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-border/60 pb-4">
-                  <div>
-                    <h2 className="text-base sm:text-lg font-bold text-foreground flex items-center gap-2">
-                      <LayoutGrid className="size-5 text-primary" />
-                      <span>{lang === "bn" ? "ড্যাশবোর্ড কেপিআই কার্ড লেআউট ও পজিশন নিয়ন্ত্রণ" : "Dashboard KPI Summary Cards & Positioning"}</span>
-                    </h2>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      {lang === "bn"
-                        ? "কার্ডগুলো ড্র্যাগ-অ্যান্ড-ড্রপ করে বা তীর চিহ্নে ক্লিক করে ড্যাশবোর্ডে পছন্দের ক্রমানুসারে সাজান"
-                        : "Drag and drop or use arrows to change KPI card sequence and positions on your dashboard"}
-                    </p>
-                  </div>
-
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={resetKpiToDefault}
-                    className="h-8 rounded-xl text-xs font-semibold gap-1.5 self-start sm:self-auto cursor-pointer"
-                  >
-                    <RotateCcw className="size-3.5" />
-                    <span>{lang === "bn" ? "ডিফল্ট ক্রম রিসেট" : "Reset Default Order"}</span>
-                  </Button>
-                </div>
-
-                {/* Grid Visual & Sizing Controls */}
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-muted/25 p-3.5 rounded-2xl border border-border/60">
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold">{lang === "bn" ? "গ্রিড কলাম সংখ্যা" : "Grid Columns"}</Label>
-                    <select
-                      value={kpiConfig.columns}
-                      onChange={e => updateKpiConfig({ columns: parseInt(e.target.value) })}
-                      className="w-full h-9 rounded-xl border border-input bg-input px-2 text-xs font-medium"
-                    >
-                      <option value={1}>1 {lang === "bn" ? "কলাম" : "Column"}</option>
-                      <option value={2}>2 {lang === "bn" ? "কলাম" : "Columns"}</option>
-                      <option value={3}>3 {lang === "bn" ? "কলাম" : "Columns"}</option>
-                      <option value={4}>4 {lang === "bn" ? "কলাম" : "Columns"}</option>
-                    </select>
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold">{lang === "bn" ? "কার্ড সাইজ" : "Card Size"}</Label>
-                    <select
-                      value={kpiConfig.size}
-                      onChange={e => updateKpiConfig({ size: e.target.value })}
-                      className="w-full h-9 rounded-xl border border-input bg-input px-2 text-xs font-medium"
-                    >
-                      <option value="small">{lang === "bn" ? "কম্প্যাক্ট (Compact)" : "Compact"}</option>
-                      <option value="medium">{lang === "bn" ? "স্ট্যান্ডার্ড (Standard)" : "Standard"}</option>
-                      <option value="large">{lang === "bn" ? "বড় (Large)" : "Large"}</option>
-                    </select>
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold">{lang === "bn" ? "কার্ড স্টাইল" : "Surface Style"}</Label>
-                    <select
-                      value={kpiConfig.variant}
-                      onChange={e => updateKpiConfig({ variant: e.target.value })}
-                      className="w-full h-9 rounded-xl border border-input bg-input px-2 text-xs font-medium"
-                    >
-                      <option value="solid">{lang === "bn" ? "সলিড (Solid)" : "Solid"}</option>
-                      <option value="glass">{lang === "bn" ? "গ্লাস (Glass)" : "Glass / Frosted"}</option>
-                      <option value="outline">{lang === "bn" ? "আউটলাইন (Outline)" : "Outlined"}</option>
-                    </select>
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold">{lang === "bn" ? "কর্নার কার্ভ" : "Corner Curvature"}</Label>
-                    <select
-                      value={kpiConfig.curve}
-                      onChange={e => updateKpiConfig({ curve: e.target.value })}
-                      className="w-full h-9 rounded-xl border border-input bg-input px-2 text-xs font-medium"
-                    >
-                      <option value="none">{lang === "bn" ? "রাউন্ডেড (Rounded)" : "Rounded"}</option>
-                      <option value="soft">{lang === "bn" ? "সফট (Soft)" : "Soft"}</option>
-                      <option value="pill">{lang === "bn" ? "পিল (Pill)" : "Pill"}</option>
-                    </select>
-                  </div>
-                </div>
-
-                {/* Drag and Drop KPI Position Reorder List */}
-                <div className="space-y-3">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
-                    <div className="flex items-center gap-1.5 text-xs font-bold text-foreground">
-                      <ArrowUpDown className="size-3.5 text-primary" />
-                      <span>{lang === "bn" ? "কেপিআই কার্ডের অবস্থান ক্রম (↑ / ↓ কি বা বাটন)" : "KPI Card Sequence (↑ / ↓ Arrow Keys or Buttons)"}</span>
-                    </div>
-                    <span className="text-[11px] text-muted-foreground">
-                      {lang === "bn" ? "মোট ১৩টি কেপিআই কার্ড • অ্যারো বাটন বা কীবোর্ডের ↑/↓ চাপুন" : "13 Metric Cards • Use buttons or keyboard ↑/↓"}
-                    </span>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2.5">
-                    {normalizeKpiOrderList(kpiConfig.order).map((kpiKey, idx, arr) => {
-                      const meta = KPI_METADATA[kpiKey] || {
-                        nameEn: kpiKey,
-                        nameBn: kpiKey,
-                        descEn: "",
-                        descBn: "",
-                        badge: "KPI",
-                        color: "text-primary",
-                        bg: "bg-primary/10 border-primary/20 text-primary",
-                      };
-                      const isBeingDragged = draggedKpiIdx === idx;
-
-                      return (
-                        <div
-                          key={kpiKey}
-                          tabIndex={0}
-                          role="listitem"
-                          aria-label={`${meta.nameEn}, position ${idx + 1} of ${arr.length}`}
-                          onKeyDown={(e) => {
-                            if (e.key === "ArrowUp") {
-                              e.preventDefault();
-                              if (idx > 0) moveKpiPosition(idx, idx - 1);
-                            } else if (e.key === "ArrowDown") {
-                              e.preventDefault();
-                              if (idx < arr.length - 1) moveKpiPosition(idx, idx + 1);
-                            }
-                          }}
-                          draggable
-                          onDragStart={() => handleKpiDragStart(idx)}
-                          onDragOver={(e) => handleKpiDragOver(e, idx)}
-                          onDragEnd={handleKpiDragEnd}
-                          className={`group flex items-center justify-between gap-2.5 p-3 rounded-2xl border transition-all select-none cursor-grab active:cursor-grabbing focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary ${
-                            isBeingDragged
-                              ? "opacity-50 border-primary bg-primary/15 shadow-md scale-[0.98]"
-                              : "bg-card/90 hover:bg-card border-border/80 hover:border-primary/50 shadow-xs hover:shadow-sm"
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  {/* Theme Mode */}
+                  <div className="space-y-2">
+                    <Label className="text-xs font-semibold">Theme Mode</Label>
+                    <div className="grid grid-cols-3 gap-2">
+                      {(["light", "dark", "system"] as ThemeMode[]).map(mode => (
+                        <button
+                          key={mode}
+                          type="button"
+                          onClick={() => setTheme(mode)}
+                          className={`p-3 rounded-2xl border text-center font-bold text-xs capitalize transition-all cursor-pointer ${
+                            theme === mode
+                              ? "bg-primary/10 border-primary text-primary shadow-xs"
+                              : "bg-muted/30 border-border/80 text-foreground hover:bg-muted/60"
                           }`}
                         >
-                          <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                            <div className="p-1 text-muted-foreground group-hover:text-primary transition-colors shrink-0">
-                              <GripVertical className="size-4" />
-                            </div>
+                          {mode}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
 
-                            <span className="flex items-center justify-center size-6 rounded-lg bg-muted text-[11px] font-bold font-mono text-muted-foreground shrink-0">
-                              {idx + 1}
-                            </span>
+                  {/* Accent Colors */}
+                  <div className="space-y-2">
+                    <Label className="text-xs font-semibold">System Accent Color</Label>
+                    <div className="flex flex-wrap gap-2">
+                      {[
+                        { id: "emerald", label: "Emerald", color: "#10b981" },
+                        { id: "violet", label: "Violet", color: "#8b5cf6" },
+                        { id: "rose", label: "Rose", color: "#f43f5e" },
+                        { id: "cyan", label: "Cyan", color: "#06b6d4" },
+                        { id: "amber", label: "Amber", color: "#f59e0b" },
+                      ].map(acc => (
+                        <button
+                          key={acc.id}
+                          type="button"
+                          onClick={() => setAccentColor(acc.id as AccentColor)}
+                          className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-semibold transition-all cursor-pointer ${
+                            accentColor === acc.id
+                              ? "border-primary bg-primary/10 text-primary shadow-xs"
+                              : "border-border/80 bg-muted/20 text-foreground hover:bg-muted/50"
+                          }`}
+                        >
+                          <span className="size-3.5 rounded-full" style={{ backgroundColor: acc.color }} />
+                          <span>{acc.label}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
 
-                            <div className="min-w-0 flex-1">
-                              <div className="flex items-center gap-1.5">
-                                <p className="text-xs font-bold truncate text-foreground">
-                                  {lang === "bn" ? meta.nameBn : meta.nameEn}
-                                </p>
-                                <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-md border shrink-0 ${meta.bg}`}>
-                                  {meta.badge}
-                                </span>
-                              </div>
-                              <p className="text-[10px] text-muted-foreground truncate mt-0.5">
-                                {lang === "bn" ? meta.descBn : meta.descEn}
-                              </p>
-                            </div>
-                          </div>
-
-                          <div className="flex items-center gap-1 shrink-0">
-                            {/* KPI Visibility Toggle */}
-                            {(() => {
-                              const isHidden = (kpiConfig.hiddenKpis || []).includes(kpiKey);
-                              return (
-                                <Button
-                                  type="button"
-                                  size="sm"
-                                  variant="ghost"
-                                  onClick={() => {
-                                    const hidden = kpiConfig.hiddenKpis || [];
-                                    const updated = isHidden ? hidden.filter(k => k !== kpiKey) : [...hidden, kpiKey];
-                                    updateKpiConfig({ hiddenKpis: updated });
-                                  }}
-                                  className={`size-7 p-0 rounded-lg cursor-pointer ${
-                                    isHidden
-                                      ? "text-rose-500 hover:text-rose-600 bg-rose-500/10"
-                                      : "text-emerald-600 hover:text-emerald-700 bg-emerald-500/10"
-                                  }`}
-                                  title={
-                                    isHidden
-                                      ? (lang === "bn" ? "কেপিআইটি লুকানো আছে (ক্লিক করে প্রদর্শন করুন)" : "Hidden (Click to show)")
-                                      : (lang === "bn" ? "কেপিআইটি প্রদর্শিত হচ্ছে (ক্লিক করে লুকান)" : "Visible (Click to hide)")
-                                  }
-                                >
-                                  {isHidden ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
-                                </Button>
-                              );
-                            })()}
-
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="ghost"
-                              disabled={idx === 0}
-                              onClick={() => moveKpiPosition(idx, idx - 1)}
-                              className="size-7 p-0 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg disabled:opacity-30 cursor-pointer"
-                              title={lang === "bn" ? "উপরে নিন" : "Move Up"}
-                            >
-                              <ChevronUp className="size-3.5" />
-                            </Button>
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="ghost"
-                              disabled={idx === normalizeKpiOrderList(kpiConfig.order).length - 1}
-                              onClick={() => moveKpiPosition(idx, idx + 1)}
-                              className="size-7 p-0 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg disabled:opacity-30 cursor-pointer"
-                              title={lang === "bn" ? "নিচে নিন" : "Move Down"}
-                            >
-                              <ChevronDown className="size-3.5" />
-                            </Button>
-                          </div>
-                        </div>
-                      );
-                    })}
+                  {/* Background Pattern */}
+                  <div className="space-y-2">
+                    <Label className="text-xs font-semibold">Background Texture</Label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {(["clean", "mesh", "dots", "grid"] as BgStyle[]).map(bg => (
+                        <button
+                          key={bg}
+                          type="button"
+                          onClick={() => setBgStyle(bg)}
+                          className={`p-2.5 rounded-xl border text-center text-xs capitalize font-semibold transition-all cursor-pointer ${
+                            bgStyle === bg
+                              ? "bg-primary/10 border-primary text-primary shadow-xs"
+                              : "bg-muted/30 border-border/80 text-foreground hover:bg-muted/60"
+                          }`}
+                        >
+                          {bg}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 </div>
               </Card>
@@ -2284,7 +2423,7 @@ export default function SettingsPage() {
                 <Switch
                   checked={Boolean((empPermissions as any)[item.id])}
                   onCheckedChange={(val) => {
-                    setEmpPermissions(prev => ({
+                    setEmpPermissions((prev: any) => ({
                       ...prev,
                       [item.id]: val,
                     }));
@@ -2523,3 +2662,5 @@ export default function SettingsPage() {
     </div>
   );
 }
+
+

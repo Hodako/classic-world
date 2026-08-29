@@ -11,8 +11,23 @@ interface CacheMeta {
   keys: string[];
 }
 
+function getLoggedInUserId(): string {
+  if (typeof window === "undefined") return "";
+  try {
+    const raw = localStorage.getItem("classicworld_auth_profile") || localStorage.getItem("user") || localStorage.getItem("auth_profile");
+    if (raw) {
+      const u = JSON.parse(raw);
+      const activeProf = u?.activeProfile || localStorage.getItem("classicworld_active_profile") || "default";
+      const uid = u?.id || u?.email || "";
+      return uid ? `${uid}:${activeProf}` : "";
+    }
+  } catch {}
+  return "";
+}
+
 function storageKey(queryKey: readonly unknown[]) {
-  return CACHE_PREFIX + JSON.stringify(queryKey);
+  const uid = getLoggedInUserId();
+  return CACHE_PREFIX + (uid ? `${uid}:` : "") + JSON.stringify(queryKey);
 }
 
 function isCashboxKey(queryKey: readonly unknown[]) {
@@ -44,7 +59,7 @@ export function writeQueryCache(queryKey: readonly unknown[], data: unknown) {
     const meta: CacheMeta = JSON.parse(localStorage.getItem(CACHE_META_KEY) ?? '{"keys":[]}');
     if (!meta.keys.includes(key)) {
       meta.keys.push(key);
-      if (meta.keys.length > 40) {
+      if (meta.keys.length > 50) {
         const removed = meta.keys.shift();
         if (removed) localStorage.removeItem(removed);
       }
@@ -59,9 +74,14 @@ export function writeQueryCache(queryKey: readonly unknown[], data: unknown) {
 export function clearQueryCache() {
   if (typeof window === "undefined") return;
   try {
-    const meta: CacheMeta = JSON.parse(localStorage.getItem(CACHE_META_KEY) ?? '{"keys":[]}');
-    meta.keys.forEach(k => localStorage.removeItem(k));
-    localStorage.removeItem(CACHE_META_KEY);
+    const toRemove: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && (key.startsWith(CACHE_PREFIX) || key === CACHE_META_KEY)) {
+        toRemove.push(key);
+      }
+    }
+    toRemove.forEach(k => localStorage.removeItem(k));
   } catch {
     // ignore
   }

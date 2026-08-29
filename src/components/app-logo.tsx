@@ -12,10 +12,10 @@ interface AppLogoProps {
 }
 
 const sizes = {
-  sm: "h-8 max-w-[170px]",
-  md: "h-11 max-w-[240px]",
-  lg: "h-14 max-w-[320px]",
-  xl: "h-20 max-w-[420px]",
+  sm: "h-9.5 sm:h-10.5 max-w-[190px] sm:max-w-[220px]",
+  md: "h-12 sm:h-14 max-w-[260px] sm:max-w-[300px]",
+  lg: "h-16 sm:h-20 max-w-[340px] sm:max-w-[380px]",
+  xl: "h-24 sm:h-28 max-w-[460px] sm:max-w-[500px]",
 };
 
 /** Business logo from settings or default. Can toggle fullscreen on triple click. */

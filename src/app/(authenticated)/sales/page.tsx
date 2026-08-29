@@ -347,7 +347,12 @@ export default function SalesPage() {
 
       const custName = s.parties?.name || (isBn ? "সাধারণ কাস্টমার" : "Walk-in Customer");
       const cats = Array.from(new Set(s.items.map(it => {
-        return (it.product_id ? productCategoryMap.get(it.product_id) : null) ||
+          const totalSalesAmount = (filteredSales || []).reduce((sum: number, s: any) => sum + (Number(s.sell_price || 0) * Number(s.qty || 1) - Number((s as any).discount || 0)), 0);
+  const totalProfitAmount = (filteredSales || []).reduce((sum: number, s: any) => sum + (Number(s.profit || 0)), 0);
+  const totalPaidAmount = (filteredSales || []).reduce((sum: number, s: any) => sum + (Number(s.paid_amount || 0)), 0);
+  const totalDueAmount = (filteredSales || []).reduce((sum: number, s: any) => sum + (Number(s.due_amount || 0)), 0);
+
+  return (it.product_id ? productCategoryMap.get(it.product_id) : null) ||
                productCategoryMap.get(it.product_name.toLowerCase().trim()) ||
                (isBn ? "সাধারণ" : "General");
       }))).join("; ");
@@ -377,6 +382,130 @@ export default function SalesPage() {
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
     toast.success(isBn ? "বিক্রয় স্প্রেডশিট ডাউনলোড সম্পন্ন হয়েছে" : "Sales CSV exported successfully");
+  };
+
+  // Print & PDF Report Generator
+  const handlePrintDetailedReport = () => {
+    const isBn = lang === "bn";
+    const title = isBn ? "বিক্রয় বিবরণী ও ইনভয়েস রিপোর্ট" : "Sales Detailed Report";
+    const dateRangeStr =
+      dateRange === "today" ? (isBn ? "আজকের হিসাব" : "Today") :
+      dateRange === "yesterday" ? (isBn ? "গতকালের হিসাব" : "Yesterday") :
+      dateRange === "week" ? (isBn ? "বিগত ৭ দিন" : "Last 7 Days") :
+      dateRange === "month" ? (isBn ? "চলতি মাস" : "This Month") :
+      dateRange === "custom" ? `${customFrom} - ${customTo}` : (isBn ? "সকল সময়ের" : "All Time");
+
+    const printWin = window.open("", "_blank");
+    if (!printWin) {
+      toast.error(isBn ? "পপআপ ব্লক করা আছে। রিপোর্ট প্রিন্ট করার জন্য পপআপ অনুমতি দিন।" : "Popup blocked. Please allow popups to print report.");
+      return;
+    }
+
+    const rowsHtml = filteredSales.map((s, idx) => {
+      const methodStr =
+        s.type === "bkash" ? (isBn ? "বিকাশ" : "bKash") :
+        s.type === "bank" ? (isBn ? "ব্যাংক" : "Bank") :
+        s.type === "credit" ? (isBn ? "বাকী" : "Credit") :
+        s.type === "online" ? (isBn ? `কুরিয়ার (${s.courier_status || "পেন্ডিং"})` : `Courier (${s.courier_status || "pending"})`) :
+        (isBn ? "নগদ" : "Cash");
+      const custName = s.parties?.name || (isBn ? "সাধারণ ক্রেতা" : "Walk-in");
+
+      return `
+        <tr>
+          <td style="padding:6px 8px;border:1px solid #e2e8f0;text-align:center;">${idx + 1}</td>
+          <td style="padding:6px 8px;border:1px solid #e2e8f0;">${fmtDateTime(s.created_at)}</td>
+          <td style="padding:6px 8px;border:1px solid #e2e8f0;"><b>${s.product_name}</b></td>
+          <td style="padding:6px 8px;border:1px solid #e2e8f0;text-align:center;">${s.qty}</td>
+          <td style="padding:6px 8px;border:1px solid #e2e8f0;text-align:right;">৳${fmtMoney(s.sell_price)}</td>
+          <td style="padding:6px 8px;border:1px solid #e2e8f0;text-align:right;font-weight:bold;color:#16a34a;">৳${fmtMoney(s.profit)}</td>
+          <td style="padding:6px 8px;border:1px solid #e2e8f0;text-align:center;">${methodStr}</td>
+          <td style="padding:6px 8px;border:1px solid #e2e8f0;">${custName}</td>
+          <td style="padding:6px 8px;border:1px solid #e2e8f0;text-align:right;color:#0284c7;">৳${fmtMoney(s.paid_amount)}</td>
+          <td style="padding:6px 8px;border:1px solid #e2e8f0;text-align:right;color:${s.due_amount > 0 ? '#d97706' : '#64748b'};">৳${fmtMoney(s.due_amount)}</td>
+        </tr>
+      `;
+    }).join("");
+
+    const totalSalesAmount = filteredSales.reduce((sum, s) => sum + (Number(s.sell_price || 0) * Number(s.qty || 1) - Number((s as any).discount || 0)), 0);
+    const totalProfitAmount = filteredSales.reduce((sum, s) => sum + (Number(s.profit || 0)), 0);
+    const totalPaidAmount = filteredSales.reduce((sum, s) => sum + (Number(s.paid_amount || 0)), 0);
+    const totalDueAmount = filteredSales.reduce((sum, s) => sum + (Number(s.due_amount || 0)), 0);
+
+    printWin.document.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>${title} - ${dateRangeStr}</title>
+          <meta charset="utf-8" />
+          <style>
+            body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Hind Siliguri', sans-serif; margin: 20px; color: #0f172a; }
+            h1 { font-size: 20px; margin: 0 0 4px 0; }
+            .meta { font-size: 12px; color: #64748b; margin-bottom: 16px; }
+            .summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 16px; }
+            .card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px; }
+            .card-title { font-size: 11px; color: #64748b; margin-bottom: 4px; }
+            .card-val { font-size: 16px; font-weight: bold; color: #0f172a; }
+            table { width: 100%; border-collapse: collapse; font-size: 11px; }
+            th { background: #f1f5f9; padding: 8px; border: 1px solid #cbd5e1; text-align: left; }
+            @media print {
+              body { margin: 0; }
+              .no-print { display: none; }
+            }
+          </style>
+        </head>
+        <body>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;border-bottom:2px solid #0f172a;padding-bottom:8px;">
+            <div>
+              <h1>${biz?.shop_name || "Classic World"}</h1>
+              <div class="meta">${title} • ${dateRangeStr} • ${isBn ? "প্রিন্টের সময়" : "Generated"}: ${new Date().toLocaleString("en-GB")}</div>
+            </div>
+            <button class="no-print" onclick="window.print()" style="padding:6px 14px;background:#0284c7;color:#fff;border:none;border-radius:6px;font-weight:bold;cursor:pointer;">
+              ${isBn ? "প্রিন্ট / PDF সংরক্ষণ" : "Print / Save as PDF"}
+            </button>
+          </div>
+
+          <div class="summary">
+            <div class="card">
+              <div class="card-title">${isBn ? "মোট বিক্রয়" : "Total Sales"}</div>
+              <div class="card-val">৳${fmtMoney(totalSalesAmount)}</div>
+            </div>
+            <div class="card">
+              <div class="card-title">${isBn ? "মোট লাভ" : "Total Profit"}</div>
+              <div class="card-val" style="color:#16a34a;">৳${fmtMoney(totalProfitAmount)}</div>
+            </div>
+            <div class="card">
+              <div class="card-title">${isBn ? "মোট আদায়" : "Total Collected"}</div>
+              <div class="card-val" style="color:#0284c7;">৳${fmtMoney(totalPaidAmount)}</div>
+            </div>
+            <div class="card">
+              <div class="card-title">${isBn ? "মোট বাকি" : "Total Due"}</div>
+              <div class="card-val" style="color:#d97706;">৳${fmtMoney(totalDueAmount)}</div>
+            </div>
+          </div>
+
+          <table>
+            <thead>
+              <tr>
+                <th style="width:30px;text-align:center;">#</th>
+                <th>${isBn ? "তারিখ" : "Date"}</th>
+                <th>${isBn ? "পণ্যের নাম" : "Product"}</th>
+                <th style="text-align:center;">${isBn ? "পরিমাণ" : "Qty"}</th>
+                <th style="text-align:right;">${isBn ? "বিক্রয় মূল্য" : "Price"}</th>
+                <th style="text-align:right;">${isBn ? "লাভ" : "Profit"}</th>
+                <th style="text-align:center;">${isBn ? "মাধ্যম" : "Method"}</th>
+                <th>${isBn ? "ক্রেতা" : "Customer"}</th>
+                <th style="text-align:right;">${isBn ? "আদায়" : "Paid"}</th>
+                <th style="text-align:right;">${isBn ? "বাকি" : "Due"}</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rowsHtml}
+            </tbody>
+          </table>
+        </body>
+      </html>
+    `);
+    printWin.document.close();
   };
 
   return (
@@ -416,52 +545,58 @@ export default function SalesPage() {
             />
           </div>
 
+          {/* Unified Download & Export Dropdown */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
                 variant="outline"
                 size="sm"
-                disabled={isSyncingSheets}
-                className="h-8.5 px-2.5 text-xs font-bold font-balooda rounded-xl gap-1.5 cursor-pointer bg-card hover:bg-muted/80 border-[0.5px] border-emerald-600/40 text-emerald-700 dark:text-emerald-400"
+                className="h-8.5 px-2.5 text-xs font-bold font-balooda rounded-xl gap-1.5 cursor-pointer bg-card hover:bg-muted/80 border-border text-foreground shadow-2xs"
+                title={lang === "bn" ? "রিপোর্ট ডাউনলোড ও এক্সপোর্ট" : "Download Reports & Export"}
               >
-                {isSyncingSheets ? (
-                  <Loader2 className="size-4 animate-spin text-emerald-600" />
-                ) : (
-                  <CloudUpload className="size-4 text-emerald-600 dark:text-emerald-400" />
-                )}
-                <span>{isMobile ? "Sheets" : (lang === "bn" ? "গুগল শিট সিঙ্ক" : "Google Sheets")}</span>
+                <Download className="size-4 text-primary shrink-0" />
+                <span>{lang === "bn" ? "ডাউনলোড" : "Download"}</span>
                 <ChevronDown className="size-3 opacity-60 ml-0.5" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-64 p-2 space-y-1 font-balooda">
-              <div className="px-2 py-1 text-xs font-bold text-muted-foreground border-b border-border flex items-center justify-between">
-                <span>{lang === "bn" ? "গুগল শিট ইন্টিগ্রেশন" : "Google Sheets Sync"}</span>
-                <span className={`text-[10px] px-1.5 py-0.5 rounded font-mono ${
-                  biz?.google_sheets_sync_enabled !== false ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" : "bg-muted text-muted-foreground"
-                }`}>
-                  {biz?.google_sheets_sync_enabled !== false ? (lang === "bn" ? "অটো: চালু" : "Auto: ON") : (lang === "bn" ? "অটো: বন্ধ" : "Auto: OFF")}
-                </span>
+              <div className="px-2 py-1 text-xs font-bold text-muted-foreground border-b border-border">
+                {lang === "bn" ? "রিপোর্ট ও ডাটা ডাউনলোড" : "Download & Export"}
               </div>
+
+              <DropdownMenuItem
+                onClick={() => exportSalesCsv("bn")}
+                className="text-xs font-medium cursor-pointer py-1.5 flex items-center gap-2"
+              >
+                <FileSpreadsheet className="size-3.5 text-emerald-600 dark:text-emerald-400" />
+                <span>{lang === "bn" ? "CSV স্প্রেডশিট (বাংলা)" : "CSV Spreadsheet (Bangla)"}</span>
+              </DropdownMenuItem>
+
+              <DropdownMenuItem
+                onClick={() => exportSalesCsv("en")}
+                className="text-xs font-medium cursor-pointer py-1.5 flex items-center gap-2"
+              >
+                <FileSpreadsheet className="size-3.5 text-blue-600 dark:text-blue-400" />
+                <span>{lang === "bn" ? "CSV Spreadsheet (English)" : "CSV Spreadsheet (English)"}</span>
+              </DropdownMenuItem>
+
+              <DropdownMenuItem
+                onClick={handlePrintDetailedReport}
+                className="text-xs font-medium cursor-pointer py-1.5 flex items-center gap-2"
+              >
+                <Printer className="size-3.5 text-purple-600 dark:text-purple-400" />
+                <span>{lang === "bn" ? "পিডিএফ রিপোর্ট ও প্রিন্ট (PDF Report)" : "Print / PDF Report"}</span>
+              </DropdownMenuItem>
+
+              <div className="border-t border-border/60 my-1" />
 
               <DropdownMenuItem
                 onClick={handleSyncGoogleSheets}
                 disabled={isSyncingSheets}
-                className="text-xs font-medium cursor-pointer py-1.5 flex items-center gap-2"
+                className="text-xs font-medium cursor-pointer py-1.5 flex items-center gap-2 text-emerald-700 dark:text-emerald-400"
               >
-                <RefreshCw className={`size-3.5 text-emerald-600 ${isSyncingSheets ? "animate-spin" : ""}`} />
-                <span>{lang === "bn" ? "এখনই সব বিক্রি সিঙ্ক করুন" : "Sync All Sales Now"}</span>
-              </DropdownMenuItem>
-
-              <DropdownMenuItem
-                onClick={() => handleToggleAutoSync(biz?.google_sheets_sync_enabled === false)}
-                className="text-xs font-medium cursor-pointer py-1.5 flex items-center gap-2"
-              >
-                <CheckCircle2 className="size-3.5 text-primary" />
-                <span>
-                  {biz?.google_sheets_sync_enabled === false
-                    ? (lang === "bn" ? "অটো-সিঙ্ক চালু করুন (Turn ON)" : "Turn ON Auto-Sync")
-                    : (lang === "bn" ? "অটো-সিঙ্ক বন্ধ করুন (Turn OFF)" : "Turn OFF Auto-Sync")}
-                </span>
+                <CloudUpload className="size-3.5 text-emerald-600" />
+                <span>{lang === "bn" ? "গুগল শিট ক্লাউড সিঙ্ক" : "Sync with Google Sheets"}</span>
               </DropdownMenuItem>
 
               {biz?.google_sheets_spreadsheet_id && (
@@ -477,24 +612,6 @@ export default function SalesPage() {
                   </a>
                 </DropdownMenuItem>
               )}
-            </DropdownMenuContent>
-          </DropdownMenu>
-
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm" className="h-8.5 px-2.5 text-xs font-bold font-balooda rounded-xl gap-1.5 cursor-pointer">
-                <FileSpreadsheet className="size-4 text-emerald-600 dark:text-emerald-400" />
-                <span>{isMobile ? "CSV" : (lang === "bn" ? "এক্সেল / CSV" : "Export CSV")}</span>
-                <ChevronDown className="size-3 opacity-60 ml-0.5" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => exportSalesCsv("bn")}>
-                Bangla (বাংলা স্প্রেডশিট)
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => exportSalesCsv("en")}>
-                English (ইংরেজি Spreadsheet)
-              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
 
@@ -849,7 +966,7 @@ function SalesTab({
 
     try {
       printPwaInvoice({
-        businessName: user?.business_name || biz?.name || "Dream Fashion",
+        businessName: user?.business_name || biz?.name || "Classic World",
         userEmail: biz?.emails || user?.business_emails || user?.email || "",
         shopAddress: biz?.address || user?.business_address || "",
         shopPhoneNumbers: biz?.phone_numbers || user?.business_phone_numbers || "",

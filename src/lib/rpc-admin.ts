@@ -75,6 +75,7 @@ export const getPlatformActivitiesFn = makeAdminAction("getPlatformActivitiesFn"
 export const suspendBusinessFn = makeAdminAction("suspendBusinessFn");
 export const deleteBusinessFn = makeAdminAction("deleteBusinessFn");
 export const activateLicenseFn = makeAdminAction("activateLicenseFn");
+export const disconnectGoogleSheetsFn = makeAdminAction("disconnectGoogleSheetsFn");
 import { fsGetBusinessSettings, fsUpdateBusinessSettings, fsRemoveEmployee, fsUpdateEmployeePermissions } from "./firestore-service";
 
 export const getBusinessSettingsFn = async () => {

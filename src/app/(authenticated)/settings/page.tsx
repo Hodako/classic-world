@@ -126,8 +126,8 @@ export default function SettingsPage() {
 
   // KPI Configuration & Ordering State
   const DEFAULT_KPI_ORDER = [
-    "total_sales", "cash_sale", "sell_kpi", "credit_sale", "online_sell",
-    "owner_wallet", "purchases", "profit", "loss", "expense", "due", "cashbox", "somiti"
+    "total_sales", "cash_sale", "credit_sale", "online_sell",
+    "owner_wallet", "profit", "loss", "expense", "due", "cashbox", "somiti"
   ];
 
   const normalizeKpiOrderList = (order?: string[]) => {
@@ -1211,7 +1211,7 @@ export default function SettingsPage() {
                       <span>{lang === "bn" ? "কেপিআই কার্ডসমূহ ও অবস্থান ক্রম (↑ / ↓ কি বা বাটন)" : "KPI Cards & Sequence (↑ / ↓ Arrow Keys or Drag)"}</span>
                     </h3>
                     <span className="text-[11px] text-muted-foreground">
-                      {lang === "bn" ? "মোট ১৩টি মেট্রিক কার্ড" : "13 Total Metric Cards"}
+                      {lang === "bn" ? "মোট ১১টি মেট্রিক কার্ড" : "11 Total Metric Cards"}
                     </span>
                   </div>
 

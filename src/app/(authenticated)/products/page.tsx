@@ -6,7 +6,7 @@ import { PaginationBar, paginate } from "@/components/ui/pagination-bar";
 import { FAB } from "@/components/ui/fab";
 import { useState, useMemo, useRef, useEffect } from "react";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { Plus, Pencil, Trash2, Search, Archive, Download, Eye, AlertCircle, MoreVertical, ShoppingCart, Minus, X, Scan } from "lucide-react";
+import { Plus, RotateCcw, Pencil, Trash2, Search, Archive, Download, Eye, AlertCircle, MoreVertical, ShoppingCart, Minus, X, Scan } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { getProducts, getSales, getCustomers, type Product } from "@/lib/queries";
 import { useT } from "@/lib/i18n";
@@ -20,7 +20,7 @@ import { BarcodeScannerDialog } from "@/components/barcode-scanner-dialog";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { toast } from "sonner";
-import { deleteProductFn, archiveProductFn, createDirectProductReturnFn, createSaleFn } from "@/lib/rpc";
+import { deleteProductFn, archiveProductFn, createDirectProductReturnFn, createSaleFn, exchangeProductsFn } from "@/lib/rpc";
 import { ConfirmDeleteDialog } from "@/components/confirm-delete-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
@@ -76,6 +76,8 @@ export default function ProductsPage() {
   const [showCartPanel, setShowCartPanel] = useState(false);
   const [returnProduct, setReturnProduct] = useState<Product | null>(null);
   const [returnOpen, setReturnOpen] = useState(false);
+  const [exchangeProduct, setExchangeProduct] = useState<Product | null>(null);
+  const [exchangeOpen, setExchangeOpen] = useState(false);
   const [statsExpanded, setStatsExpanded] = useState(false);
   const [pinnedIds, setPinnedIds] = useState<string[]>([]);
   const [productBoxSize, setProductBoxSize] = useState<"small" | "standard" | "large" | string>("standard");
@@ -715,6 +717,19 @@ export default function ProductsPage() {
         }}
         presetProductId={buyProduct}
       />
+      <ExchangeProductDialog
+        open={exchangeOpen}
+        onOpenChange={setExchangeOpen}
+        products={productsData || []}
+        preselectedProduct={exchangeProduct}
+        onSuccess={() => {
+          qc.invalidateQueries({ queryKey: ["products"] });
+          qc.invalidateQueries({ queryKey: ["sales"] });
+          qc.invalidateQueries({ queryKey: ["returns"] });
+          qc.invalidateQueries({ queryKey: ["cashbox"] });
+        }}
+      />
+
       <ReturnDialog
         open={returnOpen}
         onOpenChange={setReturnOpen}
@@ -1135,6 +1150,288 @@ function ReturnDialog({
             </Button>
             <Button type="submit" disabled={busy} className="bg-destructive hover:bg-destructive/90 text-white font-medium">
               {busy ? "..." : "Confirm Return"}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+
+function ExchangeProductDialog({
+  open,
+  onOpenChange,
+  products,
+  preselectedProduct,
+  onSuccess,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  products: Product[];
+  preselectedProduct: Product | null;
+  onSuccess: () => void;
+}) {
+  const { lang, t } = useT();
+  const [returnedProductId, setReturnedProductId] = useState("");
+  const [returnedQty, setReturnedQty] = useState("1");
+  const [returnedPrice, setReturnedPrice] = useState("");
+
+  const [newProductId, setNewProductId] = useState("");
+  const [newQty, setNewQty] = useState("1");
+  const [newSellPrice, setNewSellPrice] = useState("");
+
+  const [customerName, setCustomerName] = useState("");
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (preselectedProduct) {
+      setReturnedProductId(preselectedProduct.id);
+      setReturnedPrice(String(preselectedProduct.sell_price || "0"));
+    } else if (products.length > 0 && !returnedProductId) {
+      setReturnedProductId(products[0].id);
+      setReturnedPrice(String(products[0].sell_price || "0"));
+    }
+  }, [preselectedProduct, products, open]);
+
+  const handleReturnedProductChange = (prodId: string) => {
+    setReturnedProductId(prodId);
+    const prod = products.find(p => p.id === prodId);
+    if (prod) {
+      setReturnedPrice(String(prod.sell_price || "0"));
+    }
+  };
+
+  const handleNewProductChange = (prodId: string) => {
+    setNewProductId(prodId);
+    const prod = products.find(p => p.id === prodId);
+    if (prod) {
+      setNewSellPrice(String(prod.sell_price || "0"));
+    }
+  };
+
+  const returnedTotal = (Number(returnedQty) || 0) * (Number(returnedPrice) || 0);
+  const newTotal = (Number(newQty) || 0) * (Number(newSellPrice) || 0);
+  const cashDifference = newTotal - returnedTotal;
+
+  const chosenNewProduct = products.find(p => p.id === newProductId);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!returnedProductId || !newProductId) {
+      toast.error(lang === "bn" ? "ফেরত ও নতুন উভয় পণ্য নির্বাচন করুন" : "Please select both returned and replacement products");
+      return;
+    }
+    setBusy(true);
+    try {
+      await exchangeProductsFn({
+        data: {
+          returned_product_id: returnedProductId,
+          returned_qty: Number(returnedQty) || 1,
+          returned_price: Number(returnedPrice) || 0,
+          new_product_id: newProductId,
+          new_qty: Number(newQty) || 1,
+          new_sell_price: Number(newSellPrice) || 0,
+          customer_name: customerName.trim() || null,
+          note: note.trim() || null,
+        },
+      });
+      toast.success(
+        lang === "bn"
+          ? "পণ্য পরিবর্তন সফলভাবে সম্পন্ন হয়েছে!"
+          : "Product exchanged successfully!"
+      );
+      onSuccess();
+      onOpenChange(false);
+    } catch (err: any) {
+      toast.error(err.message || String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto rounded-3xl p-5 sm:p-6 bg-card border-border/80 shadow-2xl">
+        <DialogHeader className="border-b border-border/60 pb-3">
+          <DialogTitle className="text-base sm:text-lg font-bold flex items-center gap-2">
+            <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+              <RotateCcw className="size-4" />
+            </div>
+            <span>{lang === "bn" ? "পণ্য এক্সচেঞ্জ / পরিবর্তন" : "Exchange Product with Customer"}</span>
+          </DialogTitle>
+        </DialogHeader>
+
+        <form onSubmit={handleSubmit} className="space-y-4 pt-2">
+          {/* Returned Product Section */}
+          <div className="p-3.5 rounded-2xl bg-rose-500/5 border border-rose-500/20 space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-rose-600 dark:text-rose-400 flex items-center gap-1.5">
+                <span>1.</span> {lang === "bn" ? "কাস্টমারের ফেরত দেওয়া পণ্য (স্টকে যোগ হবে)" : "Returned Product (Restocked)"}
+              </span>
+              <span className="text-[11px] font-mono font-bold text-rose-600 dark:text-rose-400">
+                ৳{fmtMoney(returnedTotal)}
+              </span>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs">{lang === "bn" ? "ফেরত পণ্য" : "Returned Item"}</Label>
+              <select
+                value={returnedProductId}
+                onChange={e => handleReturnedProductChange(e.target.value)}
+                className="w-full h-9 rounded-xl border border-input bg-input px-2 text-xs font-medium"
+              >
+                <option value="">-- {lang === "bn" ? "পণ্য নির্বাচন করুন" : "Select Product"} --</option>
+                {products.map(p => (
+                  <option key={p.id} value={p.id}>
+                    {p.name} (৳{p.sell_price})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1">
+                <Label className="text-[11px] text-muted-foreground">{lang === "bn" ? "ফেরত পরিমাণ" : "Returned Qty"}</Label>
+                <Input
+                  type="number"
+                  min="1"
+                  className="h-8 text-xs rounded-xl"
+                  value={returnedQty}
+                  onChange={e => setReturnedQty(e.target.value)}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-[11px] text-muted-foreground">{lang === "bn" ? "ফেরত রেট (৳)" : "Return Price Rate (৳)"}</Label>
+                <Input
+                  type="number"
+                  step="any"
+                  className="h-8 text-xs rounded-xl font-mono"
+                  value={returnedPrice}
+                  onChange={e => setReturnedPrice(e.target.value)}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* New Product Chosen Section */}
+          <div className="p-3.5 rounded-2xl bg-emerald-500/5 border border-emerald-500/20 space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
+                <span>2.</span> {lang === "bn" ? "নতুন নেওয়া পণ্য (স্টক কমবে)" : "Replacement Product (Stock Deducted)"}
+              </span>
+              <span className="text-[11px] font-mono font-bold text-emerald-600 dark:text-emerald-400">
+                ৳{fmtMoney(newTotal)}
+              </span>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs">{lang === "bn" ? "নতুন পণ্য" : "New Item"}</Label>
+              <select
+                value={newProductId}
+                onChange={e => handleNewProductChange(e.target.value)}
+                className="w-full h-9 rounded-xl border border-input bg-input px-2 text-xs font-medium"
+              >
+                <option value="">-- {lang === "bn" ? "নতুন পণ্য নির্বাচন করুন" : "Select Replacement Product"} --</option>
+                {products.filter(p => p.id !== returnedProductId).map(p => (
+                  <option key={p.id} value={p.id}>
+                    {p.name} (স্টক: {p.stock} • ৳{p.sell_price})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1">
+                <Label className="text-[11px] text-muted-foreground">{lang === "bn" ? "নতুন পরিমাণ" : "New Qty"}</Label>
+                <Input
+                  type="number"
+                  min="1"
+                  className="h-8 text-xs rounded-xl"
+                  value={newQty}
+                  onChange={e => setNewQty(e.target.value)}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-[11px] text-muted-foreground">{lang === "bn" ? "নতুন বিক্রয় মূল্য (৳)" : "Sell Price (৳)"}</Label>
+                <Input
+                  type="number"
+                  step="any"
+                  className="h-8 text-xs rounded-xl font-mono"
+                  value={newSellPrice}
+                  onChange={e => setNewSellPrice(e.target.value)}
+                />
+              </div>
+            </div>
+
+            {chosenNewProduct && (
+              <div className="text-[11px] text-muted-foreground">
+                {lang === "bn" ? "বর্তমান স্টক:" : "Current Stock:"}{" "}
+                <span className="font-bold text-foreground">{chosenNewProduct.stock}</span>
+              </div>
+            )}
+          </div>
+
+          {/* Balance & Customer Details */}
+          <div className="p-3.5 rounded-2xl bg-muted/40 border border-border/80 space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-foreground">
+                {lang === "bn" ? "পার্থক্য / ক্যাশ অ্যাডজাস্টমেন্ট:" : "Cash Adjustment:"}
+              </span>
+              <span className={`text-sm font-black font-mono ${cashDifference > 0 ? "text-emerald-600 dark:text-emerald-400" : cashDifference < 0 ? "text-rose-500" : "text-foreground"}`}>
+                {cashDifference > 0
+                  ? (lang === "bn" ? `+৳${fmtMoney(cashDifference)} (কাস্টমার দিবে)` : `+৳${fmtMoney(cashDifference)} (Collect from Customer)`)
+                  : cashDifference < 0
+                  ? (lang === "bn" ? `-৳${fmtMoney(Math.abs(cashDifference))} (কাস্টমারকে ফেরত)` : `-৳${fmtMoney(Math.abs(cashDifference))} (Refund Customer)`)
+                  : (lang === "bn" ? "৳০ (সমান সমান)" : "৳0 (Even Exchange)")}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1">
+                <Label className="text-[11px] text-muted-foreground">{lang === "bn" ? "ক্রেতার নাম (ঐচ্ছিক)" : "Customer Name"}</Label>
+                <Input
+                  type="text"
+                  className="h-8 text-xs rounded-xl"
+                  placeholder="e.g. Md Rahim"
+                  value={customerName}
+                  onChange={e => setCustomerName(e.target.value)}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-[11px] text-muted-foreground">{lang === "bn" ? "নোট (ঐচ্ছিক)" : "Note"}</Label>
+                <Input
+                  type="text"
+                  className="h-8 text-xs rounded-xl"
+                  placeholder="e.g. Size exchange"
+                  value={note}
+                  onChange={e => setNote(e.target.value)}
+                />
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2 pt-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={busy}
+              onClick={() => onOpenChange(false)}
+              className="rounded-xl text-xs h-9 cursor-pointer"
+            >
+              {lang === "bn" ? "বাতিল" : "Cancel"}
+            </Button>
+            <Button
+              type="submit"
+              size="sm"
+              disabled={busy || !returnedProductId || !newProductId}
+              className="rounded-xl text-xs h-9 font-semibold bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer"
+            >
+              {busy
+                ? (lang === "bn" ? "প্রসেস হচ্ছে..." : "Processing...")
+                : (lang === "bn" ? "এক্সচেঞ্জ নিশ্চিত করুন" : "Confirm Exchange")}
             </Button>
           </DialogFooter>
         </form>

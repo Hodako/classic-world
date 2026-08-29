@@ -2442,3 +2442,102 @@ export async function fsDeleteSmsLog(id: string) {
 }
 
 
+
+export async function fsExchangeProducts(data: {
+  returned_product_id: string;
+  returned_qty: number;
+  returned_price: number;
+  new_product_id: string;
+  new_qty: number;
+  new_sell_price: number;
+  party_id?: string | null;
+  customer_name?: string | null;
+  note?: string | null;
+}) {
+  const retProdDoc = await getDoc(doc(db, "products", data.returned_product_id));
+  if (!retProdDoc.exists()) throw new Error("Returned product not found");
+  const returnedProduct = docToData<any>(retProdDoc);
+
+  const newProdDoc = await getDoc(doc(db, "products", data.new_product_id));
+  if (!newProdDoc.exists()) throw new Error("New product chosen for exchange not found");
+  const newProduct = docToData<any>(newProdDoc);
+
+  const retQty = Number(data.returned_qty) || 1;
+  const newQty = Number(data.new_qty) || 1;
+  const retPrice = Number(data.returned_price) || Number(returnedProduct.sell_price) || 0;
+  const newPrice = Number(data.new_sell_price) || Number(newProduct.sell_price) || 0;
+
+  const currentNewStock = (newProduct.stock as number) ?? 0;
+  if (currentNewStock < newQty) {
+    throw new Error(`Insufficient stock for ${newProduct.name}. Available: ${currentNewStock}`);
+  }
+
+  // 1. Restock the returned product
+  await updateDoc(doc(db, "products", data.returned_product_id), {
+    stock: increment(retQty),
+  });
+
+  // 2. Reduce stock of the newly taken product
+  await updateDoc(doc(db, "products", data.new_product_id), {
+    stock: increment(-newQty),
+  });
+
+  const totalReturnedValue = retPrice * retQty;
+  const totalNewValue = newPrice * newQty;
+  const cashDifference = totalNewValue - totalReturnedValue;
+
+  const exchangeId = typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `ex_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+
+  // 3. Record return entry
+  const returnRecord = {
+    exchange_id: exchangeId,
+    product_id: data.returned_product_id,
+    product_name: returnedProduct.name,
+    qty: retQty,
+    return_price: retPrice,
+    amount: totalReturnedValue,
+    note: `Exchange for ${newProduct.name}${data.note ? ` (${data.note})` : ""}`,
+    created_at: Timestamp.now(),
+  };
+  await addDoc(collection(db, "returns"), returnRecord);
+
+  // 4. Record sale entry
+  const newBuyPrice = Number(newProduct.buy_price) || 0;
+  const newProfit = (newPrice - newBuyPrice) * newQty;
+
+  const saleRecord = {
+    exchange_id: exchangeId,
+    product_id: data.new_product_id,
+    product_name: `${newProduct.name} [Exchanged with ${returnedProduct.name}]`,
+    qty: newQty,
+    buy_price: newBuyPrice,
+    sell_price: newPrice,
+    profit: newProfit,
+    type: "exchange",
+    party_id: data.party_id || null,
+    paid_amount: totalNewValue,
+    due_amount: 0,
+    note: `Exchange adjustment: Returned ${returnedProduct.name} (Value: ৳${totalReturnedValue}). Cash diff: ৳${cashDifference >= 0 ? `+${cashDifference}` : cashDifference}`,
+    created_at: Timestamp.now(),
+  };
+  await addDoc(collection(db, "sales"), saleRecord);
+
+  // 5. Adjust Cashbox
+  if (cashDifference > 0) {
+    await fsCreateCashbox({
+      type: "cash_in",
+      source: "sale",
+      amount: cashDifference,
+      note: `Exchange Cash In: Returned ${returnedProduct.name}, Took ${newProduct.name}`,
+    });
+  } else if (cashDifference < 0) {
+    await fsCreateCashbox({
+      type: "cash_out",
+      source: "return_refund",
+      amount: Math.abs(cashDifference),
+      note: `Exchange Refund: Returned ${returnedProduct.name}, Took ${newProduct.name}`,
+    });
+  }
+
+  return { success: true, exchangeId, cashDifference };
+}

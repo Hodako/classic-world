@@ -271,6 +271,7 @@ const fsActionMap: Record<string, (args?: any) => Promise<any>> = {
   createDirectProductReturnFn: async (args: any) => fs.fsCreateReturn(args?.data || args),
   createPartyReturnFn: async (args: any) => fs.fsCreateReturn(args?.data || args),
   deleteReturnFn: async (args: any) => fs.fsDeleteReturn(args?.data?.id || args?.id),
+  exchangeProductsFn: async (args: any) => fs.fsExchangeProducts(args?.data || args),
 
   createPurchaseFn: async (args: any) => fs.fsCreatePurchase(args?.data || args),
   editPurchaseFn: async (args: any) => fs.fsEditPurchase(args?.data?.id || args?.id, args?.data || args),

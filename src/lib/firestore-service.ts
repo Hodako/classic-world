@@ -2139,7 +2139,7 @@ export async function fsRepairCashbox() {
     for (const p of purchasesSnap.docs) {
       const pur = p.data();
       const pTotal = Number(pur.total) || 0;
-      if (pTotal > 0 && !seenRefIds.has(p.id)) {
+      if (pur.payment_type !== "credit" && pTotal > 0 && !seenRefIds.has(p.id)) {
         seenRefIds.add(p.id);
         await addDoc(collection(db, "cashbox_logs"), {
           kind: "expense",

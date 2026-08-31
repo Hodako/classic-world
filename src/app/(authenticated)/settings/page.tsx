@@ -127,14 +127,26 @@ export default function SettingsPage() {
 
   // KPI Configuration & Ordering State
   const DEFAULT_KPI_ORDER = [
-    "total_sales", "cash_sale", "credit_sale", "online_sell",
-    "owner_wallet", "profit", "loss", "expense", "due", "cashbox", "somiti"
+    "total_sales",
+    "cash_sale",
+    "sell_kpi",
+    "online_sell",
+    "owner_wallet",
+    "purchases",
+    "profit",
+    "loss",
+    "expense",
+    "due",
+    "cashbox",
+    "somiti",
   ];
 
   const normalizeKpiOrderList = (order?: string[]) => {
     const defaultList = [...DEFAULT_KPI_ORDER];
     if (!order || !Array.isArray(order) || order.length === 0) return defaultList;
-    const list = order.map(k => (k === "bkash_bank" ? "sell_kpi" : k === "owners_wallet" ? "owner_wallet" : k));
+    const list = order
+      .filter(k => k !== "credit_sale")
+      .map(k => (k === "bkash_bank" ? "sell_kpi" : k === "owners_wallet" ? "owner_wallet" : k));
     for (const key of defaultList) {
       if (!list.includes(key)) list.push(key);
     }

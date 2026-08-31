@@ -110,13 +110,13 @@ export function PinLockModal() {
     const ePin = localStorage.getItem("app_employee_pin_code_val") || "0000";
 
     // Check custom employee accounts if defined
-    let matchedEmployee: any = null;
+    let matchedEmp: any = null;
     try {
       const empsRaw = localStorage.getItem("cw_employee_accounts");
       if (empsRaw) {
         const emps = JSON.parse(empsRaw);
         if (Array.isArray(emps)) {
-          matchedEmployee = emps.find((e: any) => String(e.pin).trim() === inputToVerify.trim());
+          matchedEmp = emps.find((e: any) => String(e.pin || e.password || "").trim() === inputToVerify.trim());
         }
       }
     } catch (_) {}
@@ -130,22 +130,16 @@ export function PinLockModal() {
       window.dispatchEvent(new Event("hz-employee-switched"));
       setIsLocked(false);
       setPinInput("");
-      toast.success(lang === "bn" ? "স্বত্বাধিকারী (Owner) মোডে স্বাগতম!" : "Unlocked in Owner Mode!");
-    } else if (inputToVerify.trim() === ePin.trim() || matchedEmployee) {
-      // Unlocked as Employee
+      toast.success(lang === "bn" ? "মালিক পিন সঠিক হয়েছে! স্বাগতম।" : "Owner PIN verified! Welcome.");
+    } else if (matchedEmp) {
       playSaleSuccessSound();
       sessionStorage.setItem("app_pin_unlocked", "true");
-      const empSession = matchedEmployee || { id: "default-emp", name: "Staff / কর্মচারী", pin: ePin, permissions: { sales: true, products: true, customers: true } };
-      localStorage.setItem("cw_active_employee_session", JSON.stringify(empSession));
+      localStorage.setItem("cw_active_employee_session", JSON.stringify(matchedEmp));
       localStorage.setItem("cw_active_session_role", "employee");
       window.dispatchEvent(new Event("hz-employee-switched"));
       setIsLocked(false);
       setPinInput("");
-      toast.success(
-        lang === "bn"
-          ? `কর্মচারী (${empSession.name}) মোডে স্বাগতম!`
-          : `Unlocked in Employee (${empSession.name}) Mode!`
-      );
+      toast.success(lang === "bn" ? `পিন কোড সঠিক হয়েছে! স্বাগতম (${matchedEmp.name})` : `PIN verified! Welcome ${matchedEmp.name}`);
     } else {
       playErrorSound();
       setErrorShake(true);
@@ -153,7 +147,7 @@ export function PinLockModal() {
         setErrorShake(false);
         setPinInput("");
       }, 500);
-      toast.error(lang === "bn" ? "ভুল পিন কোড! মালিক বা কর্মচারী পিন দিন।" : "Incorrect PIN code! Enter Owner or Employee PIN.");
+      toast.error(lang === "bn" ? "ভুল পিন কোড! আবার চেষ্টা করুন।" : "Incorrect PIN code! Please try again.");
     }
   };
 

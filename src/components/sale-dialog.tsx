@@ -306,33 +306,56 @@ export function SaleDialog({
     }
     setBusy(true);
     try {
-      const duePerItem = type === "credit" ? due / cart.length : 0;
-      const paidPerItem = type === "credit" ? paidNum / cart.length : 0;
-
       const cartId = safeUUID();
-      for (const line of cart) {
+      let remainingPaid = type === "credit" ? paidNum : sellTotal;
+      let remainingDue = type === "credit" ? due : 0;
+
+      for (let i = 0; i < cart.length; i++) {
+        const line = cart[i];
         const product = products.find(p => p.id === line.productId)!;
-        const qtyNum = Number(line.qty) || 0;
-        const sellPrice = Number(line.sellPrice) || product.sell_price || 0;
+        const qtyNum = Number(line.qty) || 1;
+        const rawSellPrice = Number(line.sellPrice) || product.sell_price || 0;
         const disc = Number(line.discount) || 0;
-        const finalSellPrice = Math.max(sellPrice - disc, 0);
-        const lineSell = finalSellPrice * qtyNum;
-        const lineProfit = (finalSellPrice - product.buy_price) * qtyNum;
+        const finalUnitSell = Math.max(rawSellPrice - disc, 0);
+        const lineSell = finalUnitSell * qtyNum;
+        const lineProfit = (finalUnitSell - Number(product.buy_price || 0)) * qtyNum;
+
+        // Proportional paid & due distribution for credit sales
+        let linePaid = 0;
+        let lineDue = 0;
+        if (type === "online") {
+          linePaid = 0;
+          lineDue = lineSell;
+        } else if (type === "credit") {
+          if (i === cart.length - 1) {
+            linePaid = Math.max(remainingPaid, 0);
+            lineDue = Math.max(remainingDue, 0);
+          } else {
+            const ratio = sellTotal > 0 ? lineSell / sellTotal : 1 / cart.length;
+            linePaid = Math.min(Math.round(paidNum * ratio), remainingPaid);
+            lineDue = Math.max(lineSell - linePaid, 0);
+            remainingPaid -= linePaid;
+            remainingDue -= lineDue;
+          }
+        } else {
+          linePaid = lineSell;
+          lineDue = 0;
+        }
 
         await createSaleFn({
           data: {
             product_id: product.id,
             product_name: product.name,
             qty: qtyNum,
-            buy_price: product.buy_price,
-            sell_price: finalSellPrice,
+            buy_price: Number(product.buy_price) || 0,
+            sell_price: finalUnitSell,
             profit: lineProfit,
             type,
             party_id: partyId || null,
-            paid_amount: type === "online" ? 0 : (type === "credit" ? paidPerItem : lineSell),
-            due_amount: type === "online" ? lineSell : (type === "credit" ? duePerItem : 0),
+            paid_amount: linePaid,
+            due_amount: lineDue,
             cart_id: cartId,
-            discount: disc,
+            discount: 0,
             courier_name: type === "online" ? courierName : undefined,
             tracking_code: type === "online" ? trackingCode : undefined,
             courier_status: type === "online" ? "pending" : undefined,

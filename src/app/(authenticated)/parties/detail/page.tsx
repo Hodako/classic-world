@@ -106,31 +106,31 @@ export default function PartyDetail() {
 
   const entries: Entry[] = [
     ...(showReceivable ? (sales.data ?? []).filter(s => Number(s.due_amount) > 0 && !s.returned).map(s => ({
-      id: "s" + s.id, rawId: s.id, date: s.created_at,
+      id: "s" + s.id, rawId: s.id, date: s.created_at || (s as any).date || (s as any).sale_date || "",
       label: s.product_id ? `${s.product_name} ×${s.qty}` : s.product_name,
       amount: Number(s.due_amount), kind: "sale" as const, deletable: !s.product_id,
     })) : []),
     ...(showReceivable ? (receivables.data ?? []).map(r => ({
-      id: "r" + r.id, rawId: r.id, date: r.created_at,
+      id: "r" + r.id, rawId: r.id, date: r.created_at || (r as any).date || "",
       label: r.note || t("money_owed"), amount: Number(r.amount),
       kind: "receivable" as const, deletable: true,
     })) : []),
     ...(showReceivable ? (payments.data ?? []).map(p => ({
-      id: "p" + p.id, rawId: p.id, date: p.created_at,
+      id: "p" + p.id, rawId: p.id, date: p.created_at || (p as any).date || "",
       label: p.note || t("collect_payment"), amount: -Number(p.amount),
       kind: "payment" as const, deletable: true,
     })) : []),
     ...(showPayable ? (payables.data ?? []).map(p => ({
-      id: "pb" + p.id, rawId: p.id, date: p.created_at,
+      id: "pb" + p.id, rawId: p.id, date: p.created_at || (p as any).date || "",
       label: p.note || t("money_payable"), amount: Number(p.amount),
       kind: "payable" as const, deletable: true,
     })) : []),
     ...(showPayable ? (settlements.data ?? []).map(s => ({
-      id: "st" + s.id, rawId: s.id, date: s.created_at,
+      id: "st" + s.id, rawId: s.id, date: s.created_at || (s as any).date || "",
       label: s.note || t("pay_party"), amount: -Number(s.amount),
       kind: "settlement" as const, deletable: true,
     })) : []),
-  ].sort((a, b) => +new Date(b.date) - +new Date(a.date));
+  ].sort((a, b) => +new Date(b.date || 0) - +new Date(a.date || 0));
 
   async function performDeleteEntry() {
     if (!entryToDelete) return;
@@ -240,7 +240,7 @@ export default function PartyDetail() {
         settledTotal,
         payableOutstanding,
         entries: entries.map(e => ({
-          date: e.date,
+          date: e.date || new Date().toISOString(),
           label: e.label,
           kind: e.kind,
           amount: Math.abs(e.amount),
@@ -268,7 +268,7 @@ export default function PartyDetail() {
       [isBn ? "তারিখ" : "Date", isBn ? "বিবরণ" : "Description", isBn ? "ধরন" : "Type", isBn ? "পরিমাণ (টাকা)" : "Amount (BDT)"]
     ];
     entries.forEach(e => {
-      rows.push([e.date.slice(0, 10), e.label, e.kind, Math.abs(e.amount)]);
+      rows.push([(e.date || "").slice(0, 10), e.label, e.kind, Math.abs(e.amount)]);
     });
     downloadCsv(`Party_Statement_${party.name.replace(/\s+/g, "_")}.csv`, ["Metric / Date", "Value / Description", "Type", "Amount"], rows);
     toast.success(isBn ? "CSV স্টেটমেন্ট ডাউনলোড হয়েছে!" : "CSV statement downloaded!");

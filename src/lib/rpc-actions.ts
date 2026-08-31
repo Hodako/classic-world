@@ -584,7 +584,7 @@ export async function createPartyFn(input: { data: { name: string; phone?: strin
   const session = await requireSession();
   const db = await getDb();
   const id = crypto.randomUUID();
-  const doc = { _id: id, owner_id: session.ownerId, name: data.name, phone: data.phone || null, address: data.address || null, created_at: new Date().toISOString() };
+  const doc = { _id: id, owner_id: session.ownerId, name: data.name, phone: data.phone || null, address: data.address || null, type: "supplier", is_supplier: true, created_at: new Date().toISOString() };
   await db.collection("parties").insertOne(doc as any);
   return { ...doc, id };
 }
@@ -2591,6 +2591,8 @@ export async function createCustomerFn(input: { data: { name: string; phone?: st
     name: data.name,
     phone: data.phone || null,
     address: data.address || null,
+    type: "customer",
+    is_supplier: false,
     archived: false,
     created_at: new Date().toISOString(),
   };

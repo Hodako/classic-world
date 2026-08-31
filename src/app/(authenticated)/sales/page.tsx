@@ -89,16 +89,22 @@ function groupSales(sales: Sale[]): GroupedSale[] {
       }
       cartGroups[s.cart_id].push(s);
     } else {
+      const qty = Number(s.qty) || 1;
+      const unitSell = Number(s.sell_price) || 0;
+      const disc = Number((s as any).discount) || 0;
+      const effectiveSell = Math.max(unitSell * qty - disc, 0);
+      const profit = s.profit !== undefined ? Number(s.profit) : (unitSell - Number(s.buy_price || 0)) * qty - disc;
+
       grouped.push({
         id: s.id,
         isGroup: false,
         cart_id: null,
         product_name: s.product_name,
-        qty: s.qty,
-        sell_price: Number(s.sell_price) * s.qty,
-        profit: s.profit,
-        due_amount: s.due_amount,
-        paid_amount: s.paid_amount,
+        qty: qty,
+        sell_price: effectiveSell,
+        profit: profit,
+        due_amount: Number(s.due_amount) || 0,
+        paid_amount: Number(s.paid_amount) || 0,
         type: s.type || "cash",
         courier_status: (s as any).courier_status || (s.type === "online" ? "pending" : null),
         courier_name: (s as any).courier_name || (s.type === "online" ? "Courier" : null),
@@ -115,11 +121,23 @@ function groupSales(sales: Sale[]): GroupedSale[] {
     items.sort((a, b) => a.product_name.localeCompare(b.product_name));
 
     const firstItem = items[0];
-    const totalQty = items.reduce((sum, x) => sum + x.qty, 0);
-    const totalSellPrice = items.reduce((sum, x) => sum + Math.max((Number(x.sell_price) || 0) * (Number(x.qty) || 1) - (Number((x as any).discount) || 0), 0), 0);
-    const totalProfit = items.reduce((sum, x) => sum + x.profit, 0);
-    const totalDue = items.reduce((sum, x) => sum + x.due_amount, 0);
-    const totalPaid = items.reduce((sum, x) => sum + x.paid_amount, 0);
+    const totalQty = items.reduce((sum, x) => sum + (Number(x.qty) || 1), 0);
+    const totalSellPrice = items.reduce((sum, x) => {
+      const q = Number(x.qty) || 1;
+      const sp = Number(x.sell_price) || 0;
+      const d = Number((x as any).discount) || 0;
+      return sum + Math.max(sp * q - d, 0);
+    }, 0);
+    const totalProfit = items.reduce((sum, x) => {
+      if (x.profit !== undefined) return sum + Number(x.profit);
+      const q = Number(x.qty) || 1;
+      const sp = Number(x.sell_price) || 0;
+      const bp = Number(x.buy_price) || 0;
+      const d = Number((x as any).discount) || 0;
+      return sum + ((sp - bp) * q - d);
+    }, 0);
+    const totalDue = items.reduce((sum, x) => sum + (Number(x.due_amount) || 0), 0);
+    const totalPaid = items.reduce((sum, x) => sum + (Number(x.paid_amount) || 0), 0);
 
     const names = items.map(x => `${x.product_name} (×${x.qty})`).join(", ");
 
@@ -1085,7 +1103,12 @@ function SalesTab({
                   </span>
                 </div>
 
-                <div className="flex items-center gap-1.5 shrink-0">
+                <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
+                  {!isCancelled && (
+                    <span className="text-[10.5px] font-bold font-balooda text-emerald-700 dark:text-emerald-300 bg-emerald-500/15 px-1.5 py-0.5 rounded border border-emerald-500/30 font-serif">
+                      {lang === "bn" ? "লাভ:" : "Profit:"} {fmtMoney(s.profit)}
+                    </span>
+                  )}
                   {s.due_amount > 0 && !isCancelled ? (
                     <span className="text-[10.5px] font-bold font-balooda text-rose-600">
                       {lang === "bn" ? "বাকী:" : "Due:"} {fmtMoney(s.due_amount)}
@@ -1204,14 +1227,21 @@ function SalesTab({
                     <span className="text-[10px] font-bold uppercase text-muted-foreground tracking-wider block font-balooda">
                       {lang === "bn" ? "কার্ট আইটেম তালিকা" : "Cart Items"}
                     </span>
-                    {s.items.map((item) => (
-                      <div key={item.id} className="flex justify-between items-center text-xs py-0.5 border-b border-border/30 last:border-0 font-balooda">
-                        <div className="truncate mr-2">
-                          <span className="font-bold text-foreground">{item.product_name}</span>
-                          <span className="text-muted-foreground font-mono ml-1">×{item.qty}</span>
-                        </div>
-                        <div className="flex items-center gap-2 shrink-0">
-                          <span className="font-mono font-bold text-foreground">{fmtMoney(Number(item.sell_price) * item.qty)}</span>
+                    {s.items.map((item) => {
+                      const itemProfit = item.profit !== undefined
+                        ? Number(item.profit)
+                        : (Number(item.sell_price) - Number(item.buy_price || 0)) * (Number(item.qty) || 1);
+                      return (
+                        <div key={item.id} className="flex justify-between items-center text-xs py-1 border-b border-border/30 last:border-0 font-balooda">
+                          <div className="truncate mr-2">
+                            <span className="font-bold text-foreground">{item.product_name}</span>
+                            <span className="text-muted-foreground font-mono ml-1">×{item.qty}</span>
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold font-serif bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20">
+                              {lang === "bn" ? "লাভ" : "Profit"}: {fmtMoney(itemProfit)}
+                            </span>
+                            <span className="font-mono font-bold text-foreground">{fmtMoney(Number(item.sell_price) * (Number(item.qty) || 1))}</span>
                           <Button
                             onClick={(e) => { e.stopPropagation(); onEdit(item); }}
                             variant="ghost"
@@ -1222,7 +1252,8 @@ function SalesTab({
                           </Button>
                         </div>
                       </div>
-                    ))}
+                    );
+                    })}
                   </div>
                 )}
 

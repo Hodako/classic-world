@@ -1890,7 +1890,7 @@ export async function fsLogin(data: { identifier?: string; email?: string; phone
     throw new Error("Please enter mobile/email and password");
   }
 
-  let userDoc: any = null;
+    let userDoc: any = null;
   try {
     const qEmail = query(collection(db, "users"), where("email", "==", ident), limit(1));
     const snapEmail = await getDocs(qEmail);
@@ -1905,6 +1905,16 @@ export async function fsLogin(data: { identifier?: string; email?: string; phone
     }
   } catch (e) {
     console.warn("Login Firestore query error:", e);
+  }
+
+  // Check if this is an employee trying to login via main login
+  if (!userDoc) {
+    try {
+      const empRes = await fsEmployeeLogin({ username: ident, password: pwd });
+      if (empRes && empRes.user) {
+        return empRes;
+      }
+    } catch (_) {}
   }
 
   if (!userDoc) {
@@ -2583,6 +2593,9 @@ export async function fsAddEmployee(data: any) {
   const email = (data.email || "").toLowerCase().trim();
   const docRef = await addDoc(collection(db, "employees"), {
     name: (data.name || "Employee").trim(),
+    password: data.password || data.pin || "1234",
+    pin: data.pin || data.password || "1234",
+    plain_password: data.password || data.pin || "1234",
     phone: phone || null,
     email: email || null,
     designation: (data.designation || "Staff").trim(),
@@ -2613,6 +2626,12 @@ export async function fsUpdateEmployee(id: string, data: any) {
       updated_at: Timestamp.now(),
     };
     if (data.name) updatePayload.name = data.name.trim();
+    if (data.password) {
+      updatePayload.password = data.password;
+      updatePayload.plain_password = data.password;
+      updatePayload.pin = data.password;
+    }
+    if (data.pin) updatePayload.pin = data.pin;
     if (phone !== undefined) updatePayload.phone = phone || null;
     if (email !== undefined) updatePayload.email = email || null;
     if (data.designation !== undefined) updatePayload.designation = data.designation;
@@ -2904,4 +2923,128 @@ export async function fsDeleteEmployeeShopping(id: string) {
     await deleteDoc(doc(db, "employee_shoppings", id));
     return { success: true };
   }
+}
+
+export async function fsEmployeeLogin(data: { username?: string; identifier?: string; password?: string }) {
+  const ident = (data.username || data.identifier || "").trim();
+  const pwd = (data.password || "").trim();
+
+  if (!ident || !pwd) {
+    throw new Error("Please enter username/phone and password/PIN");
+  }
+
+  const cleanPhone = ident.replace(/[^0-9]/g, "");
+  const lowerName = ident.toLowerCase();
+
+  let matchedEmp: any = null;
+
+  try {
+    // 1. Search in employees collection
+    const snap = await getDocs(collection(db, "employees"));
+    const allEmps = snap.docs.map(docToData);
+    
+    matchedEmp = allEmps.find((e: any) => {
+      const ePhone = (e.phone || "").replace(/[^0-9]/g, "");
+      const eName = (e.name || "").toLowerCase().trim();
+      const eEmail = (e.email || "").toLowerCase().trim();
+      const eUsername = (e.username || "").toLowerCase().trim();
+
+      const matchesIdent = 
+        (e.id && e.id.toLowerCase() === lowerName) ||
+        (eName && eName === lowerName) ||
+        (eEmail && eEmail === lowerName) ||
+        (eUsername && eUsername === lowerName) ||
+        (ePhone && cleanPhone && (ePhone === cleanPhone || ePhone.endsWith(cleanPhone) || cleanPhone.endsWith(ePhone)));
+
+      return matchesIdent;
+    });
+  } catch (err) {
+    console.warn("Error finding employee:", err);
+  }
+
+  // 2. If not found in employees collection, check users collection with role: 'employee'
+  if (!matchedEmp) {
+    try {
+      const qUser = query(collection(db, "users"), where("role", "==", "employee"));
+      const userSnap = await getDocs(qUser);
+      matchedEmp = userSnap.docs.map(docToData).find((u: any) => {
+        const uEmail = (u.email || "").toLowerCase();
+        const uPhone = (u.phone || "").replace(/[^0-9]/g, "");
+        const uName = (u.full_name || u.name || "").toLowerCase();
+        return (
+          uEmail === lowerName ||
+          uName === lowerName ||
+          (uPhone && cleanPhone && (uPhone === cleanPhone || uPhone.endsWith(cleanPhone)))
+        );
+      });
+    } catch (_) {}
+  }
+
+  if (!matchedEmp) {
+    throw new Error("No employee account found with this username/phone");
+  }
+
+  if (matchedEmp.status === "inactive") {
+    throw new Error("This employee account is inactive. Please contact store owner.");
+  }
+
+  // Check password or PIN
+  const validPwd =
+    matchedEmp.password === pwd ||
+    matchedEmp.plain_password === pwd ||
+    matchedEmp.pin === pwd ||
+    (matchedEmp.password && String(matchedEmp.password) === String(pwd)) ||
+    (!matchedEmp.password && !matchedEmp.pin);
+
+  if (!validPwd) {
+    throw new Error("Incorrect employee password or PIN");
+  }
+
+  // Get business settings
+  let bizSettings: any = null;
+  try {
+    const bizSnap = await getDoc(doc(db, "businesses", "classic-world-settings"));
+    if (bizSnap.exists()) {
+      bizSettings = bizSnap.data();
+    }
+  } catch (_) {}
+
+  const employeeUser = {
+    id: matchedEmp.id,
+    employee_id: matchedEmp.id,
+    email: matchedEmp.email || (matchedEmp.phone ? `${matchedEmp.phone}@classicworld.com` : `emp_${matchedEmp.id}@classicworld.com`),
+    phone: matchedEmp.phone || undefined,
+    full_name: matchedEmp.name || matchedEmp.full_name || ident,
+    role: "employee",
+    permissions: matchedEmp.permissions || {
+      can_sales: true,
+      can_customers: true,
+      can_returns: true,
+      can_products: false,
+      can_expenses: false,
+      can_reports: false,
+      can_delete: false,
+      can_discount: false,
+    },
+    activated: true,
+    status: matchedEmp.status || "active",
+    business_id: "classic-world-default",
+    business_name: bizSettings?.name || "Classic World",
+    logo_url: bizSettings?.logo_url || "/logo.png",
+    profiles: [{ id: "default", name: "Default", created_at: new Date().toISOString() }],
+    activeProfile: "default",
+  };
+
+  if (typeof window !== "undefined") {
+    clearAuthProfile();
+    clearQueryCache();
+    localStorage.setItem("user", JSON.stringify(employeeUser));
+    localStorage.setItem("classicworld_auth_profile", JSON.stringify(employeeUser));
+    localStorage.setItem("cw_active_employee_session", JSON.stringify(employeeUser));
+    localStorage.setItem("auth_token", `token_emp_${employeeUser.id}`);
+    localStorage.setItem("active_profile", "default");
+    sessionStorage.setItem("app_pin_unlocked", "true");
+  }
+
+  return { user: employeeUser, token: `token_emp_${employeeUser.id}` };
 }

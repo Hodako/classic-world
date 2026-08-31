@@ -1,31 +1,15 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import Link from "next/link";
 import {
   BarChart2, TrendingUp, TrendingDown, AlertTriangle, Package,
   ShoppingCart, Download, ArrowLeft, Search, Filter,
   Layers, Eye, RefreshCw, ChevronRight, Zap, PieChart as PieChartIcon,
   Clock, Flame, DollarSign, SlidersHorizontal, Printer, Sparkles,
-  ArrowUpDown, CheckCircle2, ShieldAlert, Award, Percent
+  ArrowUpDown, CheckCircle2, ShieldAlert, Award, Percent,
+  Scan, QrCode, Calculator, CheckCheck, Volume2, VolumeX, Plus, Minus, Trash2, FileSpreadsheet, RotateCcw
 } from "lucide-react";
-import {
-  ResponsiveContainer,
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  Tooltip,
-  Legend,
-  CartesianGrid,
-  AreaChart,
-  Area,
-  PieChart,
-  Pie,
-  Cell,
-  ComposedChart,
-  Line,
-} from "recharts";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCachedQuery } from "@/hooks/use-cached-query";
 import { getProducts, getSales, type Product, type Sale } from "@/lib/queries";
@@ -41,15 +25,21 @@ import { ProductImage } from "@/components/product-image";
 import { ProductDialog } from "@/components/product-dialog";
 import { SaleDialog } from "@/components/sale-dialog";
 import { PurchaseDialog } from "@/components/purchase-dialog";
+import { BarcodeScannerDialog, playBarcodeBeep } from "@/components/barcode-scanner-dialog";
 import { downloadCsv, exportDateStamp } from "@/lib/export";
 import { toast } from "sonner";
 import { useIsMobile } from "@/hooks/use-mobile";
 
 type TimeRange = "today" | "7d" | "30d" | "this_month" | "all";
 type SortOption = "pieces_desc" | "revenue_desc" | "profit_desc" | "velocity_desc" | "stock_asc" | "stock_desc" | "margin_desc";
-type ChartTab = "volume_revenue" | "momentum" | "category" | "stock_ratio";
+type ActiveTab = "stock_scanner" | "best_sellers" | "trending" | "critical_stock" | "slow_moving" | "all";
 
-const PIE_COLORS = ["#059669", "#0284c7", "#8b5cf6", "#f59e0b", "#ec4899", "#10b981", "#6366f1"];
+interface ScannedAuditItem {
+  id: string;
+  product: Product;
+  scannedQty: number;
+  lastScannedAt: number;
+}
 
 export default function ProductAnalyticsPage() {
   const { lang, t } = useT();
@@ -62,9 +52,8 @@ export default function ProductAnalyticsPage() {
   const [timeRange, setTimeRange] = useState<TimeRange>("30d");
   const [search, setSearch] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"best_sellers" | "trending" | "critical_stock" | "slow_moving" | "all">("best_sellers");
+  const [activeTab, setActiveTab] = useState<ActiveTab>("stock_scanner");
   const [sortBy, setSortBy] = useState<SortOption>("pieces_desc");
-  const [chartTab, setChartTab] = useState<ChartTab>("volume_revenue");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -76,6 +65,31 @@ export default function ProductAnalyticsPage() {
   const [buyOpen, setBuyOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [editOpen, setEditOpen] = useState(false);
+
+  // -------------------------------------------------------------
+  // Stock Audit Scanner & Live Calculator State
+  // -------------------------------------------------------------
+  const [scannedAuditItems, setScannedAuditItems] = useState<ScannedAuditItem[]>([]);
+  const [scannerOpen, setScannerOpen] = useState(false);
+  const [continuousScan, setContinuousScan] = useState(true);
+  const [manualBarcodeInput, setManualBarcodeInput] = useState("");
+  const [soundEnabled, setSoundEnabled] = useState(true);
+  const [auditSearchQuery, setAuditSearchQuery] = useState("");
+  const [lastScannedProduct, setLastScannedProduct] = useState<{
+    product: Product;
+    qty: number;
+    timestamp: number;
+  } | null>(null);
+  const barcodeInputRef = useRef<HTMLInputElement>(null);
+
+  // Focus barcode input when scanner tab is opened
+  useEffect(() => {
+    if (activeTab === "stock_scanner" && !scannerOpen) {
+      setTimeout(() => {
+        barcodeInputRef.current?.focus();
+      }, 150);
+    }
+  }, [activeTab, scannerOpen]);
 
   // Distinct product categories
   const categories = useMemo(() => {
@@ -100,1233 +114,1272 @@ export default function ProductAnalyticsPage() {
         return String(s.created_at).slice(0, 10) === todayStr;
       }
       if (timeRange === "7d") {
-        const cutoff = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-        return saleDate >= cutoff;
+        const d7 = new Date(now.getTime() - 7 * 86400000);
+        return saleDate >= d7;
       }
       if (timeRange === "30d") {
-        const cutoff = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-        return saleDate >= cutoff;
+        const d30 = new Date(now.getTime() - 30 * 86400000);
+        return saleDate >= d30;
       }
       if (timeRange === "this_month") {
-        return saleDate.getFullYear() === now.getFullYear() && saleDate.getMonth() === now.getMonth();
+        return (
+          saleDate.getFullYear() === now.getFullYear() &&
+          saleDate.getMonth() === now.getMonth()
+        );
       }
-      return true; // all
+      return true; // "all"
     });
   }, [sales, timeRange]);
 
-  // Prior period sales for trend/velocity comparison
-  const priorPeriodSales = useMemo(() => {
-    const now = new Date();
-    const days = timeRange === "today" ? 1 : timeRange === "7d" ? 7 : timeRange === "30d" ? 30 : 30;
-    const startPrior = new Date(now.getTime() - days * 2 * 24 * 60 * 60 * 1000);
-    const endPrior = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
-
-    return sales.filter((s) => {
-      if (s.returned) return false;
-      const d = new Date(s.created_at || Date.now());
-      return d >= startPrior && d < endPrior;
-    });
-  }, [sales, timeRange]);
-
-  // Aggregate Product Performance Metrics
+  // Map product metrics: total pieces sold, revenue, profit, velocity
   const productMetrics = useMemo(() => {
-    const map = new Map<string, {
-      product: Product;
-      piecesSold: number;
-      revenue: number;
-      profit: number;
-      marginPct: number;
-      salesCount: number;
-      priorPiecesSold: number;
-      velocityGrowth: number;
-      lastSaleDate: string | null;
-      avgDailySales: number;
-    }>();
+    const map = new Map<string, { pieces: number; revenue: number; profit: number }>();
 
-    // Initialize map with catalog products
-    products.forEach((p) => {
-      map.set(p.id, {
-        product: p,
-        piecesSold: 0,
-        revenue: 0,
-        profit: 0,
-        marginPct: 0,
-        salesCount: 0,
-        priorPiecesSold: 0,
-        velocityGrowth: 0,
-        lastSaleDate: null,
-        avgDailySales: 0,
+    filteredSales.forEach((sale) => {
+      const pId = sale.product_id;
+      if (!pId) return;
+
+      const qty = Number(sale.qty) || 0;
+      const sellPrice = Number(sale.sell_price) || 0;
+      const profit = Number(sale.profit) || (sellPrice - (Number(sale.buy_price) || 0)) * qty;
+      const rev = sellPrice * qty;
+
+      const cur = map.get(pId) || { pieces: 0, revenue: 0, profit: 0 };
+      map.set(pId, {
+        pieces: cur.pieces + qty,
+        revenue: cur.revenue + rev,
+        profit: cur.profit + profit,
       });
     });
 
-    // Aggregate Current Period Sales
-    filteredSales.forEach((s) => {
-      let entry = s.product_id ? map.get(s.product_id) : undefined;
-      if (!entry) {
-        const matched = products.find((p) => p.name.toLowerCase() === (s.product_name || "").toLowerCase());
-        if (matched) entry = map.get(matched.id);
-      }
+    return map;
+  }, [filteredSales]);
 
-      const qty = Number(s.qty || 1);
-      const sellPrice = Number(s.sell_price || 0);
-      const profit = Number(s.profit || 0);
+  // Enhanced product list with computed analytics
+  const analyticsProducts = useMemo(() => {
+    return products.map((product) => {
+      const stats = productMetrics.get(product.id) || { pieces: 0, revenue: 0, profit: 0 };
+      const currentStock = Number(product.stock) || 0;
+      const minStock = Number(product.min_stock) || 5;
+      const buyPrice = Number(product.buy_price) || 0;
+      const sellPrice = Number(product.sell_price) || 0;
+      const margin = sellPrice > 0 ? ((sellPrice - buyPrice) / sellPrice) * 100 : 0;
+      const stockCostValuation = currentStock * buyPrice;
+      const stockSaleValuation = currentStock * sellPrice;
 
-      if (entry) {
-        entry.piecesSold += qty;
-        entry.revenue += sellPrice * qty;
-        entry.profit += profit;
-        entry.salesCount += 1;
-        if (!entry.lastSaleDate || new Date(s.created_at) > new Date(entry.lastSaleDate)) {
-          entry.lastSaleDate = s.created_at;
-        }
-      }
+      // Velocity: Sold pieces vs current stock ratio
+      const velocity = currentStock > 0 ? (stats.pieces / (currentStock + stats.pieces)) * 100 : stats.pieces > 0 ? 100 : 0;
+
+      // Critical stock status
+      const isOut = currentStock <= 0;
+      const isLow = !isOut && currentStock <= minStock;
+      const isHealthy = !isOut && !isLow;
+
+      return {
+        product,
+        soldPieces: stats.pieces,
+        revenue: stats.revenue,
+        profit: stats.profit,
+        margin,
+        velocity,
+        currentStock,
+        minStock,
+        isOut,
+        isLow,
+        isHealthy,
+        stockCostValuation,
+        stockSaleValuation,
+      };
     });
+  }, [products, productMetrics]);
 
-    // Aggregate Prior Period Sales for Growth Rate
-    priorPeriodSales.forEach((s) => {
-      let entry = s.product_id ? map.get(s.product_id) : undefined;
-      if (!entry) {
-        const matched = products.find((p) => p.name.toLowerCase() === (s.product_name || "").toLowerCase());
-        if (matched) entry = map.get(matched.id);
+  // Overall aggregate KPIs
+  const totalValuationCost = useMemo(() => {
+    return analyticsProducts.reduce((acc, p) => acc + p.stockCostValuation, 0);
+  }, [analyticsProducts]);
+
+  const totalValuationSale = useMemo(() => {
+    return analyticsProducts.reduce((acc, p) => acc + p.stockSaleValuation, 0);
+  }, [analyticsProducts]);
+
+  const totalStoreStock = useMemo(() => {
+    return products.reduce((acc, p) => acc + (Number(p.stock) || 0), 0);
+  }, [products]);
+
+  // -------------------------------------------------------------
+  // Live Stock Audit Scanner & Calculator Logic
+  // -------------------------------------------------------------
+  const handleScanOrAddProduct = (barcodeOrId: string) => {
+    const rawQuery = barcodeOrId.trim();
+    if (!rawQuery) return;
+    const query = rawQuery.toLowerCase();
+    const strippedQuery = query.replace(/^0+/, "");
+
+    const found = products.find(
+      (p) =>
+        p.id?.toLowerCase() === query ||
+        (p.barcode && p.barcode.toLowerCase() === query) ||
+        (strippedQuery && p.barcode && p.barcode.replace(/^0+/, "").toLowerCase() === strippedQuery) ||
+        (p.sku && p.sku.toLowerCase() === query) ||
+        p.name.toLowerCase() === query
+    );
+
+    if (!found) {
+      toast.error(
+        lang === "bn"
+          ? `বারকোড বা আইডি "${rawQuery}" দ্বারা পণ্য পাওয়া যায়নি!`
+          : `No product found for code "${rawQuery}"!`,
+        { duration: 2500 }
+      );
+      return;
+    }
+
+    // Play crisp scan beep sound
+    if (soundEnabled) {
+      try {
+        playBarcodeBeep();
+      } catch (e) {
+        try {
+          const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = "sine";
+          osc.frequency.setValueAtTime(880, ctx.currentTime);
+          gain.gain.setValueAtTime(0.3, ctx.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.12);
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start();
+          osc.stop(ctx.currentTime + 0.12);
+        } catch (err) {}
       }
-      if (entry) {
-        entry.priorPiecesSold += Number(s.qty || 1);
-      }
-    });
+    }
 
-    // Calculate Velocity, Margins & Daily Run-rate
-    const daysInPeriod = timeRange === "today" ? 1 : timeRange === "7d" ? 7 : timeRange === "30d" ? 30 : 30;
-    map.forEach((item) => {
-      item.avgDailySales = Number((item.piecesSold / Math.max(1, daysInPeriod)).toFixed(2));
-      item.marginPct = item.revenue > 0 ? Number(((item.profit / item.revenue) * 100).toFixed(1)) : 0;
-
-      if (item.priorPiecesSold === 0) {
-        item.velocityGrowth = item.piecesSold > 0 ? 100 : 0;
+    setScannedAuditItems((prev) => {
+      const idx = prev.findIndex((item) => item.id === found.id);
+      if (idx >= 0) {
+        const next = [...prev];
+        const newQty = next[idx].scannedQty + 1;
+        next[idx] = {
+          ...next[idx],
+          scannedQty: newQty,
+          lastScannedAt: Date.now(),
+        };
+        setLastScannedProduct({ product: found, qty: newQty, timestamp: Date.now() });
+        return next;
       } else {
-        item.velocityGrowth = Number((((item.piecesSold - item.priorPiecesSold) / item.priorPiecesSold) * 100).toFixed(1));
+        const newItem: ScannedAuditItem = {
+          id: found.id,
+          product: found,
+          scannedQty: 1,
+          lastScannedAt: Date.now(),
+        };
+        setLastScannedProduct({ product: found, qty: 1, timestamp: Date.now() });
+        return [newItem, ...prev];
       }
     });
 
-    return Array.from(map.values());
-  }, [products, filteredSales, priorPeriodSales, timeRange]);
+    const buyPrice = Number(found.buy_price) || 0;
+    const sellPrice = Number(found.sell_price) || 0;
 
-  // Key KPI Aggregates
-  const totalCatalogPiecesSold = useMemo(() => {
-    return productMetrics.reduce((acc, p) => acc + p.piecesSold, 0);
-  }, [productMetrics]);
+    toast.success(
+      lang === "bn"
+        ? `যুক্ত হয়েছে: ${found.name} (কেনা ${fmtMoney(buyPrice)} | বিক্রি ${fmtMoney(sellPrice)})`
+        : `Added: ${found.name} (Cost ${fmtMoney(buyPrice)} | Retail ${fmtMoney(sellPrice)})`,
+      { duration: 1200 }
+    );
 
-  const totalCatalogRevenue = useMemo(() => {
-    return productMetrics.reduce((acc, p) => acc + p.revenue, 0);
-  }, [productMetrics]);
+    setManualBarcodeInput("");
+  };
 
-  const totalCatalogProfit = useMemo(() => {
-    return productMetrics.reduce((acc, p) => acc + p.profit, 0);
-  }, [productMetrics]);
+  const handleAdjustScannedQty = (id: string, delta: number) => {
+    setScannedAuditItems((prev) => {
+      return prev
+        .map((item) => {
+          if (item.id === id) {
+            const nextQty = item.scannedQty + delta;
+            return nextQty > 0 ? { ...item, scannedQty: nextQty, lastScannedAt: Date.now() } : null;
+          }
+          return item;
+        })
+        .filter(Boolean) as ScannedAuditItem[];
+    });
+  };
 
-  const totalCatalogStockUnits = useMemo(() => {
-    return products.filter((p) => !p.archived).reduce((acc, p) => acc + Number(p.stock || 0), 0);
-  }, [products]);
-
-  const totalStockBuyCost = useMemo(() => {
-    return products.filter((p) => !p.archived).reduce((acc, p) => acc + (Number(p.buy_price || 0) * Number(p.stock || 0)), 0);
-  }, [products]);
-
-  // Best Selling Products
-  const bestSellers = useMemo(() => {
-    return [...productMetrics]
-      .filter((p) => !p.product.archived && p.piecesSold > 0)
-      .sort((a, b) => b.piecesSold - a.piecesSold || b.revenue - a.revenue);
-  }, [productMetrics]);
-
-  // Top Trending Products
-  const trendingProducts = useMemo(() => {
-    return [...productMetrics]
-      .filter((p) => !p.product.archived && p.piecesSold > 0)
-      .sort((a, b) => b.velocityGrowth - a.velocityGrowth || b.piecesSold - a.piecesSold);
-  }, [productMetrics]);
-
-  // Critical & Low Stock Products
-  const criticalStockProducts = useMemo(() => {
-    return [...productMetrics]
-      .filter((p) => {
-        if (p.product.archived) return false;
-        const minStock = p.product.min_stock ?? 5;
-        return Number(p.product.stock || 0) <= minStock;
-      })
-      .sort((a, b) => (a.product.stock || 0) - (b.product.stock || 0) || b.piecesSold - a.piecesSold);
-  }, [productMetrics]);
-
-  // Slow Moving / Dead Stock Products
-  const slowMovingProducts = useMemo(() => {
-    return [...productMetrics]
-      .filter((p) => !p.product.archived && p.product.stock > 0 && p.piecesSold <= 2)
-      .sort((a, b) => (b.product.stock * b.product.buy_price) - (a.product.stock * a.product.buy_price));
-  }, [productMetrics]);
-
-  const tiedCapitalInSlowStock = useMemo(() => {
-    return slowMovingProducts.reduce((acc, p) => acc + (p.product.stock * (p.product.buy_price || 0)), 0);
-  }, [slowMovingProducts]);
-
-  // Chart Data: Top 10 Best Sellers (Volume & Revenue)
-  const top10BarData = useMemo(() => {
-    return bestSellers.slice(0, 10).map((item) => ({
-      name: item.product.name.length > (isMobile ? 8 : 14) ? item.product.name.slice(0, isMobile ? 7 : 13) + "…" : item.product.name,
-      fullName: item.product.name,
-      pieces: item.piecesSold,
-      revenue: item.revenue,
-      profit: item.profit,
-      stock: item.product.stock,
-    }));
-  }, [bestSellers, isMobile]);
-
-  // Chart Data: Timeline Sales Growth
-  const salesTimelineData = useMemo(() => {
-    const dayMap = new Map<string, { date: string; pieces: number; revenue: number }>();
-    const now = new Date();
-    const daysToShow = timeRange === "today" ? 1 : timeRange === "7d" ? 7 : timeRange === "30d" ? 12 : 12;
-
-    for (let i = daysToShow - 1; i >= 0; i--) {
-      const d = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
-      const key = d.toISOString().slice(0, 10);
-      dayMap.set(key, { date: key.slice(5), pieces: 0, revenue: 0 });
-    }
-
-    filteredSales.forEach((s) => {
-      const key = String(s.created_at || "").slice(0, 10);
-      if (dayMap.has(key)) {
-        const item = dayMap.get(key)!;
-        item.pieces += Number(s.qty || 1);
-        item.revenue += Number(s.sell_price || 0) * Number(s.qty || 1);
+  const handleSetScannedQty = (id: string, qty: number) => {
+    const validQty = Math.max(0, qty);
+    setScannedAuditItems((prev) => {
+      if (validQty === 0) {
+        return prev.filter((item) => item.id !== id);
       }
+      return prev.map((item) =>
+        item.id === id ? { ...item, scannedQty: validQty, lastScannedAt: Date.now() } : item
+      );
     });
-
-    return Array.from(dayMap.values());
-  }, [filteredSales, timeRange]);
-
-  // Chart Data: Category Breakdown
-  const categoryPieData = useMemo(() => {
-    const catMap = new Map<string, { revenue: number; pieces: number }>();
-    productMetrics.forEach((m) => {
-      const cat = m.product.category || (lang === "bn" ? "সাধারণ" : "General");
-      const current = catMap.get(cat) || { revenue: 0, pieces: 0 };
-      current.revenue += m.revenue;
-      current.pieces += m.piecesSold;
-      catMap.set(cat, current);
-    });
-
-    return Array.from(catMap.entries())
-      .filter(([_, v]) => v.revenue > 0)
-      .map(([name, v]) => ({ name, revenue: v.revenue, pieces: v.pieces }))
-      .sort((a, b) => b.revenue - a.revenue)
-      .slice(0, 6);
-  }, [productMetrics, lang]);
-
-  // Smart Recommendations
-  const smartTips = useMemo(() => {
-    const tips: { type: "urgent" | "trending" | "dead_stock" | "opportunity"; text: string }[] = [];
-
-    // 1. Critical fast mover
-    const urgentRestock = criticalStockProducts.find((p) => p.piecesSold > 5);
-    if (urgentRestock) {
-      tips.push({
-        type: "urgent",
-        text: lang === "bn"
-          ? `⚠️ "${urgentRestock.product.name}" দ্রুত বিক্রি হচ্ছে কিন্তু স্টক মাত্র ${urgentRestock.product.stock} টি অবশিষ্ট! অবিলম্বে রি-অর্ডার করুন।`
-          : `⚠️ "${urgentRestock.product.name}" is selling fast with only ${urgentRestock.product.stock} left in stock! Restock immediately.`,
-      });
-    }
-
-    // 2. High trending growth
-    if (trendingProducts[0] && trendingProducts[0].velocityGrowth > 30) {
-      tips.push({
-        type: "trending",
-        text: lang === "bn"
-          ? `🚀 "${trendingProducts[0].product.name}" পণ্যের বিক্রি +${trendingProducts[0].velocityGrowth}% বৃদ্ধি পেয়েছে!`
-          : `🚀 "${trendingProducts[0].product.name}" has surged +${trendingProducts[0].velocityGrowth}% in sales velocity!`,
-      });
-    }
-
-    // 3. Tied-up dead stock
-    if (tiedCapitalInSlowStock > 0 && slowMovingProducts.length > 0) {
-      tips.push({
-        type: "dead_stock",
-        text: lang === "bn"
-          ? `💤 ${slowMovingProducts.length} টি অচল পণ্যে প্রায় ${fmtMoney(tiedCapitalInSlowStock)} পুঁজি আটকে আছে। ডিসকাউন্ট বা অফার দিন।`
-          : `💤 ${slowMovingProducts.length} slow-moving items hold ${fmtMoney(tiedCapitalInSlowStock)} in tied capital. Consider clearance sales.`,
-      });
-    }
-
-    return tips;
-  }, [criticalStockProducts, trendingProducts, slowMovingProducts, tiedCapitalInSlowStock, lang]);
-
-  // Filtered and Sorted List
-  const activeTabList = useMemo(() => {
-    let list = productMetrics;
-    if (activeTab === "best_sellers") list = bestSellers;
-    else if (activeTab === "trending") list = trendingProducts;
-    else if (activeTab === "critical_stock") list = criticalStockProducts;
-    else if (activeTab === "slow_moving") list = slowMovingProducts;
-
-    // Apply Search and Category Filter
-    let filtered = list.filter((item) => {
-      if (selectedCategory && item.product.category !== selectedCategory) return false;
-      if (search.trim()) {
-        const q = search.toLowerCase();
-        const matchName = item.product.name.toLowerCase().includes(q);
-        const matchBarcode = (item.product.barcode || "").toLowerCase().includes(q);
-        const matchSku = (item.product.sku || item.product.code || "").toLowerCase().includes(q);
-        return matchName || matchBarcode || matchSku;
-      }
-      return true;
-    });
-
-    // Apply Sorting
-    return filtered.sort((a, b) => {
-      if (sortBy === "pieces_desc") return b.piecesSold - a.piecesSold;
-      if (sortBy === "revenue_desc") return b.revenue - a.revenue;
-      if (sortBy === "profit_desc") return b.profit - a.profit;
-      if (sortBy === "velocity_desc") return b.velocityGrowth - a.velocityGrowth;
-      if (sortBy === "stock_asc") return (a.product.stock || 0) - (b.product.stock || 0);
-      if (sortBy === "stock_desc") return (b.product.stock || 0) - (a.product.stock || 0);
-      if (sortBy === "margin_desc") return b.marginPct - a.marginPct;
-      return 0;
-    });
-  }, [activeTab, productMetrics, bestSellers, trendingProducts, criticalStockProducts, slowMovingProducts, selectedCategory, search, sortBy]);
-
-  const pagedList = useMemo(() => {
-    return paginate(activeTabList, page, pageSize);
-  }, [activeTabList, page, pageSize]);
-
-  // Refresh queries
-  const handleRefresh = async () => {
-    setIsRefreshing(true);
-    await Promise.all([
-      qc.invalidateQueries({ queryKey: ["products"] }),
-      qc.invalidateQueries({ queryKey: ["sales"] }),
-    ]);
-    setTimeout(() => {
-      setIsRefreshing(false);
-      toast.success(lang === "bn" ? "অ্যানালিটিক্স ডেটা রিফ্রেশ হয়েছে" : "Analytics data refreshed");
-    }, 400);
   };
 
-  // Export Analytics to CSV
-  const handleExportCsv = () => {
-    const rows = activeTabList.map((item, idx) => ({
-      "SL": idx + 1,
-      "Product Name": item.product.name,
-      "Category": item.product.category || "General",
-      "Pieces Sold": item.piecesSold,
-      "Total Revenue (Tk)": item.revenue,
-      "Gross Profit (Tk)": item.profit,
-      "Margin (%)": item.marginPct + "%",
-      "Remaining Stock": item.product.stock,
-      "Buy Price (Tk)": item.product.buy_price,
-      "Sell Price (Tk)": item.product.sell_price,
-      "Growth Velocity (%)": item.velocityGrowth + "%",
-      "Stock Status": item.product.stock <= (item.product.min_stock ?? 5) ? "CRITICAL" : "OK",
-    }));
-
-    const headers = Object.keys(rows[0] || {});
-    downloadCsv(`Product_Analytics_${exportDateStamp()}.csv`, headers, rows.map(r => Object.values(r)));
-    toast.success(lang === "bn" ? "অ্যানালিটিক্স রিপোর্ট CSV ডাউনলোড হয়েছে" : "Product analytics exported to CSV");
+  const handleRemoveScannedItem = (id: string) => {
+    setScannedAuditItems((prev) => prev.filter((item) => item.id !== id));
+    toast.info(lang === "bn" ? "পণ্যটি অডিট তালিকা থেকে সরানো হয়েছে" : "Item removed from audit list");
   };
 
-  // Print Analytical Report
-  const handlePrint = () => {
-    if (typeof window !== "undefined") {
-      window.print();
+  const handleClearAudit = () => {
+    if (scannedAuditItems.length === 0) return;
+    if (confirm(lang === "bn" ? "আপনি কি নিশ্চিতভাবে সম্পূর্ণ অডিট ক্যালকুলেটর রিসেট করতে চান?" : "Are you sure you want to reset the entire audit calculator?")) {
+      setScannedAuditItems([]);
+      setLastScannedProduct(null);
+      toast.info(lang === "bn" ? "অডিট ক্যালকুলেটর খালি করা হয়েছে" : "Audit calculator cleared");
     }
   };
+
+  // Live Scanned Audit Calculations
+  const auditCalculations = useMemo(() => {
+    let totalPieces = 0;
+    let totalCostValuation = 0;
+    let totalSaleValuation = 0;
+    let totalSystemStockOfScanned = 0;
+    let totalSystemCostOfScanned = 0;
+    let totalSystemSaleOfScanned = 0;
+
+    scannedAuditItems.forEach((item) => {
+      const q = item.scannedQty;
+      const sysStock = Number(item.product.stock) || 0;
+      const buyPrice = Number(item.product.buy_price) || 0;
+      const sellPrice = Number(item.product.sell_price) || 0;
+
+      totalPieces += q;
+      totalCostValuation += q * buyPrice;
+      totalSaleValuation += q * sellPrice;
+
+      totalSystemStockOfScanned += sysStock;
+      totalSystemCostOfScanned += sysStock * buyPrice;
+      totalSystemSaleOfScanned += sysStock * sellPrice;
+    });
+
+    const piecesDifference = totalPieces - totalSystemStockOfScanned;
+    const costDifference = totalCostValuation - totalSystemCostOfScanned;
+    const saleDifference = totalSaleValuation - totalSystemSaleOfScanned;
+
+    return {
+      totalPieces,
+      totalCostValuation,
+      totalSaleValuation,
+      totalSystemStockOfScanned,
+      totalSystemCostOfScanned,
+      totalSystemSaleOfScanned,
+      piecesDifference,
+      costDifference,
+      saleDifference,
+      uniqueItemCount: scannedAuditItems.length,
+    };
+  }, [scannedAuditItems]);
+
+  // Export Scanned Audit to CSV
+  const handleExportAuditCsv = () => {
+    if (scannedAuditItems.length === 0) {
+      toast.error(lang === "bn" ? "এক্সপোর্ট করার মতো কোনো স্ক্যানকৃত পণ্য নেই!" : "No scanned items to export!");
+      return;
+    }
+
+    const rows = scannedAuditItems.map((item, idx) => {
+      const p = item.product;
+      const buy = Number(p.buy_price) || 0;
+      const sell = Number(p.sell_price) || 0;
+      const sysStock = Number(p.stock) || 0;
+      const scannedQty = item.scannedQty;
+      const diffQty = scannedQty - sysStock;
+      const totalCost = scannedQty * buy;
+      const totalSell = scannedQty * sell;
+      const status = diffQty === 0 ? "Matched" : diffQty > 0 ? `Surplus (+${diffQty})` : `Shortage (${diffQty})`;
+
+      return {
+        "SL": idx + 1,
+        "Product Name": p.name,
+        "Barcode": p.barcode || "",
+        "SKU": p.sku || "",
+        "Category": p.category || "",
+        "Unit Cost Price (BDT)": buy,
+        "Unit Retail Price (BDT)": sell,
+        "Scanned Physical Qty": scannedQty,
+        "System Expected Stock": sysStock,
+        "Quantity Variance": diffQty,
+        "Physical Cost Worth (BDT)": totalCost,
+        "Physical Retail Worth (BDT)": totalSell,
+        "Audit Status": status,
+      };
+    });
+
+    downloadCsv(`Stock_Audit_Valuation_${exportDateStamp()}`, rows);
+    toast.success(lang === "bn" ? "অডিট রিপোর্ট CSV ডাউনলোড হয়েছে" : "Audit report CSV downloaded");
+  };
+
+  // Filtered Scanned Items for in-table search
+  const filteredAuditItems = useMemo(() => {
+    if (!auditSearchQuery.trim()) return scannedAuditItems;
+    const q = auditSearchQuery.toLowerCase();
+    return scannedAuditItems.filter((item) => {
+      const p = item.product;
+      return (
+        p.name.toLowerCase().includes(q) ||
+        (p.barcode && p.barcode.toLowerCase().includes(q)) ||
+        (p.sku && p.sku.toLowerCase().includes(q)) ||
+        (p.category && p.category.toLowerCase().includes(q))
+      );
+    });
+  }, [scannedAuditItems, auditSearchQuery]);
+
+  // Tab Filtering & Sorting for Analytics Tabs
+  const filteredProducts = useMemo(() => {
+    let list = [...analyticsProducts];
+
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      list = list.filter(
+        (item) =>
+          item.product.name.toLowerCase().includes(q) ||
+          (item.product.barcode && item.product.barcode.toLowerCase().includes(q)) ||
+          (item.product.sku && item.product.sku.toLowerCase().includes(q))
+      );
+    }
+
+    if (selectedCategory) {
+      list = list.filter((item) => item.product.category === selectedCategory);
+    }
+
+    if (activeTab === "best_sellers") {
+      list = list.filter((item) => item.soldPieces > 0);
+      list.sort((a, b) => b.soldPieces - a.soldPieces);
+    } else if (activeTab === "trending") {
+      list = list.filter((item) => item.velocity > 0);
+      list.sort((a, b) => b.velocity - a.velocity);
+    } else if (activeTab === "critical_stock") {
+      list = list.filter((item) => item.isLow || item.isOut);
+      list.sort((a, b) => a.currentStock - b.currentStock);
+    } else if (activeTab === "slow_moving") {
+      list = list.filter((item) => item.soldPieces === 0 && item.currentStock > 0);
+      list.sort((a, b) => b.currentStock - a.currentStock);
+    } else if (activeTab === "all") {
+      if (sortBy === "pieces_desc") list.sort((a, b) => b.soldPieces - a.soldPieces);
+      else if (sortBy === "revenue_desc") list.sort((a, b) => b.revenue - a.revenue);
+      else if (sortBy === "profit_desc") list.sort((a, b) => b.profit - a.profit);
+      else if (sortBy === "velocity_desc") list.sort((a, b) => b.velocity - a.velocity);
+      else if (sortBy === "stock_asc") list.sort((a, b) => a.currentStock - b.currentStock);
+      else if (sortBy === "stock_desc") list.sort((a, b) => b.currentStock - a.currentStock);
+      else if (sortBy === "margin_desc") list.sort((a, b) => b.margin - a.margin);
+    }
+
+    return list;
+  }, [analyticsProducts, search, selectedCategory, activeTab, sortBy]);
+
+  const pagedResult = useMemo(() => {
+    return paginate(filteredProducts, page, pageSize);
+  }, [filteredProducts, page, pageSize]);
 
   return (
-    <div className="space-y-4 sm:space-y-6 pb-24 max-w-7xl mx-auto animate-in fade-in duration-200 px-1 sm:px-0 print:p-0 print:m-0">
-      {/* ─── Top Header & Controls ────────────────────────────────────────── */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 border-b border-border/70 pb-3 sm:pb-4 print:hidden">
-        <div className="flex items-center gap-2.5 sm:gap-3">
-          <Link href="/products">
-            <Button variant="ghost" size="icon" className="rounded-xl size-8 sm:size-9 shrink-0">
-              <ArrowLeft className="size-4 sm:size-5 text-muted-foreground" />
-            </Button>
-          </Link>
-          <div className="min-w-0">
-            <h1 className="text-lg sm:text-2xl font-extrabold tracking-tight flex items-center gap-1.5 sm:gap-2 truncate">
-              <BarChart2 className="size-5 sm:size-7 text-emerald-600 dark:text-emerald-400 shrink-0" />
-              <span>{lang === "bn" ? "পণ্য অ্যানালিটিক্স ও ইনভেন্টরি ইন্টেলিজেন্স" : "Product Analytics & Intelligence"}</span>
-            </h1>
-            <p className="text-[11px] sm:text-xs text-muted-foreground truncate">
-              {lang === "bn"
-                ? "শীর্ষ বিক্রিত, ট্রেন্ডিং প্রবৃদ্ধি, সংকটজনক স্টক এবং অচল ইনভেন্টরি বিশ্লেষণ"
-                : "Top sellers, momentum, critical stock alerts, and capital allocation"}
-            </p>
-          </div>
-        </div>
-
-        {/* Action Controls */}
-        <div className="flex items-center justify-between sm:justify-end flex-wrap gap-2">
-          {/* Time Range Pills */}
-          <div className="flex items-center bg-muted/60 p-0.5 sm:p-1 rounded-xl border border-border/80 text-[11px] sm:text-xs overflow-x-auto scrollbar-none">
-            {(["today", "7d", "30d", "this_month", "all"] as TimeRange[]).map((tr) => (
-              <button
-                key={tr}
-                onClick={() => {
-                  setTimeRange(tr);
-                  setPage(1);
-                }}
-                className={`px-2 sm:px-2.5 py-1 rounded-lg font-medium whitespace-nowrap transition-all ${
-                  timeRange === tr
-                    ? "bg-card text-foreground shadow-xs font-bold"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                {tr === "today"
-                  ? lang === "bn" ? "আজ" : "Today"
-                  : tr === "7d"
-                  ? lang === "bn" ? "৭ দিন" : "7D"
-                  : tr === "30d"
-                  ? lang === "bn" ? "৩০ দিন" : "30D"
-                  : tr === "this_month"
-                  ? lang === "bn" ? "এই মাস" : "Month"
-                  : lang === "bn" ? "সব" : "All"}
-              </button>
-            ))}
+    <div className="min-h-screen bg-background pb-20 md:pb-12">
+      {/* Header */}
+      <div className="sticky top-0 z-30 bg-card/95 backdrop-blur border-b px-4 py-3 sm:px-6 shadow-sm">
+        <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <Link href="/dashboard">
+              <Button variant="ghost" size="icon" className="size-9 rounded-full">
+                <ArrowLeft className="size-5" />
+              </Button>
+            </Link>
+            <div>
+              <div className="flex items-center gap-2">
+                <h1 className="text-xl font-bold text-foreground tracking-tight flex items-center gap-2">
+                  <BarChart2 className="size-6 text-primary" />
+                  {lang === "bn" ? "পণ্য অ্যানালিটিক্স ও স্টক অডিট" : "Product Analytics & Stock Audit"}
+                </h1>
+                <Badge variant="outline" className="text-[11px] bg-primary/10 text-primary border-primary/20">
+                  <Sparkles className="size-3 mr-1" />
+                  {lang === "bn" ? "লাইভ ক্যালকুলেটর" : "Live Calculator"}
+                </Badge>
+              </div>
+              <p className="text-xs text-muted-foreground hidden sm:block">
+                {lang === "bn"
+                  ? "বারকোড স্ক্যানার দিয়ে ফিজিক্যাল স্টক চেক, ভ্যালুয়েশন ক্যালকুলেটর ও বিক্রির বিশ্লেষণ"
+                  : "Physical stock audit scanner, valuation calculator & sales intelligence"}
+              </p>
+            </div>
           </div>
 
-          <div className="flex items-center gap-1.5">
+          {/* Quick Header Actions */}
+          <div className="flex items-center gap-2 flex-wrap">
             <Button
+              variant={activeTab === "stock_scanner" ? "default" : "outline"}
               size="sm"
+              onClick={() => {
+                setActiveTab("stock_scanner");
+                setScannerOpen(true);
+              }}
+              className="gap-1.5 shadow-sm font-semibold"
+            >
+              <Scan className="size-4" />
+              {lang === "bn" ? "বারকোড স্ক্যানার" : "Barcode Scanner"}
+            </Button>
+
+            <Button
               variant="outline"
-              onClick={handleRefresh}
-              className="rounded-xl text-xs h-8 px-2.5 border-border/80"
+              size="sm"
+              onClick={() => {
+                setIsRefreshing(true);
+                qc.invalidateQueries({ queryKey: ["products"] });
+                qc.invalidateQueries({ queryKey: ["sales"] });
+                setTimeout(() => {
+                  setIsRefreshing(false);
+                  toast.success(lang === "bn" ? "তথ্য রিফ্রেশ হয়েছে" : "Data refreshed");
+                }, 400);
+              }}
+              disabled={isRefreshing}
+              className="size-9 p-0"
               title="Refresh"
             >
-              <RefreshCw className={`size-3.5 ${isRefreshing ? "animate-spin text-primary" : ""}`} />
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={handlePrint}
-              className="rounded-xl text-xs h-8 px-2.5 border-border/80 hidden sm:flex items-center gap-1"
-              title="Print Report"
-            >
-              <Printer className="size-3.5" />
-              <span>{lang === "bn" ? "প্রিন্ট" : "Print"}</span>
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={handleExportCsv}
-              className="rounded-xl text-xs h-8 px-2.5 border-border/80"
-            >
-              <Download className="size-3.5 mr-1" />
-              CSV
+              <RefreshCw className={`size-4 ${isRefreshing ? "animate-spin" : ""}`} />
             </Button>
           </div>
         </div>
       </div>
 
-      {/* ─── Smart AI Recommendations Banner ─────────────────────────────── */}
-      {smartTips.length > 0 && (
-        <div className="space-y-1.5 print:hidden">
-          {smartTips.map((tip, idx) => (
-            <div
-              key={idx}
-              className={`p-2.5 sm:p-3 rounded-xl border flex items-center gap-2.5 text-xs ${
-                tip.type === "urgent"
-                  ? "bg-amber-500/10 border-amber-500/30 text-amber-900 dark:text-amber-300"
-                  : tip.type === "trending"
-                  ? "bg-sky-500/10 border-sky-500/30 text-sky-900 dark:text-sky-300"
-                  : "bg-purple-500/10 border-purple-500/30 text-purple-900 dark:text-purple-300"
-              }`}
-            >
-              <Sparkles className="size-4 shrink-0" />
-              <span className="font-medium leading-tight">{tip.text}</span>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* ─── 5 Interactive KPI Overview Cards (Clean White Style) ─────────────────── */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5 sm:gap-4">
-        {/* 1. Best Selling Leader */}
-        <div
-          onClick={() => { setActiveTab("best_sellers"); setPage(1); }}
-          className={`p-3 sm:p-4 rounded-xl cursor-pointer transition-all hover:shadow-md bg-white border shadow-sm flex flex-col justify-between ${
-            activeTab === "best_sellers"
-              ? "border-emerald-500 ring-2 ring-emerald-500/20"
-              : "border-slate-200 hover:border-slate-300"
-          }`}
-          style={{ backgroundColor: "#FFFFFF" }}
-        >
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] sm:text-[11px] font-semibold text-[#64748B] uppercase tracking-wider truncate">
-              {lang === "bn" ? "শীর্ষ বিক্রিত" : "Top Seller"}
-            </span>
-            <div className="size-6 sm:size-7 rounded-lg bg-emerald-50 text-emerald-600 border border-emerald-100 flex items-center justify-center shrink-0">
-              <Flame className="size-3.5 sm:size-4 text-emerald-600" />
-            </div>
-          </div>
-          <div className="mt-2 space-y-0.5">
-            <h3 className="text-xs sm:text-sm font-bold text-[#0F172A] truncate" title={bestSellers[0]?.product.name || "N/A"}>
-              {bestSellers[0]?.product.name || (lang === "bn" ? "তথ্য নেই" : "No Sales Yet")}
-            </h3>
-            <div className="flex items-baseline gap-1">
-              <span className="text-base sm:text-xl font-bold text-emerald-600">
-                {bestSellers[0]?.piecesSold || 0} {lang === "bn" ? "পিস" : "pcs"}
-              </span>
-            </div>
-            <p className="text-[10px] text-[#64748B] truncate">
-              {fmtMoney(bestSellers[0]?.revenue || 0)} • {lang === "bn" ? "স্টক:" : "Stock:"} <span className="font-semibold text-[#0F172A]">{bestSellers[0]?.product.stock ?? 0}</span>
-            </p>
-          </div>
-        </div>
-
-        {/* 2. Top Trending */}
-        <div
-          onClick={() => { setActiveTab("trending"); setPage(1); }}
-          className={`p-3 sm:p-4 rounded-xl cursor-pointer transition-all hover:shadow-md bg-white border shadow-sm flex flex-col justify-between ${
-            activeTab === "trending"
-              ? "border-sky-500 ring-2 ring-sky-500/20"
-              : "border-slate-200 hover:border-slate-300"
-          }`}
-          style={{ backgroundColor: "#FFFFFF" }}
-        >
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] sm:text-[11px] font-semibold text-[#64748B] uppercase tracking-wider truncate">
-              {lang === "bn" ? "ট্রেন্ডিং" : "Trending"}
-            </span>
-            <div className="size-6 sm:size-7 rounded-lg bg-sky-50 text-sky-600 border border-sky-100 flex items-center justify-center shrink-0">
-              <TrendingUp className="size-3.5 sm:size-4 text-sky-600" />
-            </div>
-          </div>
-          <div className="mt-2 space-y-0.5">
-            <h3 className="text-xs sm:text-sm font-bold text-[#0F172A] truncate" title={trendingProducts[0]?.product.name || "N/A"}>
-              {trendingProducts[0]?.product.name || (lang === "bn" ? "তথ্য নেই" : "No Sales Yet")}
-            </h3>
-            <div className="flex items-baseline gap-1">
-              <span className="text-base sm:text-xl font-bold text-sky-600">
-                +{trendingProducts[0]?.velocityGrowth || 0}%
-              </span>
-            </div>
-            <p className="text-[10px] text-[#64748B] truncate">
-              {trendingProducts[0]?.piecesSold || 0} {lang === "bn" ? "পিস বিক্রি" : "pcs sold"}
-            </p>
-          </div>
-        </div>
-
-        {/* 3. Critical & Low Stock */}
-        <div
-          onClick={() => { setActiveTab("critical_stock"); setPage(1); }}
-          className={`p-3 sm:p-4 rounded-xl cursor-pointer transition-all hover:shadow-md bg-white border shadow-sm flex flex-col justify-between ${
-            activeTab === "critical_stock"
-              ? "border-amber-500 ring-2 ring-amber-500/20"
-              : "border-slate-200 hover:border-slate-300"
-          }`}
-          style={{ backgroundColor: "#FFFFFF" }}
-        >
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] sm:text-[11px] font-semibold text-[#64748B] uppercase tracking-wider truncate">
-              {lang === "bn" ? "সংকট স্টক" : "Low Stock"}
-            </span>
-            <div className="size-6 sm:size-7 rounded-lg bg-amber-50 text-amber-600 border border-amber-100 flex items-center justify-center shrink-0">
-              <AlertTriangle className="size-3.5 sm:size-4 text-amber-600" />
-            </div>
-          </div>
-          <div className="mt-2 space-y-0.5">
-            <div className="flex items-baseline gap-1">
-              <span className="text-base sm:text-2xl font-bold text-amber-600">
-                {criticalStockProducts.length}
-              </span>
-              <span className="text-[11px] text-[#64748B]">{lang === "bn" ? "আইটেম" : "items"}</span>
-            </div>
-            <p className="text-[10px] text-[#64748B] truncate">
-              {criticalStockProducts.filter(p => p.product.stock <= 0).length} {lang === "bn" ? "টি শূন্য স্টকে" : "out of stock"}
-            </p>
-          </div>
-        </div>
-
-        {/* 4. Slow Moving */}
-        <div
-          onClick={() => { setActiveTab("slow_moving"); setPage(1); }}
-          className={`p-3 sm:p-4 rounded-xl cursor-pointer transition-all hover:shadow-md bg-white border shadow-sm flex flex-col justify-between ${
-            activeTab === "slow_moving"
-              ? "border-purple-500 ring-2 ring-purple-500/20"
-              : "border-slate-200 hover:border-slate-300"
-          }`}
-          style={{ backgroundColor: "#FFFFFF" }}
-        >
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] sm:text-[11px] font-semibold text-[#64748B] uppercase tracking-wider truncate">
-              {lang === "bn" ? "অচল স্টক" : "Dead Stock"}
-            </span>
-            <div className="size-6 sm:size-7 rounded-lg bg-purple-50 text-purple-600 border border-purple-100 flex items-center justify-center shrink-0">
-              <Clock className="size-3.5 sm:size-4 text-purple-600" />
-            </div>
-          </div>
-          <div className="mt-2 space-y-0.5">
-            <div className="flex items-baseline gap-1">
-              <span className="text-base sm:text-xl font-bold text-purple-600 truncate">
-                {fmtMoney(tiedCapitalInSlowStock)}
-              </span>
-            </div>
-            <p className="text-[10px] text-[#64748B] truncate">
-              {slowMovingProducts.length} {lang === "bn" ? "টি পণ্যে পুঁজি আবদ্ধ" : "items tied up"}
-            </p>
-          </div>
-        </div>
-
-        {/* 5. Total Sold vs Stock */}
-        <div
-          onClick={() => { setActiveTab("all"); setPage(1); }}
-          className={`col-span-2 sm:col-span-1 p-3 sm:p-4 rounded-xl cursor-pointer transition-all hover:shadow-md bg-white border shadow-sm flex flex-col justify-between ${
-            activeTab === "all"
-              ? "border-slate-800 ring-2 ring-slate-800/10"
-              : "border-slate-200 hover:border-slate-300"
-          }`}
-          style={{ backgroundColor: "#FFFFFF" }}
-        >
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] sm:text-[11px] font-semibold text-[#64748B] uppercase tracking-wider truncate">
-              {lang === "bn" ? "বিক্রি ও স্টক" : "Sold / In-Stock"}
-            </span>
-            <div className="size-6 sm:size-7 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-100 flex items-center justify-center shrink-0">
-              <Package className="size-3.5 sm:size-4 text-emerald-700" />
-            </div>
-          </div>
-          <div className="mt-2 space-y-0.5">
-            <div className="flex items-baseline gap-1">
-              <span className="text-base sm:text-xl font-bold text-[#0F172A]">
-                {totalCatalogPiecesSold}
-              </span>
-              <span className="text-[11px] text-[#64748B]">
-                / {totalCatalogStockUnits} {lang === "bn" ? "পিস" : "pcs"}
-              </span>
-            </div>
-            <p className="text-[10px] text-[#64748B] truncate">
-              {lang === "bn" ? "মোট লাভ: " : "Profit: "} <span className="font-semibold text-emerald-600">{fmtMoney(totalCatalogProfit)}</span>
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* ─── Interactive Multi-View Charts Section ───────────────────────── */}
-      <Card className="p-4 sm:p-6 rounded-2xl bg-card border-border/80 shadow-xs space-y-3 print:border-none print:shadow-none">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-border/60 pb-3">
-          <div>
-            <h3 className="text-sm sm:text-base font-bold flex items-center gap-1.5">
-              <BarChart2 className="size-4 sm:size-5 text-emerald-600" />
-              <span>{lang === "bn" ? "ভিজ্যুয়াল চার্ট ও পারফরম্যান্স গ্রাফ" : "Visual Performance Analytics"}</span>
-            </h3>
-            <p className="text-[10px] sm:text-xs text-muted-foreground">
-              {lang === "bn" ? "বিক্রয়, প্রবৃদ্ধি ও স্টক অনুপাতের তুলনামূলক দৃশ্য" : "Interactive comparative visualization"}
-            </p>
-          </div>
-
-          {/* Chart View Switcher */}
-          <div className="flex items-center gap-1 bg-muted/60 p-0.5 sm:p-1 rounded-xl border border-border/80 text-[11px] sm:text-xs overflow-x-auto scrollbar-none">
-            {[
-              { id: "volume_revenue", label: lang === "bn" ? "📊 শীর্ষ পণ্য" : "📊 Top Products" },
-              { id: "momentum", label: lang === "bn" ? "📈 বিক্রির ট্রেন্ড" : "📈 Sales Trend" },
-              { id: "category", label: lang === "bn" ? "🥧 ক্যাটাগরি" : "🥧 Categories" },
-            ].map((c) => (
-              <button
-                key={c.id}
-                onClick={() => setChartTab(c.id as any)}
-                className={`px-2.5 py-1 rounded-lg font-medium whitespace-nowrap transition-all ${
-                  chartTab === c.id
-                    ? "bg-card text-foreground shadow-xs font-bold"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                {c.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Chart View 1: Top 10 Best Sellers */}
-        {chartTab === "volume_revenue" && (
-          <div className="h-60 sm:h-72 w-full pt-2">
-            {top10BarData.length === 0 ? (
-              <div className="h-full flex flex-col items-center justify-center text-muted-foreground text-xs">
-                <Package className="size-7 mb-2 opacity-40" />
-                {lang === "bn" ? "কোনো বিক্রয় নেই" : "No sales in selected timeframe"}
-              </div>
-            ) : (
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={top10BarData} margin={{ top: 10, right: 5, left: -25, bottom: isMobile ? 35 : 20 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} opacity={0.3} />
-                  <XAxis dataKey="name" angle={-30} textAnchor="end" interval={0} tick={{ fontSize: 9 }} />
-                  <YAxis yAxisId="left" orientation="left" stroke="#059669" tick={{ fontSize: 9 }} />
-                  <YAxis yAxisId="right" orientation="right" stroke="#0284c7" tick={{ fontSize: 9 }} />
-                  <Tooltip
-                    formatter={(val: any, name: any) => [
-                      name === "pieces" ? `${val} pcs` : fmtMoney(val),
-                      name === "pieces" ? (lang === "bn" ? "বিক্রিত পিস" : "Pieces Sold") : (lang === "bn" ? "মোট রাজস্ব" : "Total Revenue"),
-                    ]}
-                    contentStyle={{ backgroundColor: "rgba(0, 0, 0, 0.85)", borderRadius: "10px", border: "none", color: "#fff", fontSize: "11px" }}
-                  />
-                  <Legend verticalAlign="top" height={30} wrapperStyle={{ fontSize: "10px" }} />
-                  <Bar yAxisId="left" dataKey="pieces" name={lang === "bn" ? "বিক্রিত পিস" : "Pieces"} fill="#059669" radius={[4, 4, 0, 0]} />
-                  <Bar yAxisId="right" dataKey="revenue" name={lang === "bn" ? "রাজস্ব (৳)" : "Revenue"} fill="#0284c7" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
+      <div className="max-w-7xl mx-auto px-4 py-6 sm:px-6 space-y-6">
+        {/* Main Tab Navigation */}
+        <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none border-b">
+          <button
+            onClick={() => setActiveTab("stock_scanner")}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-t-lg font-semibold text-sm transition-all border-b-2 whitespace-nowrap ${
+              activeTab === "stock_scanner"
+                ? "border-primary text-primary bg-primary/5 font-bold shadow-sm"
+                : "border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/40"
+            }`}
+          >
+            <Scan className="size-4 text-emerald-500" />
+            <span>{lang === "bn" ? "🔍 স্টক অডিট স্ক্যানার ও ক্যালকুলেটর" : "🔍 Stock Audit Scanner & Calculator"}</span>
+            {scannedAuditItems.length > 0 && (
+              <Badge className="bg-emerald-600 text-white text-[11px] px-1.5 py-0 h-5">
+                {auditCalculations.totalPieces} pcs
+              </Badge>
             )}
-          </div>
-        )}
+          </button>
 
-        {/* Chart View 2: Sales Timeline Trend */}
-        {chartTab === "momentum" && (
-          <div className="h-60 sm:h-72 w-full pt-2">
-            {salesTimelineData.length === 0 ? (
-              <div className="h-full flex flex-col items-center justify-center text-muted-foreground text-xs">
-                <TrendingUp className="size-7 mb-2 opacity-40" />
-                {lang === "bn" ? "কোনো টাইমলাইন ডেটা নেই" : "No timeline data"}
-              </div>
-            ) : (
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={salesTimelineData} margin={{ top: 10, right: 10, left: -25, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="colorPieces" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#0284c7" stopOpacity={0.4} />
-                      <stop offset="95%" stopColor="#0284c7" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} opacity={0.3} />
-                  <XAxis dataKey="date" tick={{ fontSize: 9 }} />
-                  <YAxis tick={{ fontSize: 9 }} />
-                  <Tooltip
-                    formatter={(val: any) => [`${val} pcs`, lang === "bn" ? "বিক্রিত সংখ্যা" : "Units Sold"]}
-                    contentStyle={{ backgroundColor: "rgba(0, 0, 0, 0.85)", borderRadius: "10px", border: "none", color: "#fff", fontSize: "11px" }}
-                  />
-                  <Area type="monotone" dataKey="pieces" stroke="#0284c7" strokeWidth={2.5} fillOpacity={1} fill="url(#colorPieces)" />
-                </AreaChart>
-              </ResponsiveContainer>
-            )}
-          </div>
-        )}
+          <button
+            onClick={() => setActiveTab("best_sellers")}
+            className={`flex items-center gap-1.5 px-4 py-2.5 rounded-t-lg font-medium text-sm transition-all border-b-2 whitespace-nowrap ${
+              activeTab === "best_sellers"
+                ? "border-primary text-primary bg-primary/5 font-bold"
+                : "border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/40"
+            }`}
+          >
+            <Flame className="size-4 text-amber-500" />
+            <span>{lang === "bn" ? "সেরা বিক্রিত" : "Best Sellers"}</span>
+          </button>
 
-        {/* Chart View 3: Category Revenue Breakdown */}
-        {chartTab === "category" && (
-          <div className="h-60 sm:h-72 w-full pt-2">
-            {categoryPieData.length === 0 ? (
-              <div className="h-full flex flex-col items-center justify-center text-muted-foreground text-xs">
-                <PieChartIcon className="size-7 mb-2 opacity-40" />
-                {lang === "bn" ? "কোনো ক্যাটাগরি ডেটা নেই" : "No category sales data"}
-              </div>
-            ) : (
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={categoryPieData}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={isMobile ? 45 : 60}
-                    outerRadius={isMobile ? 75 : 95}
-                    paddingAngle={3}
-                    dataKey="revenue"
-                    nameKey="name"
+          <button
+            onClick={() => setActiveTab("trending")}
+            className={`flex items-center gap-1.5 px-4 py-2.5 rounded-t-lg font-medium text-sm transition-all border-b-2 whitespace-nowrap ${
+              activeTab === "trending"
+                ? "border-primary text-primary bg-primary/5 font-bold"
+                : "border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/40"
+            }`}
+          >
+            <TrendingUp className="size-4 text-indigo-500" />
+            <span>{lang === "bn" ? "ট্রেন্ডিং" : "Trending"}</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab("critical_stock")}
+            className={`flex items-center gap-1.5 px-4 py-2.5 rounded-t-lg font-medium text-sm transition-all border-b-2 whitespace-nowrap ${
+              activeTab === "critical_stock"
+                ? "border-primary text-primary bg-primary/5 font-bold"
+                : "border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/40"
+            }`}
+          >
+            <AlertTriangle className="size-4 text-rose-500" />
+            <span>{lang === "bn" ? "স্টক শেষ / কম" : "Low / Out of Stock"}</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab("slow_moving")}
+            className={`flex items-center gap-1.5 px-4 py-2.5 rounded-t-lg font-medium text-sm transition-all border-b-2 whitespace-nowrap ${
+              activeTab === "slow_moving"
+                ? "border-primary text-primary bg-primary/5 font-bold"
+                : "border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/40"
+            }`}
+          >
+            <Clock className="size-4 text-orange-500" />
+            <span>{lang === "bn" ? "ধীর বিক্রিত" : "Slow Moving"}</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab("all")}
+            className={`flex items-center gap-1.5 px-4 py-2.5 rounded-t-lg font-medium text-sm transition-all border-b-2 whitespace-nowrap ${
+              activeTab === "all"
+                ? "border-primary text-primary bg-primary/5 font-bold"
+                : "border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/40"
+            }`}
+          >
+            <Layers className="size-4 text-slate-500" />
+            <span>{lang === "bn" ? "সকল পণ্য" : "All Products"}</span>
+          </button>
+        </div>
+
+        {/* ------------------------------------------------------------- */}
+        {/* TAB 1: STOCK AUDIT SCANNER & VALUATION CALCULATOR             */}
+        {/* ------------------------------------------------------------- */}
+        {activeTab === "stock_scanner" && (
+          <div className="space-y-6">
+            {/* Top Audit Calculator Summary Cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              {/* Card 1: Total Scanned Pieces */}
+              <Card className="p-4 bg-gradient-to-br from-emerald-500/10 via-emerald-500/5 to-transparent border-emerald-500/30">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-400 uppercase tracking-wider">
+                    {lang === "bn" ? "স্ক্যানকৃত মোট পিস" : "Scanned Physical Pieces"}
+                  </span>
+                  <div className="p-2 bg-emerald-500/20 text-emerald-600 rounded-lg">
+                    <Package className="size-4" />
+                  </div>
+                </div>
+                <div className="mt-2 flex items-baseline gap-2">
+                  <span className="text-3xl font-black text-foreground">
+                    {auditCalculations.totalPieces}
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    {lang === "bn" ? `(${auditCalculations.uniqueItemCount} ধরণের পণ্য)` : `(${auditCalculations.uniqueItemCount} unique items)`}
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {lang === "bn"
+                    ? `দোকানের মোট সিস্টেম স্টক: ${totalStoreStock} পিস`
+                    : `Total Store System Stock: ${totalStoreStock} pcs`}
+                </p>
+              </Card>
+
+              {/* Card 2: Total Cost Worth */}
+              <Card className="p-4 bg-gradient-to-br from-indigo-500/10 via-indigo-500/5 to-transparent border-indigo-500/30">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-indigo-700 dark:text-indigo-400 uppercase tracking-wider">
+                    {lang === "bn" ? "মোট ক্রয়মূল্য হিসাব (কেনা)" : "Total Cost Worth (Buy)"}
+                  </span>
+                  <div className="p-2 bg-indigo-500/20 text-indigo-600 rounded-lg">
+                    <Calculator className="size-4" />
+                  </div>
+                </div>
+                <div className="mt-2">
+                  <span className="text-3xl font-black text-indigo-600 dark:text-indigo-400">
+                    {fmtMoney(auditCalculations.totalCostValuation)}
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {lang === "bn"
+                    ? `প্রত্যাশিত সিস্টেম ক্রয়মূল্য: ${fmtMoney(auditCalculations.totalSystemCostOfScanned)}`
+                    : `Expected System Cost: ${fmtMoney(auditCalculations.totalSystemCostOfScanned)}`}
+                </p>
+              </Card>
+
+              {/* Card 3: Total Retail Worth */}
+              <Card className="p-4 bg-gradient-to-br from-purple-500/10 via-purple-500/5 to-transparent border-purple-500/30">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-purple-700 dark:text-purple-400 uppercase tracking-wider">
+                    {lang === "bn" ? "মোট বিক্রয়মূল্য হিসাব (বিক্রি)" : "Total Retail Worth (Sale)"}
+                  </span>
+                  <div className="p-2 bg-purple-500/20 text-purple-600 rounded-lg">
+                    <DollarSign className="size-4" />
+                  </div>
+                </div>
+                <div className="mt-2">
+                  <span className="text-3xl font-black text-purple-600 dark:text-purple-400">
+                    {fmtMoney(auditCalculations.totalSaleValuation)}
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {lang === "bn"
+                    ? `প্রত্যাশিত বিক্রয়মূল্য: ${fmtMoney(auditCalculations.totalSystemSaleOfScanned)}`
+                    : `Expected Retail: ${fmtMoney(auditCalculations.totalSystemSaleOfScanned)}`}
+                </p>
+              </Card>
+
+              {/* Card 4: Match Status & Discrepancy */}
+              <Card className={`p-4 border ${
+                auditCalculations.totalPieces === 0
+                  ? "bg-muted/40 border-border"
+                  : auditCalculations.piecesDifference === 0
+                  ? "bg-emerald-500/10 border-emerald-500/30"
+                  : auditCalculations.piecesDifference < 0
+                  ? "bg-rose-500/10 border-rose-500/30"
+                  : "bg-amber-500/10 border-amber-500/30"
+              }`}>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    {lang === "bn" ? "স্টক ম্যাচিং স্ট্যাটাস" : "Stock Matching Status"}
+                  </span>
+                  <div className="p-2 rounded-lg bg-card shadow-xs">
+                    {auditCalculations.totalPieces === 0 ? (
+                      <Clock className="size-4 text-muted-foreground" />
+                    ) : auditCalculations.piecesDifference === 0 ? (
+                      <CheckCheck className="size-4 text-emerald-500" />
+                    ) : auditCalculations.piecesDifference < 0 ? (
+                      <AlertTriangle className="size-4 text-rose-500" />
+                    ) : (
+                      <Plus className="size-4 text-amber-500" />
+                    )}
+                  </div>
+                </div>
+
+                <div className="mt-2">
+                  {auditCalculations.totalPieces === 0 ? (
+                    <span className="text-lg font-bold text-muted-foreground">
+                      {lang === "bn" ? "স্ক্যান শুরু করুন" : "Start Scanning"}
+                    </span>
+                  ) : auditCalculations.piecesDifference === 0 ? (
+                    <div className="flex items-center gap-1.5 text-emerald-600 font-black text-2xl">
+                      <CheckCircle2 className="size-6" />
+                      <span>{lang === "bn" ? "হুবহু মিল রয়েছে" : "Perfect Match"}</span>
+                    </div>
+                  ) : auditCalculations.piecesDifference < 0 ? (
+                    <div>
+                      <span className="text-2xl font-black text-rose-600">
+                        {auditCalculations.piecesDifference} pcs
+                      </span>
+                      <span className="text-xs font-semibold text-rose-500 ml-1.5">
+                        {lang === "bn" ? "(ঘাটতি / Shortage)" : "(Shortage)"}
+                      </span>
+                    </div>
+                  ) : (
+                    <div>
+                      <span className="text-2xl font-black text-amber-600">
+                        +{auditCalculations.piecesDifference} pcs
+                      </span>
+                      <span className="text-xs font-semibold text-amber-500 ml-1.5">
+                        {lang === "bn" ? "(উদ্বৃত্ত / Surplus)" : "(Surplus)"}
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                <p className="text-xs text-muted-foreground mt-1">
+                  {auditCalculations.totalPieces === 0
+                    ? (lang === "bn" ? "বারকোড দিয়ে পণ্য যোগ করুন" : "Scan barcodes to check")
+                    : (lang === "bn"
+                        ? `মূল্য পার্থক্য: ${fmtMoney(Math.abs(auditCalculations.costDifference))}`
+                        : `Valuation Diff: ${fmtMoney(Math.abs(auditCalculations.costDifference))}`)}
+                </p>
+              </Card>
+            </div>
+
+            {/* Scanner Input Console & Control Bench */}
+            <Card className="p-5 border-2 border-primary/20 shadow-md bg-card">
+              <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4">
+                {/* Manual Barcode & Gun Scan Input */}
+                <div className="flex-1 flex items-center gap-2">
+                  <div className="relative flex-1">
+                    <Scan className="absolute left-3.5 top-1/2 -translate-y-1/2 size-5 text-primary" />
+                    <Input
+                      ref={barcodeInputRef}
+                      value={manualBarcodeInput}
+                      onChange={(e) => setManualBarcodeInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && manualBarcodeInput.trim()) {
+                          e.preventDefault();
+                          handleScanOrAddProduct(manualBarcodeInput);
+                        }
+                      }}
+                      placeholder={lang === "bn" ? "বারকোড স্ক্যান করুন বা লিখুন (Enter চাপুন)..." : "Scan barcode or enter SKU/ID (Press Enter)..."}
+                      className="pl-11 pr-24 h-12 text-base font-mono bg-background border-primary/30 focus-visible:ring-primary shadow-inner"
+                      autoFocus
+                    />
+                    <Button
+                      size="sm"
+                      onClick={() => handleScanOrAddProduct(manualBarcodeInput)}
+                      disabled={!manualBarcodeInput.trim()}
+                      className="absolute right-1.5 top-1/2 -translate-y-1/2 h-9 px-3"
+                    >
+                      {lang === "bn" ? "যোগ করুন" : "Add"}
+                    </Button>
+                  </div>
+
+                  {/* Camera Scanner Button */}
+                  <Button
+                    size="lg"
+                    onClick={() => setScannerOpen(true)}
+                    className="h-12 px-5 gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-md"
                   >
-                    {categoryPieData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip
-                    formatter={(val: any) => [fmtMoney(val), lang === "bn" ? "মোট রাজস্ব" : "Total Revenue"]}
-                    contentStyle={{ backgroundColor: "rgba(0, 0, 0, 0.85)", borderRadius: "10px", border: "none", color: "#fff", fontSize: "11px" }}
-                  />
-                  <Legend verticalAlign="bottom" height={36} wrapperStyle={{ fontSize: "10px" }} />
-                </PieChart>
-              </ResponsiveContainer>
-            )}
-          </div>
-        )}
-      </Card>
+                    <QrCode className="size-5" />
+                    <span className="hidden sm:inline">{lang === "bn" ? "ক্যামেরা স্ক্যানার" : "Camera Scanner"}</span>
+                    <span className="sm:hidden">{lang === "bn" ? "ক্যামেরা" : "Camera"}</span>
+                  </Button>
+                </div>
 
-      {/* ─── Segmented Analytics Tabs, Filter & Mobile Cards/Desktop Table ─── */}
-      <Card className="p-3 sm:p-6 rounded-2xl bg-card border-border/80 shadow-xs space-y-4 print:border-none print:shadow-none">
-        {/* Controls: Tabs, Search & Sorter */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-border/60 pb-3 print:hidden">
-          {/* Scrollable Tabs */}
-          <div className="flex items-center gap-1 overflow-x-auto pb-1 scrollbar-none">
-            {[
-              { id: "best_sellers", label: lang === "bn" ? "🏆 সেরা বিক্রি" : "🏆 Best Sellers" },
-              { id: "trending", label: lang === "bn" ? "🚀 ট্রেন্ডিং" : "🚀 Trending" },
-              { id: "critical_stock", label: lang === "bn" ? "⚠️ সংকট স্টক" : "⚠️ Low Stock", badge: criticalStockProducts.length },
-              { id: "slow_moving", label: lang === "bn" ? "💤 কম বিক্রি" : "💤 Slow Moving" },
-              { id: "all", label: lang === "bn" ? "📊 সব পণ্য" : "📊 All Products" },
-            ].map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => {
-                  setActiveTab(tab.id as any);
-                  setPage(1);
-                }}
-                className={`px-3 py-1.5 rounded-xl text-xs font-semibold shrink-0 transition-all flex items-center gap-1.5 ${
-                  activeTab === tab.id
-                    ? "bg-primary text-primary-foreground shadow-xs"
-                    : "bg-muted/60 text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                <span>{tab.label}</span>
-                {tab.badge && tab.badge > 0 && (
-                  <span className="size-1.5 bg-amber-400 rounded-full shrink-0" />
-                )}
-              </button>
-            ))}
-          </div>
+                {/* Sound & Controls Toolbar */}
+                <div className="flex items-center gap-2 flex-wrap justify-end">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setSoundEnabled(!soundEnabled)}
+                    className={`h-10 gap-1.5 ${soundEnabled ? "text-primary border-primary/30" : "text-muted-foreground"}`}
+                    title={soundEnabled ? "Sound Enabled" : "Sound Muted"}
+                  >
+                    {soundEnabled ? <Volume2 className="size-4 text-emerald-500" /> : <VolumeX className="size-4 text-rose-500" />}
+                    <span className="text-xs font-semibold">{soundEnabled ? (lang === "bn" ? "সাউন্ড অন" : "Beep On") : (lang === "bn" ? "সাউন্ড অফ" : "Muted")}</span>
+                  </Button>
 
-          <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
-            {/* Search Input */}
-            <div className="relative w-full sm:w-56 md:w-60">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground pointer-events-none" />
-              <Input
-                style={{ paddingLeft: "2rem" }}
-                className="h-8 text-xs rounded-xl"
-                placeholder={lang === "bn" ? "নাম বা বারকোড দিয়ে খুঁজুন..." : "Search name or barcode..."}
-                value={search}
-                onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-              />
-            </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleExportAuditCsv}
+                    disabled={scannedAuditItems.length === 0}
+                    className="h-10 gap-1.5 text-xs font-semibold"
+                  >
+                    <Download className="size-4 text-indigo-500" />
+                    <span>{lang === "bn" ? "CSV এক্সপোর্ট" : "Export CSV"}</span>
+                  </Button>
 
-            {/* Sort Selector */}
-            <Select value={sortBy} onValueChange={(v) => { setSortBy(v as SortOption); setPage(1); }}>
-              <SelectTrigger className="h-8 text-xs w-[130px] rounded-xl shrink-0">
-                <ArrowUpDown className="size-3 mr-1 text-muted-foreground" />
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent align="end">
-                <SelectItem value="pieces_desc">{lang === "bn" ? "বিক্রিত পিস (বেশি)" : "Units Sold ↓"}</SelectItem>
-                <SelectItem value="revenue_desc">{lang === "bn" ? "মোট রাজস্ব (বেশি)" : "Revenue ↓"}</SelectItem>
-                <SelectItem value="profit_desc">{lang === "bn" ? "লাভ (বেশি)" : "Profit ↓"}</SelectItem>
-                <SelectItem value="margin_desc">{lang === "bn" ? "মার্জিন % (বেশি)" : "Margin % ↓"}</SelectItem>
-                <SelectItem value="velocity_desc">{lang === "bn" ? "প্রবৃদ্ধি গতি (বেশি)" : "Growth Rate ↓"}</SelectItem>
-                <SelectItem value="stock_asc">{lang === "bn" ? "স্টক (কম)" : "Stock (Low) ↑"}</SelectItem>
-                <SelectItem value="stock_desc">{lang === "bn" ? "স্টক (বেশি)" : "Stock (High) ↓"}</SelectItem>
-              </SelectContent>
-            </Select>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => window.print()}
+                    disabled={scannedAuditItems.length === 0}
+                    className="h-10 gap-1.5 text-xs font-semibold"
+                  >
+                    <Printer className="size-4 text-purple-500" />
+                    <span>{lang === "bn" ? "প্রিন্ট" : "Print"}</span>
+                  </Button>
 
-            {/* Page Size Selector */}
-            <Select value={String(pageSize)} onValueChange={(v) => { setPageSize(Number(v)); setPage(1); }}>
-              <SelectTrigger className="h-8 text-xs w-[75px] rounded-xl shrink-0">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent align="end">
-                <SelectItem value="10">10 / pg</SelectItem>
-                <SelectItem value="25">25 / pg</SelectItem>
-                <SelectItem value="50">50 / pg</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleClearAudit}
+                    disabled={scannedAuditItems.length === 0}
+                    className="h-10 gap-1.5 text-rose-600 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/30 text-xs font-semibold"
+                  >
+                    <RotateCcw className="size-4" />
+                    <span>{lang === "bn" ? "রিসেট" : "Reset"}</span>
+                  </Button>
+                </div>
+              </div>
 
-        {/* Category Pills Filter */}
-        {categories.length > 0 && (
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 flex-nowrap scrollbar-none print:hidden">
-            <Button
-              size="sm"
-              variant={selectedCategory === null ? "default" : "outline"}
-              className="h-6 text-[10px] rounded-full shrink-0 px-2.5"
-              onClick={() => { setSelectedCategory(null); setPage(1); }}
-            >
-              {t("all")}
-            </Button>
-            {categories.map((cat) => (
-              <Button
-                key={cat}
-                size="sm"
-                variant={selectedCategory === cat ? "default" : "outline"}
-                className="h-6 text-[10px] rounded-full shrink-0 px-2.5"
-                onClick={() => { setSelectedCategory(cat); setPage(1); }}
-              >
-                {cat}
-              </Button>
-            ))}
-          </div>
-        )}
+              {/* Quick Search Dropdown / Fast Picker */}
+              <div className="mt-3 pt-3 border-t flex items-center justify-between text-xs text-muted-foreground">
+                <span className="flex items-center gap-1.5">
+                  <Sparkles className="size-3.5 text-amber-500" />
+                  {lang === "bn"
+                    ? "টিপস: বারকোড গান দিয়ে একটার পর একটা স্ক্যান করলে সাথে সাথে মূল্য ও মোট হিসাব বাড়তে থাকবে।"
+                    : "Tip: Scanning barcodes continuously auto-adds products and updates live valuation with a beep sound."}
+                </span>
+                <span className="font-semibold text-foreground">
+                  {lang === "bn" ? `স্ক্যানকৃত আইটেম: ${scannedAuditItems.length} টি` : `Scanned Items: ${scannedAuditItems.length}`}
+                </span>
+              </div>
+            </Card>
 
-        {/* Item Counter & Summary */}
-        <div className="flex items-center justify-between text-[11px] text-muted-foreground print:hidden">
-          <span>
-            {lang === "bn"
-              ? `মোট ${activeTabList.length} টির মধ্যে ${(page - 1) * pageSize + 1}-${Math.min(page * pageSize, activeTabList.length)} দেখানো হচ্ছে`
-              : `Showing ${(page - 1) * pageSize + 1}-${Math.min(page * pageSize, activeTabList.length)} of ${activeTabList.length} products`}
-          </span>
-          {activeTabList.length > 0 && (
-            <span className="font-semibold text-foreground">
-              {lang === "bn" ? "পৃষ্ঠা:" : "Page:"} {page} / {pagedList.totalPages}
-            </span>
-          )}
-        </div>
-
-        {/* ─── Product Analytics List ─── */}
-        {pagedList.items.length === 0 ? (
-          <div className="py-12 flex flex-col items-center justify-center text-center space-y-2 text-muted-foreground">
-            <Package className="size-10 opacity-40" />
-            <p className="text-sm font-semibold">{lang === "bn" ? "কোনো পণ্য পাওয়া যায়নি" : "No matching products found"}</p>
-            <p className="text-xs">{lang === "bn" ? "ফিল্টার পরিবর্তন করে আবার চেষ্টা করুন" : "Try adjusting your filters"}</p>
-          </div>
-        ) : (
-          <>
-            {/* ── Mobile Cards View (Visible on Phone Screens) ── */}
-            <div className="grid grid-cols-1 gap-3 sm:hidden">
-              {pagedList.items.map((item, idx) => {
-                const p = item.product;
-                const rank = (page - 1) * pageSize + idx + 1;
-                const isCritical = (p.stock || 0) <= (p.min_stock ?? 5);
-                const isOutOfStock = (p.stock || 0) <= 0;
-                const totalLifecycleUnits = item.piecesSold + (p.stock || 0);
-                const soldProgress = totalLifecycleUnits > 0 ? Math.round((item.piecesSold / totalLifecycleUnits) * 100) : 0;
-
-                return (
-                  <Card key={p.id} className="p-3.5 rounded-2xl bg-card border-border/80 space-y-2.5 shadow-2xs">
-                    {/* Header: Rank + Image + Product Details */}
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                        {/* Rank Badge */}
-                        <div className="flex flex-col items-center justify-center">
-                          <span className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded-md ${
-                            rank === 1 ? "bg-amber-500 text-white" : rank === 2 ? "bg-slate-400 text-white" : rank === 3 ? "bg-amber-700 text-white" : "bg-muted text-muted-foreground"
-                          }`}>
-                            #{rank}
-                          </span>
-                        </div>
-
-                        {/* Thumbnail */}
-                        <div
-                          className="size-12 rounded-xl overflow-hidden bg-muted shrink-0 border border-border/60 cursor-pointer"
-                          onClick={() => {
-                            setEditingProduct(p);
-                            setEditOpen(true);
-                          }}
-                        >
-                          <ProductImage path={p.image_url} className="w-full h-full object-cover" />
-                        </div>
-
-                        {/* Title & Category */}
-                        <div className="min-w-0 flex-1">
-                          <h4
-                            className="font-bold text-xs text-foreground truncate cursor-pointer hover:underline"
-                            title={p.name}
-                            onClick={() => {
-                              setEditingProduct(p);
-                              setEditOpen(true);
-                            }}
-                          >
-                            {p.name}
-                          </h4>
-                          <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground flex-wrap">
-                            <span>{p.category || "General"}</span>
-                            <span>•</span>
-                            <span className="font-semibold text-foreground">{fmtMoney(p.sell_price)}</span>
-                          </div>
-
-                          {/* Badges */}
-                          <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-                            {isOutOfStock ? (
-                              <Badge variant="destructive" className="text-[9px] py-0 px-1.5">
-                                {lang === "bn" ? "স্টক শেষ" : "Out of Stock"}
-                              </Badge>
-                            ) : isCritical ? (
-                              <Badge variant="outline" className="text-[9px] py-0 px-1.5 bg-amber-500/10 text-amber-600 border-amber-500/30">
-                                {lang === "bn" ? "সংকটজনক" : "Low Stock"}
-                              </Badge>
-                            ) : item.piecesSold === 0 ? (
-                              <Badge variant="outline" className="text-[9px] py-0 px-1.5 bg-purple-500/10 text-purple-600 border-purple-500/30">
-                                {lang === "bn" ? "অচল" : "Slow"}
-                              </Badge>
-                            ) : (
-                              <Badge variant="outline" className="text-[9px] py-0 px-1.5 bg-emerald-500/10 text-emerald-600 border-emerald-500/30">
-                                {lang === "bn" ? "স্বাভাবিক" : "Healthy"}
-                              </Badge>
-                            )}
-
-                            {item.marginPct > 0 && (
-                              <span className="text-[9px] bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 font-bold px-1.5 py-0.2 rounded">
-                                {item.marginPct}% {lang === "bn" ? "মার্জিন" : "margin"}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      </div>
+            {/* Spotlight of Last Scanned Item */}
+            {lastScannedProduct && (
+              <Card className="p-4 bg-gradient-to-r from-primary/10 via-emerald-500/10 to-transparent border-2 border-emerald-500/40 animate-in fade-in slide-in-from-top-2 duration-300">
+                <div className="flex items-center justify-between gap-4 flex-wrap">
+                  <div className="flex items-center gap-3">
+                    <div className="size-14 rounded-lg overflow-hidden border bg-background shrink-0">
+                      <ProductImage
+                        path={lastScannedProduct.product.image_url}
+                        alt={lastScannedProduct.product.name}
+                        className="w-full h-full object-cover"
+                      />
                     </div>
-
-                    {/* Progress Bar: Sold vs Remaining Stock */}
-                    <div className="space-y-1">
-                      <div className="flex items-center justify-between text-[10px] text-muted-foreground">
-                        <span>{lang === "bn" ? "বিক্রয় হার" : "Sell-through"}: <strong className="text-foreground">{soldProgress}%</strong></span>
-                        <span>{item.piecesSold} / {totalLifecycleUnits} {lang === "bn" ? "পিস" : "pcs"}</span>
-                      </div>
-                      <div className="h-1.5 w-full bg-muted rounded-full overflow-hidden flex">
-                        <div style={{ width: `${soldProgress}%` }} className="bg-emerald-600 h-full rounded-full transition-all" />
-                      </div>
-                    </div>
-
-                    {/* 3-Column Key Numbers Grid */}
-                    <div className="grid grid-cols-3 gap-1.5 p-2 bg-muted/40 rounded-xl text-[11px] text-center border border-border/50">
-                      <div>
-                        <span className="text-[10px] text-muted-foreground block">{lang === "bn" ? "বিক্রি" : "Sold"}</span>
-                        <span className="font-extrabold text-foreground">{item.piecesSold} pcs</span>
-                      </div>
-                      <div>
-                        <span className="text-[10px] text-muted-foreground block">{lang === "bn" ? "রাজস্ব" : "Revenue"}</span>
-                        <span className="font-extrabold text-emerald-600 dark:text-emerald-400">{fmtMoney(item.revenue)}</span>
-                      </div>
-                      <div>
-                        <span className="text-[10px] text-muted-foreground block">{lang === "bn" ? "অবশিষ্ট" : "Stock"}</span>
-                        <span className={`font-extrabold ${isOutOfStock ? "text-destructive" : isCritical ? "text-amber-600" : "text-foreground"}`}>
-                          {p.stock ?? 0} pcs
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <Badge className="bg-emerald-600 text-white text-[10px] font-bold">
+                          {lang === "bn" ? "সবেমাত্র স্ক্যান হয়েছে" : "Just Scanned"}
+                        </Badge>
+                        <span className="text-xs text-muted-foreground font-mono">
+                          {lastScannedProduct.product.barcode || lastScannedProduct.product.sku || "No Barcode"}
                         </span>
                       </div>
+                      <h4 className="text-base font-bold text-foreground">
+                        {lastScannedProduct.product.name}
+                      </h4>
+                      <p className="text-xs text-muted-foreground">
+                        {lang === "bn" ? "ক্যাটাগরি" : "Category"}: {lastScannedProduct.product.category || "General"}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-6">
+                    <div className="text-right">
+                      <span className="text-[11px] text-muted-foreground uppercase font-bold block">
+                        {lang === "bn" ? "ক্রয় মূল্য (Unit Cost)" : "Unit Cost"}
+                      </span>
+                      <span className="text-base font-bold text-indigo-600 dark:text-indigo-400">
+                        {fmtMoney(Number(lastScannedProduct.product.buy_price) || 0)}
+                      </span>
                     </div>
 
-                    {/* Touch Action Buttons */}
-                    <div className="flex items-center gap-2 pt-0.5">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="h-8 text-xs flex-1 rounded-xl font-bold text-emerald-600 border-emerald-500/40 hover:bg-emerald-500/10"
-                        onClick={() => {
-                          setSaleProduct(p.id);
-                          setSaleOpen(true);
-                        }}
-                        disabled={p.stock <= 0}
-                      >
-                        <ShoppingCart className="size-3 mr-1" />
-                        {t("sell")}
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="h-8 text-xs flex-1 rounded-xl font-bold text-sky-600 border-sky-500/40 hover:bg-sky-500/10"
-                        onClick={() => {
-                          setBuyProduct(p.id);
-                          setBuyOpen(true);
-                        }}
-                      >
-                        <Package className="size-3 mr-1" />
-                        {t("buy")}
-                      </Button>
+                    <div className="text-right">
+                      <span className="text-[11px] text-muted-foreground uppercase font-bold block">
+                        {lang === "bn" ? "বিক্রয় মূল্য (Unit Sell)" : "Unit Retail"}
+                      </span>
+                      <span className="text-base font-bold text-purple-600 dark:text-purple-400">
+                        {fmtMoney(Number(lastScannedProduct.product.sell_price) || 0)}
+                      </span>
                     </div>
-                  </Card>
-                );
-              })}
+
+                    <div className="text-right bg-card px-3 py-1.5 rounded-lg border shadow-xs">
+                      <span className="text-[11px] text-muted-foreground uppercase font-bold block">
+                        {lang === "bn" ? "স্ক্যান সংখ্যা" : "Scanned Qty"}
+                      </span>
+                      <span className="text-xl font-black text-emerald-600">
+                        {lastScannedProduct.qty} pcs
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </Card>
+            )}
+
+            {/* Scanned Items Ledger Table */}
+            <Card className="overflow-hidden border shadow-sm">
+              <div className="p-4 border-b bg-muted/30 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <FileSpreadsheet className="size-5 text-primary" />
+                  <h3 className="text-base font-bold text-foreground">
+                    {lang === "bn" ? "স্ক্যানকৃত পণ্যের অডিট লেজার" : "Scanned Product Audit Ledger"}
+                  </h3>
+                  <Badge variant="secondary" className="text-xs">
+                    {scannedAuditItems.length}
+                  </Badge>
+                </div>
+
+                <div className="relative w-full sm:w-64">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+                  <Input
+                    value={auditSearchQuery}
+                    onChange={(e) => setAuditSearchQuery(e.target.value)}
+                    placeholder={lang === "bn" ? "তালিকায় খুঁজুন..." : "Filter in table..."}
+                    className="pl-9 h-9 text-xs bg-background"
+                  />
+                </div>
+              </div>
+
+              {filteredAuditItems.length === 0 ? (
+                <div className="p-12 text-center text-muted-foreground space-y-3">
+                  <div className="size-16 rounded-full bg-primary/10 text-primary grid place-items-center mx-auto">
+                    <Scan className="size-8 animate-pulse" />
+                  </div>
+                  <h4 className="text-base font-bold text-foreground">
+                    {lang === "bn" ? "এখনো কোনো পণ্য স্ক্যান করা হয়নি" : "No products scanned yet"}
+                  </h4>
+                  <p className="text-xs max-w-md mx-auto">
+                    {lang === "bn"
+                      ? "উপরে বারকোড ইনপুট বক্সে কোড লিখে Enter চাপুন অথবা 'ক্যামেরা স্ক্যানার' বোতাম চেপে ক্যামেরা দিয়ে দ্রুত স্ক্যান করুন।"
+                      : "Scan barcodes using the camera scanner or enter codes in the input field above to calculate stock worth in real time."}
+                  </p>
+                  <Button
+                    onClick={() => setScannerOpen(true)}
+                    className="gap-2 font-bold bg-emerald-600 hover:bg-emerald-700 text-white"
+                  >
+                    <QrCode className="size-4" />
+                    {lang === "bn" ? "ক্যামেরা দিয়ে স্ক্যান শুরু করুন" : "Open Camera Scanner"}
+                  </Button>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead>
+                      <tr className="border-b bg-muted/50 text-muted-foreground font-semibold">
+                        <th className="p-3 w-10 text-center">#</th>
+                        <th className="p-3">{lang === "bn" ? "পণ্য" : "Product"}</th>
+                        <th className="p-3">{lang === "bn" ? "বারকোড / SKU" : "Barcode / SKU"}</th>
+                        <th className="p-3 text-right">{lang === "bn" ? "একক ক্রয়মূল্য" : "Unit Cost"}</th>
+                        <th className="p-3 text-right">{lang === "bn" ? "একক বিক্রয়মূল্য" : "Unit Retail"}</th>
+                        <th className="p-3 text-center">{lang === "bn" ? "ফিজিক্যাল সংখ্যা" : "Physical Qty"}</th>
+                        <th className="p-3 text-right">{lang === "bn" ? "মোট ক্রয়মূল্য" : "Total Cost"}</th>
+                        <th className="p-3 text-right">{lang === "bn" ? "মোট বিক্রয়মূল্য" : "Total Retail"}</th>
+                        <th className="p-3 text-center">{lang === "bn" ? "সিস্টেম স্টক" : "System Stock"}</th>
+                        <th className="p-3 text-center">{lang === "bn" ? "ম্যাচিং স্ট্যাটাস" : "Match Status"}</th>
+                        <th className="p-3 text-center w-12">{lang === "bn" ? "অ্যাকশন" : "Action"}</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border/60">
+                      {filteredAuditItems.map((item, idx) => {
+                        const p = item.product;
+                        const buy = Number(p.buy_price) || 0;
+                        const sell = Number(p.sell_price) || 0;
+                        const sysStock = Number(p.stock) || 0;
+                        const diff = item.scannedQty - sysStock;
+                        const totalCost = item.scannedQty * buy;
+                        const totalSell = item.scannedQty * sell;
+
+                        return (
+                          <tr key={item.id} className="hover:bg-muted/20 transition-colors">
+                            <td className="p-3 text-center font-mono text-muted-foreground">
+                              {idx + 1}
+                            </td>
+                            <td className="p-3">
+                              <div className="flex items-center gap-2.5">
+                                <div className="size-10 rounded-md overflow-hidden border bg-background shrink-0">
+                                  <ProductImage
+                                    path={p.image_url}
+                                    alt={p.name}
+                                    className="w-full h-full object-cover"
+                                  />
+                                </div>
+                                <div>
+                                  <span className="font-bold text-foreground text-sm block">
+                                    {p.name}
+                                  </span>
+                                  <span className="text-[11px] text-muted-foreground">
+                                    {p.category || "General"}
+                                  </span>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="p-3 font-mono text-[11px] text-muted-foreground">
+                              {p.barcode || p.sku || "-"}
+                            </td>
+                            <td className="p-3 text-right font-medium text-indigo-600 dark:text-indigo-400">
+                              {fmtMoney(buy)}
+                            </td>
+                            <td className="p-3 text-right font-medium text-purple-600 dark:text-purple-400">
+                              {fmtMoney(sell)}
+                            </td>
+                            <td className="p-3">
+                              <div className="flex items-center justify-center gap-1.5">
+                                <Button
+                                  variant="outline"
+                                  size="icon"
+                                  className="size-7"
+                                  onClick={() => handleAdjustScannedQty(item.id, -1)}
+                                >
+                                  <Minus className="size-3" />
+                                </Button>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  value={item.scannedQty}
+                                  onChange={(e) => handleSetScannedQty(item.id, parseInt(e.target.value, 10) || 0)}
+                                  className="w-14 h-7 text-center font-bold font-mono text-sm bg-background border rounded px-1"
+                                />
+                                <Button
+                                  variant="outline"
+                                  size="icon"
+                                  className="size-7"
+                                  onClick={() => handleAdjustScannedQty(item.id, 1)}
+                                >
+                                  <Plus className="size-3" />
+                                </Button>
+                              </div>
+                            </td>
+                            <td className="p-3 text-right font-bold text-indigo-700 dark:text-indigo-300">
+                              {fmtMoney(totalCost)}
+                            </td>
+                            <td className="p-3 text-right font-bold text-purple-700 dark:text-purple-300">
+                              {fmtMoney(totalSell)}
+                            </td>
+                            <td className="p-3 text-center font-mono text-xs">
+                              {sysStock} pcs
+                            </td>
+                            <td className="p-3 text-center">
+                              {diff === 0 ? (
+                                <Badge className="bg-emerald-500/15 text-emerald-600 border-emerald-500/30 text-[10px]">
+                                  <CheckCircle2 className="size-3 mr-1" />
+                                  {lang === "bn" ? "মিল রয়েছে" : "Matched"}
+                                </Badge>
+                              ) : diff < 0 ? (
+                                <Badge className="bg-rose-500/15 text-rose-600 border-rose-500/30 text-[10px]">
+                                  {lang === "bn" ? `ঘাটতি (${diff})` : `Shortage (${diff})`}
+                                </Badge>
+                              ) : (
+                                <Badge className="bg-amber-500/15 text-amber-600 border-amber-500/30 text-[10px]">
+                                  {lang === "bn" ? `উদ্বৃত্ত (+${diff})` : `Surplus (+${diff})`}
+                                </Badge>
+                              )}
+                            </td>
+                            <td className="p-3 text-center">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="size-7 text-rose-500 hover:text-rose-700 hover:bg-rose-50"
+                                onClick={() => handleRemoveScannedItem(item.id)}
+                              >
+                                <Trash2 className="size-3.5" />
+                              </Button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                    <tfoot>
+                      <tr className="border-t-2 bg-muted/60 font-bold">
+                        <td colSpan={5} className="p-3 text-right text-sm">
+                          {lang === "bn" ? "সর্বমোট হিসাব (Grand Totals):" : "Grand Totals:"}
+                        </td>
+                        <td className="p-3 text-center text-sm text-emerald-600">
+                          {auditCalculations.totalPieces} pcs
+                        </td>
+                        <td className="p-3 text-right text-sm text-indigo-600">
+                          {fmtMoney(auditCalculations.totalCostValuation)}
+                        </td>
+                        <td className="p-3 text-right text-sm text-purple-600">
+                          {fmtMoney(auditCalculations.totalSaleValuation)}
+                        </td>
+                        <td className="p-3 text-center text-xs text-muted-foreground">
+                          {auditCalculations.totalSystemStockOfScanned} pcs
+                        </td>
+                        <td colSpan={2} className="p-3 text-center">
+                          {auditCalculations.piecesDifference === 0 ? (
+                            <span className="text-xs text-emerald-600 font-bold">{lang === "bn" ? "হুবহু মিল" : "Perfect Match"}</span>
+                          ) : (
+                            <span className={`text-xs font-bold ${auditCalculations.piecesDifference < 0 ? "text-rose-600" : "text-amber-600"}`}>
+                              {auditCalculations.piecesDifference > 0 ? `+${auditCalculations.piecesDifference}` : auditCalculations.piecesDifference} pcs
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              )}
+            </Card>
+          </div>
+        )}
+
+        {/* ------------------------------------------------------------- */}
+        {/* TAB 2-6: STANDARD PRODUCT ANALYTICS & INTELLIGENCE           */}
+        {/* ------------------------------------------------------------- */}
+        {activeTab !== "stock_scanner" && (
+          <div className="space-y-6">
+            {/* Top Aggregate Summary Bento */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <Card className="p-4 bg-card shadow-xs">
+                <div className="flex items-center justify-between text-xs font-semibold text-muted-foreground uppercase">
+                  <span>{lang === "bn" ? "মোট স্টক মূল্য (কেনা)" : "Total Stock Worth (Cost)"}</span>
+                  <Package className="size-4 text-teal-500" />
+                </div>
+                <div className="mt-2 text-2xl font-bold text-foreground">
+                  {fmtMoney(totalValuationCost)}
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {lang === "bn" ? "কেনা মূল্যের সর্বমোট হিসাব" : "Based on purchase cost"}
+                </p>
+              </Card>
+
+              <Card className="p-4 bg-card shadow-xs">
+                <div className="flex items-center justify-between text-xs font-semibold text-muted-foreground uppercase">
+                  <span>{lang === "bn" ? "মোট বিক্রয় মূল্য (আনুমানিক)" : "Total Sell Value (Est.)"}</span>
+                  <TrendingUp className="size-4 text-emerald-500" />
+                </div>
+                <div className="mt-2 text-2xl font-bold text-foreground">
+                  {fmtMoney(totalValuationSale)}
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {lang === "bn" ? "বিক্রি মূল্যের সর্বমোট হিসাব" : "Based on retail selling price"}
+                </p>
+              </Card>
+
+              <Card className="p-4 bg-card shadow-xs">
+                <div className="flex items-center justify-between text-xs font-semibold text-muted-foreground uppercase">
+                  <span>{lang === "bn" ? "স্টক শেষ পণ্য" : "Out of Stock Items"}</span>
+                  <ShieldAlert className="size-4 text-rose-500" />
+                </div>
+                <div className="mt-2 text-2xl font-bold text-rose-600">
+                  {analyticsProducts.filter((p) => p.isOut).length}
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {lang === "bn" ? "তাৎক্ষণিক রি-অর্ডার প্রয়োজন" : "Immediate replenishment needed"}
+                </p>
+              </Card>
+
+              <Card className="p-4 bg-card shadow-xs">
+                <div className="flex items-center justify-between text-xs font-semibold text-muted-foreground uppercase">
+                  <span>{lang === "bn" ? "মোট আইটেম সংখ্যা" : "Total Products"}</span>
+                  <Layers className="size-4 text-indigo-500" />
+                </div>
+                <div className="mt-2 text-2xl font-bold text-foreground">
+                  {products.length}
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {lang === "bn" ? `${categories.length} টি ক্যাটাগরি` : `Across ${categories.length} categories`}
+                </p>
+              </Card>
             </div>
 
-            {/* ── Desktop Tabular View (Visible on PC Screens) ── */}
-            <div className="hidden sm:block overflow-x-auto">
-              <table className="w-full text-xs text-left border-collapse">
-                <thead>
-                  <tr className="border-b border-border/80 text-muted-foreground font-semibold text-[11px] uppercase tracking-wider">
-                    <th className="py-2.5 px-3">#</th>
-                    <th className="py-2.5 px-3">{lang === "bn" ? "পণ্য" : "Product"}</th>
-                    <th className="py-2.5 px-3 text-center">{lang === "bn" ? "বিক্রিত পিস" : "Pieces Sold"}</th>
-                    <th className="py-2.5 px-3 text-right">{lang === "bn" ? "মোট রাজস্ব" : "Total Revenue"}</th>
-                    <th className="py-2.5 px-3 text-right">{lang === "bn" ? "অর্জিত লাভ (মার্জিন)" : "Profit (Margin)"}</th>
-                    <th className="py-2.5 px-3 text-center">{lang === "bn" ? "অবশিষ্ট স্টক" : "Stock Left"}</th>
-                    <th className="py-2.5 px-3 text-center">{lang === "bn" ? "দৈনিক রান রেট" : "Daily Pace"}</th>
-                    <th className="py-2.5 px-3 text-center">{lang === "bn" ? "স্টক স্ট্যাটাস" : "Status"}</th>
-                    <th className="py-2.5 px-3 text-right print:hidden">{lang === "bn" ? "একশন" : "Actions"}</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border/60">
-                  {pagedList.items.map((item, idx) => {
-                    const p = item.product;
-                    const rank = (page - 1) * pageSize + idx + 1;
-                    const isCritical = (p.stock || 0) <= (p.min_stock ?? 5);
-                    const isOutOfStock = (p.stock || 0) <= 0;
-                    const daysLeft = item.avgDailySales > 0 ? Math.floor((p.stock || 0) / item.avgDailySales) : 999;
-                    const totalLifecycleUnits = item.piecesSold + (p.stock || 0);
-                    const soldProgress = totalLifecycleUnits > 0 ? Math.round((item.piecesSold / totalLifecycleUnits) * 100) : 0;
+            {/* Filter Toolbar */}
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-card p-3 rounded-lg border shadow-xs">
+              <div className="flex items-center gap-2 flex-1">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+                  <Input
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder={lang === "bn" ? "নাম বা বারকোড দিয়ে খুঁজুন..." : "Search name or barcode..."}
+                    className="pl-9 h-9 text-xs"
+                  />
+                </div>
 
-                    return (
-                      <tr key={p.id} className="hover:bg-muted/40 transition-colors group">
-                        {/* Rank Badge */}
-                        <td className="py-2.5 px-3 font-mono font-bold text-muted-foreground text-center">
-                          {rank === 1 ? "🥇" : rank === 2 ? "🥈" : rank === 3 ? "🥉" : rank}
-                        </td>
+                <Select value={selectedCategory || "all"} onValueChange={(v) => setSelectedCategory(v === "all" ? null : v)}>
+                  <SelectTrigger className="w-40 h-9 text-xs">
+                    <SelectValue placeholder={lang === "bn" ? "সকল ক্যাটাগরি" : "All Categories"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">{lang === "bn" ? "সকল ক্যাটাগরি" : "All Categories"}</SelectItem>
+                    {categories.map((c) => (
+                      <SelectItem key={c} value={c}>
+                        {c}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
 
-                        {/* Product Thumbnail & Details */}
-                        <td className="py-2.5 px-3">
+              <div className="flex items-center gap-2">
+                <Select value={timeRange} onValueChange={(v) => setTimeRange(v as TimeRange)}>
+                  <SelectTrigger className="w-32 h-9 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="today">{lang === "bn" ? "আজকে" : "Today"}</SelectItem>
+                    <SelectItem value="7d">{lang === "bn" ? "গত ৭ দিন" : "Last 7 Days"}</SelectItem>
+                    <SelectItem value="30d">{lang === "bn" ? "গত ৩০ দিন" : "Last 30 Days"}</SelectItem>
+                    <SelectItem value="this_month">{lang === "bn" ? "এই মাস" : "This Month"}</SelectItem>
+                    <SelectItem value="all">{lang === "bn" ? "সকল সময়" : "All Time"}</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {/* Product Table */}
+            <Card className="overflow-hidden border shadow-xs">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead>
+                    <tr className="border-b bg-muted/50 text-muted-foreground font-semibold">
+                      <th className="p-3">{lang === "bn" ? "পণ্য" : "Product"}</th>
+                      <th className="p-3 text-right">{lang === "bn" ? "কেনা মূল্য" : "Buy Price"}</th>
+                      <th className="p-3 text-right">{lang === "bn" ? "বিক্রি মূল্য" : "Sale Price"}</th>
+                      <th className="p-3 text-center">{lang === "bn" ? "বর্তমান স্টক" : "Current Stock"}</th>
+                      <th className="p-3 text-center">{lang === "bn" ? "বিক্রিত পিস" : "Sold Pieces"}</th>
+                      <th className="p-3 text-right">{lang === "bn" ? "মোট আয়" : "Revenue"}</th>
+                      <th className="p-3 text-right">{lang === "bn" ? "লাভ" : "Profit"}</th>
+                      <th className="p-3 text-center">{lang === "bn" ? "অ্যাকশন" : "Actions"}</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border/60">
+                    {pagedResult.items.map((item) => (
+                      <tr key={item.product.id} className="hover:bg-muted/20 transition-colors">
+                        <td className="p-3">
                           <div className="flex items-center gap-2.5">
-                            <div
-                              className="size-10 rounded-xl overflow-hidden bg-muted shrink-0 border border-border/60 cursor-pointer"
-                              onClick={() => {
-                                setEditingProduct(p);
-                                setEditOpen(true);
-                              }}
-                            >
-                              <ProductImage path={p.image_url} className="w-full h-full object-cover" />
+                            <div className="size-10 rounded-md overflow-hidden border bg-background shrink-0">
+                              <ProductImage
+                                path={item.product.image_url}
+                                alt={item.product.name}
+                                className="w-full h-full object-cover"
+                              />
                             </div>
-                            <div className="min-w-0">
-                              <div
-                                className="font-bold text-foreground truncate max-w-[200px] lg:max-w-[260px] cursor-pointer hover:underline"
-                                title={p.name}
-                                onClick={() => {
-                                setEditingProduct(p);
-                                setEditOpen(true);
-                              }}
-                              >
-                                {p.name}
-                              </div>
-                              <div className="text-[10px] text-muted-foreground flex items-center gap-1.5">
-                                {p.category && <span className="bg-muted px-1.5 py-0.2 rounded">{p.category}</span>}
-                                <span>{fmtMoney(p.sell_price)} / pc</span>
-                              </div>
+                            <div>
+                              <span className="font-bold text-foreground text-sm block">
+                                {item.product.name}
+                              </span>
+                              <span className="text-[11px] text-muted-foreground">
+                                {item.product.category || "General"} • {item.product.barcode || item.product.sku || "No Barcode"}
+                              </span>
                             </div>
                           </div>
                         </td>
-
-                        {/* Pieces Sold & Progress */}
-                        <td className="py-2.5 px-3 text-center">
-                          <div className="inline-flex items-center gap-1 font-extrabold text-sm text-foreground">
-                            {item.piecesSold}
-                            <span className="text-[10px] text-muted-foreground font-normal">{lang === "bn" ? "টি" : "pcs"}</span>
-                          </div>
-                          <div className="w-20 mx-auto mt-0.5">
-                            <div className="h-1 w-full bg-muted rounded-full overflow-hidden flex">
-                              <div style={{ width: `${soldProgress}%` }} className="bg-emerald-600 h-full rounded-full" />
-                            </div>
-                          </div>
-                          {item.velocityGrowth > 0 && (
-                            <div className="text-[9px] text-emerald-600 font-semibold flex items-center justify-center gap-0.5 mt-0.5">
-                              <TrendingUp className="size-2.5" /> +{item.velocityGrowth}%
-                            </div>
-                          )}
-                        </td>
-
-                        {/* Revenue */}
-                        <td className="py-2.5 px-3 text-right font-bold text-emerald-600 dark:text-emerald-400">
-                          {fmtMoney(item.revenue)}
-                        </td>
-
-                        {/* Profit & Margin */}
-                        <td className="py-2.5 px-3 text-right">
-                          <div className="font-semibold text-foreground">{fmtMoney(item.profit)}</div>
-                          {item.marginPct > 0 && (
-                            <div className="text-[10px] text-muted-foreground font-mono">
-                              ({item.marginPct}%)
-                            </div>
-                          )}
-                        </td>
-
-                        {/* Remaining Stock */}
-                        <td className="py-2.5 px-3 text-center">
-                          <div className={`font-bold text-xs ${isOutOfStock ? "text-destructive" : isCritical ? "text-amber-600" : "text-foreground"}`}>
-                            {p.stock ?? 0} {lang === "bn" ? "পিস" : "pcs"}
-                          </div>
-                          <div className="text-[10px] text-muted-foreground">
-                            {lang === "bn" ? "কেনা:" : "Buy:"} {fmtMoney(p.buy_price || 0)}
-                          </div>
-                        </td>
-
-                        {/* Daily Sales Pace */}
-                        <td className="py-2.5 px-3 text-center">
-                          <span className="text-xs font-semibold text-muted-foreground">
-                            {item.avgDailySales} / {lang === "bn" ? "দিন" : "day"}
+                        <td className="p-3 text-right font-medium">{fmtMoney(Number(item.product.buy_price) || 0)}</td>
+                        <td className="p-3 text-right font-medium">{fmtMoney(Number(item.product.sell_price) || 0)}</td>
+                        <td className="p-3 text-center font-bold">
+                          <span className={`px-2 py-0.5 rounded text-[11px] ${
+                            item.isOut
+                              ? "bg-rose-500/15 text-rose-600"
+                              : item.isLow
+                              ? "bg-amber-500/15 text-amber-600"
+                              : "bg-emerald-500/15 text-emerald-600"
+                          }`}>
+                            {item.currentStock} pcs
                           </span>
-                          {item.avgDailySales > 0 && p.stock > 0 && daysLeft < 30 && (
-                            <div className="text-[9px] text-amber-600 font-bold">
-                              ~{daysLeft} {lang === "bn" ? "দিনের স্টক" : "days left"}
-                            </div>
-                          )}
                         </td>
-
-                        {/* Stock Health Badge */}
-                        <td className="py-2.5 px-3 text-center">
-                          {isOutOfStock ? (
-                            <Badge variant="destructive" className="text-[10px] py-0 px-2">
-                              {lang === "bn" ? "স্টক শেষ" : "Out of Stock"}
-                            </Badge>
-                          ) : isCritical ? (
-                            <Badge variant="outline" className="text-[10px] py-0 px-2 bg-amber-500/10 text-amber-600 border-amber-500/30">
-                              {lang === "bn" ? "সংকটজনক" : "Low Stock"}
-                            </Badge>
-                          ) : item.piecesSold === 0 ? (
-                            <Badge variant="outline" className="text-[10px] py-0 px-2 bg-purple-500/10 text-purple-600 border-purple-500/30">
-                              {lang === "bn" ? "অচল স্টক" : "Slow Moving"}
-                            </Badge>
-                          ) : (
-                            <Badge variant="outline" className="text-[10px] py-0 px-2 bg-emerald-500/10 text-emerald-600 border-emerald-500/30">
-                              {lang === "bn" ? "স্বাভাবিক" : "Healthy"}
-                            </Badge>
-                          )}
-                        </td>
-
-                        {/* Actions */}
-                        <td className="py-2.5 px-3 text-right print:hidden">
-                          <div className="flex items-center justify-end gap-1.5">
+                        <td className="p-3 text-center font-bold text-foreground">{item.soldPieces} pcs</td>
+                        <td className="p-3 text-right font-bold text-indigo-600">{fmtMoney(item.revenue)}</td>
+                        <td className="p-3 text-right font-bold text-emerald-600">{fmtMoney(item.profit)}</td>
+                        <td className="p-3 text-center">
+                          <div className="flex items-center justify-center gap-1.5">
                             <Button
                               size="sm"
                               variant="outline"
-                              className="h-7 text-[10px] px-2 rounded-lg text-emerald-600 border-emerald-500/30 hover:bg-emerald-500/10"
+                              className="h-7 text-[11px] px-2"
                               onClick={() => {
-                                setSaleProduct(p.id);
+                                setSaleProduct(item.product.id);
                                 setSaleOpen(true);
                               }}
-                              disabled={p.stock <= 0}
                             >
-                              {t("sell")}
+                              {lang === "bn" ? "বিক্রি" : "Sell"}
                             </Button>
                             <Button
                               size="sm"
                               variant="outline"
-                              className="h-7 text-[10px] px-2 rounded-lg text-sky-600 border-sky-500/30 hover:bg-sky-500/10"
+                              className="h-7 text-[11px] px-2"
                               onClick={() => {
-                                setBuyProduct(p.id);
+                                setBuyProduct(item.product.id);
                                 setBuyOpen(true);
                               }}
                             >
-                              {t("buy")}
+                              {lang === "bn" ? "ক্রয়" : "Buy"}
                             </Button>
                           </div>
                         </td>
                       </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </>
-        )}
+                    ))}
+                  </tbody>
+                </table>
+              </div>
 
-        {/* Pagination Bar */}
-        {pagedList.totalPages > 1 && (
-          <div className="pt-3 border-t border-border/60 flex flex-col sm:flex-row items-center justify-between gap-2 print:hidden">
-            <span className="text-xs text-muted-foreground">
-              {lang === "bn"
-                ? `মোট ${activeTabList.length} টির মধ্যে পৃষ্ঠা ${page} (প্রতি পৃষ্ঠায় ${pageSize} টি)`
-                : `Page ${page} of ${pagedList.totalPages} (${activeTabList.length} items)`}
-            </span>
-            <PaginationBar
-              page={page}
-              totalPages={pagedList.totalPages}
-              onPageChange={setPage}
-            />
+              {pagedResult.totalPages > 1 && (
+                <div className="p-3 border-t">
+                  <PaginationBar
+                    page={page}
+                    totalPages={pagedResult.totalPages}
+                    total={filteredProducts.length}
+                    pageSize={pageSize}
+                    onPageChange={setPage}
+                  />
+                </div>
+              )}
+            </Card>
           </div>
         )}
-      </Card>
+      </div>
 
-      {/* Sale Dialog */}
-      <SaleDialog
-        open={saleOpen}
-        onOpenChange={setSaleOpen}
-        presetProductId={saleProduct}
-      />
+      {/* Barcode Scanner Modal for Continuous Physical Stock Auditing */}
+      {scannerOpen && (
+        <BarcodeScannerDialog
+          open={scannerOpen}
+          onOpenChange={setScannerOpen}
+          onScan={(scannedCode) => {
+            if (scannedCode) {
+              handleScanOrAddProduct(scannedCode);
+              if (!continuousScan) {
+                setScannerOpen(false);
+              }
+            }
+          }}
+          title={lang === "bn" ? "পণ্য স্টক অডিট স্ক্যানার" : "Product Stock Audit Scanner"}
+          continuous={continuousScan}
+        />
+      )}
 
-      {/* Buy / Purchase Dialog */}
-      <PurchaseDialog
-        open={buyOpen}
-        onOpenChange={setBuyOpen}
-        presetProductId={buyProduct}
-      />
-
-      {/* Product Edit Dialog */}
-      <ProductDialog
-        open={editOpen}
-        onOpenChange={setEditOpen}
-        product={editingProduct}
-      />
+      {/* Product Edit / Sale / Purchase Modals */}
+      {saleOpen && (
+        <SaleDialog
+          open={saleOpen}
+          onOpenChange={setSaleOpen}
+          presetProductId={saleProduct}
+        />
+      )}
+      {buyOpen && (
+        <PurchaseDialog
+          open={buyOpen}
+          onOpenChange={setBuyOpen}
+          presetProductId={buyProduct}
+        />
+      )}
     </div>
   );
 }

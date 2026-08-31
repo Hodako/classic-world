@@ -396,34 +396,31 @@ export default function Dashboard() {
 
   // Fintech-Style Privacy Mask for Sensitive Balance & Profit KPIs
   // Revealed state for privacy-masked KPIs (profit, somiti + any user-hidden KPIs)
-  const [revealedKpis, setRevealedKpis] = useState<Record<string, boolean>>({
-    profit: false,
-    somiti: false,
-    total_sales: false,
-    cash_sale: false,
-    sell_kpi: false,
-    credit_sale: false,
-    online_sell: false,
-    purchases: false,
-    expense: false,
-    due: false,
-    cashbox: false,
-    owner_wallet: false,
-  });
+  const [revealedKpis, setRevealedKpis] = useState<Record<string, boolean>>({});
 
-    const handlePrivacyKpiClick = (e: React.MouseEvent, key: string, fallbackPath?: string) => {
-    const isHidden = (kpiConfig.hiddenKpis || []).includes(key);
-    if (isHidden && !revealedKpis[key]) {
+    const handlePrivacyKpiClick = (
+    e?: React.MouseEvent,
+    key?: string,
+    fallbackPath?: string,
+    fallbackAction?: () => void
+  ) => {
+    if (!key) return;
+    const normalizedKey = key === "bkash_bank" ? "sell_kpi" : key === "owners_wallet" ? "owner_wallet" : key;
+    const isHidden = (kpiConfig.hiddenKpis || []).includes(key) || (kpiConfig.hiddenKpis || []).includes(normalizedKey);
+    if (isHidden && !revealedKpis[normalizedKey]) {
       if (e) {
         e.preventDefault();
         e.stopPropagation();
       }
       playTapSound();
-      setRevealedKpis(prev => ({ ...prev, [key]: true }));
+      setRevealedKpis(prev => ({ ...prev, [normalizedKey]: true }));
       toast.info(lang === "bn" ? "পরিমাণ দৃশ্যমান করা হয়েছে" : "Amount revealed", { duration: 900 });
       return;
     }
-    if (fallbackPath) {
+    if (fallbackAction) {
+      playTapSound();
+      fallbackAction();
+    } else if (fallbackPath) {
       playTapSound();
       router.push(fallbackPath);
     }
@@ -482,9 +479,10 @@ export default function Dashboard() {
   const DEFAULT_KPI_ORDER = [
     "total_sales",
     "cash_sale",
-    "credit_sale",
+    "sell_kpi",
     "online_sell",
     "owner_wallet",
+    "purchases",
     "profit",
     "loss",
     "expense",
@@ -523,7 +521,9 @@ export default function Dashboard() {
   const normalizeKpiOrder = (order?: string[]) => {
     const defaultList = [...DEFAULT_KPI_ORDER];
     if (!order || !Array.isArray(order) || order.length === 0) return defaultList;
-    const list = order.map(k => (k === "bkash_bank" ? "sell_kpi" : k === "owners_wallet" ? "owner_wallet" : k));
+    const list = order
+      .filter(k => k !== "credit_sale")
+      .map(k => (k === "bkash_bank" ? "sell_kpi" : k === "owners_wallet" ? "owner_wallet" : k));
     for (const key of defaultList) {
       if (!list.includes(key)) list.push(key);
     }
@@ -832,14 +832,24 @@ export default function Dashboard() {
         return;
       }
 
-      const keyIndex = parseInt(e.key, 10);
-      if (!isNaN(keyIndex) && keyIndex >= 1 && keyIndex <= kpiConfig.order.length) {
+            const keyIndex = parseInt(e.key, 10);
+      const activeOrder = normalizeKpiOrder(kpiConfig.order);
+      if (!isNaN(keyIndex) && keyIndex >= 1 && keyIndex <= activeOrder.length) {
         e.preventDefault();
-        const targetKpiKey = kpiConfig.order[keyIndex - 1];
-        if (targetKpiKey === "credit_sale") {
+        const targetKpiKey = activeOrder[keyIndex - 1];
+        const normalizedKey = targetKpiKey === "bkash_bank" ? "sell_kpi" : targetKpiKey === "owners_wallet" ? "owner_wallet" : targetKpiKey;
+        const isHidden = (kpiConfig.hiddenKpis || []).includes(targetKpiKey) || (kpiConfig.hiddenKpis || []).includes(normalizedKey);
+        
+        if (isHidden && !revealedKpis[normalizedKey]) {
           playTapSound();
-          setSalePresetType("credit");
-          setSaleOpen(true);
+          setRevealedKpis(prev => ({ ...prev, [normalizedKey]: true }));
+          toast.info(lang === "bn" ? "পরিমাণ দৃশ্যমান করা হয়েছে" : "Amount revealed", { duration: 900 });
+          return;
+        }
+
+        if (targetKpiKey === "total_sales" || targetKpiKey === "sell_kpi" || targetKpiKey === "bkash_bank") {
+          playTapSound();
+          router.push("/sales");
         } else if (targetKpiKey === "cash_sale") {
           playTapSound();
           setSalePresetType("cash");
@@ -848,6 +858,9 @@ export default function Dashboard() {
           playTapSound();
           setSalePresetType("online");
           setSaleOpen(true);
+        } else if (targetKpiKey === "owner_wallet" || targetKpiKey === "owners_wallet") {
+          playTapSound();
+          router.push("/owner-expense");
         } else if (targetKpiKey === "purchases" && canAccess(perms, "purchases")) {
           playTapSound();
           router.push("/purchases");
@@ -943,9 +956,9 @@ export default function Dashboard() {
   const bankPending = filteredSales.filter(s => (s.type as string) === "bank" && ((s as any).payment_status === "pending" || !(s as any).payment_accepted)).reduce((a, s) => a + ((Number(s.paid_amount) || Number(s.sell_price) || 0) * (Number(s.qty) || 1) - (Number(s.discount) || 0)), 0);
   const bkashBankPending = bkashPending + bankPending;
   const creditToday  = filteredSales.filter(s => s.type === "credit").reduce((a, s) => {
-    const lineTotal = (Number(s.sell_price) || 0) * (Number(s.qty) || 1) - (Number(s.discount) || 0);
+    const lineTotal = Math.max((Number(s.sell_price) || 0) * (Number(s.qty) || 1) - (Number(s.discount) || 0), 0);
     const due = Number(s.due_amount);
-    return a + (!isNaN(due) && due > 0 ? due : lineTotal);
+    return a + (!isNaN(due) ? due : lineTotal);
   }, 0);
   const onlineToday  = filteredSales.filter(s => s.type === "online").reduce((a, s) => a + ((Number(s.sell_price) || 0) * (Number(s.qty) || 1) - (Number(s.discount) || 0)), 0);
   const onlinePendingToday = filteredSales.filter(s => s.type === "online" && (s as any).courier_status !== "collected" && (s as any).courier_status !== "cancelled").reduce((a, s) => a + ((Number(s.sell_price) || 0) * (Number(s.qty) || 1) - (Number(s.discount) || 0)), 0);
@@ -1397,7 +1410,282 @@ export default function Dashboard() {
     );
   }
 
-  const renderWidget = (widgetId: string) => {
+    const renderKpiCard = (key: string, index: number) => {
+    const hotkey = index + 1 <= 9 ? index + 1 : undefined;
+    const normalizedKey = key === "bkash_bank" ? "sell_kpi" : key === "owners_wallet" ? "owner_wallet" : key;
+    if (normalizedKey === "credit_sale") return null;
+    const isHidden = (kpiConfig.hiddenKpis || []).includes(key) || (kpiConfig.hiddenKpis || []).includes(normalizedKey);
+    const isRevealed = revealedKpis[normalizedKey] ?? !isHidden;
+
+    const privacyProps = {
+      isPrivacyProtected: isHidden,
+      isRevealed,
+    };
+
+    switch (normalizedKey) {
+      case "total_sales":
+        return (
+          <KPICard
+            key="total_sales"
+            label={lang === "bn" ? "আজকের মোট বিক্রি" : "Today's Total Sales"}
+            value={fmtMoney(totalSalesToday)}
+            sub={isHidden && !isRevealed ? (lang === "bn" ? "ট্যাপ করে দেখুন" : "Tap to reveal") : dateRangeLabel}
+            imageUrl="/icons/sell_icon.png"
+            icon={ShoppingBag}
+            color="bg-indigo-600"
+            isDesktop={true}
+            hotkey={hotkey}
+            className="h-full cursor-pointer"
+            align={kpiConfig.align as any}
+            size={kpiConfig.size as any}
+            {...privacyProps}
+            onClick={(e) => handlePrivacyKpiClick(e, "total_sales", "/sales")}
+          />
+        );
+      case "cash_sale":
+        return (
+          <KPICard
+            key="cash_sale"
+            label={t("cash_sale")}
+            value={fmtMoney(cashToday)}
+            sub={isHidden && !isRevealed ? (lang === "bn" ? "ট্যাপ করে দেখুন" : "Tap to reveal") : dateRangeLabel}
+            imageUrl="/icons/sell_icon.png"
+            icon={ShoppingBag}
+            color="bg-indigo-500"
+            isDesktop={true}
+            hotkey={hotkey}
+            className="h-full cursor-pointer"
+            align={kpiConfig.align as any}
+            size={kpiConfig.size as any}
+            {...privacyProps}
+            onClick={(e) => handlePrivacyKpiClick(e, "cash_sale", undefined, () => {
+              setSalePresetType("cash");
+              setSaleOpen(true);
+            })}
+          />
+        );
+      case "sell_kpi":
+        return (
+          <KPICard
+            key="sell_kpi"
+            label={lang === "bn" ? "বিক্রয়" : "Sell"}
+            value={fmtMoney(totalSalesToday)}
+            sub={
+              isHidden && !isRevealed
+                ? (lang === "bn" ? "ট্যাপ করে দেখুন" : "Tap to reveal")
+                : (bkashPending > 0 || bankPending > 0 || onlinePendingToday > 0
+                    ? (lang === "bn"
+                        ? `পেন্ডিং: বিকাশ ৳${fmtMoney(bkashPending)} • ব্যাংক ৳${fmtMoney(bankPending)} • অনলাইন ৳${fmtMoney(onlinePendingToday)}`
+                        : `Pending: bKash ৳${fmtMoney(bkashPending)} • Bank ৳${fmtMoney(bankPending)} • Online ৳${fmtMoney(onlinePendingToday)}`)
+                    : (lang === "bn"
+                        ? `নগদ আদায়: ৳${fmtMoney(cashToday + bkashBankCollected)}`
+                        : `Collected: ৳${fmtMoney(cashToday + bkashBankCollected)}`))
+            }
+            imageUrl="/icons/sales-kpi.svg"
+            icon={ShoppingBag}
+            color="bg-pink-600"
+            isDesktop={true}
+            hotkey={hotkey}
+            className="h-full cursor-pointer"
+            align={kpiConfig.align as any}
+            size={kpiConfig.size as any}
+            {...privacyProps}
+            onClick={(e) => handlePrivacyKpiClick(e, "sell_kpi", "/sales")}
+          />
+        );
+      case "online_sell":
+        return (
+          <KPICard
+            key="online_sell"
+            label={t("online_sell")}
+            value={fmtMoney(onlineToday)}
+            sub={
+              isHidden && !isRevealed
+                ? (lang === "bn" ? "ট্যাপ করে দেখুন" : "Tap to reveal")
+                : (lang === "bn" ? `পেন্ডিং: ${fmtMoney(onlinePendingToday)}` : `Pending: ${fmtMoney(onlinePendingToday)}`)
+            }
+            imageUrl="/icons/online_sale_icon.png"
+            icon={Truck}
+            color="bg-purple-600"
+            isDesktop={true}
+            hotkey={hotkey}
+            className="h-full cursor-pointer"
+            align={kpiConfig.align as any}
+            size={kpiConfig.size as any}
+            {...privacyProps}
+            onClick={(e) => handlePrivacyKpiClick(e, "online_sell", undefined, () => {
+              setSalePresetType("online");
+              setSaleOpen(true);
+            })}
+          />
+        );
+      case "owner_wallet":
+        return (
+          <KPICard
+            key="owner_wallet"
+            label={lang === "bn" ? "মালিকের খরচ" : "Owner's Expense"}
+            value={fmtMoney(ownerExpenseTotal)}
+            sub={
+              isHidden && !isRevealed
+                ? (lang === "bn" ? "ট্যাপ করে দেখুন" : "Tap to reveal")
+                : (lang === "bn" ? `${ownerExpensesFiltered.length} টি ব্যক্তিগত খরচ / উত্তোলন` : `${ownerExpensesFiltered.length} personal withdrawals`)
+            }
+            imageUrl="/icons/wallet.svg"
+            icon={Wallet}
+            color="bg-amber-600"
+            isDesktop={true}
+            hotkey={hotkey}
+            className="h-full cursor-pointer"
+            align={kpiConfig.align as any}
+            size={kpiConfig.size as any}
+            {...privacyProps}
+            onClick={(e) => handlePrivacyKpiClick(e, "owner_wallet", "/owner-expense")}
+          />
+        );
+      case "purchases":
+        return canAccess(perms, "purchases") ? (
+          <KPICard
+            key="purchases"
+            label={lang === "bn" ? "পণ্য ক্রয়" : "Purchases"}
+            value={fmtMoney(purchasesToday)}
+            sub={isHidden && !isRevealed ? (lang === "bn" ? "ট্যাপ করে দেখুন" : "Tap to reveal") : dateRangeLabel}
+            imageUrl="/icons/purchases-icon.png"
+            icon={ShoppingCart}
+            color="bg-teal-500"
+            isDesktop={true}
+            hotkey={hotkey}
+            className="h-full cursor-pointer"
+            align={kpiConfig.align as any}
+            size={kpiConfig.size as any}
+            {...privacyProps}
+            onClick={(e) => handlePrivacyKpiClick(e, "purchases", "/purchases")}
+          />
+        ) : <div key="purchases" className="hidden" />;
+      case "profit":
+        return (
+          <KPICard
+            key="profit"
+            label={t("profit")}
+            value={fmtMoney(profitToday)}
+            sub={isHidden && !isRevealed ? (lang === "bn" ? "ট্যাপ করে দেখুন" : "Tap to reveal") : (dateRangeLabel + (lang === "bn" ? " • বিস্তারিত দেখতে ট্যাপ করুন" : " • Tap to open"))}
+            imageUrl="/icons/profit_icon.png"
+            icon={TrendingUp}
+            color="bg-emerald-500"
+            isDesktop={true}
+            hotkey={hotkey}
+            className="h-full cursor-pointer"
+            align={kpiConfig.align as any}
+            size={kpiConfig.size as any}
+            {...privacyProps}
+            onClick={(e) => handlePrivacyKpiClick(e, "profit", "/profits")}
+          />
+        );
+      case "loss":
+        return (
+          <KPICard
+            key="loss"
+            label={lang === "bn" ? "লোকসান" : "Loss"}
+            value={fmtMoney(lossToday)}
+            sub={isHidden && !isRevealed ? (lang === "bn" ? "ট্যাপ করে দেখুন" : "Tap to reveal") : dateRangeLabel}
+            imageUrl="https://img.icons8.com/color/48/depreciation.png"
+            icon={TrendingDown}
+            color="bg-rose-500"
+            isDesktop={true}
+            hotkey={hotkey}
+            className="h-full cursor-pointer"
+            align={kpiConfig.align as any}
+            size={kpiConfig.size as any}
+            {...privacyProps}
+            onClick={(e) => handlePrivacyKpiClick(e, "loss", "/losses")}
+          />
+        );
+      case "expense":
+        return canAccess(perms, "expenses") ? (
+          <KPICard
+            key="expense"
+            label={t("expense")}
+            value={fmtMoney(expenseToday)}
+            sub={isHidden && !isRevealed ? (lang === "bn" ? "ট্যাপ করে দেখুন" : "Tap to reveal") : dateRangeLabel}
+            imageUrl="https://img.icons8.com/color/48/tax.png"
+            icon={Receipt}
+            color="bg-orange-500"
+            isDesktop={true}
+            hotkey={hotkey}
+            className="h-full cursor-pointer"
+            align={kpiConfig.align as any}
+            size={kpiConfig.size as any}
+            {...privacyProps}
+            onClick={(e) => handlePrivacyKpiClick(e, "expense", "/expenses")}
+          />
+        ) : <div key="expense" className="hidden" />;
+      case "due":
+        return canAccess(perms, "parties") ? (
+          <KPICard
+            key="due"
+            label={t("due")}
+            value={fmtMoney(totalDues)}
+            sub={isHidden && !isRevealed ? (lang === "bn" ? "ট্যাপ করে দেখুন" : "Tap to reveal") : dateRangeLabel}
+            imageUrl="https://img.icons8.com/color/48/loan.png"
+            icon={Banknote}
+            color="bg-amber-600"
+            trendUp={false}
+            isDesktop={true}
+            hotkey={hotkey}
+            className="h-full cursor-pointer"
+            align={kpiConfig.align as any}
+            size={kpiConfig.size as any}
+            {...privacyProps}
+            onClick={(e) => handlePrivacyKpiClick(e, "due", "/dues")}
+          />
+        ) : <div key="due" className="hidden" />;
+      case "cashbox":
+        return canAccess(perms, "cashbox") ? (
+          <KPICard
+            key="cashbox"
+            label={t("cashbox")}
+            value={fmtMoney(cashboxTotal)}
+            sub={isHidden && !isRevealed ? (lang === "bn" ? "ট্যাপ করে দেখুন" : "Tap to reveal") : dateRangeLabel}
+            imageUrl="/icons/cashbox_icon.png"
+            icon={Banknote}
+            color="bg-emerald-600"
+            trendUp={cashboxTotal >= 0}
+            trend={t("balance")}
+            isDesktop={true}
+            hotkey={hotkey}
+            className="h-full cursor-pointer"
+            align={kpiConfig.align as any}
+            size={kpiConfig.size as any}
+            {...privacyProps}
+            onClick={(e) => handlePrivacyKpiClick(e, "cashbox", "/cash-management/cashbox")}
+          />
+        ) : <div key="cashbox" className="hidden" />;
+      case "somiti":
+        return canAccess(perms, "expenses") ? (
+          <KPICard
+            key="somiti"
+            label={lang === "bn" ? "সমিতি (Samity)" : "Samity"}
+            value={fmtMoney(somitiTotal)}
+            sub={isHidden && !isRevealed ? (lang === "bn" ? "ট্যাপ করে দেখুন" : "Tap to reveal") : (dateRangeLabel + (lang === "bn" ? " • বিস্তারিত দেখতে ট্যাপ করুন" : " • Tap to open"))}
+            imageUrl="/icons/samity_icon.png"
+            icon={PiggyBank}
+            color="bg-purple-600"
+            trendUp={somitiTotal >= 0}
+            trend={lang === "bn" ? "নিট জমা" : "Net Balance"}
+            isDesktop={true}
+            hotkey={hotkey}
+            className="h-full cursor-pointer"
+            align={kpiConfig.align as any}
+            size={kpiConfig.size as any}
+            {...privacyProps}
+            onClick={(e) => handlePrivacyKpiClick(e, "somiti", "/somiti")}
+          />
+        ) : <div key="somiti" className="hidden" />;
+      default:
+        return null;
+    }
+  };
+
+const renderWidget = (widgetId: string) => {
     switch (widgetId) {
       case "kpis":
         const renderDesktopCard = (key: string, index: number) => {
@@ -2004,294 +2292,13 @@ export default function Dashboard() {
 
   const renderDesktopWidget = (widgetId: string) => {
     switch (widgetId) {
-      case "kpis":
-        const renderDesktopCard = (key: string, index: number) => {
-          const hotkey = index + 1 <= 9 ? index + 1 : undefined;
-          switch (key) {
-            case "total_sales":
-              return (
-                <KPICard
-                  key="total_sales"
-                  label={lang === "bn" ? "আজকের মোট বিক্রি" : "Today's Total Sales"}
-                  value={fmtMoney(totalSalesToday)}
-                  sub={dateRangeLabel}
-                  imageUrl="/icons/sell_icon.png"
-                  icon={ShoppingBag}
-                  color="bg-indigo-600"
-                  isDesktop={true}
-                  hotkey={hotkey}
-                  className="h-full cursor-pointer"
-                  align={kpiConfig.align as any}
-                  size={kpiConfig.size as any}
-                  isPrivacyProtected={(kpiConfig.hiddenKpis || []).includes("total_sales")}
-                  isRevealed={revealedKpis["total_sales"] ?? !(kpiConfig.hiddenKpis || []).includes("total_sales")}
-                  onClick={() => handlePrivacyKpiClick(null as any, "total_sales", "/sales")}
-                />
-              );
-            case "credit_sale":
-              return (
-                <KPICard
-                  key="credit_sale"
-                  label={t("credit_sale")}
-                  value={fmtMoney(creditToday)}
-                  sub={dateRangeLabel}
-                  imageUrl="/icons/credit_sale_icon.png"
-                  icon={CreditCard}
-                  color="bg-amber-500"
-                  isDesktop={true}
-                  hotkey={hotkey}
-                  onClick={() => {
-                    playTapSound();
-                    setSalePresetType("credit");
-                    setSaleOpen(true);
-                  }}
-                  align={kpiConfig.align as any}
-                  size={kpiConfig.size as any}
-                />
-              );
-            case "cash_sale":
-              return (
-                <KPICard
-                  key="cash_sale"
-                  label={t("cash_sale")}
-                  value={fmtMoney(cashToday)}
-                  sub={dateRangeLabel}
-                  imageUrl="/icons/sell_icon.png"
-                  icon={ShoppingBag}
-                  color="bg-indigo-500"
-                  isDesktop={true}
-                  hotkey={hotkey}
-                  onClick={() => {
-                    playTapSound();
-                    setSalePresetType("cash");
-                    setSaleOpen(true);
-                  }}
-                  align={kpiConfig.align as any}
-                  size={kpiConfig.size as any}
-                />
-              );
-            case "sell_kpi":
-            case "bkash_bank":
-              return (
-                <Link
-                  href="/sales"
-                  key="sell_kpi"
-                  className="block cursor-pointer h-full"
-                  onClick={() => playTapSound()}
-                >
-                  <KPICard
-                    label={lang === "bn" ? "বিক্রয়" : "Sell"}
-                    value={fmtMoney(totalSalesToday)}
-                    sub={
-                      bkashPending > 0 || bankPending > 0 || onlinePendingToday > 0
-                        ? (lang === "bn"
-                            ? `পেন্ডিং: বিকাশ ৳${fmtMoney(bkashPending)} • ব্যাংক ৳${fmtMoney(bankPending)} • অনলাইন ৳${fmtMoney(onlinePendingToday)}`
-                            : `Pending: bKash ৳${fmtMoney(bkashPending)} • Bank ৳${fmtMoney(bankPending)} • Online ৳${fmtMoney(onlinePendingToday)}`)
-                        : (lang === "bn"
-                            ? `নগদ আদায়: ৳${fmtMoney(cashToday + bkashBankCollected)}`
-                            : `Collected: ৳${fmtMoney(cashToday + bkashBankCollected)}`)
-                    }
-                    imageUrl="/icons/sales-kpi.svg"
-                    icon={ShoppingBag}
-                    color="bg-pink-600"
-                    isDesktop={true}
-                    hotkey={hotkey}
-                    className="h-full"
-                    align={kpiConfig.align as any}
-                    size={kpiConfig.size as any}
-                  />
-                </Link>
-              );
-            case "owner_wallet":
-            case "owners_wallet":
-              return (
-                <KPICard
-                  key="owner_wallet"
-                  label={lang === "bn" ? "মালিকের খরচ" : "Owner's Expense"}
-                  value={fmtMoney(ownerExpenseTotal)}
-                  sub={lang === "bn" ? `${ownerExpensesFiltered.length} টি ব্যক্তিগত খরচ / উত্তোলন` : `${ownerExpensesFiltered.length} personal withdrawals`}
-                  imageUrl="/icons/wallet.svg"
-                  icon={Wallet}
-                  color="bg-amber-600"
-                  isDesktop={true}
-                  hotkey={hotkey}
-                  className="h-full cursor-pointer"
-                  align={kpiConfig.align as any}
-                  size={kpiConfig.size as any}
-                  isPrivacyProtected={(kpiConfig.hiddenKpis || []).includes("owner_wallet")}
-                  isRevealed={revealedKpis["owner_wallet"] ?? !(kpiConfig.hiddenKpis || []).includes("owner_wallet")}
-                  onClick={() => handlePrivacyKpiClick(null as any, "owner_wallet", "/owner-expense")}
-                />
-              );
-            case "online_sell":
-              return (
-                <KPICard
-                  key="online_sell"
-                  label={t("online_sell")}
-                  value={fmtMoney(onlineToday)}
-                  sub={lang === "bn" ? `পেন্ডিং: ${fmtMoney(onlinePendingToday)}` : `Pending: ${fmtMoney(onlinePendingToday)}`}
-                  imageUrl="/icons/online_sale_icon.png"
-                  icon={Truck}
-                  color="bg-purple-600"
-                  isDesktop={true}
-                  hotkey={hotkey}
-                  className="h-full"
-                  align={kpiConfig.align as any}
-                  size={kpiConfig.size as any}
-                  onClick={() => {
-                    playTapSound();
-                    setSalePresetType("online");
-                    setSaleOpen(true);
-                  }}
-                />
-              );
-            case "purchases":
-              return canAccess(perms, "purchases") ? (
-                <Link href="/purchases" className="block" key="purchases" onClick={() => playTapSound()}>
-                  <KPICard
-                    label={lang === "bn" ? "পণ্য ক্রয়" : "Purchases"}
-                    value={fmtMoney(purchasesToday)}
-                    sub={dateRangeLabel}
-                    icon={ShoppingCart}
-                    color="bg-teal-500"
-                    isDesktop={true}
-                    hotkey={hotkey}
-                    className="h-full"
-                    align={kpiConfig.align as any}
-                    size={kpiConfig.size as any}
-                  />
-                </Link>
-              ) : <div key="purchases" className="hidden" />;
-            case "profit":
-              return (
-                <div
-                  className="block cursor-pointer"
-                  key="profit"
-                  onClick={(e) => handlePrivacyKpiClick(e, "profit", "/profits")}
-                >
-                  <KPICard
-                    label={t("profit")}
-                    value={fmtMoney(profitToday)}
-                    sub={!revealedKpis.profit ? (lang === "bn" ? "ট্যাপ করে দেখুন" : "Tap to reveal") : (dateRangeLabel + (lang === "bn" ? " • বিস্তারিত দেখতে ট্যাপ করুন" : " • Tap to open"))}
-                    icon={TrendingUp}
-                    color="bg-emerald-500"
-                    isDesktop={true}
-                    hotkey={hotkey}
-                    className="h-full"
-                    align={kpiConfig.align as any}
-                    size={kpiConfig.size as any}
-                    isPrivacyProtected={true}
-                    isRevealed={revealedKpis.profit}
-                  />
-                </div>
-              );
-            case "loss":
-              return (
-                <Link href="/losses" className="block" key="loss" onClick={() => playTapSound()}>
-                  <KPICard
-                    label={lang === "bn" ? "লোকসান" : "Loss"}
-                    value={fmtMoney(lossToday)}
-                    sub={dateRangeLabel}
-                    icon={TrendingDown}
-                    color="bg-rose-500"
-                    isDesktop={true}
-                    hotkey={hotkey}
-                    className="h-full"
-                    align={kpiConfig.align as any}
-                    size={kpiConfig.size as any}
-                  />
-                </Link>
-              );
-            case "expense":
-              return canAccess(perms, "expenses") ? (
-                <Link href="/expenses" className="block" key="expense" onClick={() => playTapSound()}>
-                  <KPICard
-                    label={t("expense")}
-                    value={fmtMoney(expenseToday)}
-                    sub={dateRangeLabel}
-                    icon={Receipt}
-                    color="bg-orange-500"
-                    isDesktop={true}
-                    hotkey={hotkey}
-                    className="h-full"
-                    align={kpiConfig.align as any}
-                    size={kpiConfig.size as any}
-                  />
-                </Link>
-              ) : <div key="expense" className="hidden" />;
-            case "due":
-              return canAccess(perms, "parties") ? (
-                <Link href="/dues" className="block" key="due" onClick={() => playTapSound()}>
-                  <KPICard
-                    label={t("due")}
-                    value={fmtMoney(totalDues)}
-                    sub={dateRangeLabel}
-                    icon={Banknote}
-                    color="bg-amber-600"
-                    isDesktop={true}
-                    hotkey={hotkey}
-                    trendUp={false}
-                    className="h-full"
-                    align={kpiConfig.align as any}
-                    size={kpiConfig.size as any}
-                  />
-                </Link>
-              ) : <div key="due" className="hidden" />;
-            case "cashbox":
-              return canAccess(perms, "cashbox") ? (
-                <Link href="/cash-management/cashbox" className="block" key="cashbox" onClick={() => playTapSound()}>
-                  <KPICard
-                    label={t("cashbox")}
-                    value={fmtMoney(cashboxTotal)}
-                    sub={dateRangeLabel}
-                    icon={Wallet}
-                    color="bg-indigo-600"
-                    isDesktop={true}
-                    hotkey={hotkey}
-                    trendUp={cashboxTotal >= 0}
-                    trend={t("balance")}
-                    className="h-full justify-between"
-                    align={kpiConfig.align as any}
-                    size={kpiConfig.size as any}
-                  />
-                </Link>
-              ) : <div key="cashbox" className="hidden" />;
-            case "somiti":
-              return canAccess(perms, "expenses") ? (
-                <div
-                  className="block cursor-pointer"
-                  key="somiti"
-                  onClick={(e) => handlePrivacyKpiClick(e, "somiti", "/somiti")}
-                >
-                  <KPICard
-                    label={lang === "bn" ? "সমিতি (Samity)" : "Samity"}
-                    value={fmtMoney(somitiTotal)}
-                    sub={!revealedKpis.somiti ? (lang === "bn" ? "ট্যাপ করে দেখুন" : "Tap to reveal") : (dateRangeLabel + (lang === "bn" ? " • বিস্তারিত দেখতে ট্যাপ করুন" : " • Tap to open"))}
-                    icon={PiggyBank}
-                    color="bg-purple-600"
-                    isDesktop={true}
-                    hotkey={hotkey}
-                    trendUp={somitiTotal >= 0}
-                    trend={lang === "bn" ? "নিট জমা" : "Net Balance"}
-                    className="h-full justify-between"
-                    align={kpiConfig.align as any}
-                    size={kpiConfig.size as any}
-                    isPrivacyProtected={true}
-                    isRevealed={revealedKpis.somiti}
-                  />
-                </div>
-              ) : <div key="somiti" className="hidden" />;
-            default:
-              return null;
-          }
-        };
-
-                const gridClass = kpiConfig.columns === 1 ? "grid-cols-1" : kpiConfig.columns === 3 ? "grid-cols-3" : kpiConfig.columns === 4 ? "grid-cols-2 md:grid-cols-4" : "grid-cols-2 md:grid-cols-3 lg:grid-cols-4";
+      case "kpis": {
+        const gridClass = kpiConfig.columns === 1 ? "grid-cols-1" : kpiConfig.columns === 3 ? "grid-cols-3" : kpiConfig.columns === 4 ? "grid-cols-2 md:grid-cols-4" : "grid-cols-2 md:grid-cols-3 lg:grid-cols-4";
 
         return (
           <div key="kpis" className="space-y-6 col-span-3">
             <div className={`grid gap-4 ${gridClass}`}>
-              {kpiConfig.order.map((key, idx) => renderDesktopCard(key, idx))}
+              {normalizeKpiOrder(kpiConfig.order).map((key, idx) => renderKpiCard(key, idx))}
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -2308,53 +2315,17 @@ export default function Dashboard() {
               <KPICard
                 label={t("inventory_val_sale")}
                 value={fmtMoney(totalStockSaleValuation)}
-                sub={lang === "bn" ? "বিক্রি মূল্যের হিসাব" : "Selling Worth of Stock"}
-                icon={ShoppingBag}
-                color="bg-pink-500"
+                sub={lang === "bn" ? "বিক্রি মূল্যের আনুমানিক হিসাব" : "Estimated Sell Value"}
+                icon={TrendingUp}
+                color="bg-emerald-500"
                 isDesktop={true}
                 align={kpiConfig.align as any}
                 size={kpiConfig.size as any}
               />
             </div>
-
-            {lowStockProducts.length > 0 && (
-              <Card className="p-4 border border-amber-500/30 space-y-3 bg-gradient-to-br from-amber-50/40 via-white to-amber-100/20 dark:from-amber-950/20 dark:via-zinc-900/90 dark:to-zinc-950/90 backdrop-blur-sm rounded-2xl shadow-sm">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2 text-sm font-bold text-amber-700 dark:text-amber-400">
-                    <AlertTriangle className="size-4 animate-bounce text-amber-500" />
-                    <span>{lang === "bn" ? `সংকটজনক স্টক অ্যালার্ট ও দ্রুত ক্রয় (${lowStockProducts.length}টি পণ্য)` : `Low Stock Alert & Quick Restock (${lowStockProducts.length} Items)`}</span>
-                  </div>
-                  <Link href="/products" className="text-xs text-primary hover:underline font-semibold flex items-center gap-1">
-                    {lang === "bn" ? "সকল পণ্য দেখুন" : "View All Products"} <ArrowRight className="size-3.5" />
-                  </Link>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5">
-                  {lowStockProducts.slice(0, 6).map(p => (
-                    <div key={p.id} className="flex items-center justify-between p-2.5 rounded-xl border border-amber-500/20 bg-background/80 text-xs shadow-2xs">
-                      <div className="min-w-0 flex-1 mr-2">
-                        <div className="font-semibold truncate text-foreground text-xs">{p.name}</div>
-                        <div className="text-[10px] text-muted-foreground mt-0.5">
-                          {lang === "bn" ? "বর্তমান স্টক:" : "Stock:"} <span className="font-bold text-rose-600 font-mono">{p.stock}</span> / {p.min_stock ?? 5}
-                        </div>
-                      </div>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="h-7 px-2.5 text-xs font-bold border-amber-500/40 text-amber-700 dark:text-amber-300 hover:bg-amber-500/10 cursor-pointer gap-1"
-                        onClick={() => {
-                          setRestockProductId(p.id);
-                          setPurchaseOpen(true);
-                        }}
-                      >
-                        <Plus className="size-3" /> {lang === "bn" ? "ক্রয় করুন" : "Restock"}
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              </Card>
-            )}
           </div>
         );
+      }
 
       case "graphs":
         return (

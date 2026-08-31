@@ -89,21 +89,21 @@ export default function CustomerDetail() {
 
   const entries: Entry[] = [
     ...(sales.data ?? []).filter(s => Number(s.due_amount) > 0 && !s.returned).map(s => ({
-      id: "s" + s.id, rawId: s.id, date: s.created_at,
+      id: "s" + s.id, rawId: s.id, date: s.created_at || (s as any).date || (s as any).sale_date || "",
       label: s.product_id ? `${s.product_name} ×${s.qty}` : s.product_name,
       amount: Number(s.due_amount), kind: "sale" as const, deletable: !s.product_id,
     })),
     ...(receivables.data ?? []).map(r => ({
-      id: "r" + r.id, rawId: r.id, date: r.created_at,
+      id: "r" + r.id, rawId: r.id, date: r.created_at || (r as any).date || "",
       label: r.note || (lang === "bn" ? "বাকী যোগ" : "Money Owed"), amount: Number(r.amount),
       kind: "receivable" as const, deletable: true,
     })),
     ...(payments.data ?? []).map(p => ({
-      id: "p" + p.id, rawId: p.id, date: p.created_at,
+      id: "p" + p.id, rawId: p.id, date: p.created_at || (p as any).date || "",
       label: p.note || (lang === "bn" ? "টাকা জমা/আদায়" : "Payment Received"), amount: -Number(p.amount),
       kind: "payment" as const, deletable: true,
     })),
-  ].sort((a, b) => +new Date(b.date) - +new Date(a.date));
+  ].sort((a, b) => +new Date(b.date || 0) - +new Date(a.date || 0));
 
   const { items: pagedPurchases, totalPages: purchaseTotalPages, safePage: safePurchasesPage } = paginate(allPartySales, purchasesPage, pageSize);
   const { items: pagedEntries, totalPages: ledgerTotalPages, safePage: safeLedgerPage } = paginate(entries, ledgerPage, pageSize);

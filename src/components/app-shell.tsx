@@ -352,20 +352,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <div className="flex items-center overflow-hidden group-data-[collapsible=icon]:justify-center">
               <AppLogo size="md" className="h-11 max-w-[210px]" />
             </div>
-            {/* Sidebar ID Switcher badge */}
-            <div className="group-data-[collapsible=icon]:hidden flex items-center justify-between px-2 py-1 rounded-lg bg-indigo-500/10 border border-indigo-500/20 text-xs">
-              <span className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 truncate">
-                ID: {currentProfile?.name || "Main ID"}
-              </span>
-              <button
-                type="button"
-                onClick={() => setCreateProfileOpen(true)}
-                className="text-[10px] text-muted-foreground hover:text-indigo-600 font-bold"
-                title={lang === "bn" ? "নতুন আইডি" : "New ID"}
-              >
-                + {lang === "bn" ? "নতুন" : "New"}
-              </button>
-            </div>
+            
           </SidebarHeader>
 
           <SidebarContent>
@@ -638,11 +625,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <Button variant="ghost" size="icon" className="size-8" onClick={toggle} aria-label="Theme">
                 {resolved === "dark" ? <Sun className="icon-sm" /> : <Moon className="icon-sm" />}
               </Button>
-              {!isMobile && (
-                <span className="text-[10px] text-muted-foreground mr-1 hidden lg:block">
-                  {new Date().toLocaleDateString("en-US", { weekday: "short", day: "numeric", month: "short" })}
-                </span>
-              )}
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => {
+                  sessionStorage.removeItem("app_pin_unlocked");
+                  window.dispatchEvent(new Event("app_lock_screen"));
+                }}
+                className="size-8 text-amber-500 hover:bg-amber-500/10 hover:text-amber-600 rounded-lg cursor-pointer"
+                title={lang === "bn" ? "স্ক্রিন লক করুন" : "Lock Screen"}
+              >
+                <Lock className="size-4" />
+              </Button>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" size="icon" className="size-8">

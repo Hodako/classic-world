@@ -342,6 +342,7 @@ const fsActionMap: Record<string, (args?: any) => Promise<any>> = {
   changeMyPasswordFn: async (args: any) => fs.fsChangeMyPassword(args?.data || args),
 
   loginFn: async (args: any) => fs.fsLogin(args?.data || args),
+  employeeLoginFn: async (args: any) => fs.fsEmployeeLogin(args?.data || args),
   registerFn: async (args: any) => fs.fsRegister(args?.data || args),
   getMeFn: async () => fs.fsGetMe(),
   getBusinessSettingsFn: async () => fs.fsGetBusinessSettings(),

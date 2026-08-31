@@ -508,6 +508,19 @@ export default function AuthPage() {
               </Link>
             </div>
 
+            {/* Quick Link to Employee Portal */}
+            <div className="flex items-center justify-between px-3 py-2 bg-indigo-500/10 border border-indigo-500/20 rounded-xl my-1">
+              <span className="text-[11px] font-semibold text-indigo-700 dark:text-indigo-300">
+                {lang === "bn" ? "দোকানের স্টাফ বা কর্মচারী?" : "Store Staff or Employee?"}
+              </span>
+              <Link
+                href="/employee-login"
+                className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1"
+              >
+                {lang === "bn" ? "কর্মচারী লগইন ➔" : "Staff Login ➔"}
+              </Link>
+            </div>
+
             <button type="submit" disabled={busy} className="button-submit">
               {busy ? "…" : (activeTab === "signin" ? t("sign_in") : t("create_account"))}
             </button>

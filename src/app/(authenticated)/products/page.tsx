@@ -1175,6 +1175,194 @@ function ReturnDialog({
   );
 }
 
+function SearchableProductSelect({
+  label,
+  selectedProductId,
+  onSelectProduct,
+  products,
+  placeholder,
+  accentColor = "emerald",
+  disableOutOfStock = false,
+}: {
+  label: string;
+  selectedProductId: string;
+  onSelectProduct: (product: Product) => void;
+  products: Product[];
+  placeholder: string;
+  accentColor?: "emerald" | "rose";
+  disableOutOfStock?: boolean;
+}) {
+  const { lang } = useT();
+  const [searchQuery, setSearchQuery] = useState("");
+  const [isOpen, setIsOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const selectedProduct = products.find(p => p.id === selectedProductId);
+
+  const filteredProducts = useMemo(() => {
+    if (!searchQuery.trim()) return products.slice(0, 30);
+    const q = searchQuery.toLowerCase().trim();
+    return products.filter(p => {
+      const name = (p.name || "").toLowerCase();
+      const barcode = (p.barcode || "").toLowerCase();
+      const sku = (p.sku || (p as any).code || "").toLowerCase();
+      const cat = (p.category || "").toLowerCase();
+      return name.includes(q) || barcode.includes(q) || sku.includes(q) || cat.includes(q);
+    });
+  }, [products, searchQuery]);
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setIsOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  return (
+    <div className="space-y-1.5 relative" ref={containerRef}>
+      <Label className="text-xs font-semibold flex items-center justify-between">
+        <span>{label}</span>
+        {selectedProduct && (
+          <span className="text-[11px] text-muted-foreground font-normal">
+            {lang === "bn" ? `স্টক: ${selectedProduct.stock} পিস` : `Stock: ${selectedProduct.stock} pcs`}
+          </span>
+        )}
+      </Label>
+
+      {/* Selected Item Card / Switcher */}
+      {selectedProduct && !isOpen ? (
+        <div
+          onClick={() => setIsOpen(true)}
+          className={`flex items-center justify-between p-2.5 rounded-xl border bg-background hover:bg-muted/40 cursor-pointer transition-all shadow-xs ${
+            accentColor === "rose" ? "border-rose-500/30 hover:border-rose-500/50" : "border-emerald-500/30 hover:border-emerald-500/50"
+          }`}
+        >
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="size-9 rounded-lg overflow-hidden border bg-muted shrink-0">
+              <ProductImage path={selectedProduct.image_url} alt={selectedProduct.name} className="w-full h-full object-cover" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs font-bold text-foreground truncate">{selectedProduct.name}</p>
+              <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground font-mono">
+                {selectedProduct.barcode && <span>#{`${selectedProduct.barcode}`}</span>}
+                {selectedProduct.category && <span>• ${selectedProduct.category}</span>}
+              </div>
+            </div>
+          </div>
+          <div className="text-right shrink-0 pl-2 flex items-center gap-2">
+            <div>
+              <p className="text-xs font-bold text-foreground font-num">৳{selectedProduct.sell_price}</p>
+              <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold ${
+                selectedProduct.stock <= 0 ? "bg-rose-500/10 text-rose-600" : "bg-emerald-500/10 text-emerald-600"
+              }`}>
+                {selectedProduct.stock} pcs
+              </span>
+            </div>
+            <Button type="button" size="sm" variant="outline" className="h-7 px-2 text-[11px]">
+              {lang === "bn" ? "সার্চ / পরিবর্তন" : "Search / Change"}
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <div className="relative space-y-2">
+          <div className="relative">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground pointer-events-none" />
+            <Input
+              type="text"
+              autoFocus={isOpen}
+              value={searchQuery}
+              onChange={e => {
+                setSearchQuery(e.target.value);
+                setIsOpen(true);
+              }}
+              onFocus={() => setIsOpen(true)}
+              onKeyDown={e => {
+                if (e.key === "Enter" && filteredProducts.length > 0) {
+                  e.preventDefault();
+                  onSelectProduct(filteredProducts[0]);
+                  setIsOpen(false);
+                  setSearchQuery("");
+                }
+              }}
+              placeholder={placeholder}
+              className="pl-8 pr-8 h-9 text-xs rounded-xl bg-background border-primary/40 focus-visible:ring-primary shadow-xs"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery("")}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              >
+                <X className="size-3.5" />
+              </button>
+            )}
+          </div>
+
+          {/* Search Dropdown / Autocomplete Results */}
+          {isOpen && (
+            <div className="absolute top-full left-0 right-0 z-50 mt-1 max-h-56 overflow-y-auto rounded-xl border bg-popover text-popover-foreground shadow-2xl divide-y divide-border/50 p-1">
+              {filteredProducts.length === 0 ? (
+                <div className="p-3 text-center text-xs text-muted-foreground">
+                  {lang === "bn" ? "কোনো পণ্য পাওয়া যায়নি" : "No matching products found"}
+                </div>
+              ) : (
+                filteredProducts.map(p => {
+                  const isSelected = p.id === selectedProductId;
+                  const isOut = p.stock <= 0;
+                  const isDisabled = disableOutOfStock && isOut;
+
+                  return (
+                    <div
+                      key={p.id}
+                      onClick={() => {
+                        if (!isDisabled) {
+                          onSelectProduct(p);
+                          setIsOpen(false);
+                          setSearchQuery("");
+                        }
+                      }}
+                      className={`flex items-center justify-between p-2 rounded-lg text-xs transition-colors cursor-pointer ${
+                        isSelected
+                          ? "bg-primary/10 font-bold text-primary"
+                          : isDisabled
+                          ? "opacity-50 cursor-not-allowed bg-muted/20"
+                          : "hover:bg-muted/60"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <div className="size-8 rounded-md overflow-hidden border bg-muted shrink-0">
+                          <ProductImage path={p.image_url} alt={p.name} className="w-full h-full object-cover" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="font-semibold truncate">{p.name}</p>
+                          <p className="text-[10px] text-muted-foreground truncate">
+                            {p.barcode ? `Barcode: ${p.barcode}` : p.sku ? `SKU: ${p.sku}` : p.category || "General"}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="text-right shrink-0 pl-2">
+                        <p className="font-bold text-foreground font-num">৳{p.sell_price}</p>
+                        <span className={`text-[10px] px-1 py-0.2 rounded font-medium ${
+                          isOut ? "bg-rose-500/15 text-rose-600" : "bg-emerald-500/15 text-emerald-600"
+                        }`}>
+                          {p.stock} pcs
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ExchangeProductDialog({
   open,
   onOpenChange,
@@ -1212,21 +1400,15 @@ function ExchangeProductDialog({
   }, [preselectedProduct, products, open]);
 
   // When returned product changes, auto-set return price
-  const handleReturnedProductChange = (prodId: string) => {
-    setReturnedProductId(prodId);
-    const prod = products.find(p => p.id === prodId);
-    if (prod) {
-      setReturnedPrice(String(prod.sell_price || "0"));
-    }
+  const handleReturnedProductChange = (prod: Product) => {
+    setReturnedProductId(prod.id);
+    setReturnedPrice(String(prod.sell_price || "0"));
   };
 
   // When new product changes, auto-set sell price
-  const handleNewProductChange = (prodId: string) => {
-    setNewProductId(prodId);
-    const prod = products.find(p => p.id === prodId);
-    if (prod) {
-      setNewSellPrice(String(prod.sell_price || "0"));
-    }
+  const handleNewProductChange = (prod: Product) => {
+    setNewProductId(prod.id);
+    setNewSellPrice(String(prod.sell_price || "0"));
   };
 
   const returnedTotal = (Number(returnedQty) || 0) * (Number(returnedPrice) || 0);
@@ -1238,7 +1420,7 @@ function ExchangeProductDialog({
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!returnedProductId || !newProductId) {
-      toast.error("Please select both returned and replacement products");
+      toast.error(lang === "bn" ? "উভয় পণ্য নির্বাচন করুন" : "Please select both returned and replacement products");
       return;
     }
     setBusy(true);
@@ -1285,31 +1467,23 @@ function ExchangeProductDialog({
           {/* Section 1: Customer Returned Product */}
           <div className="p-3.5 rounded-2xl bg-muted/40 border border-border/80 space-y-3">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-destructive flex items-center gap-1.5">
+              <span className="text-xs font-bold text-rose-600 dark:text-rose-400 flex items-center gap-1.5">
                 <span>🔄 1. কাস্টমার যা ফেরত দিচ্ছে (Returned Item)</span>
               </span>
             </div>
 
-            <div className="space-y-1">
-              <Label className="text-xs font-medium">Select Returned Product *</Label>
-              <select
-                required
-                value={returnedProductId}
-                onChange={e => handleReturnedProductChange(e.target.value)}
-                className="w-full h-9 rounded-xl border border-input bg-input px-3 text-xs"
-              >
-                <option value="">-- Choose Product --</option>
-                {products.map(p => (
-                  <option key={p.id} value={p.id}>
-                    {p.name} (Stock: {p.stock}, Sell: ৳{p.sell_price})
-                  </option>
-                ))}
-              </select>
-            </div>
+            <SearchableProductSelect
+              label={lang === "bn" ? "ফেরত দেওয়া পণ্য খুঁজুন বা নির্বাচন করুন *" : "Search & Select Returned Product *"}
+              selectedProductId={returnedProductId}
+              onSelectProduct={handleReturnedProductChange}
+              products={products}
+              placeholder={lang === "bn" ? "পণ্য খুঁজুন (নাম, বারকোড, SKU দিয়ে)..." : "Search returned product (name, barcode, SKU)..."}
+              accentColor="rose"
+            />
 
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
-                <Label className="text-xs font-medium">Return Qty *</Label>
+                <Label className="text-xs font-medium">{lang === "bn" ? "ফেরত সংখ্যা *" : "Return Qty *"}</Label>
                 <Input
                   type="number"
                   min="1"
@@ -1320,7 +1494,7 @@ function ExchangeProductDialog({
                 />
               </div>
               <div className="space-y-1">
-                <Label className="text-xs font-medium">Return Unit Price (৳) *</Label>
+                <Label className="text-xs font-medium">{lang === "bn" ? "ফেরত একক মূল্য (৳) *" : "Return Unit Price (৳) *"}</Label>
                 <Input
                   type="number"
                   min="0"
@@ -1342,26 +1516,19 @@ function ExchangeProductDialog({
               </span>
             </div>
 
-            <div className="space-y-1">
-              <Label className="text-xs font-medium">Select New Replacement Item *</Label>
-              <select
-                required
-                value={newProductId}
-                onChange={e => handleNewProductChange(e.target.value)}
-                className="w-full h-9 rounded-xl border border-input bg-input px-3 text-xs"
-              >
-                <option value="">-- Choose Replacement Product --</option>
-                {products.map(p => (
-                  <option key={p.id} value={p.id} disabled={p.stock <= 0}>
-                    {p.name} (Available: {p.stock}, Sell: ৳{p.sell_price}) {p.stock <= 0 ? "[Out of stock]" : ""}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <SearchableProductSelect
+              label={lang === "bn" ? "নতুন পণ্য খুঁজুন বা নির্বাচন করুন *" : "Search & Select Replacement Item *"}
+              selectedProductId={newProductId}
+              onSelectProduct={handleNewProductChange}
+              products={products}
+              placeholder={lang === "bn" ? "নতুন পণ্য খুঁজুন (নাম, বারকোড, SKU দিয়ে)..." : "Search replacement item (name, barcode, SKU)..."}
+              accentColor="emerald"
+              disableOutOfStock={true}
+            />
 
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
-                <Label className="text-xs font-medium">New Qty *</Label>
+                <Label className="text-xs font-medium">{lang === "bn" ? "নতুন সংখ্যা *" : "New Qty *"}</Label>
                 <Input
                   type="number"
                   min="1"
@@ -1373,7 +1540,7 @@ function ExchangeProductDialog({
                 />
               </div>
               <div className="space-y-1">
-                <Label className="text-xs font-medium">New Unit Price (৳) *</Label>
+                <Label className="text-xs font-medium">{lang === "bn" ? "নতুন একক মূল্য (৳) *" : "New Unit Price (৳) *"}</Label>
                 <Input
                   type="number"
                   min="0"
@@ -1390,33 +1557,33 @@ function ExchangeProductDialog({
           {/* Section 3: Live Financial Difference & Cashbox Impact */}
           <div className="p-3.5 rounded-2xl bg-card border border-border space-y-2 text-xs">
             <div className="flex justify-between text-muted-foreground">
-              <span>ফেরত মূল্যের মোট (Returned Value):</span>
+              <span>{lang === "bn" ? "ফেরত মূল্যের মোট:" : "Returned Value:"}</span>
               <span className="font-bold text-foreground font-num">৳{returnedTotal}</span>
             </div>
             <div className="flex justify-between text-muted-foreground">
-              <span>নতুন পণ্যের মোট (New Value):</span>
+              <span>{lang === "bn" ? "নতুন পণ্যের মোট:" : "New Value:"}</span>
               <span className="font-bold text-foreground font-num">৳{newTotal}</span>
             </div>
             <div className="pt-2 border-t border-border flex items-center justify-between font-bold">
-              <span>ক্যাশ সমন্বয় / Cash Adjustment:</span>
+              <span>{lang === "bn" ? "ক্যাশ সমন্বয় (Cash Difference):" : "Cash Difference:"}</span>
               {cashDifference > 0 ? (
                 <span className="text-emerald-600 dark:text-emerald-400 font-num">
-                  + ৳{cashDifference} (কাস্টমার ক্যাশ দেবে / Inflow)
+                  + ৳{cashDifference} {lang === "bn" ? "(কাস্টমার ক্যাশ দেবে / Inflow)" : "(Customer pays cash)"}
                 </span>
               ) : cashDifference < 0 ? (
                 <span className="text-destructive font-num">
-                  - ৳{Math.abs(cashDifference)} (কাস্টমারকে ফেরত দিন / Outflow)
+                  - ৳{Math.abs(cashDifference)} {lang === "bn" ? "(কাস্টমারকে ফেরত দিন / Outflow)" : "(Refund to customer)"}
                 </span>
               ) : (
-                <span className="text-muted-foreground font-num">৳0 (সমান মূল্য / Even)</span>
+                <span className="text-muted-foreground font-num">৳0 {lang === "bn" ? "(সমান মূল্য / Even)" : "(Even)"}</span>
               )}
             </div>
           </div>
 
           <div className="space-y-1">
-            <Label className="text-xs font-medium">Customer Name or Note (Optional)</Label>
+            <Label className="text-xs font-medium">{lang === "bn" ? "কাস্টমারের নাম বা নোট (ঐচ্ছিক)" : "Customer Name or Note (Optional)"}</Label>
             <Input
-              placeholder="e.g. Size exchange for Md Rahim / Phone"
+              placeholder={lang === "bn" ? "যেমন: সাইজ এক্সচেঞ্জ / রহিম ভাই" : "e.g. Size exchange for Rahim"}
               value={note}
               onChange={e => setNote(e.target.value)}
               className="h-9 rounded-xl text-xs"
@@ -1432,7 +1599,7 @@ function ExchangeProductDialog({
               disabled={busy || !returnedProductId || !newProductId}
               className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-sm"
             >
-              {busy ? "Processing..." : "Confirm Product Exchange"}
+              {busy ? "Processing..." : (lang === "bn" ? "এক্সচেঞ্জ নিশ্চিত করুন" : "Confirm Product Exchange")}
             </Button>
           </DialogFooter>
         </form>

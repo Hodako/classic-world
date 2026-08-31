@@ -5,6 +5,8 @@ import { useState, useMemo } from "react";
 import {
   Users,
   UserPlus,
+  KeyRound,
+  Lock,
   DollarSign,
   Receipt,
   ShoppingBag,
@@ -92,6 +94,8 @@ export default function EmployeesPage() {
   const [empDesignation, setEmpDesignation] = useState("Sales Staff");
   const [empSalary, setEmpSalary] = useState("");
   const [empStatus, setEmpStatus] = useState<"active" | "inactive">("active");
+  const [empPassword, setEmpPassword] = useState("1234");
+  const [empPin, setEmpPin] = useState("1234");
   const [empPermissions, setEmpPermissions] = useState({
     can_sales: true,
     can_customers: true,
@@ -193,6 +197,9 @@ export default function EmployeesPage() {
             designation: empDesignation,
             base_salary: Number(empSalary) || 0,
             status: empStatus,
+            password: empPassword.trim() || "1234",
+            plain_password: empPassword.trim() || "1234",
+            pin: empPin.trim() || empPassword.trim() || "1234",
             permissions: empPermissions,
           },
         });
@@ -206,6 +213,9 @@ export default function EmployeesPage() {
             designation: empDesignation,
             base_salary: Number(empSalary) || 0,
             status: empStatus,
+            password: empPassword.trim() || "1234",
+            plain_password: empPassword.trim() || "1234",
+            pin: empPin.trim() || empPassword.trim() || "1234",
             permissions: empPermissions,
           },
         });
@@ -219,6 +229,8 @@ export default function EmployeesPage() {
       setEmpPhone("");
       setEmpEmail("");
       setEmpSalary("");
+      setEmpPassword("1234");
+      setEmpPin("1234");
     } catch (err: any) {
       toast.error(err.message || "Failed to save employee");
     } finally {
@@ -375,6 +387,8 @@ export default function EmployeesPage() {
                 setEmpPhone("");
                 setEmpEmail("");
                 setEmpSalary("");
+      setEmpPassword("1234");
+      setEmpPin("1234");
                 setAddEmpOpen(true);
               }}
               size="sm"
@@ -568,15 +582,26 @@ export default function EmployeesPage() {
                         variant="outline"
                         size="sm"
                         className="h-8 text-xs rounded-xl gap-1"
-                        onClick={() => {
+                                                onClick={() => {
                           setEditingEmp(e);
-                          setEmpName(e.name);
+                          setEmpName(e.name || "");
                           setEmpPhone(e.phone || "");
                           setEmpEmail(e.email || "");
-                          setEmpDesignation(e.designation || "Staff");
+                          setEmpDesignation(e.designation || "Sales Staff");
                           setEmpSalary(e.base_salary ? String(e.base_salary) : "");
-                          setEmpStatus(e.status);
-                          if (e.permissions) setEmpPermissions({ ...empPermissions, ...e.permissions });
+                          setEmpStatus(e.status || "active");
+                          setEmpPassword((e as any).plain_password || (e as any).password || (e as any).pin || "1234");
+                          setEmpPin((e as any).pin || (e as any).plain_password || (e as any).password || "1234");
+                          setEmpPermissions({
+                            can_sales: Boolean(e.permissions?.can_sales ?? true),
+                            can_customers: Boolean(e.permissions?.can_customers ?? true),
+                            can_returns: Boolean(e.permissions?.can_returns ?? true),
+                            can_products: Boolean(e.permissions?.can_products ?? false),
+                            can_expenses: Boolean(e.permissions?.can_expenses ?? false),
+                            can_reports: Boolean(e.permissions?.can_reports ?? false),
+                            can_delete: Boolean(e.permissions?.can_delete ?? false),
+                            can_discount: Boolean(e.permissions?.can_discount ?? false),
+                          });
                           setAddEmpOpen(true);
                         }}
                       >
@@ -884,6 +909,40 @@ export default function EmployeesPage() {
                     <SelectItem value="inactive">{lang === "bn" ? "🔴 নিষ্ক্রিয় (Inactive)" : "🔴 Inactive"}</SelectItem>
                   </SelectContent>
                 </Select>
+              </div>
+            </div>
+
+            
+            {/* Login Credentials: Password & PIN */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-indigo-500/5 p-3 rounded-xl border border-indigo-500/20">
+              <div className="space-y-1">
+                <Label className="text-xs font-bold text-indigo-700 dark:text-indigo-300 flex items-center gap-1">
+                  <KeyRound className="size-3.5" />
+                  {lang === "bn" ? "লগইন পাসওয়ার্ড *" : "Login Password *"}
+                </Label>
+                <Input
+                  type="text"
+                  required
+                  placeholder="e.g. 1234"
+                  value={empPassword}
+                  onChange={e => setEmpPassword(e.target.value)}
+                  className="h-9 text-xs font-mono bg-background"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-xs font-bold text-indigo-700 dark:text-indigo-300 flex items-center gap-1">
+                  <Lock className="size-3.5" />
+                  {lang === "bn" ? "৪-ডিজিট সিক্রেট পিন" : "4-Digit Quick PIN"}
+                </Label>
+                <Input
+                  type="text"
+                  maxLength={6}
+                  placeholder="1234"
+                  value={empPin}
+                  onChange={e => setEmpPin(e.target.value)}
+                  className="h-9 text-xs font-mono bg-background"
+                />
               </div>
             </div>
 

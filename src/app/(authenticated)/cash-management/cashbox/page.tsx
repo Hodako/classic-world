@@ -255,27 +255,35 @@ export default function CashboxDetailsPage() {
             </div>
             <div>
               <div className="text-xs text-muted-foreground font-medium">
-                {lang === "bn" ? "ক্যাশবক্স চলমান ব্যালেন্স (Cash in Hand)" : "Current Cashbox Balance"}
+                {range === "today"
+                  ? (lang === "bn" ? "আজকের ক্যাশ আদায় ও স্থিতি (Today's Cash)" : "Today's Cash Collection")
+                  : range === "all"
+                  ? (lang === "bn" ? "সর্বমোট ক্যাশবক্স ব্যালেন্স (All-Time)" : "All-Time Cashbox Balance")
+                  : `${rangeLabel} ${lang === "bn" ? "ক্যাশ প্রবাহ (Net Flow)" : "Net Cash Flow"}`}
               </div>
               {balance === null ? (
                 <div className="h-9 w-32 rounded-md bg-indigo-200/60 dark:bg-indigo-800/40 animate-pulse mt-1" />
               ) : (
                 <div className="text-2xl sm:text-3xl font-bold text-indigo-600 font-serif">
-                  ৳{fmtMoney(Math.max(balance, 0))}
+                  {range === "today"
+                    ? fmtMoney(periodIn)
+                    : range === "all"
+                    ? fmtMoney(balance)
+                    : (periodNet >= 0 ? "+" : "−") + fmtMoney(Math.abs(periodNet))}
                 </div>
               )}
             </div>
           </div>
-          <div className="flex flex-col sm:items-end bg-background/60 backdrop-blur-xs px-3 py-1.5 rounded-xl border border-border/60">
-            <span className="text-[10px] text-muted-foreground font-medium">
-              {range === "today"
-                ? (lang === "bn" ? "আজকের ক্যাশ আদায়" : "Today's Collection")
-                : `${rangeLabel} ${lang === "bn" ? "ক্যাশ প্রবাহ" : "Period Net"}`}
-            </span>
-            <span className={`text-sm sm:text-base font-bold font-serif ${range === "today" || periodNet >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
-              {range === "today" ? `+৳${fmtMoney(periodIn)}` : `${periodNet >= 0 ? "+" : "−"}৳${fmtMoney(Math.abs(periodNet))}`}
-            </span>
-          </div>
+          {balance !== null && (
+            <div className="flex flex-col sm:items-end bg-background/60 backdrop-blur-xs px-3 py-1.5 rounded-xl border border-border/60">
+              <span className="text-[10px] text-muted-foreground font-medium">
+                {lang === "bn" ? "সর্বমোট ক্যাশবক্স ব্যালেন্স" : "All-Time Total Balance"}
+              </span>
+              <span className="text-sm sm:text-base font-bold text-foreground font-serif">
+                ৳{fmtMoney(balance)}
+              </span>
+            </div>
+          )}
         </div>
       </Card>
 

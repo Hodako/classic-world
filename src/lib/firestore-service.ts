@@ -2198,24 +2198,7 @@ export async function fsRepairCashbox() {
       }
     }
 
-    // 5. Settlements
-    for (const s of settlementsSnap.docs) {
-      const sData = s.data();
-      const amt = Number(sData.amount) || 0;
-      if (amt > 0 && !seenRefIds.has(s.id)) {
-        seenRefIds.add(s.id);
-        await addDoc(collection(db, "cashbox_logs"), {
-          kind: "withdraw",
-          amount: amt,
-          note: sData.note ? `Supplier Payment: ${sData.note}` : "Supplier Payment",
-          ref_id: s.id,
-          created_at: sData.created_at || Timestamp.now(),
-        });
-        repaired++;
-      }
-    }
-
-    // 6. Payments
+    // 5. Customer Payments
     for (const pay of paymentsSnap.docs) {
       const pData = pay.data();
       const amt = Number(pData.amount) || 0;

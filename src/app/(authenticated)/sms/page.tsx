@@ -1638,12 +1638,13 @@ export default function SmsPage() {
                   {/* Mobile Card View */}
                   <div className="block md:hidden space-y-3">
                     {filteredLogs.map((log: any) => {
-                      const dateStr = new Date(log.created_at).toLocaleString("en-US", {
+                      const d = log.created_at ? new Date(log.created_at) : null;
+                      const dateStr = d && !isNaN(d.getTime()) ? d.toLocaleString("en-US", {
                         month: "short",
                         day: "numeric",
                         hour: "2-digit",
                         minute: "2-digit",
-                      });
+                      }) : "N/A";
                       const isSuccess = log.status === "Success";
                       const trxnId = log.trxn_ids && log.trxn_ids[0];
 
@@ -1730,12 +1731,13 @@ export default function SmsPage() {
                       </thead>
                       <tbody className="divide-y divide-border/60 font-sans">
                         {filteredLogs.map((log: any) => {
-                          const dateStr = new Date(log.created_at).toLocaleString("en-US", {
+                          const d = log.created_at ? new Date(log.created_at) : null;
+                          const dateStr = d && !isNaN(d.getTime()) ? d.toLocaleString("en-US", {
                             month: "short",
                             day: "numeric",
                             hour: "2-digit",
                             minute: "2-digit",
-                          });
+                          }) : "N/A";
                           const isSuccess = log.status === "Success";
                           const trxnId = log.trxn_ids && log.trxn_ids[0];
 
@@ -1950,7 +1952,7 @@ export default function SmsPage() {
               {lang === "bn" ? "এসএমএস প্রেরণের বিবরণ" : "SMS Dispatch Details"}
             </DialogTitle>
             <DialogDescription className="text-xs">
-              {inspectLog && new Date(inspectLog.created_at).toLocaleString()}
+              {inspectLog && (inspectLog.created_at ? fmtDateTime(inspectLog.created_at) : "N/A")}
             </DialogDescription>
           </DialogHeader>
           {inspectLog && (

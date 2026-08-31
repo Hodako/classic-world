@@ -24,6 +24,10 @@ const nextConfig = {
     ignoreBuildErrors: true,
   },
   outputFileTracingRoot: __dirname,
+  webpack: (config) => {
+    config.cache = false;
+    return config;
+  },
 };
 
 export default nextConfig;

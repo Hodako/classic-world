@@ -396,17 +396,8 @@ async function executeAction(name: string, args: any): Promise<any> {
 }
 
 // Action factories
-const makeReadAction = (name: string) => (args?: any) => executeAction(name, args);
-const makeWriteAction = (name: string) => (args?: any) => {
-  const handler = fsActionMap[name];
-  if (handler) {
-    return handler(args).catch((err: any) => {
-      console.warn(`Firestore write ${name} caught error, queuing/retrying:`, err);
-      return runWriteAction(name, args);
-    });
-  }
-  return runWriteAction(name, args);
-};
+const makeReadAction = (name: string) => (args?: any) => callRemoteRpc(name, args);
+const makeWriteAction = (name: string) => (args?: any) => runWriteAction(name, args);
 
 // ─── Export READS ────────────────────────────────────────────────────────────
 export const getMeFn = makeReadAction("getMeFn");
@@ -617,12 +608,20 @@ export const removeEmployeeFn = makeWriteAction("removeEmployeeFn");
 export const connectGoogleSheetsOAuthFn = makeWriteAction("connectGoogleSheetsOAuthFn");
 export const disconnectGoogleSheetsFn = makeWriteAction("disconnectGoogleSheetsFn");
 
-// ── 7-Day Recycle Bin System ─────────────────────────────────────────────
-export const getRecycleBinFn = makeReadAction("getRecycleBinFn");
-export const restoreFromRecycleBinFn = makeWriteAction("restoreFromRecycleBinFn");
-export const permanentDeleteRecycleBinFn = makeWriteAction("permanentDeleteRecycleBinFn");
 
-// ── License Key Engine ───────────────────────────────────────────────────
+export const updateBusinessSettingsFn = makeWriteAction("updateBusinessSettingsFn");
+export const getBusinessSettingsFn = makeReadAction("getBusinessSettingsFn");
+
+// ── Recycle Bin & Command History ──────────────────────────────────────────
+export const getRecycleBinFn = makeReadAction("getRecycleBinFn");
+export const restoreRecycleItemFn = makeWriteAction("restoreRecycleItemFn");
+export const permanentDeleteRecycleItemFn = makeWriteAction("permanentDeleteRecycleItemFn");
+export const emptyRecycleBinFn = makeWriteAction("emptyRecycleBinFn");
+export const getCommandHistoryFn = makeReadAction("getCommandHistoryFn");
+export const undoCommandFn = makeWriteAction("undoCommandFn");
+
+
+// ── Additional Classic-World Specific Actions ──────────────────────────────
 export const generateOwnerLicenseKeyFn = makeWriteAction("generateOwnerLicenseKeyFn");
 export const generateEmployeeLicenseKeyFn = makeWriteAction("generateEmployeeLicenseKeyFn");
 export const listLicensesFn = makeReadAction("listLicensesFn");
@@ -630,9 +629,8 @@ export const revokeLicenseFn = makeWriteAction("revokeLicenseFn");
 export const validateAndActivateLicenseFn = makeWriteAction("validateAndActivateLicenseFn");
 export const activateLicenseFn = makeWriteAction("activateLicenseFn");
 
-
-export const updateBusinessSettingsFn = makeWriteAction("updateBusinessSettingsFn");
-export const getBusinessSettingsFn = makeReadAction("getBusinessSettingsFn");
+export const restoreFromRecycleBinFn = makeWriteAction("restoreFromRecycleBinFn");
+export const permanentDeleteRecycleBinFn = makeWriteAction("permanentDeleteRecycleBinFn");
 
 export const getEmployeesFn = makeReadAction("getEmployeesFn");
 export const addEmployeeFn = makeWriteAction("addEmployeeFn");

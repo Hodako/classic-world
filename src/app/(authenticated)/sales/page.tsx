@@ -91,9 +91,12 @@ function groupSales(sales: Sale[]): GroupedSale[] {
     } else {
       const qty = Number(s.qty) || 1;
       const unitSell = Number(s.sell_price) || 0;
-      const disc = Number((s as any).discount) || 0;
-      const effectiveSell = Math.max(unitSell * qty - disc, 0);
-      const profit = s.profit !== undefined ? Number(s.profit) : (unitSell - Number(s.buy_price || 0)) * qty - disc;
+      const paid = Number(s.paid_amount);
+      const due = Number(s.due_amount);
+      const effectiveSell = (!isNaN(paid) && !isNaN(due) && (paid + due > 0)) ? (paid + due) : (unitSell * qty);
+      const profit = (s.profit !== undefined && s.profit !== null && !isNaN(Number(s.profit)))
+        ? Number(s.profit)
+        : (unitSell - Number(s.buy_price || 0)) * qty;
 
       grouped.push({
         id: s.id,
@@ -125,16 +128,16 @@ function groupSales(sales: Sale[]): GroupedSale[] {
     const totalSellPrice = items.reduce((sum, x) => {
       const q = Number(x.qty) || 1;
       const sp = Number(x.sell_price) || 0;
-      const d = Number((x as any).discount) || 0;
-      return sum + Math.max(sp * q - d, 0);
+      const p = Number(x.paid_amount);
+      const d = Number(x.due_amount);
+      return sum + ((!isNaN(p) && !isNaN(d) && (p + d > 0)) ? (p + d) : (sp * q));
     }, 0);
     const totalProfit = items.reduce((sum, x) => {
-      if (x.profit !== undefined) return sum + Number(x.profit);
+      if (x.profit !== undefined && x.profit !== null && !isNaN(Number(x.profit))) return sum + Number(x.profit);
       const q = Number(x.qty) || 1;
       const sp = Number(x.sell_price) || 0;
       const bp = Number(x.buy_price) || 0;
-      const d = Number((x as any).discount) || 0;
-      return sum + ((sp - bp) * q - d);
+      return sum + ((sp - bp) * q);
     }, 0);
     const totalDue = items.reduce((sum, x) => sum + (Number(x.due_amount) || 0), 0);
     const totalPaid = items.reduce((sum, x) => sum + (Number(x.paid_amount) || 0), 0);

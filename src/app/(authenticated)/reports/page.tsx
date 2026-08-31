@@ -153,7 +153,7 @@ export default function ReportsGeneratorPage() {
 
   // Totals calculations
   const totalSalesVal = useMemo(() => filteredSales.reduce((a, s) => {
-    const lineTotal = (Number(s.sell_price) || 0) * (Number(s.qty) || 1) - (Number(s.discount) || 0);
+    const lineTotal = (Number(s.sell_price) || 0) * (Number(s.qty) || 1);
     return a + Math.max(lineTotal, 0);
   }, 0), [filteredSales]);
   const totalSalesProfitVal = useMemo(() => filteredSales.reduce((a, s) => a + Number(s.profit || 0), 0), [filteredSales]);
@@ -167,13 +167,13 @@ export default function ReportsGeneratorPage() {
   const onlineSales = useMemo(() => filteredSales.filter(s => s.type === "online"), [filteredSales]);
 
   const cashSalesTotal = useMemo(() => cashSales.reduce((a, s) => {
-    const lineTotal = (Number(s.sell_price) || 0) * (Number(s.qty) || 1) - (Number(s.discount) || 0);
+    const lineTotal = (Number(s.sell_price) || 0) * (Number(s.qty) || 1);
     return a + Math.max(lineTotal, 0);
   }, 0), [cashSales]);
-  const bkashSalesTotal = useMemo(() => bkashSales.reduce((a, s) => a + ((Number(s.sell_price) || 0) * (Number(s.qty) || 1) - (Number(s.discount) || 0)), 0), [bkashSales]);
-  const creditSalesTotal = useMemo(() => creditSales.reduce((a, s) => a + ((Number(s.sell_price) || 0) * (Number(s.qty) || 1) - (Number(s.discount) || 0)), 0), [creditSales]);
+  const bkashSalesTotal = useMemo(() => bkashSales.reduce((a, s) => a + ((Number(s.sell_price) || 0) * (Number(s.qty) || 1)), 0), [bkashSales]);
+  const creditSalesTotal = useMemo(() => creditSales.reduce((a, s) => a + ((Number(s.sell_price) || 0) * (Number(s.qty) || 1)), 0), [creditSales]);
   const creditSalesDueTotal = useMemo(() => creditSales.reduce((a, s) => a + Number(s.due_amount || 0), 0), [creditSales]);
-  const onlineSalesTotal = useMemo(() => onlineSales.reduce((a, s) => a + ((Number(s.sell_price) || 0) * (Number(s.qty) || 1) - (Number(s.discount) || 0)), 0), [onlineSales]);
+  const onlineSalesTotal = useMemo(() => onlineSales.reduce((a, s) => a + ((Number(s.sell_price) || 0) * (Number(s.qty) || 1)), 0), [onlineSales]);
 
   // Purchases totals
   const totalPurchaseVal = useMemo(() => filteredPurchases.reduce((a, p) => a + Number(p.total || 0), 0), [filteredPurchases]);

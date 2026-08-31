@@ -1952,7 +1952,7 @@ export default function SmsPage() {
               {lang === "bn" ? "এসএমএস প্রেরণের বিবরণ" : "SMS Dispatch Details"}
             </DialogTitle>
             <DialogDescription className="text-xs">
-              {inspectLog && (inspectLog.created_at ? fmtDateTime(inspectLog.created_at) : "N/A")}
+              {inspectLog && (inspectLog.created_at ? new Date(inspectLog.created_at).toLocaleString() : "N/A")}
             </DialogDescription>
           </DialogHeader>
           {inspectLog && (

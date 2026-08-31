@@ -2051,42 +2051,182 @@ export async function fsDeleteSomitiByName(data: { name: string }) {
 // ── Cashbox Database Reconcile & Repair ──────────────────────────────────────
 export async function fsRepairCashbox() {
   try {
-    const [salesSnap, expensesSnap] = await Promise.all([
+    const [salesSnap, expensesSnap, purchasesSnap, returnsSnap, somitiSnap, settlementsSnap, paymentsSnap, cashboxSnap] = await Promise.all([
       getDocs(collection(db, "sales")),
       getDocs(collection(db, "expenses")),
+      getDocs(collection(db, "purchases")),
+      getDocs(collection(db, "returns")),
+      getDocs(collection(db, "somiti_entries")),
+      getDocs(collection(db, "party_payable_settlements")),
+      getDocs(collection(db, "payments")),
+      getDocs(collection(db, "cashbox_logs")),
     ]);
 
-    const cashboxSnap = await getDocs(collection(db, "cashbox_logs"));
-    const existingRefIds = new Set(cashboxSnap.docs.map(d => d.data().ref_id).filter(Boolean));
+    const existingDocs = cashboxSnap.docs.map(docToData);
+    const manualEntries = existingDocs.filter((e: any) => !e.ref_id);
+    const seenRefIds = new Set<string>(manualEntries.map((e: any) => e.ref_id).filter(Boolean));
+
+    // Delete existing auto entries from cashbox_logs
+    for (const d of cashboxSnap.docs) {
+      if (d.data().ref_id) {
+        await deleteDoc(d.ref);
+      }
+    }
 
     let repaired = 0;
 
+    // 1. Sales
     for (const s of salesSnap.docs) {
       const sale = s.data();
-      if (sale.returned || sale.courier_status === "cancelled" || sale.payment_status === "pending") continue;
-      const paid = Number(sale.paid_amount) || 0;
-      if (paid > 0 && !existingRefIds.has(s.id)) {
+      if (sale.returned || sale.courier_status === "cancelled") continue;
+      const sId = s.id;
+      const qty = Number(sale.qty) || 1;
+      const sellPrice = Number(sale.sell_price) || 0;
+      const paidAmount = Number(sale.paid_amount);
+      const lineTotal = sellPrice * qty;
+
+      let cashAmount = 0;
+      if (sale.type === "cash" || sale.type === "pos" || sale.type === "nagad" || !sale.type) {
+        cashAmount = !isNaN(paidAmount) && paidAmount > 0 ? paidAmount : lineTotal;
+      } else if (sale.type === "credit") {
+        cashAmount = !isNaN(paidAmount) ? paidAmount : 0;
+      } else if (sale.type === "bkash" || sale.type === "bank") {
+        if (sale.payment_status === "accepted" || sale.payment_accepted) {
+          cashAmount = !isNaN(paidAmount) && paidAmount > 0 ? paidAmount : lineTotal;
+        }
+      } else if (sale.type === "online") {
+        if (sale.courier_status === "collected") {
+          cashAmount = !isNaN(paidAmount) && paidAmount > 0 ? paidAmount : lineTotal;
+        }
+      }
+
+      if (cashAmount > 0 && !seenRefIds.has(sId)) {
+        seenRefIds.add(sId);
         await addDoc(collection(db, "cashbox_logs"), {
           kind: "sale",
-          amount: paid,
-          note: `Sale: ${sale.product_name || "Item"}`,
-          ref_id: s.id,
+          amount: cashAmount,
+          note: `Sale: ${sale.product_name || "Product"} (×${qty})`,
+          ref_id: sId,
           created_at: sale.created_at || Timestamp.now(),
         });
         repaired++;
       }
     }
 
+    // 2. Returns
+    for (const r of returnsSnap.docs) {
+      const ret = r.data();
+      if (ret.deduct_type === "payable" || ret.deduct_type === "receivable") continue;
+      const returnQty = Number(ret.qty) || 1;
+      const returnPrice = Number(ret.return_price) || Number(ret.amount) || 0;
+      const refundAmt = ret.amount ? Number(ret.amount) : returnQty * returnPrice;
+
+      if (refundAmt > 0 && !seenRefIds.has(r.id)) {
+        seenRefIds.add(r.id);
+        await addDoc(collection(db, "cashbox_logs"), {
+          kind: "withdraw",
+          amount: refundAmt,
+          note: `Return refund: ${ret.product_name || "Item"}`,
+          ref_id: r.id,
+          created_at: ret.created_at || Timestamp.now(),
+        });
+        repaired++;
+      }
+    }
+
+    // 3. Purchases & Expenses
+    const purchaseExpenses = new Set<string>();
+    for (const p of purchasesSnap.docs) {
+      const pur = p.data();
+      const pTotal = Number(pur.total) || 0;
+      if (pTotal > 0 && !seenRefIds.has(p.id)) {
+        seenRefIds.add(p.id);
+        await addDoc(collection(db, "cashbox_logs"), {
+          kind: "expense",
+          amount: pTotal,
+          note: `Product Purchase: ${pur.product_name || "Stock"}`,
+          ref_id: p.id,
+          created_at: pur.created_at || Timestamp.now(),
+        });
+        repaired++;
+      }
+
+      for (const e of expensesSnap.docs) {
+        const exp = e.data();
+        if ((exp.note && exp.note.includes(`Purchase ID: ${p.id}`)) ||
+            (exp.title === `Product Purchase: ${pur.product_name}` && Number(exp.amount) === pTotal)) {
+          purchaseExpenses.add(e.id);
+        }
+      }
+    }
+
+    // Expenses
     for (const e of expensesSnap.docs) {
+      if (purchaseExpenses.has(e.id)) continue;
       const exp = e.data();
+      if (exp.category === "purchase" || exp.title?.startsWith("Product Purchase:")) continue;
       const amt = Number(exp.amount) || 0;
-      if (amt > 0 && !existingRefIds.has(e.id)) {
+      if (amt > 0 && !seenRefIds.has(e.id)) {
+        seenRefIds.add(e.id);
         await addDoc(collection(db, "cashbox_logs"), {
           kind: "expense",
           amount: amt,
-          note: `Expense: ${exp.title || "Expense"}`,
+          note: exp.title || exp.category || "Expense",
           ref_id: e.id,
           created_at: exp.created_at || Timestamp.now(),
+        });
+        repaired++;
+      }
+    }
+
+    // 4. Somiti Entries
+    for (const som of somitiSnap.docs) {
+      const sData = som.data();
+      if (sData.is_initial || sData.skipCashbox) continue;
+      const amt = Number(sData.amount) || 0;
+      if (amt > 0 && !seenRefIds.has(som.id)) {
+        seenRefIds.add(som.id);
+        const cbKind = sData.kind === "withdraw" ? "deposit" : "withdraw";
+        await addDoc(collection(db, "cashbox_logs"), {
+          kind: cbKind,
+          amount: amt,
+          note: sData.note ? `Samity: ${sData.note}` : "Samity transaction",
+          ref_id: som.id,
+          created_at: sData.created_at || Timestamp.now(),
+        });
+        repaired++;
+      }
+    }
+
+    // 5. Settlements
+    for (const s of settlementsSnap.docs) {
+      const sData = s.data();
+      const amt = Number(sData.amount) || 0;
+      if (amt > 0 && !seenRefIds.has(s.id)) {
+        seenRefIds.add(s.id);
+        await addDoc(collection(db, "cashbox_logs"), {
+          kind: "withdraw",
+          amount: amt,
+          note: sData.note ? `Supplier Payment: ${sData.note}` : "Supplier Payment",
+          ref_id: s.id,
+          created_at: sData.created_at || Timestamp.now(),
+        });
+        repaired++;
+      }
+    }
+
+    // 6. Payments
+    for (const pay of paymentsSnap.docs) {
+      const pData = pay.data();
+      const amt = Number(pData.amount) || 0;
+      if (amt > 0 && !seenRefIds.has(pay.id)) {
+        seenRefIds.add(pay.id);
+        await addDoc(collection(db, "cashbox_logs"), {
+          kind: "deposit",
+          amount: amt,
+          note: pData.note ? `Customer Due Payment: ${pData.note}` : "Customer Due Payment",
+          ref_id: pay.id,
+          created_at: pData.created_at || Timestamp.now(),
         });
         repaired++;
       }

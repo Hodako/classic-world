@@ -248,18 +248,34 @@ export default function CashboxDetailsPage() {
       </div>
 
       <Card className="p-4 glass-card border-indigo-500/20 bg-gradient-to-br from-indigo-500/10 to-indigo-500/5">
-        <div className="flex items-center gap-3">
-          <div className="size-11 rounded-xl bg-indigo-500 grid place-items-center shrink-0">
-            <Banknote className="size-5 text-white" />
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="size-11 rounded-xl bg-indigo-500 grid place-items-center shrink-0 shadow-xs">
+              <Banknote className="size-5 text-white" />
+            </div>
+            <div>
+              <div className="text-xs text-muted-foreground font-medium">
+                {range === "today"
+                  ? (lang === "bn" ? "আজকের ক্যাশ আদায় ও জমা (Money In)" : "Today's Cash Collection")
+                  : range === "all"
+                  ? (lang === "bn" ? "সর্বমোট ক্যাশবক্স ব্যালেন্স" : "All-Time Cashbox Balance")
+                  : `${rangeLabel} ${lang === "bn" ? "ক্যাশ প্রবাহ (Net)" : "Net Cash"}`}
+              </div>
+              {balance === null ? (
+                <div className="h-9 w-32 rounded-md bg-indigo-200/60 dark:bg-indigo-800/40 animate-pulse mt-1" />
+              ) : (
+                <div className="text-2xl sm:text-3xl font-bold text-indigo-600 font-serif">
+                  {range === "today" ? fmtMoney(periodIn) : range === "all" ? fmtMoney(balance) : (periodNet >= 0 ? "+" : "−") + fmtMoney(Math.abs(periodNet))}
+                </div>
+              )}
+            </div>
           </div>
-          <div>
-            <div className="text-xs text-muted-foreground">{t("balance")}</div>
-            {balance === null ? (
-              <div className="h-9 w-32 rounded-md bg-indigo-200/60 dark:bg-indigo-800/40 animate-pulse mt-1" />
-            ) : (
-              <div className="text-2xl sm:text-3xl font-bold text-indigo-600">{fmtMoney(balance)}</div>
-            )}
-          </div>
+          {balance !== null && (
+            <div className="flex flex-col sm:items-end bg-background/60 backdrop-blur-xs px-3 py-1.5 rounded-xl border border-border/60">
+              <span className="text-[10px] text-muted-foreground">{lang === "bn" ? "সর্বমোট ক্যাশ ব্যালেন্স" : "All-Time Balance"}</span>
+              <span className="text-sm sm:text-base font-bold text-foreground font-serif">৳{fmtMoney(balance)}</span>
+            </div>
+          )}
         </div>
       </Card>
 

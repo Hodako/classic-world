@@ -1639,17 +1639,24 @@ export default function Dashboard() {
           />
         ) : <div key="due" className="hidden" />;
       case "cashbox":
+        const displayedCashbox = (!dateFilter.from && !dateFilter.to) ? (cashToday + bkashBankCollected) : cashboxTotal;
+        const cashboxSubText = isHidden && !isRevealed
+          ? (lang === "bn" ? "ট্যাপ করে দেখুন" : "Tap to reveal")
+          : (!dateFilter.from && !dateFilter.to)
+          ? (lang === "bn" ? `আজকের ক্যাশ (মোট: ৳${fmtMoney(cashboxTotal)})` : `Today Cash (Total: ৳${fmtMoney(cashboxTotal)})`)
+          : dateRangeLabel;
+
         return canAccess(perms, "cashbox") ? (
           <KPICard
             key="cashbox"
-            label={t("cashbox")}
-            value={fmtMoney(cashboxTotal)}
-            sub={isHidden && !isRevealed ? (lang === "bn" ? "ট্যাপ করে দেখুন" : "Tap to reveal") : dateRangeLabel}
+            label={lang === "bn" ? "ক্যাশ বক্স / নগদ" : t("cashbox")}
+            value={fmtMoney(displayedCashbox)}
+            sub={cashboxSubText}
             imageUrl="/icons/cashbox_icon.png"
             icon={Banknote}
             color="bg-emerald-600"
-            trendUp={cashboxTotal >= 0}
-            trend={t("balance")}
+            trendUp={displayedCashbox >= 0}
+            trend={lang === "bn" ? "আদায়" : t("balance")}
             isDesktop={true}
             hotkey={hotkey}
             className="h-full cursor-pointer"

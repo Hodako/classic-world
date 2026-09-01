@@ -89,19 +89,46 @@ export default function CashManagementPage() {
   const { from, to } = useMemo(() => {
     const end = new Date(); end.setHours(23, 59, 59, 999);
     const start = new Date();
-    if (range === "today") start.setHours(0, 0, 0, 0);
-    if (range === "week") { start.setDate(start.getDate() - 6); start.setHours(0, 0, 0, 0); }
-    if (range === "month") { start.setDate(1); start.setHours(0, 0, 0, 0); }
+    if (range === "today") {
+      start.setHours(0, 0, 0, 0);
+      return { from: start, to: end };
+    }
+    if (range === "yesterday") {
+      const yStart = new Date(); yStart.setDate(yStart.getDate() - 1); yStart.setHours(0, 0, 0, 0);
+      const yEnd = new Date(); yEnd.setDate(yEnd.getDate() - 1); yEnd.setHours(23, 59, 59, 999);
+      return { from: yStart, to: yEnd };
+    }
+    if (range === "week") {
+      start.setDate(start.getDate() - 6);
+      start.setHours(0, 0, 0, 0);
+      return { from: start, to: end };
+    }
+    if (range === "month") {
+      start.setDate(1);
+      start.setHours(0, 0, 0, 0);
+      return { from: start, to: end };
+    }
     if (range === "custom") {
       return {
         from: startDate ? new Date(startDate) : new Date(0),
-        to: endDate ? new Date(endDate + "T23:59:59") : end,
+        to: endDate ? new Date(endDate + "T23:59:59.999") : end,
       };
     }
     return { from: start, to: end };
   }, [range, startDate, endDate]);
 
-  const inRange = (d: string) => { const dt = new Date(d); return dt >= from && dt <= to; };
+  const parseDate = (d: any): Date => {
+    if (!d) return new Date(0);
+    if (typeof d?.toDate === "function") return d.toDate();
+    if (d?.seconds !== undefined) return new Date(d.seconds * 1000);
+    const dt = new Date(d);
+    return !isNaN(dt.getTime()) ? dt : new Date(0);
+  };
+
+  const inRange = (d: any) => {
+    const dt = parseDate(d);
+    return dt >= from && dt <= to;
+  };
 
   const filtSales = useMemo(() => (sales.data ?? []).filter(s => !s.returned && inRange(s.created_at)), [sales.data, from, to]);
   const filtExp = useMemo(() => (expenses.data ?? []).filter(e => inRange(e.created_at)), [expenses.data, from, to]);

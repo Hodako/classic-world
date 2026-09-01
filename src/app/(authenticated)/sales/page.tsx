@@ -368,12 +368,7 @@ export default function SalesPage() {
 
       const custName = s.parties?.name || (isBn ? "সাধারণ কাস্টমার" : "Walk-in Customer");
       const cats = Array.from(new Set(s.items.map(it => {
-          const totalSalesAmount = (filteredSales || []).reduce((sum: number, s: any) => sum + (Number(s.sell_price || 0) * Number(s.qty || 1) - Number((s as any).discount || 0)), 0);
-  const totalProfitAmount = (filteredSales || []).reduce((sum: number, s: any) => sum + (Number(s.profit || 0)), 0);
-  const totalPaidAmount = (filteredSales || []).reduce((sum: number, s: any) => sum + (Number(s.paid_amount || 0)), 0);
-  const totalDueAmount = (filteredSales || []).reduce((sum: number, s: any) => sum + (Number(s.due_amount || 0)), 0);
-
-  return (it.product_id ? productCategoryMap.get(it.product_id) : null) ||
+        return (it.product_id ? productCategoryMap.get(it.product_id) : null) ||
                productCategoryMap.get(it.product_name.toLowerCase().trim()) ||
                (isBn ? "সাধারণ" : "General");
       }))).join("; ");
@@ -437,20 +432,20 @@ export default function SalesPage() {
           <td style="padding:6px 8px;border:1px solid #e2e8f0;">${fmtDateTime(s.created_at)}</td>
           <td style="padding:6px 8px;border:1px solid #e2e8f0;"><b>${s.product_name}</b></td>
           <td style="padding:6px 8px;border:1px solid #e2e8f0;text-align:center;">${s.qty}</td>
-          <td style="padding:6px 8px;border:1px solid #e2e8f0;text-align:right;">৳${fmtMoney(s.sell_price)}</td>
-          <td style="padding:6px 8px;border:1px solid #e2e8f0;text-align:right;font-weight:bold;color:#16a34a;">৳${fmtMoney(s.profit)}</td>
+          <td style="padding:6px 8px;border:1px solid #e2e8f0;text-align:right;">${fmtMoney(s.sell_price)}</td>
+          <td style="padding:6px 8px;border:1px solid #e2e8f0;text-align:right;font-weight:bold;color:#16a34a;">${fmtMoney(s.profit)}</td>
           <td style="padding:6px 8px;border:1px solid #e2e8f0;text-align:center;">${methodStr}</td>
           <td style="padding:6px 8px;border:1px solid #e2e8f0;">${custName}</td>
-          <td style="padding:6px 8px;border:1px solid #e2e8f0;text-align:right;color:#0284c7;">৳${fmtMoney(s.paid_amount)}</td>
-          <td style="padding:6px 8px;border:1px solid #e2e8f0;text-align:right;color:${s.due_amount > 0 ? '#d97706' : '#64748b'};">৳${fmtMoney(s.due_amount)}</td>
+          <td style="padding:6px 8px;border:1px solid #e2e8f0;text-align:right;color:#0284c7;">${fmtMoney(s.paid_amount)}</td>
+          <td style="padding:6px 8px;border:1px solid #e2e8f0;text-align:right;color:${s.due_amount > 0 ? '#d97706' : '#64748b'};">${fmtMoney(s.due_amount)}</td>
         </tr>
       `;
     }).join("");
 
-    const totalSalesAmount = filteredSales.reduce((sum, s) => sum + (Number(s.sell_price || 0) * Number(s.qty || 1) - Number((s as any).discount || 0)), 0);
-    const totalProfitAmount = filteredSales.reduce((sum, s) => sum + (Number(s.profit || 0)), 0);
-    const totalPaidAmount = filteredSales.reduce((sum, s) => sum + (Number(s.paid_amount || 0)), 0);
-    const totalDueAmount = filteredSales.reduce((sum, s) => sum + (Number(s.due_amount || 0)), 0);
+    const totalSalesAmount = filteredSales.reduce((sum, s) => sum + (s.returned ? 0 : Number(s.sell_price || 0)), 0);
+    const totalProfitAmount = filteredSales.reduce((sum, s) => sum + (s.returned ? 0 : Number(s.profit || 0)), 0);
+    const totalPaidAmount = filteredSales.reduce((sum, s) => sum + (s.returned ? 0 : Number(s.paid_amount || 0)), 0);
+    const totalDueAmount = filteredSales.reduce((sum, s) => sum + (s.returned ? 0 : Number(s.due_amount || 0)), 0);
 
     printWin.document.write(`
       <!DOCTYPE html>
@@ -477,7 +472,7 @@ export default function SalesPage() {
         <body>
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;border-bottom:2px solid #0f172a;padding-bottom:8px;">
             <div>
-              <h1>${biz?.shop_name || "Classic World"}</h1>
+              <h1>${biz?.shop_name || biz?.name || "DreamFashion"}</h1>
               <div class="meta">${title} • ${dateRangeStr} • ${isBn ? "প্রিন্টের সময়" : "Generated"}: ${new Date().toLocaleString("en-GB")}</div>
             </div>
             <button class="no-print" onclick="window.print()" style="padding:6px 14px;background:#0284c7;color:#fff;border:none;border-radius:6px;font-weight:bold;cursor:pointer;">
@@ -488,19 +483,19 @@ export default function SalesPage() {
           <div class="summary">
             <div class="card">
               <div class="card-title">${isBn ? "মোট বিক্রয়" : "Total Sales"}</div>
-              <div class="card-val">৳${fmtMoney(totalSalesAmount)}</div>
+              <div class="card-val">${fmtMoney(totalSalesAmount)}</div>
             </div>
             <div class="card">
               <div class="card-title">${isBn ? "মোট লাভ" : "Total Profit"}</div>
-              <div class="card-val" style="color:#16a34a;">৳${fmtMoney(totalProfitAmount)}</div>
+              <div class="card-val" style="color:#16a34a;">${fmtMoney(totalProfitAmount)}</div>
             </div>
             <div class="card">
               <div class="card-title">${isBn ? "মোট আদায়" : "Total Collected"}</div>
-              <div class="card-val" style="color:#0284c7;">৳${fmtMoney(totalPaidAmount)}</div>
+              <div class="card-val" style="color:#0284c7;">${fmtMoney(totalPaidAmount)}</div>
             </div>
             <div class="card">
               <div class="card-title">${isBn ? "মোট বাকি" : "Total Due"}</div>
-              <div class="card-val" style="color:#d97706;">৳${fmtMoney(totalDueAmount)}</div>
+              <div class="card-val" style="color:#d97706;">${fmtMoney(totalDueAmount)}</div>
             </div>
           </div>
 
@@ -523,6 +518,11 @@ export default function SalesPage() {
               ${rowsHtml}
             </tbody>
           </table>
+          <script>
+            window.onload = function() {
+              window.print();
+            };
+          </script>
         </body>
       </html>
     `);
@@ -987,7 +987,7 @@ function SalesTab({
 
     try {
       printPwaInvoice({
-        businessName: user?.business_name || biz?.name || "Classic World",
+        businessName: user?.business_name || biz?.name || "Dream Fashion",
         userEmail: biz?.emails || user?.business_emails || user?.email || "",
         shopAddress: biz?.address || user?.business_address || "",
         shopPhoneNumbers: biz?.phone_numbers || user?.business_phone_numbers || "",
@@ -1245,17 +1245,17 @@ function SalesTab({
                               {lang === "bn" ? "লাভ" : "Profit"}: {fmtMoney(itemProfit)}
                             </span>
                             <span className="font-mono font-bold text-foreground">{fmtMoney(Number(item.sell_price) * (Number(item.qty) || 1))}</span>
-                          <Button
-                            onClick={(e) => { e.stopPropagation(); onEdit(item); }}
-                            variant="ghost"
-                            size="icon"
-                            className="size-5 text-muted-foreground hover:text-foreground"
-                          >
-                            <Pencil className="size-3" />
-                          </Button>
+                            <Button
+                              onClick={(e) => { e.stopPropagation(); onEdit(item); }}
+                              variant="ghost"
+                              size="icon"
+                              className="size-5 text-muted-foreground hover:text-foreground cursor-pointer"
+                            >
+                              <Pencil className="size-3" />
+                            </Button>
+                          </div>
                         </div>
-                      </div>
-                    );
+                      );
                     })}
                   </div>
                 )}

@@ -2087,19 +2087,26 @@ export async function fsRepairCashbox() {
       const paidAmount = Number(sale.paid_amount);
       const lineTotal = sellPrice * qty;
 
+      const type = String(sale.type || "cash").toLowerCase().trim();
       let cashAmount = 0;
-      if (sale.type === "cash" || sale.type === "pos" || sale.type === "nagad" || !sale.type) {
-        cashAmount = !isNaN(paidAmount) && paidAmount > 0 ? paidAmount : lineTotal;
-      } else if (sale.type === "credit") {
-        cashAmount = !isNaN(paidAmount) ? paidAmount : 0;
-      } else if (sale.type === "bkash" || sale.type === "bank") {
-        if (sale.payment_status === "accepted" || sale.payment_accepted) {
+      if (type === "cash" || type === "pos" || type === "nagad" || type === "card" || type === "hand_cash" || !sale.type) {
+        cashAmount = !isNaN(paidAmount) && paidAmount >= 0 ? paidAmount : lineTotal;
+      } else if (type === "credit") {
+        cashAmount = !isNaN(paidAmount) && paidAmount > 0 ? paidAmount : 0;
+      } else if (type === "bkash" || type === "bank" || type === "rocket") {
+        if (sale.payment_status === "rejected" || sale.payment_status === "cancelled") {
+          cashAmount = 0;
+        } else {
           cashAmount = !isNaN(paidAmount) && paidAmount > 0 ? paidAmount : lineTotal;
         }
-      } else if (sale.type === "online") {
-        if (sale.courier_status === "collected") {
+      } else if (type === "online") {
+        const cStatus = String(sale.courier_status || "").toLowerCase().trim();
+        const isCollected = cStatus === "collected" || cStatus === "delivered" || cStatus === "completed" || sale.payment_status === "accepted" || sale.payment_status === "paid";
+        if (isCollected || (!isNaN(paidAmount) && paidAmount > 0)) {
           cashAmount = !isNaN(paidAmount) && paidAmount > 0 ? paidAmount : lineTotal;
         }
+      } else {
+        if (!isNaN(paidAmount) && paidAmount > 0) cashAmount = paidAmount;
       }
 
       if (cashAmount > 0 && !seenRefIds.has(sId)) {

@@ -20,6 +20,7 @@ import {
   Calendar,
   CreditCard,
   Shirt,
+  Printer,
   X,
   Check,
   RefreshCw,
@@ -140,6 +141,7 @@ export default function EmployeesPage() {
   const [shopItems, setShopItems] = useState<{ product_id: string; product_name: string; qty: number; unit_price: number; total: number }[]>([]);
   const [shopProdSearch, setShopProdSearch] = useState("");
   const [shopNote, setShopNote] = useState("");
+  const [printSlipItem, setPrintSlipItem] = useState<EmployeeShopping | null>(null);
 
   const [busy, setBusy] = useState(false);
 
@@ -818,6 +820,15 @@ export default function EmployeesPage() {
                       <Button
                         variant="ghost"
                         size="icon"
+                        className="size-7 text-muted-foreground hover:text-primary cursor-pointer"
+                        title={lang === "bn" ? "রসিদ প্রিন্ট করুন" : "Print Voucher Slip"}
+                        onClick={() => setPrintSlipItem(s)}
+                      >
+                        <Printer className="size-3.5" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
                         className="size-7 text-muted-foreground hover:text-rose-600"
                         onClick={async () => {
                           if (confirm(lang === "bn" ? "এই কেনাকাটা রেকর্ড মুছে ফেলতে চান?" : "Delete this shopping record?")) {
@@ -1348,6 +1359,129 @@ export default function EmployeesPage() {
               </Button>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* ──────────────── Modal 5: Thermal Print Voucher Slip ──────────────── */}
+      <Dialog open={!!printSlipItem} onOpenChange={open => !open && setPrintSlipItem(null)}>
+        <DialogContent className="max-w-sm p-4">
+          <DialogHeader>
+            <DialogTitle className="font-charukola flex items-center justify-between">
+              <span className="flex items-center gap-1.5 text-sm">
+                <Printer className="size-4 text-pink-600" />
+                {lang === "bn" ? "কর্মচারী কেনাকাটা রসিদ" : "Employee Shopping Slip"}
+              </span>
+            </DialogTitle>
+          </DialogHeader>
+
+          {printSlipItem && (
+            <div className="space-y-3 font-balooda">
+              <div id="thermal-employee-receipt" className="p-4 bg-background rounded-xl border border-dashed text-xs space-y-2.5 font-mono shadow-inner">
+                <div className="text-center border-b pb-2 space-y-0.5">
+                  <h3 className="font-bold text-sm uppercase tracking-wide">{user?.business_name || "Dream Fashion"}</h3>
+                  <p className="text-[10px] text-muted-foreground">{lang === "bn" ? "পোশাক ও পণ্য ড্র ভাউচার" : "Staff Clothing Voucher"}</p>
+                </div>
+
+                <div className="space-y-1 text-[11px]">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">{lang === "bn" ? "কর্মচারী:" : "Employee:"}</span>
+                    <span className="font-bold">{printSlipItem.employee_name}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">{lang === "bn" ? "তারিখ:" : "Date:"}</span>
+                    <span>{printSlipItem.date || printSlipItem.created_at?.slice(0, 10)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">{lang === "bn" ? "পরিশোধ পদ্ধতি:" : "Payment:"}</span>
+                    <span className="font-bold text-pink-600">
+                      {printSlipItem.payment_status === "paid_cash"
+                        ? (lang === "bn" ? "নগদ পরিশোধ" : "Paid Cash")
+                        : printSlipItem.payment_status === "gift"
+                        ? (lang === "bn" ? "উপহার / ফ্রি" : "Gift")
+                        : (lang === "bn" ? "বেতন থেকে কর্তন" : "Salary Deduction")}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="border-t border-b py-2 space-y-1.5">
+                  <div className="flex justify-between font-bold text-[10px] text-muted-foreground uppercase">
+                    <span>{lang === "bn" ? "আইটেম" : "Item"}</span>
+                    <span>{lang === "bn" ? "মূল্য" : "Total"}</span>
+                  </div>
+                  {printSlipItem.items?.map((it, idx) => (
+                    <div key={idx} className="flex justify-between text-[11px]">
+                      <span className="truncate max-w-[170px]">{it.product_name} x{it.qty}</span>
+                      <span className="font-bold">৳{it.total}</span>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="flex justify-between font-bold text-sm pt-1">
+                  <span>{lang === "bn" ? "সর্বমোট:" : "Grand Total:"}</span>
+                  <span className="text-pink-600 font-charukola">{fmtMoney(printSlipItem.total_amount)}</span>
+                </div>
+
+                {printSlipItem.note && (
+                  <p className="text-[10px] text-muted-foreground pt-1 border-t italic">
+                    {lang === "bn" ? "নোট:" : "Note:"} {printSlipItem.note}
+                  </p>
+                )}
+
+                <div className="text-center pt-3 text-[9px] text-muted-foreground">
+                  {lang === "bn" ? "*** ধন্যবাদ ***" : "*** Thank You ***"}
+                </div>
+              </div>
+
+              <DialogFooter className="gap-2 pt-1">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPrintSlipItem(null)}
+                  className="rounded-xl text-xs flex-1"
+                >
+                  {t("cancel")}
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() => {
+                    const printContent = document.getElementById("thermal-employee-receipt");
+                    if (!printContent) return;
+                    const win = window.open("", "", "width=400,height=600");
+                    if (win) {
+                      win.document.write(`
+                        <html>
+                          <head>
+                            <title>Employee Voucher - ${printSlipItem.employee_name}</title>
+                            <style>
+                              body { font-family: monospace; padding: 20px; font-size: 12px; }
+                              .text-center { text-align: center; }
+                              .flex { display: flex; justify-content: space-between; }
+                              .border-b { border-bottom: 1px dashed #000; padding-bottom: 8px; margin-bottom: 8px; }
+                              .border-t { border-top: 1px dashed #000; padding-top: 8px; margin-top: 8px; }
+                              .bold { font-weight: bold; }
+                            </style>
+                          </head>
+                          <body>
+                            ${printContent.innerHTML}
+                          </body>
+                        </html>
+                      `);
+                      win.document.close();
+                      win.focus();
+                      win.print();
+                      win.close();
+                    }
+                  }}
+                  className="rounded-xl text-xs font-bold bg-primary text-primary-foreground flex-1 cursor-pointer"
+                >
+                  <Printer className="size-3.5 mr-1" />
+                  <span>{lang === "bn" ? "প্রিন্ট করুন" : "Print Voucher"}</span>
+                </Button>
+              </DialogFooter>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>

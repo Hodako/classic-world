@@ -42,6 +42,9 @@ import { PermissionGuard } from "@/components/permission-guard";
 import { FloatingAiChat } from "@/components/floating-ai-chat";
 import { PWAInstallButton } from "@/components/pwa-install-button";
 import { ModeSwitcherDialog } from "@/components/mode-switcher-dialog";
+import { useCashboxQuery } from "@/hooks/use-cashbox-query";
+import { fmtMoney } from "@/lib/format";
+import { cashboxBalance } from "@/lib/cashbox-utils";
 
 import { CustomHomeIcon } from "@/components/custom-home-icon";
 import { AdminPopupDialog } from "@/components/admin-popup-dialog";
@@ -123,6 +126,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname() || "";
   const isMobile = useIsMobile();
   const qc = useQueryClient();
+  const { data: cashEntries = [] } = useCashboxQuery();
+  const currentCashBalance = useMemo(() => cashboxBalance(cashEntries), [cashEntries]);
 
   useEffect(() => {
     if (!user?.activated) return;
@@ -593,6 +598,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </div>
 
             <div className="flex items-center gap-1 shrink-0">
+              {/* Live Cashbox Drawer Badge */}
+              <Link
+                href="/cash-management/cashbox"
+                className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-full bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/25 text-emerald-700 dark:text-emerald-400 text-[11px] font-bold transition-all cursor-pointer shrink-0 shadow-2xs"
+                title={lang === "bn" ? "ক্যাশবক্স ব্যালেন্স (ক্লিক করে দেখুন)" : "Cashbox Balance (Click to view)"}
+              >
+                <Banknote className="size-3 text-emerald-600 dark:text-emerald-400" />
+                <span className="font-serif font-bold">{fmtMoney(currentCashBalance)}</span>
+              </Link>
+
               {/* Minimalist Top Owner/Employee Switcher Pill */}
               {activeEmpSession ? (
                 <button

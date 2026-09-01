@@ -2051,7 +2051,7 @@ export async function fsDeleteSomitiByName(data: { name: string }) {
 // ── Cashbox Database Reconcile & Repair ──────────────────────────────────────
 export async function fsRepairCashbox() {
   try {
-    const [salesSnap, expensesSnap, purchasesSnap, returnsSnap, somitiSnap, settlementsSnap, paymentsSnap, withdrawalsSnap, ownerWalletSnap, cashboxSnap] = await Promise.all([
+    const [salesSnap, expensesSnap, purchasesSnap, returnsSnap, somitiSnap, settlementsSnap, paymentsSnap, withdrawalsSnap, ownerWalletSnap, employeeShoppingsSnap, cashboxSnap] = await Promise.all([
       getDocs(collection(db, "sales")),
       getDocs(collection(db, "expenses")),
       getDocs(collection(db, "purchases")),
@@ -2061,6 +2061,7 @@ export async function fsRepairCashbox() {
       getDocs(collection(db, "payments")),
       getDocs(collection(db, "withdrawals")),
       getDocs(collection(db, "owner_wallet")),
+      getDocs(collection(db, "employee_shoppings")),
       getDocs(collection(db, "cashbox_logs")),
     ]);
 
@@ -2256,6 +2257,23 @@ export async function fsRepairCashbox() {
           note: pData.note ? `Customer Due Payment: ${pData.note}` : "Customer Due Payment",
           ref_id: pay.id,
           created_at: pData.created_at || Timestamp.now(),
+        });
+        repaired++;
+      }
+    }
+
+    // 8. Employee Shoppings (Cash collections)
+    for (const es of employeeShoppingsSnap.docs) {
+      const esData = es.data();
+      const amt = Number(esData.total_amount) || 0;
+      if (esData.payment_status === "paid_cash" && amt > 0 && !seenRefIds.has(es.id)) {
+        seenRefIds.add(es.id);
+        await addDoc(collection(db, "cashbox_logs"), {
+          kind: "deposit",
+          amount: amt,
+          note: `[কর্মচারী কেনাকাটা নগদ আদায়] ${esData.employee_name || "Employee"}: ${esData.note || "পোশাক বিক্রয়"}`,
+          ref_id: es.id,
+          created_at: esData.created_at || Timestamp.now(),
         });
         repaired++;
       }

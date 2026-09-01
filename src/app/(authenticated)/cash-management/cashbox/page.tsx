@@ -28,7 +28,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useAuth } from "@/hooks/use-auth";
 
-type Range = "today" | "week" | "month" | "all" | "custom";
+type Range = "today" | "yesterday" | "week" | "month" | "all" | "custom";
 type FilterKind = "all" | CashboxEntry["kind"];
 
 function RangePill({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
@@ -37,7 +37,7 @@ function RangePill({ label, active, onClick }: { label: string; active: boolean;
       type="button"
       onClick={onClick}
       className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors whitespace-nowrap ${
-        active ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:bg-accent"
+        active ? "bg-primary text-primary-foreground shadow-xs" : "bg-muted text-muted-foreground hover:bg-accent"
       }`}
     >
       {label}
@@ -53,14 +53,13 @@ function kindLabel(t: (k: any) => string, kind: CashboxEntry["kind"]) {
 }
 
 export default function CashboxDetailsPage() {
-  const { t } = useT();
+  const { t, lang } = useT();
   const { user } = useAuth();
   const isAdmin = user?.role === "owner" || user?.role === "superadmin";
   const cashbox = useCashboxQuery();
   const qc = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [repairing, setRepairing] = useState(false);
-  const lang = useT().lang; // Get active language for alerts
 
   const [dialogKind, setDialogKind] = useState<"deposit" | "withdraw">("deposit");
   const [editEntry, setEditEntry] = useState<CashboxEntry | null>(null);
@@ -75,15 +74,15 @@ export default function CashboxDetailsPage() {
   const pageSize = 12;
 
   async function runRepair() {
-    if (!confirm(lang === "bn" ? "আপনি কি ক্যাশবক্স ডাটা সংস্কার করতে চান?" : "Are you sure you want to reconcile/repair all historical cashbox data?")) {
+    if (!confirm(lang === "bn" ? "আপনি কি ক্যাশবক্স ডাটা সংস্কার ও সমন্বয় করতে চান?" : "Are you sure you want to reconcile and synchronize all historical cashbox data?")) {
       return;
     }
     setRepairing(true);
     try {
       const res = await repairCashboxDbFn();
       if (res && res.success) {
-        toast.success(lang === "bn" ? `${res.repairedCount}টি ক্যাশবক্স এন্ট্রি সংস্কার করা হয়েছে!` : `${res.repairedCount} cashbox entries successfully repaired/synchronized!`);
-        qc.invalidateQueries({ queryKey: ["cashbox"] });
+        toast.success(lang === "bn" ? `${res.repairedCount}টি ক্যাশবক্স এন্ট্রি সফলভাবে সংস্কার করা হয়েছে!` : `${res.repairedCount} cashbox entries successfully reconciled!`);
+        await refreshQueries(qc, ["cashbox", "sales", "expenses"]);
       }
     } catch (err: any) {
       toast.error(err.message || "Failed to repair");
@@ -96,21 +95,34 @@ export default function CashboxDetailsPage() {
   const balance = cashbox.isLoading ? null : cashboxBalance(entries);
 
   const { from, to } = useMemo(() => {
-    const end = new Date(); end.setHours(23, 59, 59, 999);
+    const now = new Date();
+    const end = new Date(now); end.setHours(23, 59, 59, 999);
+
     if (range === "today") {
-      const start = new Date(); start.setHours(0, 0, 0, 0);
+      const start = new Date(now); start.setHours(0, 0, 0, 0);
       return { from: start, to: end };
     }
-    const start = new Date(0);
-    if (range === "week") { start.setTime(Date.now()); start.setDate(start.getDate() - 6); start.setHours(0, 0, 0, 0); }
-    else if (range === "month") { start.setTime(Date.now()); start.setDate(1); start.setHours(0, 0, 0, 0); }
-    else if (range === "custom") {
+    if (range === "yesterday") {
+      const yStart = new Date(now); yStart.setDate(yStart.getDate() - 1); yStart.setHours(0, 0, 0, 0);
+      const yEnd = new Date(now); yEnd.setDate(yEnd.getDate() - 1); yEnd.setHours(23, 59, 59, 999);
+      return { from: yStart, to: yEnd };
+    }
+    if (range === "week") {
+      const start = new Date(now); start.setDate(start.getDate() - 6); start.setHours(0, 0, 0, 0);
+      return { from: start, to: end };
+    }
+    if (range === "month") {
+      const start = new Date(now); start.setDate(1); start.setHours(0, 0, 0, 0);
+      return { from: start, to: end };
+    }
+    if (range === "custom") {
       return {
         from: startDate ? new Date(startDate) : new Date(0),
-        to: endDate ? new Date(endDate + "T23:59:59") : end,
+        to: endDate ? new Date(endDate + "T23:59:59.999") : end,
       };
     }
-    return { from: start, to: end };
+    // "all"
+    return { from: new Date(0), to: end };
   }, [range, startDate, endDate]);
 
   const parseEntryDate = (dateInput: any): Date => {
@@ -207,10 +219,11 @@ export default function CashboxDetailsPage() {
   }
 
   const rangeLabel =
-    range === "today" ? t("today") :
-    range === "week" ? t("this_week") :
-    range === "month" ? t("this_month") :
-    range === "all" ? t("all") : t("custom");
+    range === "today" ? (lang === "bn" ? "আজ" : "Today") :
+    range === "yesterday" ? (lang === "bn" ? "গতকাল" : "Yesterday") :
+    range === "week" ? (lang === "bn" ? "এই সপ্তাহ" : "This Week") :
+    range === "month" ? (lang === "bn" ? "এই মাস" : "This Month") :
+    range === "all" ? (lang === "bn" ? "সর্বমোট" : "All Time") : (lang === "bn" ? "কাস্টম" : "Custom");
 
   return (
     <div className="space-y-4 pb-4">
@@ -256,16 +269,18 @@ export default function CashboxDetailsPage() {
             <div>
               <div className="text-xs text-muted-foreground font-medium">
                 {range === "today"
-                  ? (lang === "bn" ? "আজকের ক্যাশ আদায় ও স্থিতি (Today's Cash)" : "Today's Cash Collection")
+                  ? (lang === "bn" ? "আজকের ক্যাশ আদায় ও স্থিতি" : "Today's Cash Collection")
+                  : range === "yesterday"
+                  ? (lang === "bn" ? "গতকালের ক্যাশ আদায় ও স্থিতি" : "Yesterday's Cash Collection")
                   : range === "all"
-                  ? (lang === "bn" ? "সর্বমোট ক্যাশবক্স ব্যালেন্স (All-Time)" : "All-Time Cashbox Balance")
-                  : `${rangeLabel} ${lang === "bn" ? "ক্যাশ প্রবাহ (Net Flow)" : "Net Cash Flow"}`}
+                  ? (lang === "bn" ? "সর্বমোট ক্যাশবক্স ব্যালেন্স" : "All-Time Cashbox Balance")
+                  : `${rangeLabel} ${lang === "bn" ? "ক্যাশ প্রবাহ" : "Net Cash Flow"}`}
               </div>
               {balance === null ? (
                 <div className="h-9 w-32 rounded-md bg-indigo-200/60 dark:bg-indigo-800/40 animate-pulse mt-1" />
               ) : (
                 <div className="text-2xl sm:text-3xl font-bold text-indigo-600 font-serif">
-                  {range === "today"
+                  {range === "today" || range === "yesterday"
                     ? fmtMoney(periodIn)
                     : range === "all"
                     ? fmtMoney(balance)
@@ -280,7 +295,7 @@ export default function CashboxDetailsPage() {
                 {lang === "bn" ? "সর্বমোট ক্যাশবক্স ব্যালেন্স" : "All-Time Total Balance"}
               </span>
               <span className="text-sm sm:text-base font-bold text-foreground font-serif">
-                ৳{fmtMoney(balance)}
+                {fmtMoney(balance)}
               </span>
             </div>
           )}
@@ -311,11 +326,12 @@ export default function CashboxDetailsPage() {
 
       <div className="space-y-2">
         <div className="flex flex-wrap gap-2">
-          <RangePill label={t("today")} active={range === "today"} onClick={() => setRange("today")} />
-          <RangePill label={t("this_week")} active={range === "week"} onClick={() => setRange("week")} />
-          <RangePill label={t("this_month")} active={range === "month"} onClick={() => setRange("month")} />
-          <RangePill label={t("all")} active={range === "all"} onClick={() => setRange("all")} />
-          <RangePill label={t("custom")} active={range === "custom"} onClick={() => setRange("custom")} />
+          <RangePill label={lang === "bn" ? "আজ" : "Today"} active={range === "today"} onClick={() => setRange("today")} />
+          <RangePill label={lang === "bn" ? "গতকাল" : "Yesterday"} active={range === "yesterday"} onClick={() => setRange("yesterday")} />
+          <RangePill label={lang === "bn" ? "এই সপ্তাহ" : "This Week"} active={range === "week"} onClick={() => setRange("week")} />
+          <RangePill label={lang === "bn" ? "এই মাস" : "This Month"} active={range === "month"} onClick={() => setRange("month")} />
+          <RangePill label={lang === "bn" ? "সব" : "All"} active={range === "all"} onClick={() => setRange("all")} />
+          <RangePill label={lang === "bn" ? "কাস্টম" : "Custom"} active={range === "custom"} onClick={() => setRange("custom")} />
         </div>
         {range === "custom" && (
           <div className="flex items-center gap-2">
@@ -365,7 +381,6 @@ export default function CashboxDetailsPage() {
         )}
         {paged.map(e => {
           const delta = cashboxDelta(e.kind, e.amount);
-          const canEdit = isAdmin;
           return (
             <div key={e.id} className="p-3 flex items-center justify-between gap-2 group">
               <div className="min-w-0 flex-1">
@@ -431,7 +446,7 @@ export default function CashboxDetailsPage() {
           <DialogHeader>
             <DialogTitle className="text-destructive">{t("delete")} — {t("cashbox")}</DialogTitle>
           </DialogHeader>
-          <p className="text-sm text-muted-foreground">
+          <div className="text-sm text-muted-foreground">
             {deleteTarget && (
               <>
                 <span className="font-semibold text-foreground">{fmtMoney(deleteTarget.amount)}</span>
@@ -441,7 +456,7 @@ export default function CashboxDetailsPage() {
                 <span className="text-xs">{fmtDateTime(deleteTarget.created_at)}</span>
               </>
             )}
-          </p>
+          </div>
           <p className="text-sm text-muted-foreground mt-1">
             This will permanently remove this entry and adjust the cashbox balance. This action cannot be undone.
           </p>
@@ -467,7 +482,7 @@ function CashboxDialog({
   initialKind: CashboxEntry["kind"];
   editEntry: CashboxEntry | null;
 }) {
-  const { t } = useT();
+  const { t, lang } = useT();
   const qc = useQueryClient();
   const isEdit = !!editEntry;
   const [kind, setKind] = useState<CashboxEntry["kind"]>(initialKind);
@@ -482,7 +497,6 @@ function CashboxDialog({
         setKind(editEntry.kind);
         setAmount(String(editEntry.amount));
         setNote(editEntry.note ?? "");
-        // Format to datetime-local value
         const d = new Date(editEntry.created_at);
         const pad = (n: number) => String(n).padStart(2, "0");
         setDateVal(`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`);
@@ -498,7 +512,7 @@ function CashboxDialog({
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     const amt = Number(amount) || 0;
-    if (amt <= 0) return;
+    if (amt <= 0) return toast.error(t("amount") + " > 0");
     setBusy(true);
     try {
       if (isEdit && editEntry) {
@@ -507,14 +521,21 @@ function CashboxDialog({
             id: editEntry.id,
             kind,
             amount: amt,
-            note: note || null,
-            created_at: dateVal ? new Date(dateVal).toISOString() : editEntry.created_at,
+            note: note.trim() || null,
+            created_at: dateVal ? new Date(dateVal).toISOString() : undefined,
           },
         });
-        toast.success(t("save"));
+        toast.success(lang === "bn" ? "এন্ট্রি আপডেট সফল হয়েছে" : "Entry updated");
       } else {
-        await createCashboxFn({ data: { kind, amount: amt, note: note || null } });
-        toast.success(t("save"));
+        await createCashboxFn({
+          data: {
+            kind,
+            amount: amt,
+            note: note.trim() || null,
+            created_at: dateVal ? new Date(dateVal).toISOString() : undefined,
+          },
+        });
+        toast.success(lang === "bn" ? "ক্যাশ এন্ট্রি সফল হয়েছে" : "Entry recorded");
       }
       onOpenChange(false);
       await refreshQueries(qc, ["cashbox"]);
@@ -527,52 +548,63 @@ function CashboxDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-sm">
         <DialogHeader>
           <DialogTitle>
-            {isEdit ? `${t("edit")} — ${t("cashbox")}` : t("cashbox")}
+            {isEdit
+              ? (lang === "bn" ? "ক্যাশ এন্ট্রি এডিট" : "Edit Cashbox Entry")
+              : (kind === "deposit" ? t("add_money") : t("take_money"))}
           </DialogTitle>
         </DialogHeader>
         <form onSubmit={submit} className="space-y-3">
-          {isEdit ? (
-            <Tabs value={kind} onValueChange={v => setKind(v as any)}>
-              <TabsList className="grid grid-cols-4 w-full">
-                <TabsTrigger value="sale" className="text-[10px] sm:text-xs">{t("sale" as any) || "Sale"}</TabsTrigger>
-                <TabsTrigger value="deposit" className="text-[10px] sm:text-xs">{t("deposit") || "Deposit"}</TabsTrigger>
-                <TabsTrigger value="withdraw" className="text-[10px] sm:text-xs">{t("withdraw") || "Withdraw"}</TabsTrigger>
-                <TabsTrigger value="expense" className="text-[10px] sm:text-xs">{t("expense") || "Expense"}</TabsTrigger>
-              </TabsList>
-            </Tabs>
-          ) : (
-            <Tabs value={kind} onValueChange={v => setKind(v as any)}>
+          <div>
+            <Label className="text-xs text-muted-foreground">{t("category")}</Label>
+            <Tabs value={kind} onValueChange={(v) => setKind(v as any)} className="w-full mt-1">
               <TabsList className="grid grid-cols-2 w-full">
                 <TabsTrigger value="deposit">{t("add_money")}</TabsTrigger>
                 <TabsTrigger value="withdraw">{t("take_money")}</TabsTrigger>
               </TabsList>
             </Tabs>
-          )}
-          <div className="space-y-1">
+          </div>
+          <div>
             <Label className="text-xs text-muted-foreground">{t("amount")}</Label>
-            <Input required type="number" step="any" inputMode="decimal" pattern="[0-9.]*" value={amount} onChange={e => setAmount(e.target.value)} />
+            <Input
+              type="number"
+              step="any"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              placeholder="0.00"
+              className="mt-1 font-mono"
+              autoFocus
+              required
+            />
           </div>
-          <div className="space-y-1">
+          <div>
+            <Label className="text-xs text-muted-foreground">{lang === "bn" ? "তারিখ ও সময়" : "Date & Time"}</Label>
+            <Input
+              type="datetime-local"
+              value={dateVal}
+              onChange={(e) => setDateVal(e.target.value)}
+              className="mt-1 text-xs"
+            />
+          </div>
+          <div>
             <Label className="text-xs text-muted-foreground">{t("note")}</Label>
-            <Input value={note} onChange={e => setNote(e.target.value)} />
+            <Textarea
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              placeholder={lang === "bn" ? "কারণ / বিবরণ লিখুন..." : "Reason / details..."}
+              rows={2}
+              className="mt-1 text-xs"
+            />
           </div>
-          {isEdit && (
-            <div className="space-y-1">
-              <Label className="text-xs text-muted-foreground">Date & Time</Label>
-              <Input
-                type="datetime-local"
-                value={dateVal}
-                onChange={e => setDateVal(e.target.value)}
-                className="text-xs"
-              />
-            </div>
-          )}
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>{t("cancel")}</Button>
-            <Button type="submit" disabled={busy}>{busy ? "…" : t("save")}</Button>
+          <DialogFooter className="pt-2">
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={busy}>
+              {t("cancel")}
+            </Button>
+            <Button type="submit" disabled={busy}>
+              {busy ? "…" : t("save")}
+            </Button>
           </DialogFooter>
         </form>
       </DialogContent>

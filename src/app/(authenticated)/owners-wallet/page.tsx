@@ -315,7 +315,7 @@ export default function OwnersWalletPage() {
             </div>
           </div>
           <p className="text-base sm:text-lg font-bold font-charukola text-amber-600 dark:text-amber-400">
-            ৳{fmtMoney(stats.totalAll)}
+            {fmtMoney(stats.totalAll)}
           </p>
           <span className="text-[9px] sm:text-[10px] text-muted-foreground font-balooda">
             {entries.length} {lang === "bn" ? "টি মোট এন্ট্রি" : "entries"}
@@ -332,7 +332,7 @@ export default function OwnersWalletPage() {
             </div>
           </div>
           <p className="text-base sm:text-lg font-bold font-charukola text-blue-600 dark:text-blue-400">
-            ৳{fmtMoney(stats.totalMonth)}
+            {fmtMoney(stats.totalMonth)}
           </p>
           <span className="text-[9px] sm:text-[10px] text-muted-foreground font-balooda">
             {lang === "bn" ? "ক্যালেন্ডার মাস" : "This month"}
@@ -349,7 +349,7 @@ export default function OwnersWalletPage() {
             </div>
           </div>
           <p className="text-base sm:text-lg font-bold font-charukola text-emerald-600 dark:text-emerald-400">
-            ৳{fmtMoney(stats.totalToday)}
+            {fmtMoney(stats.totalToday)}
           </p>
           <span className="text-[9px] sm:text-[10px] text-muted-foreground font-balooda">
             {lang === "bn" ? "আজকের কর্তন" : "Today's total"}
@@ -479,7 +479,7 @@ export default function OwnersWalletPage() {
           <div className="text-xs font-bold font-charukola text-foreground">
             {lang === "bn" ? "ফিল্টারকৃত মোট: " : "Filtered Total: "}
             <span className="text-amber-600 dark:text-amber-400">
-              ৳{fmtMoney(filteredEntries.reduce((a, b) => a + (Number(b.amount) || 0), 0))}
+              {fmtMoney(filteredEntries.reduce((a, b) => a + (Number(b.amount) || 0), 0))}
             </span>
           </div>
         </div>
@@ -535,7 +535,7 @@ export default function OwnersWalletPage() {
                   <div className="flex items-center gap-2 shrink-0">
                     <div className="text-right">
                       <p className="font-bold text-sm sm:text-base font-charukola text-amber-600 dark:text-amber-400">
-                        -৳{fmtMoney(e.amount)}
+                        -{fmtMoney(e.amount)}
                       </p>
                     </div>
 

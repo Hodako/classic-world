@@ -81,7 +81,7 @@ export default function CashManagementPage() {
 
   const balance = cashbox.isLoading ? null : cashboxBalance(cashbox.data ?? []);
 
-  type Range = "today" | "week" | "month" | "custom";
+  type Range = "today" | "yesterday" | "week" | "month" | "custom";
   const [range, setRange] = useState<Range>("today");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
@@ -205,7 +205,7 @@ export default function CashManagementPage() {
     a.click();
   }
 
-  const rangeLabel = range === "today" ? t("today") : range === "week" ? t("this_week") : t("this_month");
+  const rangeLabel = range === "today" ? (useT().lang === "bn" ? "আজ" : "Today") : range === "yesterday" ? (useT().lang === "bn" ? "গতকাল" : "Yesterday") : range === "week" ? (useT().lang === "bn" ? "এই সপ্তাহ" : "This Week") : (useT().lang === "bn" ? "এই মাস" : "This Month");
 
   return (
     <div className="space-y-6 pb-4">

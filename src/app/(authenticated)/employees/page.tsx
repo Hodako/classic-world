@@ -465,7 +465,7 @@ export default function EmployeesPage() {
             <span className="text-[11px] font-semibold">{lang === "bn" ? "মোট পরিশোধিত বেতন" : "Salaries Paid"}</span>
             <DollarSign className="size-3.5 text-emerald-600" />
           </div>
-          <p className="text-lg sm:text-xl font-bold font-charukola text-emerald-600">৳{fmtMoney(totalSalariesPaid)}</p>
+          <p className="text-lg sm:text-xl font-bold font-charukola text-emerald-600">{fmtMoney(totalSalariesPaid)}</p>
           <span className="text-[10px] text-muted-foreground">{salaries.length} {lang === "bn" ? "টি ট্রানজেকশন" : "Records"}</span>
         </Card>
 
@@ -474,7 +474,7 @@ export default function EmployeesPage() {
             <span className="text-[11px] font-semibold">{lang === "bn" ? "কর্মচারী খরচ ও ভাতা" : "Staff Expenses"}</span>
             <Receipt className="size-3.5 text-orange-600" />
           </div>
-          <p className="text-lg sm:text-xl font-bold font-charukola text-orange-600">৳{fmtMoney(totalEmployeeExpenses)}</p>
+          <p className="text-lg sm:text-xl font-bold font-charukola text-orange-600">{fmtMoney(totalEmployeeExpenses)}</p>
           <span className="text-[10px] text-muted-foreground">{expenses.length} {lang === "bn" ? "টি ভাউচার" : "Vouchers"}</span>
         </Card>
 
@@ -483,7 +483,7 @@ export default function EmployeesPage() {
             <span className="text-[11px] font-semibold">{lang === "bn" ? "কর্মচারী কেনাকাটা" : "Staff Shopping"}</span>
             <Shirt className="size-3.5 text-pink-600" />
           </div>
-          <p className="text-lg sm:text-xl font-bold font-charukola text-pink-600">৳{fmtMoney(totalEmployeeShoppings)}</p>
+          <p className="text-lg sm:text-xl font-bold font-charukola text-pink-600">{fmtMoney(totalEmployeeShoppings)}</p>
           <span className="text-[10px] text-muted-foreground">{shoppings.length} {lang === "bn" ? "বার কেনাকাটা" : "Draws"}</span>
         </Card>
       </div>
@@ -570,7 +570,7 @@ export default function EmployeesPage() {
                           )}
                           {e.base_salary ? (
                             <span className="font-semibold text-foreground font-charukola">
-                              {lang === "bn" ? "মাসিক বেতন:" : "Salary:"} ৳{fmtMoney(e.base_salary)}
+                              {lang === "bn" ? "মাসিক বেতন:" : "Salary:"} {fmtMoney(e.base_salary)}
                             </span>
                           ) : null}
                         </div>
@@ -668,7 +668,7 @@ export default function EmployeesPage() {
                     <div className="flex items-center gap-2 shrink-0">
                       <div className="text-right">
                         <p className="font-bold text-sm sm:text-base font-charukola text-emerald-600">
-                          ৳{fmtMoney(s.amount)}
+                          {fmtMoney(s.amount)}
                         </p>
                         <p className="text-[10px] text-muted-foreground">{s.payment_date || fmtDate(s.created_at)}</p>
                       </div>
@@ -732,7 +732,7 @@ export default function EmployeesPage() {
                     <div className="flex items-center gap-2 shrink-0">
                       <div className="text-right">
                         <p className="font-bold text-sm sm:text-base font-charukola text-orange-600">
-                          ৳{fmtMoney(e.amount)}
+                          {fmtMoney(e.amount)}
                         </p>
                         <p className="text-[10px] text-muted-foreground">{e.payment_method}</p>
                       </div>
@@ -803,7 +803,7 @@ export default function EmployeesPage() {
                     <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
                       <div className="text-right">
                         <p className="font-bold text-sm sm:text-base font-charukola text-pink-600">
-                          ৳{fmtMoney(s.total_amount)}
+                          {fmtMoney(s.total_amount)}
                         </p>
                       </div>
                       <Button
@@ -1306,7 +1306,7 @@ export default function EmployeesPage() {
                   <div className="flex justify-between items-center pt-1 font-bold text-xs">
                     <span>{lang === "bn" ? "মোট মূল্য:" : "Total Price:"}</span>
                     <span className="text-pink-600 font-charukola">
-                      ৳{fmtMoney(shopItems.reduce((a, b) => a + b.total, 0))}
+                      {fmtMoney(shopItems.reduce((a, b) => a + b.total, 0))}
                     </span>
                   </div>
                 </div>

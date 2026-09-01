@@ -733,13 +733,13 @@ export default function ReportsGeneratorPage() {
                   <tr className="hover:bg-muted/20 border-b border-zinc-300 dark:border-zinc-700 print:border-black">
                     <td className="p-2.5 font-bold text-foreground print:text-black border border-zinc-300 dark:border-zinc-700 print:border-black">{lang === "bn" ? "সমিতিতে সঞ্চয় ও কিস্তি জমা" : "Samity Deposits (Savings)"}</td>
                     <td className="p-2.5 text-center font-medium border border-zinc-300 dark:border-zinc-700 print:border-black">{filteredSomiti.filter(s => s.kind === "deposit").length} {lang === "bn" ? "টি" : "entries"}</td>
-                    <td className="p-2.5 text-right font-serif font-bold text-sky-600 dark:text-sky-400 print:text-black border border-zinc-300 dark:border-zinc-700 print:border-black">৳{fmtMoney(somitiDepositTotal)}</td>
+                    <td className="p-2.5 text-right font-serif font-bold text-sky-600 dark:text-sky-400 print:text-black border border-zinc-300 dark:border-zinc-700 print:border-black">{fmtMoney(somitiDepositTotal)}</td>
                     <td className="p-2.5 text-muted-foreground print:text-gray-600 border border-zinc-300 dark:border-zinc-700 print:border-black">{lang === "bn" ? "সমিতি সঞ্চয় ফান্ড জমা" : "Savings deposits into Somiti"}</td>
                   </tr>
                   <tr className="hover:bg-muted/20 border-b border-zinc-300 dark:border-zinc-700 print:border-black">
                     <td className="p-2.5 font-bold text-foreground print:text-black border border-zinc-300 dark:border-zinc-700 print:border-black">{lang === "bn" ? "মালিকের ব্যক্তিগত ওয়ালেট খরচ" : "Owner's Personal Wallet"}</td>
                     <td className="p-2.5 text-center font-medium border border-zinc-300 dark:border-zinc-700 print:border-black">{filteredOwnerWallet.length} {lang === "bn" ? "টি" : "entries"}</td>
-                    <td className="p-2.5 text-right font-serif font-bold text-rose-600 dark:text-rose-400 print:text-black border border-zinc-300 dark:border-zinc-700 print:border-black">−৳{fmtMoney(ownerWalletTotal)}</td>
+                    <td className="p-2.5 text-right font-serif font-bold text-rose-600 dark:text-rose-400 print:text-black border border-zinc-300 dark:border-zinc-700 print:border-black">−{fmtMoney(ownerWalletTotal)}</td>
                     <td className="p-2.5 text-muted-foreground print:text-gray-600 border border-zinc-300 dark:border-zinc-700 print:border-black">{lang === "bn" ? "পরিবার ও ব্যক্তিগত খরচ (ক্যাশ ও লাভ কর্তিত)" : "Personal withdrawals (cash & profit deducted)"}</td>
                   </tr>
                   <tr className="hover:bg-muted/20 border-b border-zinc-300 dark:border-zinc-700 print:border-black">

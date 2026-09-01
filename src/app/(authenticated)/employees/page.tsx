@@ -32,6 +32,7 @@ import {
   ChevronRight,
 } from "lucide-react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useCachedQuery } from "@/hooks/use-cached-query";
 import {
   getEmployees,
@@ -74,8 +75,16 @@ export default function EmployeesPage() {
   const { lang, t } = useT();
   const { user } = useAuth();
   const qc = useQueryClient();
+  const searchParams = useSearchParams();
 
-  const [activeTab, setActiveTab] = useState<"accounts" | "salaries" | "expenses" | "shoppings">("accounts");
+  const paramTab = searchParams.get("tab");
+  const [activeTab, setActiveTab] = useState<"accounts" | "salaries" | "expenses" | "shoppings">(
+    (paramTab === "shoppings" || paramTab === "expenses" || paramTab === "salaries" || paramTab === "accounts")
+      ? (paramTab as any)
+      : user?.role === "employee"
+      ? "shoppings"
+      : "accounts"
+  );
   const [search, setSearch] = useState("");
 
   // Queries

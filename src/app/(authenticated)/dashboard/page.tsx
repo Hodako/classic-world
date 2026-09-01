@@ -2213,11 +2213,12 @@ const renderWidget = (widgetId: string) => {
 
       case "quickLinks":
         return (
-          <div key="quickLinks" className="grid grid-cols-3 gap-2">
+          <div key="quickLinks" className="grid grid-cols-2 sm:grid-cols-4 gap-2">
             {[
               { to: "/products", icon: Package, label: t("products"), perm: "products" as const },
               { to: "/sales", icon: ShoppingBag, label: t("sales"), perm: "sales" as const },
               { to: "/customers", icon: Users, label: t("customers"), perm: "parties" as const },
+              { to: "/employees", icon: Users, label: lang === "bn" ? "কর্মচারী ও কেনাকাটা" : "Staff & Shopping", perm: "sales" as const },
             ].filter(item => canAccess(perms, item.perm)).map(({ to, icon: Icon, label }) => (
               <Link key={to} href={to} className="flex flex-col items-center gap-1 p-2 rounded-xl border border-border bg-gradient-to-br from-white to-zinc-50/40 dark:from-zinc-900/90 dark:to-zinc-950/90 hover:bg-accent shadow-[0_4px_12px_rgba(0,0,0,0.02)] dark:shadow-[0_4px_12px_rgba(0,0,0,0.15)] transition-colors">
                 <Icon className="size-4 text-primary" />

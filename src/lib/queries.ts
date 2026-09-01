@@ -1,8 +1,4 @@
 import {
-  getEmployeesFn,
-  getEmployeeSalariesFn,
-  getEmployeeExpensesFn,
-  getEmployeeShoppingsFn,
   getProductsFn,
   getPartiesFn,
   getSalesFn,
@@ -26,6 +22,10 @@ import {
   getRemindersFn,
   getCustomersFn,
   getCustomerFn,
+  getEmployeesFn,
+  getEmployeeSalariesFn,
+  getEmployeeExpensesFn,
+  getEmployeeShoppingsFn,
 } from "@/lib/rpc";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -89,54 +89,20 @@ export type Reminder = {
   created_at: string;
 };
 
-// ─── Query functions (called by react-query) ─────────────────────────────────
-export const getProducts = () => getProductsFn() as unknown as Promise<Product[]>;
-export const getParties = () => getPartiesFn() as unknown as Promise<Party[]>;
-export const getParty = (id: string) => getPartyFn({ data: { id } }) as unknown as Promise<Party | null>;
-export const getCustomers = () => getCustomersFn() as unknown as Promise<Customer[]>;
-export const getCustomer = (id: string) => getCustomerFn({ data: { id } }) as unknown as Promise<Customer | null>;
-export const getSales = () => getSalesFn() as unknown as Promise<Sale[]>;
-export const getPurchases = () => getPurchasesFn() as unknown as Promise<Purchase[]>;
-export const getExpenses = () => getExpensesFn() as unknown as Promise<Expense[]>;
-export const getSomiti = () => getSomitiFn() as unknown as Promise<Somiti[]>;
-export const getWithdrawals = () => getWithdrawalsFn() as unknown as Promise<Withdrawal[]>;
-export const getOwnerWallet = () => getOwnerWalletFn() as unknown as Promise<OwnerWalletEntry[]>;
-export const getCashbox = () => getCashboxFn() as unknown as Promise<CashboxEntry[]>;
-export const getSalesForParty = (partyId: string) => getSalesForPartyFn({ data: { partyId } }) as unknown as Promise<Sale[]>;
-export const getPaymentsForParty = (partyId: string) => getPaymentsForPartyFn({ data: { partyId } }) as unknown as Promise<Payment[]>;
-export const getAllPayments = () => getAllPaymentsFn() as unknown as Promise<Payment[]>;
-export const getAllPartyReceivables = () => getAllPartyReceivablesFn() as unknown as Promise<PartyLedger[]>;
-export const getAllPartyPayables = () => getAllPartyPayablesFn() as unknown as Promise<PartyLedger[]>;
-export const getAllPayableSettlements = () => getAllPayableSettlementsFn() as unknown as Promise<PartyLedger[]>;
-export const getPartyReceivables = (partyId: string) => getPartyReceivablesFn({ data: { partyId } }) as unknown as Promise<PartyLedger[]>;
-export const getPartyPayables = (partyId: string) => getPartyPayablesFn({ data: { partyId } }) as unknown as Promise<PartyLedger[]>;
-export const getPayableSettlements = (partyId: string) => getPayableSettlementsFn({ data: { partyId } }) as unknown as Promise<PartyLedger[]>;
-export const getReturns = () => getReturnsFn() as unknown as Promise<Return[]>;
-export const getReminders = () => getRemindersFn() as unknown as Promise<Reminder[]>;
-
-/** In ImgBB configuration, the path is already a direct URL string. */
-export async function signedImage(path: string | null): Promise<string | null> {
-  return path || null;
-}
 export type Employee = {
   id: string;
   name: string;
   phone?: string | null;
   email?: string | null;
+  username?: string | null;
+  role: string;
   designation?: string;
   base_salary?: number;
+  salary_type?: "monthly" | "daily" | "hourly";
+  daily_allowance?: number;
   status: "active" | "inactive";
-  permissions?: {
-    can_sales?: boolean;
-    can_customers?: boolean;
-    can_returns?: boolean;
-    can_products?: boolean;
-    can_expenses?: boolean;
-    can_reports?: boolean;
-    can_delete?: boolean;
-    can_discount?: boolean;
-  };
-  notes?: string | null;
+  permissions?: Record<string, boolean | undefined>;
+  join_date?: string;
   created_at: string;
 };
 
@@ -180,7 +146,36 @@ export type EmployeeShopping = {
   created_at: string;
 };
 
+// ─── Query functions (called by react-query) ─────────────────────────────────
+export const getProducts = () => getProductsFn() as unknown as Promise<Product[]>;
+export const getParties = () => getPartiesFn() as unknown as Promise<Party[]>;
+export const getParty = (id: string) => getPartyFn({ data: { id } }) as unknown as Promise<Party | null>;
+export const getCustomers = () => getCustomersFn() as unknown as Promise<Customer[]>;
+export const getCustomer = (id: string) => getCustomerFn({ data: { id } }) as unknown as Promise<Customer | null>;
+export const getSales = () => getSalesFn() as unknown as Promise<Sale[]>;
+export const getPurchases = () => getPurchasesFn() as unknown as Promise<Purchase[]>;
+export const getExpenses = () => getExpensesFn() as unknown as Promise<Expense[]>;
+export const getSomiti = () => getSomitiFn() as unknown as Promise<Somiti[]>;
+export const getWithdrawals = () => getWithdrawalsFn() as unknown as Promise<Withdrawal[]>;
+export const getOwnerWallet = () => getOwnerWalletFn() as unknown as Promise<OwnerWalletEntry[]>;
+export const getCashbox = () => getCashboxFn() as unknown as Promise<CashboxEntry[]>;
+export const getSalesForParty = (partyId: string) => getSalesForPartyFn({ data: { partyId } }) as unknown as Promise<Sale[]>;
+export const getPaymentsForParty = (partyId: string) => getPaymentsForPartyFn({ data: { partyId } }) as unknown as Promise<Payment[]>;
+export const getAllPayments = () => getAllPaymentsFn() as unknown as Promise<Payment[]>;
+export const getAllPartyReceivables = () => getAllPartyReceivablesFn() as unknown as Promise<PartyLedger[]>;
+export const getAllPartyPayables = () => getAllPartyPayablesFn() as unknown as Promise<PartyLedger[]>;
+export const getAllPayableSettlements = () => getAllPayableSettlementsFn() as unknown as Promise<PartyLedger[]>;
+export const getPartyReceivables = (partyId: string) => getPartyReceivablesFn({ data: { partyId } }) as unknown as Promise<PartyLedger[]>;
+export const getPartyPayables = (partyId: string) => getPartyPayablesFn({ data: { partyId } }) as unknown as Promise<PartyLedger[]>;
+export const getPayableSettlements = (partyId: string) => getPayableSettlementsFn({ data: { partyId } }) as unknown as Promise<PartyLedger[]>;
+export const getReturns = () => getReturnsFn() as unknown as Promise<Return[]>;
+export const getReminders = () => getRemindersFn() as unknown as Promise<Reminder[]>;
 export const getEmployees = () => getEmployeesFn() as unknown as Promise<Employee[]>;
 export const getEmployeeSalaries = () => getEmployeeSalariesFn() as unknown as Promise<EmployeeSalary[]>;
 export const getEmployeeExpenses = () => getEmployeeExpensesFn() as unknown as Promise<EmployeeExpense[]>;
 export const getEmployeeShoppings = () => getEmployeeShoppingsFn() as unknown as Promise<EmployeeShopping[]>;
+
+/** In ImgBB configuration, the path is already a direct URL string. */
+export async function signedImage(path: string | null): Promise<string | null> {
+  return path || null;
+}

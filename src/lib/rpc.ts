@@ -389,15 +389,16 @@ async function executeAction(name: string, args: any): Promise<any> {
     try {
       return await handler(args);
     } catch (fsErr) {
-      console.warn(`Firestore action ${name} error, attempting remote fallback:`, fsErr);
+      console.warn(`Firestore action ${name} error:`, fsErr);
+      throw fsErr;
     }
   }
   return await callRemoteRpc(name, args);
 }
 
-// Action factories
-const makeReadAction = (name: string) => (args?: any) => callRemoteRpc(name, args);
-const makeWriteAction = (name: string) => (args?: any) => runWriteAction(name, args);
+// Action factories - Route directly through executeAction so Firestore handles everything locally and reliably!
+const makeReadAction = (name: string) => (args?: any) => executeAction(name, args);
+const makeWriteAction = (name: string) => (args?: any) => executeAction(name, args);
 
 // ─── Export READS ────────────────────────────────────────────────────────────
 export const getMeFn = makeReadAction("getMeFn");

@@ -1643,11 +1643,11 @@ export default function Dashboard() {
           />
         ) : <div key="due" className="hidden" />;
       case "cashbox":
-        const displayedCashbox = (!dateFilter.from && !dateFilter.to) ? (cashToday + bkashBankCollected) : cashboxTotal;
+        const displayedCashbox = (!dateFilter.from && !dateFilter.to) ? (cashToday + bkashBankCollected - expenseToday - ownerExpenseTotal) : cashboxTotal;
         const cashboxSubText = isHidden && !isRevealed
           ? (lang === "bn" ? "ট্যাপ করে দেখুন" : "Tap to reveal")
           : (!dateFilter.from && !dateFilter.to)
-          ? (lang === "bn" ? `আজকের ক্যাশ (মোট: ${fmtMoney(cashboxTotal)})` : `Today Cash (Total: ${fmtMoney(cashboxTotal)})`)
+          ? (lang === "bn" ? `আজকের নিট ক্যাশ (মোট: ${fmtMoney(cashboxTotal)})` : `Today Net Cash (Total: ${fmtMoney(cashboxTotal)})`)
           : dateRangeLabel;
 
         return canAccess(perms, "cashbox") ? (

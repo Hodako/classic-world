@@ -2051,7 +2051,7 @@ export async function fsDeleteSomitiByName(data: { name: string }) {
 // ── Cashbox Database Reconcile & Repair ──────────────────────────────────────
 export async function fsRepairCashbox() {
   try {
-    const [salesSnap, expensesSnap, purchasesSnap, returnsSnap, somitiSnap, settlementsSnap, paymentsSnap, cashboxSnap] = await Promise.all([
+    const [salesSnap, expensesSnap, purchasesSnap, returnsSnap, somitiSnap, settlementsSnap, paymentsSnap, withdrawalsSnap, ownerWalletSnap, cashboxSnap] = await Promise.all([
       getDocs(collection(db, "sales")),
       getDocs(collection(db, "expenses")),
       getDocs(collection(db, "purchases")),
@@ -2059,6 +2059,8 @@ export async function fsRepairCashbox() {
       getDocs(collection(db, "somiti_entries")),
       getDocs(collection(db, "party_payable_settlements")),
       getDocs(collection(db, "payments")),
+      getDocs(collection(db, "withdrawals")),
+      getDocs(collection(db, "owner_wallet")),
       getDocs(collection(db, "cashbox_logs")),
     ]);
 
@@ -2165,6 +2167,7 @@ export async function fsRepairCashbox() {
       if (purchaseExpenses.has(e.id)) continue;
       const exp = e.data();
       if (exp.category === "purchase" || exp.title?.startsWith("Product Purchase:")) continue;
+      if (exp.category === "owner_personal" || exp.note?.includes("Owner Wallet ID:")) continue;
       const amt = Number(exp.amount) || 0;
       if (amt > 0 && !seenRefIds.has(e.id)) {
         seenRefIds.add(e.id);
@@ -2179,7 +2182,43 @@ export async function fsRepairCashbox() {
       }
     }
 
-    // 4. Somiti Entries
+    // 4. Owner Wallet Spends
+    for (const w of ownerWalletSnap.docs) {
+      const wData = w.data();
+      const amt = Number(wData.amount) || 0;
+      if (amt > 0 && !seenRefIds.has(w.id)) {
+        seenRefIds.add(w.id);
+        const cat = wData.category || "personal";
+        const catLabel = cat === "family" ? "পরিবার খরচ" : cat === "bazar" ? "বাজার খরচ" : cat === "home_rent" ? "বাসা ভাড়া" : cat === "medical" ? "চিকিৎসা" : "ব্যক্তিগত";
+        await addDoc(collection(db, "cashbox_logs"), {
+          kind: "withdraw",
+          amount: amt,
+          note: `[মালিকের খরচ] ${catLabel}: ${wData.note || "ব্যক্তিগত উত্তোলন"}`,
+          ref_id: w.id,
+          created_at: wData.created_at || Timestamp.now(),
+        });
+        repaired++;
+      }
+    }
+
+    // 5. Direct Withdrawals
+    for (const w of withdrawalsSnap.docs) {
+      const wData = w.data();
+      const amt = Number(wData.amount) || 0;
+      if (amt > 0 && !seenRefIds.has(w.id)) {
+        seenRefIds.add(w.id);
+        await addDoc(collection(db, "cashbox_logs"), {
+          kind: "withdraw",
+          amount: amt,
+          note: `উত্তোলন: ${wData.note || "Owner"}`,
+          ref_id: w.id,
+          created_at: wData.created_at || Timestamp.now(),
+        });
+        repaired++;
+      }
+    }
+
+    // 6. Somiti Entries
     for (const som of somitiSnap.docs) {
       const sData = som.data();
       if (sData.is_initial || sData.skipCashbox) continue;
@@ -2198,7 +2237,7 @@ export async function fsRepairCashbox() {
       }
     }
 
-    // 5. Customer Payments
+    // 7. Customer Payments
     for (const pay of paymentsSnap.docs) {
       const pData = pay.data();
       const amt = Number(pData.amount) || 0;

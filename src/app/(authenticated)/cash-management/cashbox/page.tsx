@@ -269,22 +269,20 @@ export default function CashboxDetailsPage() {
             <div>
               <div className="text-xs text-muted-foreground font-medium">
                 {range === "today"
-                  ? (lang === "bn" ? "আজকের ক্যাশ আদায় ও স্থিতি" : "Today's Cash Collection")
+                  ? (lang === "bn" ? "আজকের নিট ক্যাশ স্থিতি" : "Today's Net Cash in Drawer")
                   : range === "yesterday"
-                  ? (lang === "bn" ? "গতকালের ক্যাশ আদায় ও স্থিতি" : "Yesterday's Cash Collection")
+                  ? (lang === "bn" ? "গতকালের নিট ক্যাশ স্থিতি" : "Yesterday's Net Cash in Drawer")
                   : range === "all"
                   ? (lang === "bn" ? "সর্বমোট ক্যাশবক্স ব্যালেন্স" : "All-Time Cashbox Balance")
-                  : `${rangeLabel} ${lang === "bn" ? "ক্যাশ প্রবাহ" : "Net Cash Flow"}`}
+                  : `${rangeLabel} ${lang === "bn" ? "নিট ক্যাশ স্থিতি" : "Net Cash Flow"}`}
               </div>
               {balance === null ? (
                 <div className="h-9 w-32 rounded-md bg-indigo-200/60 dark:bg-indigo-800/40 animate-pulse mt-1" />
               ) : (
                 <div className="text-2xl sm:text-3xl font-bold text-indigo-600 font-serif">
-                  {range === "today" || range === "yesterday"
-                    ? fmtMoney(periodIn)
-                    : range === "all"
+                  {range === "all"
                     ? fmtMoney(balance)
-                    : (periodNet >= 0 ? "+" : "−") + fmtMoney(Math.abs(periodNet))}
+                    : (periodNet < 0 ? "−" : "") + fmtMoney(Math.abs(periodNet))}
                 </div>
               )}
             </div>

@@ -395,7 +395,6 @@ export default function Dashboard() {
   const [showFilter, setShowFilter] = useState(false);
 
   // Fintech-Style Privacy Mask for Sensitive Balance & Profit KPIs
-  // Revealed state for privacy-masked KPIs (profit, somiti + any user-hidden KPIs)
   const [revealedKpis, setRevealedKpis] = useState<Record<string, boolean>>({});
 
     const handlePrivacyKpiClick = (
@@ -555,30 +554,8 @@ export default function Dashboard() {
     hiddenKpis: [],
   });
 
-  const [activeEmpSession, setActiveEmpSession] = useState<any>(() => {
-    if (typeof window === "undefined") return null;
-    try {
-      return JSON.parse(localStorage.getItem("cw_active_employee_session") || "null");
-    } catch {
-      return null;
-    }
-  });
-
-  useEffect(() => {
-    const handleEmpSwitch = () => {
-      try {
-        setActiveEmpSession(JSON.parse(localStorage.getItem("cw_active_employee_session") || "null"));
-      } catch {}
-    };
-    window.addEventListener("hz-employee-switched", handleEmpSwitch);
-    window.addEventListener("storage", handleEmpSwitch);
-    return () => {
-      window.removeEventListener("hz-employee-switched", handleEmpSwitch);
-      window.removeEventListener("storage", handleEmpSwitch);
-    };
-  }, []);
-
   const [draggedKpiIdx, setDraggedKpiIdx] = useState<number | null>(null);
+
   const [bentoCustomizerOpen, setBentoCustomizerOpen] = useState(false);
 
   const updateKpiConfig = (newSettings: Partial<typeof kpiConfig>) => {
@@ -936,18 +913,45 @@ export default function Dashboard() {
   const filteredPurchases = (purchases.data ?? []).filter(p => isDateInRange(p.created_at));
 
   // KPIs
+  const getSaleTotal = (s: any) => {
+    const p = Number(s.paid_amount);
+    const d = Number(s.due_amount);
+    if (!isNaN(p) && !isNaN(d) && (p + d > 0)) return p + d;
+    const q = Number(s.qty) || 1;
+    const sp = Number(s.sell_price) || 0;
+    const disc = Number((s as any).discount) || 0;
+    return Math.max(0, sp * q - disc);
+  };
+
+  const getSaleCash = (s: any) => {
+    const tot = getSaleTotal(s);
+    const p = Number(s.paid_amount);
+    if (s.type === "cash" || s.type === "pos" || s.type === "nagad" || s.type === "card" || !s.type) {
+      return (!isNaN(p) && p >= 0 ? p : tot);
+    }
+    if (s.type === "credit") {
+      return (!isNaN(p) && p > 0 ? p : 0);
+    }
+    if (s.type === "bkash" || (s.type as string) === "bank") {
+      if ((s as any).payment_status === "accepted" || (s as any).payment_accepted) return (!isNaN(p) && p > 0 ? p : tot);
+      return 0;
+    }
+    if (s.type === "online") {
+      if ((s as any).courier_status === "collected") return (!isNaN(p) && p > 0 ? p : tot);
+      return 0;
+    }
+    return (!isNaN(p) && p >= 0 ? p : tot);
+  };
+
   const totalSalesToday = filteredSales.reduce((a, s) => {
     if (s.returned) return a;
-    const lineTotal = (Number(s.sell_price) || 0) * (Number(s.qty) || 1);
-    return a + Math.max(lineTotal, 0);
+    return a + getSaleTotal(s);
   }, 0);
 
-  const cashToday = filteredSales
-    .filter(s => !s.returned && (s.type === "cash" || (s.type as string) === "nagad" || (s.type as string) === "hand_cash" || (s.type as string) === "pos" || s.type === undefined || s.type === null))
-    .reduce((a, s) => {
-      const lineTotal = (Number(s.sell_price) || 0) * (Number(s.qty) || 1);
-      return a + Math.max(lineTotal, 0);
-    }, 0);
+  const cashToday = filteredSales.reduce((a, s) => {
+    if (s.returned) return a;
+    return a + getSaleCash(s);
+  }, 0);
 
   const bkashToday   = filteredSales.filter(s => s.type === "bkash").reduce((a, s) => a + ((Number(s.sell_price) || 0) * (Number(s.qty) || 1)), 0);
   const bankToday    = filteredSales.filter(s => (s.type as string) === "bank").reduce((a, s) => a + ((Number(s.sell_price) || 0) * (Number(s.qty) || 1)), 0);
@@ -981,7 +985,7 @@ export default function Dashboard() {
   const returnProfitAdj = returnsData
     .filter(r => {
       if (!r.profit_adjustment) return false;
-      const rDate = r.return_date || "";
+      const rDate = r.return_date || r.buy_date || "";
       if (dateFilter.from && rDate < dateFilter.from) return false;
       if (dateFilter.to && rDate > dateFilter.to) return false;
       if (!dateFilter.from && !dateFilter.to) {
@@ -1475,11 +1479,11 @@ export default function Dashboard() {
                 ? (lang === "bn" ? "ট্যাপ করে দেখুন" : "Tap to reveal")
                 : (bkashPending > 0 || bankPending > 0 || onlinePendingToday > 0
                     ? (lang === "bn"
-                        ? `পেন্ডিং: বিকাশ ৳${fmtMoney(bkashPending)} • ব্যাংক ৳${fmtMoney(bankPending)} • অনলাইন ৳${fmtMoney(onlinePendingToday)}`
-                        : `Pending: bKash ৳${fmtMoney(bkashPending)} • Bank ৳${fmtMoney(bankPending)} • Online ৳${fmtMoney(onlinePendingToday)}`)
+                        ? `পেন্ডিং: বিকাশ ${fmtMoney(bkashPending)} • ব্যাংক ${fmtMoney(bankPending)} • অনলাইন ${fmtMoney(onlinePendingToday)}`
+                        : `Pending: bKash ${fmtMoney(bkashPending)} • Bank ${fmtMoney(bankPending)} • Online ${fmtMoney(onlinePendingToday)}`)
                     : (lang === "bn"
-                        ? `নগদ আদায়: ৳${fmtMoney(cashToday + bkashBankCollected)}`
-                        : `Collected: ৳${fmtMoney(cashToday + bkashBankCollected)}`))
+                        ? `নগদ আদায়: ${fmtMoney(cashToday + bkashBankCollected)}`
+                        : `Collected: ${fmtMoney(cashToday + bkashBankCollected)}`))
             }
             imageUrl="/icons/sales-kpi.svg"
             icon={ShoppingBag}
@@ -1643,7 +1647,7 @@ export default function Dashboard() {
         const cashboxSubText = isHidden && !isRevealed
           ? (lang === "bn" ? "ট্যাপ করে দেখুন" : "Tap to reveal")
           : (!dateFilter.from && !dateFilter.to)
-          ? (lang === "bn" ? `আজকের ক্যাশ (মোট: ৳${fmtMoney(cashboxTotal)})` : `Today Cash (Total: ৳${fmtMoney(cashboxTotal)})`)
+          ? (lang === "bn" ? `আজকের ক্যাশ (মোট: ${fmtMoney(cashboxTotal)})` : `Today Cash (Total: ${fmtMoney(cashboxTotal)})`)
           : dateRangeLabel;
 
         return canAccess(perms, "cashbox") ? (

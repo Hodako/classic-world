@@ -107,10 +107,40 @@ export default function CashManagementPage() {
   const filtExp = useMemo(() => (expenses.data ?? []).filter(e => inRange(e.created_at)), [expenses.data, from, to]);
   const filtWith = useMemo(() => (withdrawals.data ?? []).filter(w => inRange(w.created_at)), [withdrawals.data, from, to]);
 
-  const cashSales = filtSales.filter(s => s.type === "cash").reduce((a, s) => a + Number(s.sell_price) * s.qty, 0);
-  const onlineSales = filtSales.filter(s => s.type === "online").reduce((a, s) => a + Number(s.sell_price) * s.qty, 0);
-  const creditSales = filtSales.filter(s => s.type === "credit").reduce((a, s) => a + Number(s.due_amount), 0);
-  const totalSales = cashSales + onlineSales + creditSales;
+  const getSaleTotal = (s: any) => {
+    const p = Number(s.paid_amount);
+    const d = Number(s.due_amount);
+    if (!isNaN(p) && !isNaN(d) && (p + d > 0)) return p + d;
+    const q = Number(s.qty) || 1;
+    const sp = Number(s.sell_price) || 0;
+    const disc = Number((s as any).discount) || 0;
+    return Math.max(0, sp * q - disc);
+  };
+
+  const getSaleCash = (s: any) => {
+    const tot = getSaleTotal(s);
+    const p = Number(s.paid_amount);
+    if (s.type === "cash" || s.type === "pos" || s.type === "nagad" || s.type === "card" || !s.type) {
+      return (!isNaN(p) && p >= 0 ? p : tot);
+    }
+    if (s.type === "credit") {
+      return (!isNaN(p) && p > 0 ? p : 0);
+    }
+    if (s.type === "bkash" || (s.type as string) === "bank") {
+      if ((s as any).payment_status === "accepted" || (s as any).payment_accepted) return (!isNaN(p) && p > 0 ? p : tot);
+      return 0;
+    }
+    if (s.type === "online") {
+      if ((s as any).courier_status === "collected") return (!isNaN(p) && p > 0 ? p : tot);
+      return 0;
+    }
+    return (!isNaN(p) && p >= 0 ? p : tot);
+  };
+
+  const cashSales = filtSales.reduce((a, s) => a + getSaleCash(s), 0);
+  const onlineSales = filtSales.filter(s => s.type === "online").reduce((a, s) => a + getSaleTotal(s), 0);
+  const creditSales = filtSales.filter(s => s.type === "credit").reduce((a, s) => a + (!isNaN(Number(s.due_amount)) ? Number(s.due_amount) : getSaleTotal(s)), 0);
+  const totalSales = filtSales.reduce((a, s) => a + getSaleTotal(s), 0);
   const totalExp = filtExp.reduce((a, e) => a + Number(e.amount), 0);
   const totalWith = filtWith.reduce((a, w) => a + Number(w.amount), 0);
   const profit = filtSales.reduce((a, s) => a + Number(s.profit), 0);

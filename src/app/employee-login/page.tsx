@@ -231,7 +231,7 @@ function EmployeeLoginForm() {
                   type="text"
                   value={identifier}
                   onChange={(e) => setIdentifier(e.target.value)}
-                  placeholder={lang === "bn" ? "যেমন: staff_rahim, 017XXXXXXXX বা rahim@gmail.com" : "e.g. staff_rahim, 017XXXXXXXX or staff@gmail.com"}
+                  placeholder={lang === "bn" ? "মোবাইল নম্বর বা ইমেইল" : "Phone or Email"}
                   required
                   className="h-11 sm:h-12 rounded-xl bg-slate-800/90 border-slate-700 text-xs sm:text-sm text-white placeholder:text-slate-500 focus-visible:ring-indigo-500 w-full"
                 />
@@ -256,7 +256,7 @@ function EmployeeLoginForm() {
                   type={showPassword ? "text" : "password"}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder={lang === "bn" ? "পাসওয়ার্ড লিখুন" : "Enter password"}
+                  placeholder="••••••••"
                   required
                   className="h-11 sm:h-12 rounded-xl bg-slate-800/90 border-slate-700 text-xs sm:text-sm text-white placeholder:text-slate-500 focus-visible:ring-indigo-500 w-full"
                 />
@@ -265,7 +265,7 @@ function EmployeeLoginForm() {
               <Button
                 type="submit"
                 disabled={busy}
-                className="w-full h-11 sm:h-12 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs sm:text-sm shadow-lg shadow-indigo-600/30 transition-all active:scale-[0.98] gap-2 mt-1"
+                className="w-full h-11 sm:h-12 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs sm:text-sm shadow-lg shadow-emerald-600/30 transition-all active:scale-[0.98] gap-2 mt-1 cursor-pointer"
               >
                 {busy ? (
                   <RefreshCw className="size-4 animate-spin" />
@@ -288,7 +288,7 @@ function EmployeeLoginForm() {
                   type="text"
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
-                  placeholder={lang === "bn" ? "যেমন: মোঃ রহিম খান" : "e.g. Md Rahim Khan"}
+                  placeholder={lang === "bn" ? "পুরো নাম" : "Full name"}
                   required
                   className="h-11 sm:h-12 rounded-xl bg-slate-800/90 border-slate-700 text-xs sm:text-sm text-white placeholder:text-slate-500 focus-visible:ring-indigo-500 w-full"
                 />
@@ -303,7 +303,7 @@ function EmployeeLoginForm() {
                   type="text"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder={lang === "bn" ? "যেমন: 017XXXXXXXX অথবা employee@gmail.com" : "e.g. 017XXXXXXXX or employee@gmail.com"}
+                  placeholder={lang === "bn" ? "মোবাইল নম্বর বা ইমেইল" : "Phone or Email"}
                   required
                   className="h-11 sm:h-12 rounded-xl bg-slate-800/90 border-slate-700 text-xs sm:text-sm text-white placeholder:text-slate-500 focus-visible:ring-indigo-500 w-full"
                 />
@@ -328,7 +328,7 @@ function EmployeeLoginForm() {
                   type={showNewPassword ? "text" : "password"}
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
-                  placeholder={lang === "bn" ? "কমপক্ষে ৬ অক্ষরের পাসওয়ার্ড" : "Create password (min 6 characters)"}
+                  placeholder="••••••••"
                   required
                   minLength={6}
                   className="h-11 sm:h-12 rounded-xl bg-slate-800/90 border-slate-700 text-xs sm:text-sm text-white placeholder:text-slate-500 focus-visible:ring-indigo-500 w-full"

@@ -59,7 +59,6 @@ export default function CashboxDetailsPage() {
   const cashbox = useCashboxQuery();
   const qc = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [repairing, setRepairing] = useState(false);
 
   const [dialogKind, setDialogKind] = useState<"deposit" | "withdraw">("deposit");
   const [editEntry, setEditEntry] = useState<CashboxEntry | null>(null);
@@ -72,24 +71,6 @@ export default function CashboxDetailsPage() {
   const [filterKind, setFilterKind] = useState<FilterKind>("all");
   const [page, setPage] = useState(1);
   const pageSize = 12;
-
-  async function runRepair() {
-    if (!confirm(lang === "bn" ? "আপনি কি ক্যাশবক্স ডাটা সংস্কার ও সমন্বয় করতে চান?" : "Are you sure you want to reconcile and synchronize all historical cashbox data?")) {
-      return;
-    }
-    setRepairing(true);
-    try {
-      const res = await repairCashboxDbFn();
-      if (res && res.success) {
-        toast.success(lang === "bn" ? `${res.repairedCount}টি ক্যাশবক্স এন্ট্রি সফলভাবে সংস্কার করা হয়েছে!` : `${res.repairedCount} cashbox entries successfully reconciled!`);
-        await refreshQueries(qc, ["cashbox", "sales", "expenses"]);
-      }
-    } catch (err: any) {
-      toast.error(err.message || "Failed to repair");
-    } finally {
-      setRepairing(false);
-    }
-  }
 
   const entries = cashbox.data ?? [];
   const balance = cashbox.isLoading ? null : cashboxBalance(entries);
@@ -239,18 +220,6 @@ export default function CashboxDetailsPage() {
           <p className="text-xs text-muted-foreground mt-0.5">{t("cashbox_ledger")}</p>
         </div>
         <div className="flex gap-2">
-          {isAdmin && (
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={repairing}
-              onClick={runRepair}
-              className="border-amber-200 text-amber-700 hover:bg-amber-50 dark:border-amber-800 dark:text-amber-400 dark:hover:bg-amber-950/20"
-            >
-              <Wrench className={`size-3.5 mr-1 ${repairing ? "animate-spin" : ""}`} />
-              {repairing ? "..." : (lang === "bn" ? "ডাটা সংস্কার" : "Reconcile Data")}
-            </Button>
-          )}
           <Button size="sm" onClick={() => { setDialogKind("deposit"); setEditEntry(null); setDialogOpen(true); }}>
             <Plus className="size-3.5 mr-1" />{t("add_money")}
           </Button>

@@ -488,12 +488,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               )}
               <PWAInstallButton variant="outline" className="hidden sm:inline-flex h-8 px-2.5 text-xs" />
               <UniversalSearch role={user.role} permissions={user.permissions} />
-              <Link href="/more" title={lang === "bn" ? "হেল্প ও সাপোর্ট" : "Help & Support"}>
+              <Link href="/more" title={lang === "bn" ? "হেল্প ও সাপোর্ট" : "Help & Support"} className="hidden md:inline-flex">
                 <Button variant="ghost" size="icon" className="size-8 text-muted-foreground hover:text-foreground">
                   <HelpCircle className="icon-sm" />
                 </Button>
               </Link>
-              <Button variant="ghost" size="icon" className="size-8" onClick={toggle} aria-label="Theme">
+              <Button variant="ghost" size="icon" className="size-8 hidden sm:inline-flex" onClick={toggle} aria-label="Theme">
                 {resolved === "dark" ? <Sun className="icon-sm" /> : <Moon className="icon-sm" />}
               </Button>
               <Button
@@ -503,14 +503,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   sessionStorage.removeItem("app_pin_unlocked");
                   window.dispatchEvent(new Event("app_lock_screen"));
                 }}
-                className="size-8 text-amber-500 hover:bg-amber-500/10 hover:text-amber-600 rounded-lg cursor-pointer"
+                className="size-8 text-amber-500 hover:bg-amber-500/10 hover:text-amber-600 rounded-lg cursor-pointer hidden sm:inline-flex"
                 title={lang === "bn" ? "স্ক্রিন লক করুন" : "Lock Screen"}
               >
                 <Lock className="size-4" />
               </Button>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon" className="size-8">
+                  <Button variant="ghost" size="icon" className="size-8 hidden sm:inline-flex">
                     <Languages className="icon-sm" />
                   </Button>
                 </DropdownMenuTrigger>
@@ -550,6 +550,22 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                     >
                       <Lock className="size-3.5 mr-2 text-amber-500" />
                       {lang === "bn" ? "স্ক্রিন লক করুন" : "Lock Screen"}
+                    </DropdownMenuItem>
+
+                    <DropdownMenuItem
+                      onClick={toggle}
+                      className="text-xs font-medium cursor-pointer sm:hidden"
+                    >
+                      {resolved === "dark" ? <Sun className="size-3.5 mr-2 text-amber-500" /> : <Moon className="size-3.5 mr-2 text-indigo-500" />}
+                      {resolved === "dark" ? (lang === "bn" ? "লাইট মোড" : "Light Mode") : (lang === "bn" ? "ডার্ক মোড" : "Dark Mode")}
+                    </DropdownMenuItem>
+
+                    <DropdownMenuItem
+                      onClick={() => setLang(lang === "bn" ? "en" : "bn")}
+                      className="text-xs font-medium cursor-pointer sm:hidden"
+                    >
+                      <Languages className="size-3.5 mr-2 text-muted-foreground" />
+                      {lang === "bn" ? "English এ পরিবর্তন" : "বাংলায় পরিবর্তন"}
                     </DropdownMenuItem>
 
                     <DropdownMenuItem

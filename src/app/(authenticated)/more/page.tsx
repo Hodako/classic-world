@@ -2,17 +2,18 @@
 
 import React, { useRef, useState, useEffect } from "react";
 import Link from "next/link";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, useQuery } from "@tanstack/react-query";
 import {
   ShoppingCart, Receipt, PiggyBank, DollarSign,
   Banknote, BarChart3, Settings, FileText, Users,
   LogOut, TrendingUp, TrendingDown, GripVertical, Palette,
   Layout, Type, Image as ImageIcon, Sparkles, LayoutGrid, AlignLeft, AlignCenter, AlignRight,
-  Bot, Send, Loader2, HelpCircle, RefreshCw, Landmark, Store, Edit, Check, Wallet
+  Bot, Send, Loader2, HelpCircle, RefreshCw, Landmark, MessageSquare, BarChart2,
+  UserCheck, UserPlus, ShieldCheck, Check, Copy, Edit, Trash2, Key, KeyRound, Mail, Eye, EyeOff, Lock, User, Shield, AlertTriangle, Store, Upload, Wallet, Shirt
 } from "lucide-react";
 import { useT } from "@/lib/i18n";
 import { useAuth } from "@/hooks/use-auth";
-import { canAccess, resolvePermissions } from "@/lib/permissions";
+import { canAccess, resolvePermissions, type PermissionSet, DEFAULT_EMPLOYEE_PERMISSIONS } from "@/lib/permissions";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -22,7 +23,23 @@ import { toast } from "sonner";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Slider } from "@/components/ui/slider";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { createProfileFn, switchProfileFn, importProfileModuleFn, createSaleFn, createExpenseFn, createPurchaseFn, createCashboxFn, uploadImageFn } from "@/lib/rpc";
+import {
+  createProfileFn,
+  switchProfileFn,
+  importProfileModuleFn,
+  createSaleFn,
+  createExpenseFn,
+  createPurchaseFn,
+  createCashboxFn,
+  listShopEmployeesFn,
+  createShopEmployeeFn,
+  updateShopEmployeeFn,
+  deleteShopEmployeeFn,
+  inviteEmployeeByEmailFn,
+  listEmployeeInvitationsFn,
+  cancelEmployeeInvitationFn,
+  uploadImageFn,
+} from "@/lib/rpc";
 import { updateBusinessSettingsFn, getBusinessSettingsFn } from "@/lib/rpc-admin";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -31,21 +48,26 @@ import { getProducts } from "@/lib/queries";
 import { useCachedQuery } from "@/hooks/use-cached-query";
 import { ProductSearchSelect } from "@/components/product-search";
 import { PWAInstallButton } from "@/components/pwa-install-button";
+import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 
 const businessLinks = [
   { to: "#shop-profile",   labelKey: "shop_profile",    desc: "Update shop name, logo, address & invoice terms", icon: Store, perm: "settings"   as const },
+  { to: "/sms",            labelKey: "sms_management",  desc: "Send bulk SMS, offers & auto triggers", icon: MessageSquare, perm: "sales"      as const },
   { to: "/invoices",       labelKey: "invoice_generator", desc: "Create & customize invoices", icon: FileText,     perm: "sales"      as const },
   { to: "/purchases",      labelKey: "new_purchase",    desc: "Log product inventory buys", icon: ShoppingCart, perm: "purchases"  as const },
   { to: "/online-sells",   labelKey: "online_sell",     desc: "Track web and online sales", icon: DollarSign,   perm: "sales"      as const },
   { to: "/customers",      labelKey: "customers",       desc: "Customer profiles & transaction statistics", icon: Users, perm: "parties" as const },
   { to: "/dues",           labelKey: "due",             desc: "Customer dues & collections history", icon: Banknote, perm: "parties"    as const },
   { to: "/parties",        labelKey: "parties",         desc: "Suppliers, vendors, and partner logs", icon: Users, perm: "parties"    as const },
-  { to: "/employees",      labelKey: "employees" as any, desc: "Employee accounts, salary ledger, expenses & shopping draws", icon: Users, perm: "sales" as const },
+  { to: "/employees",      labelKey: "employees" as any, desc: "Employee accounts, salary ledger, attendance & permissions", icon: Users, perm: "sales" as const },
+  { to: "/employees?tab=shoppings", labelKey: "employee_shopping" as any, desc: "Staff clothing draws, shopping ledger & vouchers", icon: Shirt, perm: "sales" as const },
   { to: "/settings",       labelKey: "settings",        desc: "Advanced settings & configurations", icon: Settings,     perm: "settings"   as const },
 ] as const;
 
 const financeLinks = [
+  { to: "/product-analytics", labelKey: "product_analytics", desc: "Top sellers, sales growth, remaining & critical stock intelligence", icon: BarChart2, perm: "reports" as const },
   { to: "/bank",           labelKey: "bank_management", desc: "Bank accounts, loans & installment repayments", icon: Landmark, imageUrl: "https://img.icons8.com/color/48/bank-building.png", perm: "expenses" as const },
   { to: "/expenses",       labelKey: "expenses",        desc: "Record overhead expenses", icon: Receipt, imageUrl: "https://img.icons8.com/color/48/tax.png", perm: "expenses"   as const },
   { to: "/owners-wallet",  labelKey: "owners_wallet",   desc: "Personal & family expense wallet (cuts cash & profit)", icon: Wallet, imageUrl: "https://img.icons8.com/color/48/wallet--v1.png", perm: "cashbox" as const },
@@ -54,7 +76,6 @@ const financeLinks = [
   { to: "/profits",        labelKey: "profit",          desc: "Sales margins & net profits", icon: TrendingUp, imageUrl: "/icons/profit_icon.png",  perm: "reports"    as const },
   { to: "/losses",         labelKey: "losses",          desc: "Analyze transactional losses", icon: TrendingDown, perm: "reports" as const },
   { to: "/trackback",      labelKey: "trackback",       desc: "Comparative metrics chart", icon: BarChart3,    perm: "reports"    as const },
-  { to: "/product-analytics", labelKey: "product_analytics" as any, desc: "Top sellers, trending, stock & growth intelligence", icon: BarChart3, imageUrl: "/icons/sell_icon.png", perm: "reports" as const },
   { to: "/reports",        labelKey: "reports_generator", desc: "Generate custom PDF reports", icon: FileText, perm: "reports"    as const },
   { to: "/ai-audits",      labelKey: "ai_audits",       desc: "Chat with AI about your business", icon: Sparkles, perm: "reports"    as const },
 ] as const;
@@ -421,7 +442,7 @@ export default function MorePage() {
               </div>
               <div className="space-y-1">
                 <h4 className="font-bold text-xs text-foreground">
-                  {lang === "bn" ? "ক্লাসিক ওয়ার্ল্ড অডিট এজেন্টের সাথে চ্যাট করুন" : "Chat with Classic World Audit Agent"}
+                  {lang === "bn" ? "ড্রিম আইটি অডিট এজেন্টের সাথে চ্যাট করুন" : "Chat with Dream IT Audit Agent"}
                 </h4>
                 <p className="text-[10px] text-muted-foreground leading-normal max-w-[240px] mx-auto">
                   {lang === "bn"
@@ -929,11 +950,21 @@ export default function MorePage() {
       const formData = new FormData();
       formData.append("image", file);
 
-      const uploadUrl = "https://hakim.qzz.io/api/upload";
+      const isCap = typeof window !== "undefined" && (
+        !!(window as any).Capacitor ||
+        window.location.hostname === "localhost" ||
+        window.location.origin.includes("localhost") ||
+        window.location.origin.startsWith("capacitor:") ||
+        window.location.origin.startsWith("file:")
+      );
+      const uploadUrl = isCap ? "https://hakim.qzz.io/api/upload" : "/api/upload";
+
       const headers: Record<string, string> = {};
-      const token = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
-      if (token) {
-        headers["Authorization"] = `Bearer ${token}`;
+      if (isCap) {
+        const token = localStorage.getItem("auth_token");
+        if (token) {
+          headers["Authorization"] = `Bearer ${token}`;
+        }
       }
 
       const res = await fetch(uploadUrl, {
@@ -2404,6 +2435,613 @@ export default function MorePage() {
     );
   };
 
+  // ─── Employee Management Section (Shop Owner only) ────────────────────────
+  const [addEmpModalOpen, setAddEmpModalOpen] = useState(false);
+  const [editEmpModalOpen, setEditEmpModalOpen] = useState(false);
+  const [resetEmpModalOpen, setResetEmpModalOpen] = useState(false);
+  const [deleteEmpModalOpen, setDeleteEmpModalOpen] = useState(false);
+  const [selectedEmp, setSelectedEmp] = useState<any>(null);
+
+  const [empFullName, setEmpFullName] = useState("");
+  const [empEmail, setEmpEmail] = useState("");
+  const [empUsername, setEmpUsername] = useState("");
+  const [empPhone, setEmpPhone] = useState("");
+  const [empPassword, setEmpPassword] = useState("");
+  const [empDesignation, setEmpDesignation] = useState("Sales Staff");
+  const [empPermissions, setEmpPermissions] = useState<PermissionSet>(DEFAULT_EMPLOYEE_PERMISSIONS);
+  const [empSaving, setEmpSaving] = useState(false);
+  const [newEmpPassword, setNewEmpPassword] = useState("");
+  const [addEmpMode, setAddEmpMode] = useState<"invite" | "manual">("invite");
+  const [employeeTab, setEmployeeTab] = useState<"active" | "invitations">("active");
+
+  const employeesQuery = useQuery({
+    queryKey: ["shop-employees"],
+    queryFn: listShopEmployeesFn,
+    enabled: user?.role === "owner",
+  });
+
+  const invitationsQuery = useQuery({
+    queryKey: ["shop-employee-invitations"],
+    queryFn: listEmployeeInvitationsFn,
+    enabled: user?.role === "owner",
+  });
+
+  const shopEmployees = employeesQuery.data ?? [];
+  const employeeInvitations = invitationsQuery.data ?? [];
+
+  const handleOpenAddEmployee = () => {
+    setEmpFullName("");
+    setEmpEmail("");
+    setEmpUsername("");
+    setEmpPhone("");
+    setEmpPassword("");
+    setAddEmpMode("invite");
+    setEmpDesignation(lang === "bn" ? "বিক্রয় কর্মী" : "Sales Staff");
+    setEmpPermissions({
+      dashboard: true,
+      products: true,
+      sales: true,
+      parties: false,
+      purchases: false,
+      expenses: false,
+      cashbox: false,
+      settings: false,
+      reports: false,
+      danger_zone: false,
+    });
+    setAddEmpModalOpen(true);
+  };
+
+  const handleOpenEditEmployee = (emp: any) => {
+    setSelectedEmp(emp);
+    setEmpFullName(emp.full_name || "");
+    setEmpPhone(emp.phone || "");
+    setEmpDesignation(emp.designation || "Sales Staff");
+    setEmpPermissions(emp.permissions || DEFAULT_EMPLOYEE_PERMISSIONS);
+    setEditEmpModalOpen(true);
+  };
+
+  const handleOpenResetPassword = (emp: any) => {
+    setSelectedEmp(emp);
+    setNewEmpPassword("");
+    setResetEmpModalOpen(true);
+  };
+
+  const handleSaveNewEmployee = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setEmpSaving(true);
+    try {
+      if (addEmpMode === "invite") {
+        if (!empEmail.trim() || !empEmail.includes("@")) {
+          toast.error(lang === "bn" ? "সঠিক ইমেইল এড্রেস লিখুন" : "Please enter a valid employee email address");
+          return;
+        }
+
+        await inviteEmployeeByEmailFn({
+          data: {
+            email: empEmail.trim().toLowerCase(),
+            fullName: empFullName.trim(),
+            designation: empDesignation.trim(),
+            permissions: empPermissions,
+            phone: empPhone.trim(),
+          },
+        });
+
+        toast.success(
+          lang === "bn"
+            ? `কর্মচারী আমন্ত্রণ পাঠানো হয়েছে! ইউজার '${empEmail.trim()}' লগইন বা একাউন্ট তৈরি করলেই পপআপ দেখতে পাবেন।`
+            : `Employee invitation sent! When '${empEmail.trim()}' logs in or registers, they will receive an invitation popup.`
+        );
+        setAddEmpModalOpen(false);
+        qc.invalidateQueries({ queryKey: ["shop-employee-invitations"] });
+        qc.invalidateQueries({ queryKey: ["shop-employees"] });
+        setEmployeeTab("invitations");
+      } else {
+        if (!empFullName.trim() || !empUsername.trim() || !empPassword.trim()) {
+          toast.error(lang === "bn" ? "সকল প্রয়োজনীয় তথ্য পূরণ করুন" : "Please fill all required fields");
+          return;
+        }
+
+        await createShopEmployeeFn({
+          data: {
+            fullName: empFullName.trim(),
+            username: empUsername.trim().toLowerCase(),
+            phone: empPhone.trim() || empUsername.trim(),
+            password: empPassword.trim(),
+            designation: empDesignation.trim(),
+            permissions: empPermissions,
+          },
+        });
+
+        toast.success(lang === "bn" ? "নতুন কর্মচারী সফলভাবে যুক্ত হয়েছে!" : "Employee account created successfully!");
+        setAddEmpModalOpen(false);
+        qc.invalidateQueries({ queryKey: ["shop-employees"] });
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Failed to add employee");
+    } finally {
+      setEmpSaving(false);
+    }
+  };
+
+  const handleCancelInvitation = async (invitationId: string) => {
+    try {
+      await cancelEmployeeInvitationFn({
+        data: { invitationId },
+      });
+      toast.success(lang === "bn" ? "আমন্ত্রণ বাতিল করা হয়েছে" : "Invitation cancelled successfully");
+      qc.invalidateQueries({ queryKey: ["shop-employee-invitations"] });
+    } catch (err: any) {
+      toast.error(err.message || "Failed to cancel invitation");
+    }
+  };
+
+  const handleUpdateEmployee = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedEmp) return;
+    setEmpSaving(true);
+    try {
+      await updateShopEmployeeFn({
+        data: {
+          employeeId: selectedEmp.id,
+          fullName: empFullName.trim(),
+          phone: empPhone.trim(),
+          designation: empDesignation.trim(),
+          permissions: empPermissions,
+        },
+      });
+      toast.success(lang === "bn" ? "কর্মচারীর তথ্য ও পারমিশন আপডেট হয়েছে!" : "Employee updated successfully!");
+      setEditEmpModalOpen(false);
+      qc.invalidateQueries({ queryKey: ["shop-employees"] });
+    } catch (err: any) {
+      toast.error(err.message || "Failed to update employee");
+    } finally {
+      setEmpSaving(false);
+    }
+  };
+
+  const handleSaveResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedEmp || !newEmpPassword || newEmpPassword.length < 4) {
+      toast.error(lang === "bn" ? "কমপক্ষে ৪ ডিজিটের পাসওয়ার্ড দিন" : "Password must be at least 4 characters");
+      return;
+    }
+    setEmpSaving(true);
+    try {
+      await updateShopEmployeeFn({
+        data: {
+          employeeId: selectedEmp.id,
+          password: newEmpPassword.trim(),
+        },
+      });
+      toast.success(lang === "bn" ? "পাসওয়ার্ড সফলভাবে পরিবর্তন হয়েছে!" : "Password reset successfully!");
+      setResetEmpModalOpen(false);
+    } catch (err: any) {
+      toast.error(err.message || "Failed to reset password");
+    } finally {
+      setEmpSaving(false);
+    }
+  };
+
+  const handleToggleStatus = async (emp: any) => {
+    try {
+      const newStatus = !emp.is_active;
+      await updateShopEmployeeFn({
+        data: {
+          employeeId: emp.id,
+          isActive: newStatus,
+        },
+      });
+      toast.success(
+        newStatus
+          ? (lang === "bn" ? "কর্মচারী একাউন্ট সক্রিয় করা হয়েছে" : "Employee activated")
+          : (lang === "bn" ? "কর্মচারী একাউন্ট নিষ্ক্রিয় করা হয়েছে" : "Employee deactivated")
+      );
+      qc.invalidateQueries({ queryKey: ["shop-employees"] });
+    } catch (err: any) {
+      toast.error(err.message || "Failed to change status");
+    }
+  };
+
+  const handleDeleteEmployee = async () => {
+    if (!selectedEmp) return;
+    setEmpSaving(true);
+    try {
+      await deleteShopEmployeeFn({
+        data: {
+          employeeId: selectedEmp.id,
+        },
+      });
+      toast.success(lang === "bn" ? "কর্মচারী মুছে ফেলা হয়েছে" : "Employee deleted");
+      setDeleteEmpModalOpen(false);
+      qc.invalidateQueries({ queryKey: ["shop-employees"] });
+    } catch (err: any) {
+      toast.error(err.message || "Failed to delete employee");
+    } finally {
+      setEmpSaving(false);
+    }
+  };
+
+  const renderEmployeeManagement = () => {
+    if (user?.role !== "owner") return null;
+
+    return (
+      <Card className="p-4 sm:p-5 rounded-2xl bg-card border-border/80 shadow-xs space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-border/60 pb-3.5">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <div className="p-2 rounded-xl bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
+                <UserCheck className="size-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-foreground flex items-center gap-2">
+                  {lang === "bn" ? "কর্মচারী ব্যবস্থাপনা ও আমন্ত্রণ" : "Employee Management & Invitations"}
+                </h3>
+                <p className="text-xs text-muted-foreground">
+                  {lang === "bn"
+                    ? "ইমেইল দিয়ে কর্মচারী আমন্ত্রণ পাঠান, পারমিশন নিয়ন্ত্রণ করুন এবং একাউন্ট পরিচালনা করুন।"
+                    : "Invite employees by email, configure granular module permissions, and manage staff accounts."}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <Button
+            size="sm"
+            onClick={handleOpenAddEmployee}
+            className="h-9 px-3.5 text-xs font-semibold rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white gap-1.5 beveled-button shrink-0 shadow-md"
+          >
+            <UserPlus className="size-4" />
+            <span>{lang === "bn" ? "নতুন কর্মচারী যোগ / আমন্ত্রণ" : "Add / Invite Employee"}</span>
+          </Button>
+        </div>
+
+        {/* Section Segmented Tabs (Active Employees vs Pending Invitations) */}
+        <div className="flex items-center gap-1.5 p-1 bg-muted/60 rounded-xl border border-border/80 w-fit text-xs font-semibold">
+          <button
+            type="button"
+            onClick={() => setEmployeeTab("active")}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all ${
+              employeeTab === "active"
+                ? "bg-card text-foreground shadow-xs border border-border/80"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <Users className="size-3.5 text-emerald-600" />
+            <span>{lang === "bn" ? "সক্রিয় কর্মচারী" : "Active Staff"}</span>
+            <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4">
+              {shopEmployees.length}
+            </Badge>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setEmployeeTab("invitations")}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all ${
+              employeeTab === "invitations"
+                ? "bg-card text-primary shadow-xs border border-primary/30 font-bold"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <Mail className="size-3.5 text-blue-500" />
+            <span>{lang === "bn" ? "ইমেইল আমন্ত্রণসমূহ" : "Pending Invitations"}</span>
+            {employeeInvitations.filter((i: any) => i.status === "pending").length > 0 && (
+              <Badge className="text-[10px] px-1.5 py-0 h-4 bg-amber-500 hover:bg-amber-500 text-white">
+                {employeeInvitations.filter((i: any) => i.status === "pending").length}
+              </Badge>
+            )}
+          </button>
+        </div>
+
+        {/* TAB 1: ACTIVE EMPLOYEES */}
+        {employeeTab === "active" && (
+          <>
+            {employeesQuery.isLoading ? (
+              <div className="py-8 text-center text-xs text-muted-foreground flex flex-col items-center gap-2">
+                <Loader2 className="size-5 animate-spin text-primary" />
+                <span>{lang === "bn" ? "কর্মচারীদের তালিকা লোড হচ্ছে..." : "Loading employees list..."}</span>
+              </div>
+            ) : shopEmployees.length === 0 ? (
+              <div className="py-8 text-center border border-dashed border-border/70 rounded-xl space-y-2.5 bg-muted/20">
+                <div className="p-3 bg-muted/60 rounded-full inline-block text-muted-foreground">
+                  <Users className="size-6 opacity-60" />
+                </div>
+                <div className="space-y-1 max-w-sm mx-auto px-4">
+                  <p className="text-xs font-bold text-foreground">
+                    {lang === "bn" ? "এখনও কোনো কর্মচারী যুক্ত করা হয়নি" : "No employees active yet"}
+                  </p>
+                  <p className="text-[11px] text-muted-foreground">
+                    {lang === "bn"
+                      ? "ইমেইল দিয়ে আপনার কর্মচারীকে আমন্ত্রণ জানান অথবা সরাসরি ইউজারনেম পাসওয়ার্ড দিয়ে একাউন্ট তৈরি করুন।"
+                      : "Invite your staff via email or create login credentials directly."}
+                  </p>
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={handleOpenAddEmployee}
+                  className="text-xs rounded-xl gap-1.5 h-8 mt-1"
+                >
+                  <Plus className="size-3.5" />
+                  <span>{lang === "bn" ? "প্রথম কর্মচারী যোগ করুন" : "Add First Employee"}</span>
+                </Button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 pt-1">
+                {shopEmployees.map((emp: any) => {
+                  const p = emp.permissions || DEFAULT_EMPLOYEE_PERMISSIONS;
+                  const grantedCount = Object.values(p).filter(Boolean).length;
+
+                  return (
+                    <div
+                      key={emp.id}
+                      className="p-3.5 sm:p-4 rounded-xl bg-muted/30 border border-border/70 hover:border-border transition-all space-y-3 flex flex-col justify-between"
+                    >
+                      <div className="space-y-2.5">
+                        {/* Header: Name, Designation & Status */}
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <Avatar className="size-10 rounded-xl border border-border/80 shadow-xs bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 font-bold text-sm shrink-0">
+                              <AvatarFallback className="rounded-xl bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 font-bold">
+                                {(emp.full_name || "EM").slice(0, 2).toUpperCase()}
+                              </AvatarFallback>
+                            </Avatar>
+                            <div className="min-w-0">
+                              <h4 className="text-xs sm:text-sm font-bold text-foreground truncate">
+                                {emp.full_name}
+                              </h4>
+                              <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground flex-wrap">
+                                <span className="font-medium text-emerald-600 dark:text-emerald-400">
+                                  {emp.designation || (lang === "bn" ? "বিক্রয় কর্মী" : "Sales Staff")}
+                                </span>
+                                {emp.email && !emp.email.endsWith("@employee.local") && (
+                                  <>
+                                    <span>•</span>
+                                    <span className="font-mono text-[10px]">{emp.email}</span>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-1 shrink-0">
+                            <Badge
+                              variant={emp.is_active ? "outline" : "secondary"}
+                              className={`text-[10px] font-medium rounded-md px-1.5 py-0.5 ${
+                                emp.is_active
+                                  ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30"
+                                  : "bg-zinc-500/15 text-zinc-500 border-zinc-500/30"
+                              }`}
+                            >
+                              {emp.is_active
+                                ? (lang === "bn" ? "সক্রিয়" : "Active")
+                                : (lang === "bn" ? "নিষ্ক্রিয়" : "Inactive")}
+                            </Badge>
+                          </div>
+                        </div>
+
+                        {/* Contact details */}
+                        <div className="grid grid-cols-2 gap-2 text-[11px] bg-background/60 p-2 rounded-lg border border-border/50 font-mono">
+                          <div className="truncate">
+                            <span className="text-muted-foreground block text-[9px] uppercase font-sans font-semibold">Phone / User</span>
+                            <span className="text-foreground">{emp.phone || emp.username || "—"}</span>
+                          </div>
+                          <div className="truncate">
+                            <span className="text-muted-foreground block text-[9px] uppercase font-sans font-semibold">Permissions</span>
+                            <span className="text-foreground font-sans font-medium">{grantedCount} modules</span>
+                          </div>
+                        </div>
+
+                        {/* Permissions Badges */}
+                        <div className="flex flex-wrap gap-1 pt-0.5">
+                          {p.sales && (
+                            <span className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/20">
+                              🛒 POS Sales
+                            </span>
+                          )}
+                          {p.products && (
+                            <span className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-blue-500/15 text-blue-700 dark:text-blue-300 border border-blue-500/20">
+                              📦 Products
+                            </span>
+                          )}
+                          {p.purchases && (
+                            <span className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-purple-500/15 text-purple-700 dark:text-purple-300 border border-purple-500/20">
+                              🛍️ Purchases
+                            </span>
+                          )}
+                          {p.expenses && (
+                            <span className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/20">
+                              💸 Expenses
+                            </span>
+                          )}
+                          {p.cashbox && (
+                            <span className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/20">
+                              💵 Cashbox
+                            </span>
+                          )}
+                          {p.parties && (
+                            <span className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 border border-indigo-500/20">
+                              👥 Parties
+                            </span>
+                          )}
+                          {p.reports && (
+                            <span className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-rose-500/15 text-rose-700 dark:text-rose-300 border border-rose-500/20">
+                              📈 Reports
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Actions Footer */}
+                      <div className="flex items-center justify-between gap-1.5 pt-2 border-t border-border/50">
+                        <div className="flex items-center gap-1">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleOpenEditEmployee(emp)}
+                            className="h-7.5 px-2 text-[11px] rounded-lg gap-1"
+                            title="Edit permissions and details"
+                          >
+                            <Edit className="size-3" />
+                            <span>{lang === "bn" ? "পারমিশন" : "Edit"}</span>
+                          </Button>
+
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleOpenResetPassword(emp)}
+                            className="h-7.5 px-2 text-[11px] rounded-lg gap-1"
+                            title="Change employee password"
+                          >
+                            <Key className="size-3 text-amber-500" />
+                            <span>{lang === "bn" ? "পাসওয়ার্ড" : "Password"}</span>
+                          </Button>
+                        </div>
+
+                        <div className="flex items-center gap-1">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => handleToggleStatus(emp)}
+                            className={`h-7.5 px-2 text-[11px] rounded-lg ${
+                              emp.is_active
+                                ? "text-amber-600 hover:text-amber-700 hover:bg-amber-500/10"
+                                : "text-emerald-600 hover:text-emerald-700 hover:bg-emerald-500/10"
+                            }`}
+                          >
+                            {emp.is_active
+                              ? (lang === "bn" ? "নিষ্ক্রিয় করুন" : "Deactivate")
+                              : (lang === "bn" ? "সক্রিয় করুন" : "Activate")}
+                          </Button>
+
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => {
+                              setSelectedEmp(emp);
+                              setDeleteEmpModalOpen(true);
+                            }}
+                            className="h-7.5 px-2 text-[11px] rounded-lg text-destructive hover:bg-destructive/10"
+                          >
+                            <Trash2 className="size-3.5" />
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </>
+        )}
+
+        {/* TAB 2: PENDING EMAIL INVITATIONS */}
+        {employeeTab === "invitations" && (
+          <>
+            {invitationsQuery.isLoading ? (
+              <div className="py-8 text-center text-xs text-muted-foreground flex flex-col items-center gap-2">
+                <Loader2 className="size-5 animate-spin text-primary" />
+                <span>Loading invitations...</span>
+              </div>
+            ) : employeeInvitations.length === 0 ? (
+              <div className="py-8 text-center border border-dashed border-border/70 rounded-xl space-y-2 bg-muted/20">
+                <div className="p-3 bg-muted/60 rounded-full inline-block text-muted-foreground">
+                  <Mail className="size-6 opacity-60" />
+                </div>
+                <div className="space-y-1 max-w-sm mx-auto px-4">
+                  <p className="text-xs font-bold text-foreground">
+                    {lang === "bn" ? "কোন পেন্ডিং আমন্ত্রণ নেই" : "No pending invitations"}
+                  </p>
+                  <p className="text-[11px] text-muted-foreground">
+                    {lang === "bn"
+                      ? "কর্মচারীর ইমেইল দিয়ে আমন্ত্রণ পাঠালে তারা লগইন করার পর পপআপে আমন্ত্রণ গ্রহণ করতে পারবে।"
+                      : "Send invitations to staff email addresses. When they login, an invitation popup will appear."}
+                  </p>
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={handleOpenAddEmployee}
+                  className="text-xs rounded-xl gap-1.5 h-8 mt-1"
+                >
+                  <UserPlus className="size-3.5 text-emerald-600" />
+                  <span>{lang === "bn" ? "ইমেইলে আমন্ত্রণ পাঠান" : "Invite Employee by Email"}</span>
+                </Button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 pt-1">
+                {employeeInvitations.map((inv: any) => {
+                  const dateStr = inv.created_at ? new Date(inv.created_at).toLocaleDateString() : "";
+                  const isPending = inv.status === "pending";
+
+                  return (
+                    <div
+                      key={inv.id}
+                      className="p-3.5 rounded-xl bg-card border border-border/80 shadow-xs space-y-3 flex flex-col justify-between"
+                    >
+                      <div className="space-y-2">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <div className="size-9 rounded-xl bg-blue-500/10 text-blue-600 border border-blue-500/20 flex items-center justify-center font-bold text-xs shrink-0">
+                              <Mail className="size-4" />
+                            </div>
+                            <div className="min-w-0">
+                              <h4 className="text-xs sm:text-sm font-bold text-foreground truncate font-mono">
+                                {inv.employee_email}
+                              </h4>
+                              <p className="text-[11px] text-muted-foreground">
+                                {inv.employee_name ? `${inv.employee_name} • ` : ""}{inv.designation || "Sales Staff"}
+                              </p>
+                            </div>
+                          </div>
+
+                          <Badge
+                            variant="outline"
+                            className={`text-[10px] font-semibold px-2 py-0.5 rounded-md ${
+                              isPending
+                                ? "bg-amber-500/10 text-amber-600 border-amber-500/30 animate-pulse"
+                                : inv.status === "accepted"
+                                ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/30"
+                                : "bg-red-500/10 text-red-600 border-red-500/30"
+                            }`}
+                          >
+                            {isPending ? "Pending Invite" : inv.status}
+                          </Badge>
+                        </div>
+
+                        <p className="text-[11px] text-muted-foreground">
+                          {lang === "bn" ? "আমন্ত্রণ পাঠানোর তারিখ:" : "Sent on:"} {dateStr}
+                        </p>
+                      </div>
+
+                      <div className="flex items-center justify-between pt-2 border-t border-border/50 text-xs">
+                        <span className="text-[11px] text-muted-foreground">
+                          {isPending ? "Waiting for employee to login" : `Status: ${inv.status}`}
+                        </span>
+
+                        {isPending && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => handleCancelInvitation(inv.id)}
+                            className="h-7 px-2 text-[11px] text-destructive hover:bg-destructive/10 rounded-lg gap-1"
+                          >
+                            <Trash2 className="size-3" />
+                            <span>{lang === "bn" ? "বাতিল করুন" : "Cancel"}</span>
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </>
+        )}
+      </Card>
+    );
+  };
+
   return (
     <div className="space-y-5 pb-6">
       {/* Profile Header */}
@@ -2456,11 +3094,10 @@ export default function MorePage() {
                 {user?.role === "owner" ? (lang === "bn" ? "মালিক" : "Owner") : (lang === "bn" ? "কর্মচারী" : "Employee")}
               </span>
             </div>
-            <p className="text-xs text-muted-foreground truncate mt-0.5">{user?.email}</p>
             <div className="flex items-center justify-between gap-2 mt-2 flex-wrap">
               <div className="text-[10px] text-zinc-500 dark:text-zinc-400 font-bold uppercase tracking-wider flex items-center gap-1.5">
                 <Store className="size-3.5 text-primary" />
-                <span>{user?.business_name || "Classic World"}</span>
+                <span>{user?.business_name || "Dream IT Shop"}</span>
               </div>
               <div className="flex items-center gap-1.5">
                 {user?.role === "owner" && (
@@ -2494,6 +3131,7 @@ export default function MorePage() {
 
           <TabsContent value="menu" className="space-y-5 outline-none mt-0">
             {renderMobileOperations()}
+            {renderEmployeeManagement()}
             {renderSignOut()}
           </TabsContent>
 
@@ -2510,6 +3148,7 @@ export default function MorePage() {
           {renderOperations()}
           {renderThemeCustomization()}
           {renderBackdateManager()}
+          {renderEmployeeManagement()}
           {renderSignOut()}
         </div>
       )}
@@ -2592,6 +3231,506 @@ export default function MorePage() {
         </DialogContent>
       </Dialog>
 
+      {/* ─── 1. Add Employee Dialog ─── */}
+      <Dialog open={addEmpModalOpen} onOpenChange={setAddEmpModalOpen}>
+        <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-base font-serif flex items-center gap-2">
+              <UserPlus className="size-5 text-emerald-600" />
+              <span>{lang === "bn" ? "নতুন কর্মচারী যোগ / আমন্ত্রণ" : "Add / Invite Employee"}</span>
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              {lang === "bn"
+                ? "কর্মচারীর ইমেইল দিয়ে আমন্ত্রণ পাঠান অথবা সরাসরি লগইন একাউন্ট তৈরি করুন।"
+                : "Invite staff by email or create direct credentials with module permissions."}
+            </DialogDescription>
+          </DialogHeader>
+
+          {/* Mode Switcher */}
+          <div className="flex items-center gap-2 p-1 bg-muted/60 rounded-xl border border-border/80 text-xs font-semibold">
+            <button
+              type="button"
+              onClick={() => setAddEmpMode("invite")}
+              className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg transition-all ${
+                addEmpMode === "invite"
+                  ? "bg-card text-emerald-600 shadow-xs border border-emerald-500/30 font-bold"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <Mail className="size-3.5" />
+              <span>{lang === "bn" ? "ইমেইলে আমন্ত্রণ (সুপারিশকৃত)" : "Invite via Email (Recommended)"}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setAddEmpMode("manual")}
+              className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg transition-all ${
+                addEmpMode === "manual"
+                  ? "bg-card text-foreground shadow-xs border border-border/80 font-bold"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <KeyRound className="size-3.5" />
+              <span>{lang === "bn" ? "সরাসরি একাউন্ট" : "Direct Account"}</span>
+            </button>
+          </div>
+
+          <form onSubmit={handleSaveNewEmployee} className="space-y-4 pt-1">
+            {addEmpMode === "invite" ? (
+              <div className="space-y-3">
+                <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-[11.5px] text-emerald-800 dark:text-emerald-300 leading-relaxed">
+                  💡 {lang === "bn"
+                    ? "কর্মচারীর জিমেইল/ইমেইল লিখুন। সেই ইমেইল দিয়ে ইউজার লগইন বা সাইন-আপ করলেই সাথে সাথে এই দোকানে যুক্ত হওয়ার জন্য এক্সেপ্ট/রিজেক্ট পপআপ দেখতে পাবেন।"
+                    : "Enter employee's email. When they sign up or log in with this email, they will automatically receive a popup invitation to accept becoming an employee of your shop."}
+                </div>
+
+                <div className="space-y-1">
+                  <Label className="text-xs font-semibold">{lang === "bn" ? "কর্মচারীর ইমেইল এড্রেস *" : "Employee Email Address *"}</Label>
+                  <Input
+                    required
+                    type="email"
+                    placeholder="e.g. staff.employee@gmail.com"
+                    value={empEmail}
+                    onChange={(e) => setEmpEmail(e.target.value)}
+                    className="h-9 text-xs rounded-xl font-mono"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label className="text-xs font-semibold">{lang === "bn" ? "কর্মচারীর নাম (ঐচ্ছিক)" : "Full Name (Optional)"}</Label>
+                    <Input
+                      placeholder="e.g. Rahim Ahmed"
+                      value={empFullName}
+                      onChange={(e) => setEmpFullName(e.target.value)}
+                      className="h-8.5 text-xs rounded-xl"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <Label className="text-xs font-semibold">{lang === "bn" ? "পদবী (Designation)" : "Designation"}</Label>
+                    <Input
+                      placeholder="e.g. Sales Staff, Cashier"
+                      value={empDesignation}
+                      onChange={(e) => setEmpDesignation(e.target.value)}
+                      className="h-8.5 text-xs rounded-xl"
+                    />
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <div className="space-y-1">
+                  <Label className="text-xs font-semibold">{lang === "bn" ? "কর্মচারীর পুরো নাম *" : "Full Name *"}</Label>
+                  <Input
+                    required
+                    placeholder="e.g. Rahim Ahmed"
+                    value={empFullName}
+                    onChange={(e) => setEmpFullName(e.target.value)}
+                    className="h-8.5 text-xs rounded-xl"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label className="text-xs font-semibold">{lang === "bn" ? "ইউজারনেম (লগইনের জন্য) *" : "Username (For Login) *"}</Label>
+                    <Input
+                      required
+                      placeholder="e.g. rahim"
+                      value={empUsername}
+                      onChange={(e) => setEmpUsername(e.target.value)}
+                      className="h-8.5 text-xs rounded-xl font-mono"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <Label className="text-xs font-semibold">{lang === "bn" ? "মোবাইল নম্বর *" : "Phone Number *"}</Label>
+                    <Input
+                      required
+                      placeholder="e.g. 01700000000"
+                      value={empPhone}
+                      onChange={(e) => setEmpPhone(e.target.value)}
+                      className="h-8.5 text-xs rounded-xl font-mono"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label className="text-xs font-semibold">{lang === "bn" ? "লগইন পাসওয়ার্ড *" : "Login Password *"}</Label>
+                    <Input
+                      required
+                      type="password"
+                      placeholder="e.g. 123456"
+                      value={empPassword}
+                      onChange={(e) => setEmpPassword(e.target.value)}
+                      className="h-8.5 text-xs rounded-xl font-mono"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <Label className="text-xs font-semibold">{lang === "bn" ? "পদবী (Designation)" : "Designation"}</Label>
+                    <Input
+                      placeholder="e.g. Sales Staff, Cashier"
+                      value={empDesignation}
+                      onChange={(e) => setEmpDesignation(e.target.value)}
+                      className="h-8.5 text-xs rounded-xl"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Granular Permissions Box */}
+            <div className="space-y-2 pt-1">
+              <Label className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                <ShieldCheck className="size-4 text-emerald-600" />
+                <span>{lang === "bn" ? "মডিউল এক্সেস পারমিশন নির্ধারণ করুন:" : "Module Access Permissions:"}</span>
+              </Label>
+
+              <div className="space-y-2 p-3 bg-muted/40 rounded-xl border border-border/70 text-xs">
+                {/* POS Sales */}
+                <div className="flex items-center justify-between">
+                  <div>
+                    <span className="font-semibold block text-foreground">🛒 POS Sales & Orders</span>
+                    <span className="text-[10.5px] text-muted-foreground">Make sales, print invoices & search products</span>
+                  </div>
+                  <Switch
+                    checked={empPermissions.sales}
+                    onCheckedChange={(val) => setEmpPermissions((prev) => ({ ...prev, sales: val }))}
+                  />
+                </div>
+
+                {/* Stock & Products */}
+                <div className="flex items-center justify-between border-t border-border/40 pt-2">
+                  <div>
+                    <span className="font-semibold block text-foreground">📦 Product Catalog & Stock</span>
+                    <span className="text-[10.5px] text-muted-foreground">View stock quantity and barcode prices</span>
+                  </div>
+                  <Switch
+                    checked={empPermissions.products}
+                    onCheckedChange={(val) => setEmpPermissions((prev) => ({ ...prev, products: val }))}
+                  />
+                </div>
+
+                {/* Dashboard */}
+                <div className="flex items-center justify-between border-t border-border/40 pt-2">
+                  <div>
+                    <span className="font-semibold block text-foreground">📊 Dashboard Overview</span>
+                    <span className="text-[10.5px] text-muted-foreground">View daily transaction summaries</span>
+                  </div>
+                  <Switch
+                    checked={empPermissions.dashboard}
+                    onCheckedChange={(val) => setEmpPermissions((prev) => ({ ...prev, dashboard: val }))}
+                  />
+                </div>
+
+                {/* Purchases */}
+                <div className="flex items-center justify-between border-t border-border/40 pt-2">
+                  <div>
+                    <span className="font-semibold block text-foreground">🛍️ Purchases & Stock In</span>
+                    <span className="text-[10.5px] text-muted-foreground">Log supplier product restocks</span>
+                  </div>
+                  <Switch
+                    checked={empPermissions.purchases}
+                    onCheckedChange={(val) => setEmpPermissions((prev) => ({ ...prev, purchases: val }))}
+                  />
+                </div>
+
+                {/* Expenses */}
+                <div className="flex items-center justify-between border-t border-border/40 pt-2">
+                  <div>
+                    <span className="font-semibold block text-foreground">💸 Expenses & Overheads</span>
+                    <span className="text-[10.5px] text-muted-foreground">Record tea, shop rent & staff expense</span>
+                  </div>
+                  <Switch
+                    checked={empPermissions.expenses}
+                    onCheckedChange={(val) => setEmpPermissions((prev) => ({ ...prev, expenses: val }))}
+                  />
+                </div>
+
+                {/* Cashbox */}
+                <div className="flex items-center justify-between border-t border-border/40 pt-2">
+                  <div>
+                    <span className="font-semibold block text-foreground">💵 Cash Management & Ledger</span>
+                    <span className="text-[10.5px] text-muted-foreground">Cashbox in/out and drawer balance</span>
+                  </div>
+                  <Switch
+                    checked={empPermissions.cashbox}
+                    onCheckedChange={(val) => setEmpPermissions((prev) => ({ ...prev, cashbox: val }))}
+                  />
+                </div>
+
+                {/* Parties / Dues */}
+                <div className="flex items-center justify-between border-t border-border/40 pt-2">
+                  <div>
+                    <span className="font-semibold block text-foreground">👥 Customers, Dues & Suppliers</span>
+                    <span className="text-[10.5px] text-muted-foreground">Customer balances & due collections</span>
+                  </div>
+                  <Switch
+                    checked={empPermissions.parties}
+                    onCheckedChange={(val) => setEmpPermissions((prev) => ({ ...prev, parties: val }))}
+                  />
+                </div>
+
+                {/* Reports */}
+                <div className="flex items-center justify-between border-t border-border/40 pt-2">
+                  <div>
+                    <span className="font-semibold block text-foreground">📈 Profit & Sales Reports</span>
+                    <span className="text-[10.5px] text-muted-foreground">Sales analytics, profits & loss margins</span>
+                  </div>
+                  <Switch
+                    checked={empPermissions.reports}
+                    onCheckedChange={(val) => setEmpPermissions((prev) => ({ ...prev, reports: val }))}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <DialogFooter className="gap-2 pt-2">
+              <Button type="button" variant="outline" size="sm" onClick={() => setAddEmpModalOpen(false)}>
+                {t("cancel")}
+              </Button>
+              <Button type="submit" size="sm" disabled={empSaving} className="bg-emerald-600 hover:bg-emerald-500 text-white font-semibold">
+                {empSaving ? "…" : (lang === "bn" ? "কর্মচারী সেভ করুন" : "Save Employee")}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* ─── 2. Edit Employee & Permissions Dialog ─── */}
+      <Dialog open={editEmpModalOpen} onOpenChange={setEditEmpModalOpen}>
+        <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-base font-serif flex items-center gap-2">
+              <Edit className="size-5 text-primary" />
+              <span>{lang === "bn" ? "কর্মচারী পারমিশন ও তথ্য এডিট" : "Edit Employee Permissions"}</span>
+            </DialogTitle>
+            <DialogDescription className="text-xs font-mono">
+              @{selectedEmp?.username} ({selectedEmp?.full_name})
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleUpdateEmployee} className="space-y-4 pt-1">
+            <div className="space-y-1">
+              <Label className="text-xs font-semibold">{lang === "bn" ? "পুরো নাম *" : "Full Name *"}</Label>
+              <Input
+                required
+                value={empFullName}
+                onChange={(e) => setEmpFullName(e.target.value)}
+                className="h-8.5 text-xs rounded-xl"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs font-semibold">{lang === "bn" ? "মোবাইল নম্বর" : "Phone"}</Label>
+                <Input
+                  value={empPhone}
+                  onChange={(e) => setEmpPhone(e.target.value)}
+                  className="h-8.5 text-xs rounded-xl font-mono"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-xs font-semibold">{lang === "bn" ? "পদবী (Designation)" : "Designation"}</Label>
+                <Input
+                  value={empDesignation}
+                  onChange={(e) => setEmpDesignation(e.target.value)}
+                  className="h-8.5 text-xs rounded-xl"
+                />
+              </div>
+            </div>
+
+            {/* Granular Permissions Box */}
+            <div className="space-y-2 pt-1">
+              <Label className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                <ShieldCheck className="size-4 text-emerald-600" />
+                <span>{lang === "bn" ? "মডিউল এক্সেস পারমিশন পরিবর্তন করুন:" : "Modify Access Permissions:"}</span>
+              </Label>
+
+              <div className="space-y-2 p-3 bg-muted/40 rounded-xl border border-border/70 text-xs">
+                {/* POS Sales */}
+                <div className="flex items-center justify-between">
+                  <div>
+                    <span className="font-semibold block text-foreground">🛒 POS Sales & Orders</span>
+                    <span className="text-[10.5px] text-muted-foreground">Make sales & search items</span>
+                  </div>
+                  <Switch
+                    checked={empPermissions.sales}
+                    onCheckedChange={(val) => setEmpPermissions((prev) => ({ ...prev, sales: val }))}
+                  />
+                </div>
+
+                {/* Stock & Products */}
+                <div className="flex items-center justify-between border-t border-border/40 pt-2">
+                  <div>
+                    <span className="font-semibold block text-foreground">📦 Product Catalog & Stock</span>
+                    <span className="text-[10.5px] text-muted-foreground">View stock quantity</span>
+                  </div>
+                  <Switch
+                    checked={empPermissions.products}
+                    onCheckedChange={(val) => setEmpPermissions((prev) => ({ ...prev, products: val }))}
+                  />
+                </div>
+
+                {/* Dashboard */}
+                <div className="flex items-center justify-between border-t border-border/40 pt-2">
+                  <div>
+                    <span className="font-semibold block text-foreground">📊 Dashboard Overview</span>
+                    <span className="text-[10.5px] text-muted-foreground">View daily transaction summaries</span>
+                  </div>
+                  <Switch
+                    checked={empPermissions.dashboard}
+                    onCheckedChange={(val) => setEmpPermissions((prev) => ({ ...prev, dashboard: val }))}
+                  />
+                </div>
+
+                {/* Purchases */}
+                <div className="flex items-center justify-between border-t border-border/40 pt-2">
+                  <div>
+                    <span className="font-semibold block text-foreground">🛍️ Purchases & Stock In</span>
+                    <span className="text-[10.5px] text-muted-foreground">Log supplier product restocks</span>
+                  </div>
+                  <Switch
+                    checked={empPermissions.purchases}
+                    onCheckedChange={(val) => setEmpPermissions((prev) => ({ ...prev, purchases: val }))}
+                  />
+                </div>
+
+                {/* Expenses */}
+                <div className="flex items-center justify-between border-t border-border/40 pt-2">
+                  <div>
+                    <span className="font-semibold block text-foreground">💸 Expenses & Overheads</span>
+                    <span className="text-[10.5px] text-muted-foreground">Record tea, shop rent & staff expense</span>
+                  </div>
+                  <Switch
+                    checked={empPermissions.expenses}
+                    onCheckedChange={(val) => setEmpPermissions((prev) => ({ ...prev, expenses: val }))}
+                  />
+                </div>
+
+                {/* Cashbox */}
+                <div className="flex items-center justify-between border-t border-border/40 pt-2">
+                  <div>
+                    <span className="font-semibold block text-foreground">💵 Cash Management & Ledger</span>
+                    <span className="text-[10.5px] text-muted-foreground">Cashbox in/out and drawer balance</span>
+                  </div>
+                  <Switch
+                    checked={empPermissions.cashbox}
+                    onCheckedChange={(val) => setEmpPermissions((prev) => ({ ...prev, cashbox: val }))}
+                  />
+                </div>
+
+                {/* Parties / Dues */}
+                <div className="flex items-center justify-between border-t border-border/40 pt-2">
+                  <div>
+                    <span className="font-semibold block text-foreground">👥 Customers, Dues & Suppliers</span>
+                    <span className="text-[10.5px] text-muted-foreground">Customer balances & due collections</span>
+                  </div>
+                  <Switch
+                    checked={empPermissions.parties}
+                    onCheckedChange={(val) => setEmpPermissions((prev) => ({ ...prev, parties: val }))}
+                  />
+                </div>
+
+                {/* Reports */}
+                <div className="flex items-center justify-between border-t border-border/40 pt-2">
+                  <div>
+                    <span className="font-semibold block text-foreground">📈 Profit & Sales Reports</span>
+                    <span className="text-[10.5px] text-muted-foreground">Sales analytics, profits & loss margins</span>
+                  </div>
+                  <Switch
+                    checked={empPermissions.reports}
+                    onCheckedChange={(val) => setEmpPermissions((prev) => ({ ...prev, reports: val }))}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <DialogFooter className="gap-2 pt-2">
+              <Button type="button" variant="outline" size="sm" onClick={() => setEditEmpModalOpen(false)}>
+                {t("cancel")}
+              </Button>
+              <Button type="submit" size="sm" disabled={empSaving} className="bg-primary text-white font-semibold">
+                {empSaving ? "…" : (lang === "bn" ? "পারমিশন আপডেট করুন" : "Update Permissions")}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* ─── 3. Reset Password Dialog ─── */}
+      <Dialog open={resetEmpModalOpen} onOpenChange={setResetEmpModalOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="text-base font-serif flex items-center gap-2">
+              <Key className="size-5 text-amber-500" />
+              <span>{lang === "bn" ? "পাসওয়ার্ড রিসেট করুন" : "Reset Password"}</span>
+            </DialogTitle>
+            <DialogDescription className="text-xs font-mono">
+              Employee: @{selectedEmp?.username} ({selectedEmp?.full_name})
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleSaveResetPassword} className="space-y-4 pt-1">
+            <div className="space-y-1">
+              <Label className="text-xs font-semibold">{lang === "bn" ? "নতুন পাসওয়ার্ড *" : "New Password *"}</Label>
+              <Input
+                required
+                type="password"
+                placeholder="At least 4 characters"
+                value={newEmpPassword}
+                onChange={(e) => setNewEmpPassword(e.target.value)}
+                className="h-8.5 text-xs rounded-xl font-mono"
+              />
+            </div>
+
+            <DialogFooter className="gap-2 pt-2">
+              <Button type="button" variant="outline" size="sm" onClick={() => setResetEmpModalOpen(false)}>
+                {t("cancel")}
+              </Button>
+              <Button type="submit" size="sm" disabled={empSaving || !newEmpPassword} className="bg-amber-600 hover:bg-amber-500 text-white font-semibold">
+                {empSaving ? "…" : (lang === "bn" ? "পাসওয়ার্ড পরিবর্তন করুন" : "Change Password")}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* ─── 4. Delete Employee Confirmation Dialog ─── */}
+      <Dialog open={deleteEmpModalOpen} onOpenChange={setDeleteEmpModalOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="text-base font-serif text-destructive flex items-center gap-2">
+              <AlertTriangle className="size-5 text-destructive" />
+              <span>{lang === "bn" ? "কর্মচারী মুছে ফেলবেন?" : "Delete Employee Account?"}</span>
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              {lang === "bn"
+                ? `আপনি কি নিশ্চিত যে '${selectedEmp?.full_name}' (@${selectedEmp?.username}) এর একাউন্ট মুছে ফেলতে চান?`
+                : `Are you sure you want to delete '${selectedEmp?.full_name}' (@${selectedEmp?.username})?`}
+            </DialogDescription>
+          </DialogHeader>
+
+          <DialogFooter className="gap-2 pt-2">
+            <Button type="button" variant="outline" size="sm" onClick={() => setDeleteEmpModalOpen(false)}>
+              {t("cancel")}
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="destructive"
+              disabled={empSaving}
+              onClick={handleDeleteEmployee}
+              className="font-semibold"
+            >
+              {empSaving ? "…" : (lang === "bn" ? "হ্যাঁ, মুছে ফেলুন" : "Yes, Delete")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* ─── Shop Profile Management Dialog (Directly in /more) ─── */}
       <Dialog open={shopProfileOpen} onOpenChange={setShopProfileOpen}>
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto rounded-3xl p-5 sm:p-6 bg-white dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 shadow-2xl text-slate-900 dark:text-zinc-100">
@@ -2620,7 +3759,7 @@ export default function MorePage() {
                 required
                 value={shopProfileData.name}
                 onChange={(e) => setShopProfileData({ ...shopProfileData, name: e.target.value })}
-                placeholder="e.g. Classic World"
+                placeholder="e.g. Dream Fashion"
                 className="h-10 rounded-xl text-xs bg-slate-50 dark:bg-zinc-900"
               />
             </div>
@@ -2664,7 +3803,7 @@ export default function MorePage() {
                 <Input
                   value={shopProfileData.tagline}
                   onChange={(e) => setShopProfileData({ ...shopProfileData, tagline: e.target.value })}
-                  placeholder="e.g. Premium Clothing & Fashion"
+                  placeholder="e.g. Quality Products & Service"
                   className="h-10 rounded-xl text-xs bg-slate-50 dark:bg-zinc-900"
                 />
               </div>

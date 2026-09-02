@@ -3,8 +3,8 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from "
 export type Lang = "bn" | "en";
 
 const dict = {
-  app_name: { bn: "ক্লাসিক ওয়ার্ল্ড", en: "Classic World" },
-  tagline: { bn: "স্মার্ট পিওএস ও ইনভেন্টরি সফটওয়্যার", en: "Smart POS & Billing Software" },
+  app_name: { bn: "ড্রিম আইটি পিওএস", en: "Dream IT POS" },
+  tagline: { bn: "ইনভেন্টরি ও বিক্রয় ব্যবস্থাপনা", en: "Inventory & Sales" },
   version: { bn: "v1.0", en: "v1.0" },
   navigation: { bn: "নেভিগেশন", en: "Navigation" },
   // nav
@@ -38,7 +38,8 @@ const dict = {
   welcome_back: { bn: "আবার স্বাগতম", en: "Welcome back" },
   create_account: { bn: "একাউন্ট তৈরি করুন", en: "Create your account" },
   owner_only: { bn: "শুধুমাত্র মালিকের জন্য", en: "Owner-only access" },
-  employees: { bn: "কর্মচারী ও কেনাকাটা", en: "Employee & Shopping" },
+  employees: { bn: "কর্মচারী ও বেতন", en: "Staff & Salaries" },
+  employee_shopping: { bn: "কর্মচারী কেনাকাটা", en: "Staff Shopping" },
   // dashboard
   today: { bn: "আজ", en: "Today" },
   this_week: { bn: "এই সপ্তাহ", en: "This week" },
@@ -172,8 +173,6 @@ const dict = {
   export_sales_csv: { bn: "বিক্রি CSV", en: "Export sales" },
   export_buys_csv: { bn: "ক্রয় CSV", en: "Export buys" },
   trackback: { bn: "ট্র্যাকব্যাক", en: "Track Back" },
-  product_analytics: { bn: "পণ্য অ্যানালিটিক্স", en: "Product Analytics" },
-  product_analytics_desc: { bn: "শীর্ষ বিক্রিত, ট্রেন্ডিং, স্টক ও বিক্রির প্রবৃদ্ধি বিশ্লেষণ", en: "Top sellers, trending, stock & growth intelligence" },
   reports: { bn: "রিপোর্ট", en: "Reports" },
   reports_generator: { bn: "রিপোর্ট জেনারেটর", en: "Report Generator" },
   download_csv: { bn: "CSV ডাউনলোড", en: "Download CSV" },
@@ -260,6 +259,8 @@ const dict = {
   suppliers_sms: { bn: "সাপ্লায়ার এসএমএস", en: "Suppliers SMS" },
   customers_sms: { bn: "কাস্টমার এসএমএস", en: "Customer SMS" },
   auto_sms_purchase: { bn: "ক্রয়ের পর অটো এসএমএস", en: "Auto SMS After Purchase" },
+  product_analytics: { bn: "পণ্য অ্যানালিটিক্স", en: "Product Analytics" },
+  product_analytics_desc: { bn: "শীর্ষ বিক্রিত, ট্রেন্ডিং, স্টক ও বিক্রির প্রবৃদ্ধি বিশ্লেষণ", en: "Top sellers, trending, stock & growth intelligence" },
   trending_products: { bn: "ট্রেন্ডিং পণ্য", en: "Trending Products" },
   shop_profile: { bn: "দোকান প্রোফাইল", en: "Shop Profile" },
   sales_growth: { bn: "বিক্রির প্রবৃদ্ধি", en: "Sales Growth" },

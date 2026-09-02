@@ -2797,7 +2797,7 @@ export async function repairCashboxDbFn() {
     db.collection("payments").find({ owner_id: ownerId }).toArray(),
     db.collection("withdrawals").find({ owner_id: ownerId }).toArray(),
     db.collection("owner_wallet").find({ owner_id: ownerId }).toArray(),
-    db.collection("somiti").find({ owner_id: ownerId }).toArray(),
+    db.collection("somiti_entries").find({ owner_id: ownerId }).toArray(),
     db.collection("employee_shoppings").find({ owner_id: ownerId }).toArray(),
     db.collection("cashbox_entries").find({ owner_id: ownerId }).toArray(),
   ]);
@@ -2970,8 +2970,9 @@ export async function repairCashboxDbFn() {
     }
   }
 
-  // 8. Somiti Savings Deposits
+  // 8. Somiti Savings Deposits & Withdrawals
   for (const s of somiti) {
+    if (s.skipCashbox || s.is_initial) continue; // Skip initial opening balances
     const sId = s._id.toString();
     const amt = Number(s.amount) || 0;
     if (amt > 0 && !seenRefIds.has(sId)) {
@@ -2979,9 +2980,9 @@ export async function repairCashboxDbFn() {
       newCashboxEntries.push({
         _id: crypto.randomUUID() as any,
         owner_id: ownerId,
-        kind: s.kind === "deposit" ? "expense" : "deposit",
+        kind: s.kind === "withdraw" ? "deposit" : "withdraw",
         amount: amt,
-        note: `সমিতি সঞ্চয়: ${s.name || "Somiti"}`,
+        note: `[সমিতি] ${s.kind === "withdraw" ? "উত্তোলন" : "কিস্তি জমা"}: ${s.note || "Somiti"}`,
         ref_id: sId,
         created_at: s.created_at || new Date().toISOString(),
       });
@@ -5087,12 +5088,14 @@ export async function createAssetTransferKeyAction(input: {
 
   // 7. Collect Somiti
   if (options.somiti) {
-    const somitis = await db.collection("somitis").find({ owner_id: session.ownerId }).toArray();
+    const somitis = await db.collection("somiti_entries").find({ owner_id: session.ownerId }).toArray();
     payload.somiti = somitis.map((s: any) => ({
-      name: s.name,
-      total_amount: s.total_amount,
-      installment_amount: s.installment_amount,
+      kind: s.kind,
+      amount: s.amount,
       note: s.note,
+      skipCashbox: s.skipCashbox,
+      is_initial: s.is_initial,
+      created_at: s.created_at,
     }));
     summary.somiti_count = payload.somiti.length;
   }
@@ -5327,10 +5330,10 @@ export async function applyAssetTransferKeyAction(input: {
   // 7. Apply Somiti
   if (Array.isArray(payload.somiti) && payload.somiti.length > 0) {
     if (mode === "replace") {
-      await db.collection("somitis").deleteMany({ owner_id: session.ownerId });
+      await db.collection("somiti_entries").deleteMany({ owner_id: session.ownerId });
     }
     for (const som of payload.somiti) {
-      await db.collection("somitis").insertOne({
+      await db.collection("somiti_entries").insertOne({
         ...som,
         _id: crypto.randomUUID(),
         owner_id: session.ownerId,

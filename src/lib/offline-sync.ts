@@ -191,20 +191,32 @@ function applyOptimisticUpdate(actionName: string, args: any) {
       kind: args.data.kind || "deposit",
       amount: Number(args.data.amount) || 0,
       note: args.data.note ?? null,
+      skipCashbox: args.data.skipCashbox,
+      is_initial: args.data.is_initial,
       created_at: now,
     };
     writeQueryCache(["somiti"], [newSomiti, ...somiti]);
 
-    // Samity always takes money OUT of the cashbox regardless of its own kind
+    // Initial opening balance should NOT cut from cashbox
+    if (!args.data.skipCashbox && !args.data.is_initial) {
+      const cashbox = readQueryCache<any[]>(["cashbox"]) ?? [];
+      const newCashbox = {
+        id: crypto.randomUUID(),
+        kind: args.data.kind === "withdraw" ? "deposit" : "withdraw",
+        amount: newSomiti.amount,
+        note: newSomiti.note || `Samity (${args.data.kind})`,
+        ref_id: newSomiti.id,
+        created_at: now,
+      };
+      writeQueryCache(["cashbox"], [newCashbox, ...cashbox]);
+    }
+  }
+
+  else if (actionName === "deleteSomitiFn") {
+    const somiti = readQueryCache<any[]>(["somiti"]) ?? [];
+    writeQueryCache(["somiti"], somiti.filter((s) => s.id !== args.data.id));
     const cashbox = readQueryCache<any[]>(["cashbox"]) ?? [];
-    const newCashbox = {
-      id: crypto.randomUUID(),
-      kind: "withdraw",
-      amount: newSomiti.amount,
-      note: newSomiti.note || "Samity payment",
-      created_at: now,
-    };
-    writeQueryCache(["cashbox"], [newCashbox, ...cashbox]);
+    writeQueryCache(["cashbox"], cashbox.filter((c) => c.ref_id !== args.data.id));
   }
 
   else if (actionName === "createPurchaseFn") {

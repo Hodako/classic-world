@@ -143,6 +143,9 @@ export default function SomitiPage() {
       toast.success(t("delete") || "Deleted");
       setEntryToDelete(null);
       qc.invalidateQueries({ queryKey: ["somiti"] });
+      qc.invalidateQueries({ queryKey: ["cashbox"] });
+      qc.invalidateQueries({ queryKey: ["dashboard-stats"] });
+      qc.invalidateQueries({ queryKey: ["cash-management-stats"] });
     } catch (err: any) {
       toast.error(err.message || "Failed to delete");
     }
@@ -163,6 +166,9 @@ export default function SomitiPage() {
       );
       if (selectedSamity === name) setSelectedSamity(null);
       qc.invalidateQueries({ queryKey: ["somiti"] });
+      qc.invalidateQueries({ queryKey: ["cashbox"] });
+      qc.invalidateQueries({ queryKey: ["dashboard-stats"] });
+      qc.invalidateQueries({ queryKey: ["cash-management-stats"] });
     } catch (err: any) {
       toast.error(err.message || "Failed to delete samity");
     }
@@ -213,7 +219,7 @@ export default function SomitiPage() {
       const netBalance = totalDeposited - totalWithdrawn;
 
       await generateSamityStatementPdf({
-        bizName: user?.business_name || "Classic World",
+        bizName: user?.business_name || "Dream Fashion",
         samityName: currentSamity ? currentSamity.name : (lang === "bn" ? "সাধারণ সমিতি সঞ্চয় হিসাব" : "General Samity Savings"),
         samityAccountNo: `SAM-${(currentSamity?.name || "GEN").replace(/[^a-zA-Z0-9]/g, "").slice(0, 4).toUpperCase() || "AC"}-${Math.abs(currentSamity?.balance || 101).toString().slice(0, 4)}`,
         lang,
@@ -500,10 +506,18 @@ function CollectPaymentDialog({ samityName, open, onOpenChange, entry }: { samit
     playTapSound();
     const finalNote = note.trim() ? `[${samityName}] ${note.trim()}` : `[${samityName}]`;
     try {
-      if (entry) { await updateSomitiFn({ data: { id: entry.id, kind: "deposit", amount: amt, note: finalNote } }); toast.success(t("save") || "Updated successfully"); }
-      else { await createSomitiFn({ data: { kind: "deposit", amount: amt, note: finalNote } }); toast.success(lang === "bn" ? "টাকা জমা সফল হয়েছে!" : "Deposit saved successfully!"); }
+      if (entry) {
+        await updateSomitiFn({ data: { id: entry.id, kind: "deposit", amount: amt, note: finalNote } });
+        toast.success(t("save") || "Updated successfully");
+      } else {
+        await createSomitiFn({ data: { kind: "deposit", amount: amt, note: finalNote } });
+        toast.success(lang === "bn" ? "টাকা জমা ও ক্যাশ থেকে কর্তন সফল হয়েছে!" : "Deposit saved & deducted from cashbox!");
+      }
       onOpenChange(false);
       qc.invalidateQueries({ queryKey: ["somiti"] });
+      qc.invalidateQueries({ queryKey: ["cashbox"] });
+      qc.invalidateQueries({ queryKey: ["dashboard-stats"] });
+      qc.invalidateQueries({ queryKey: ["cash-management-stats"] });
     } catch (err: any) { toast.error(err.message || "Failed to save"); } finally { setBusy(false); }
   }
   return (
@@ -511,7 +525,13 @@ function CollectPaymentDialog({ samityName, open, onOpenChange, entry }: { samit
       <DialogContent className="max-w-md">
         <DialogHeader><DialogTitle>{entry ? t("edit") : (lang === "bn" ? `কিস্তি / টাকা জমা (${samityName})` : `Collect Deposit (${samityName})`)}</DialogTitle></DialogHeader>
         <form onSubmit={submit} className="space-y-3">
-          <div className="space-y-1"><Label className="text-xs text-muted-foreground">{t("amount")}</Label><Input required type="number" step="any" inputMode="decimal" pattern="[0-9.]*" value={amount} onChange={e => setAmount(e.target.value)} placeholder="0.00" autoFocus /></div>
+          <div className="space-y-1">
+            <Label className="text-xs text-muted-foreground">{t("amount")}</Label>
+            <Input required type="number" step="any" inputMode="decimal" pattern="[0-9.]*" value={amount} onChange={e => setAmount(e.target.value)} placeholder="0.00" autoFocus />
+            <p className="text-[11px] text-amber-600 dark:text-amber-400 font-medium pt-0.5">
+              {lang === "bn" ? "ℹ️ এই কিস্তির টাকা দোকান ক্যাশ ড্রয়ার থেকে বাদ যাবে।" : "ℹ️ This deposit amount will be deducted from your cashbox."}
+            </p>
+          </div>
           <div className="space-y-1"><Label className="text-xs text-muted-foreground">{t("note")}</Label><Input value={note} onChange={e => setNote(e.target.value)} placeholder={lang === "bn" ? "যেমন: ১০ম কিস্তি / সাপ্তাহিক জমা" : "e.g. 10th Installment"} /></div>
           <DialogFooter><Button type="button" variant="outline" onClick={() => onOpenChange(false)}>{t("cancel")}</Button><Button type="submit" disabled={busy}>{busy ? "…" : t("save")}</Button></DialogFooter>
         </form>
@@ -540,10 +560,18 @@ function PayPartyDialog({ samityName, open, onOpenChange, entry }: { samityName:
     playTapSound();
     const finalNote = note.trim() ? `[${samityName}] ${note.trim()}` : `[${samityName}]`;
     try {
-      if (entry) { await updateSomitiFn({ data: { id: entry.id, kind: "withdraw", amount: amt, note: finalNote } }); toast.success(t("save") || "Updated successfully"); }
-      else { await createSomitiFn({ data: { kind: "withdraw", amount: amt, note: finalNote } }); toast.success(lang === "bn" ? "টাকা উত্তোলন সফল হয়েছে!" : "Withdrawal saved successfully!"); }
+      if (entry) {
+        await updateSomitiFn({ data: { id: entry.id, kind: "withdraw", amount: amt, note: finalNote } });
+        toast.success(t("save") || "Updated successfully");
+      } else {
+        await createSomitiFn({ data: { kind: "withdraw", amount: amt, note: finalNote } });
+        toast.success(lang === "bn" ? "টাকা উত্তোলন ও ক্যাশে জমা সফল হয়েছে!" : "Withdrawal saved & added to cashbox!");
+      }
       onOpenChange(false);
       qc.invalidateQueries({ queryKey: ["somiti"] });
+      qc.invalidateQueries({ queryKey: ["cashbox"] });
+      qc.invalidateQueries({ queryKey: ["dashboard-stats"] });
+      qc.invalidateQueries({ queryKey: ["cash-management-stats"] });
     } catch (err: any) { toast.error(err.message || "Failed to save"); } finally { setBusy(false); }
   }
   return (
@@ -551,7 +579,13 @@ function PayPartyDialog({ samityName, open, onOpenChange, entry }: { samityName:
       <DialogContent className="max-w-md">
         <DialogHeader><DialogTitle>{entry ? t("edit") : (lang === "bn" ? `টাকা উত্তোলন (${samityName})` : `Withdraw Money (${samityName})`)}</DialogTitle></DialogHeader>
         <form onSubmit={submit} className="space-y-3">
-          <div className="space-y-1"><Label className="text-xs text-muted-foreground">{t("amount")}</Label><Input required type="number" step="any" inputMode="decimal" pattern="[0-9.]*" value={amount} onChange={e => setAmount(e.target.value)} placeholder="0.00" autoFocus /></div>
+          <div className="space-y-1">
+            <Label className="text-xs text-muted-foreground">{t("amount")}</Label>
+            <Input required type="number" step="any" inputMode="decimal" pattern="[0-9.]*" value={amount} onChange={e => setAmount(e.target.value)} placeholder="0.00" autoFocus />
+            <p className="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium pt-0.5">
+              {lang === "bn" ? "ℹ️ সমিতি থেকে উত্তোলিত টাকা দোকান ক্যাশ ড্রয়ারে জমা হবে।" : "ℹ️ Withdrawn money will be added into your cashbox."}
+            </p>
+          </div>
           <div className="space-y-1"><Label className="text-xs text-muted-foreground">{t("note")}</Label><Input value={note} onChange={e => setNote(e.target.value)} placeholder={lang === "bn" ? "যেমন: সঞ্চয় ভাঙানো / জরুরি উত্তোলন" : "e.g. Withdrawal reason"} /></div>
           <DialogFooter><Button type="button" variant="outline" onClick={() => onOpenChange(false)}>{t("cancel")}</Button><Button type="submit" disabled={busy}>{busy ? "…" : t("save")}</Button></DialogFooter>
         </form>

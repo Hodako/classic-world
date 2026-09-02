@@ -3,6 +3,7 @@
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
 import { useState, useEffect } from "react";
+import { Store } from "lucide-react";
 
 interface AppLogoProps {
   className?: string;
@@ -12,16 +13,17 @@ interface AppLogoProps {
 }
 
 const sizes = {
-  sm: "h-9.5 sm:h-10.5 max-w-[190px] sm:max-w-[220px]",
-  md: "h-12 sm:h-14 max-w-[260px] sm:max-w-[300px]",
-  lg: "h-16 sm:h-20 max-w-[340px] sm:max-w-[380px]",
-  xl: "h-24 sm:h-28 max-w-[460px] sm:max-w-[500px]",
+  sm: "h-8 sm:h-9 max-w-[180px]",
+  md: "h-11 sm:h-12 max-w-[240px]",
+  lg: "h-14 sm:h-16 max-w-[320px]",
+  xl: "h-20 sm:h-24 max-w-[440px]",
 };
 
 /** Business logo from settings or default. Can toggle fullscreen on triple click. */
 export function AppLogo({ className, size = "md", src, alt }: AppLogoProps) {
   const { user } = useAuth();
   const [clickCount, setClickCount] = useState(0);
+  const [imgError, setImgError] = useState(false);
 
   useEffect(() => {
     if (clickCount === 0) return;
@@ -63,18 +65,34 @@ export function AppLogo({ className, size = "md", src, alt }: AppLogoProps) {
     }
   };
 
-  let logoSrc = src ?? user?.logo_url ?? "/logo.png";
+  const logoSrc = src ?? user?.logo_url ?? "/logo.png";
+  const logoAlt = alt ?? user?.business_name ?? "Dream Fashion";
 
-  const logoAlt = alt ?? user?.business_name ?? "Classic World";
+  if (imgError) {
+    return (
+      <div
+        onClick={handleClick}
+        className={cn(
+          "inline-flex items-center gap-1.5 font-bold font-serif tracking-tight cursor-pointer select-none text-foreground shrink-0",
+          className
+        )}
+      >
+        <div className="size-7 sm:size-8 rounded-lg bg-gradient-to-tr from-[#F7931A] to-indigo-600 flex items-center justify-center text-white shadow-xs shrink-0">
+          <Store className="size-4" />
+        </div>
+        <span className="truncate max-w-[120px] sm:max-w-[160px] text-xs sm:text-sm">{logoAlt}</span>
+      </div>
+    );
+  }
 
   return (
     <img
       src={logoSrc}
       alt={logoAlt}
       onClick={handleClick}
-      className={cn("w-auto object-contain cursor-pointer select-none", sizes[size], className)}
-      onError={(e) => { 
-        (e.target as HTMLImageElement).src = "/logo.png"; 
+      className={cn("w-auto object-contain cursor-pointer select-none shrink-0", sizes[size], className)}
+      onError={() => { 
+        setImgError(true);
       }}
     />
   );

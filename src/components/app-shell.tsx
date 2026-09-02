@@ -437,31 +437,22 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <div className="flex items-center h-12 px-3 gap-2">
             <div className="flex items-center gap-2 min-w-0 flex-1">
               {isMobile ? (
-                <div className="flex items-center gap-1.5 min-w-0 flex-1">
-                  <AppLogo size="sm" className="h-8.5 max-w-[150px]" />
+                <div className="flex items-center gap-2 min-w-0 flex-1">
+                  <AppLogo size="sm" className="h-8 max-h-8 w-auto" />
+                  <span className="font-serif font-bold text-sm truncate text-foreground">{brandName}</span>
                 </div>
               ) : (
                 <>
                   <SidebarTrigger className="size-7 shrink-0" />
                   <div className="min-w-0 flex items-center gap-2">
-                    <AppLogo size="sm" className="h-8.5 max-w-[170px] hidden md:block" />
-                    <h1 className="font-serif font-semibold text-base truncate leading-none hidden sm:block">{brandName}</h1>
+                    <AppLogo size="sm" className="h-8 max-h-8 w-auto" />
+                    <h1 className="font-serif font-semibold text-base truncate leading-none text-foreground">{brandName}</h1>
                   </div>
                 </>
               )}
             </div>
 
             <div className="flex items-center gap-1 shrink-0">
-              {/* Live Cashbox Drawer Badge */}
-              <Link
-                href="/cash-management/cashbox"
-                className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-full bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/25 text-emerald-700 dark:text-emerald-400 text-[11px] font-bold transition-all cursor-pointer shrink-0 shadow-2xs"
-                title={lang === "bn" ? "ক্যাশবক্স ব্যালেন্স (ক্লিক করে দেখুন)" : "Cashbox Balance (Click to view)"}
-              >
-                <Banknote className="size-3 text-emerald-600 dark:text-emerald-400" />
-                <span className="font-serif font-bold">{fmtMoney(currentCashBalance)}</span>
-              </Link>
-
               {/* Minimalist Top Owner/Employee Switcher Pill */}
               {activeEmpSession ? (
                 <button

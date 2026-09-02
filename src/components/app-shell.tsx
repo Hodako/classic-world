@@ -51,7 +51,7 @@ import { AdminPopupDialog } from "@/components/admin-popup-dialog";
 
 type NavItem = {
   to: string;
-  labelKey: "home" | "products" | "sales" | "parties" | "settings" | "more" | "online_sell" | "cash_management" | "trackback" | "expenses" | "owner_expense" | "somiti" | "new_purchase" | "invoice_generator" | "due" | "profit" | "products_buy" | "losses" | "reports_generator" | "ai_audits" | "customers" | "theme_settings" | "sms" | "employees" | "employee_shopping";
+  labelKey: "home" | "products" | "sales" | "parties" | "settings" | "more" | "online_sell" | "cash_management" | "trackback" | "expenses" | "owner_expense" | "somiti" | "new_purchase" | "invoice_generator" | "due" | "profit" | "products_buy" | "losses" | "reports_generator" | "ai_audits" | "customers" | "theme_settings" | "sms" | "employees";
   icon: React.ElementType;
   perm?: keyof PermissionSet;
 };
@@ -69,14 +69,11 @@ const desktopNavGroups: NavGroup[] = [
       { to: "/dues", labelKey: "due", icon: Banknote, perm: "parties" },
       { to: "/parties", labelKey: "parties", icon: Users, perm: "parties" },
       { to: "/employees", labelKey: "employees", icon: Users, perm: "sales" },
-      { to: "/employees?tab=shoppings", labelKey: "employee_shopping", icon: Shirt, perm: "sales" },
     ],
   },
   {
     labelKey: "more",
     items: [
-      { to: "/employees", labelKey: "employees", icon: Users, perm: "sales" },
-      { to: "/employees?tab=shoppings", labelKey: "employee_shopping", icon: Shirt, perm: "sales" },
       { to: "/sms", labelKey: "sms", icon: MessageSquare, perm: "sales" },
       { to: "/invoices", labelKey: "invoice_generator", icon: FileText, perm: "sales" },
       { to: "/purchases", labelKey: "new_purchase", icon: ShoppingCart, perm: "purchases" },

@@ -13,7 +13,7 @@ import {
   AlertTriangle, ArrowRight
 } from "lucide-react";
 import { useT } from "@/lib/i18n";
-import { getExpenses, getSales, getWithdrawals, getProducts, getParties, getReminders, getAllPayments, getAllPartyReceivables, getAllPartyPayables, getAllPayableSettlements, getPurchases, getSomiti, getReturns } from "@/lib/queries";
+import { getExpenses, getSales, getWithdrawals, getProducts, getParties, getReminders, getAllPayments, getAllPartyReceivables, getAllPartyPayables, getAllPayableSettlements, getPurchases, getSomiti, getReturns, getOwnerWallet } from "@/lib/queries";
 import type { Reminder } from "@/lib/queries";
 import { cashboxBalance } from "@/lib/cashbox-utils";
 import { fmtMoney, fmtDateTime } from "@/lib/format";
@@ -371,6 +371,7 @@ export default function Dashboard() {
   const parties = useCachedQuery(["parties"], getParties);
   const purchases = useCachedQuery(["purchases"], getPurchases);
   const somiti = useCachedQuery(["somiti"], getSomiti);
+  const ownerWallet = useCachedQuery(["owner_wallet"], getOwnerWallet);
   const allPayments = useCachedQuery(["all-payments"], getAllPayments);
   const allReceivables = useCachedQuery(["all-party-receivables"], getAllPartyReceivables);
   const allPayables = useCachedQuery(["all-party-payables"], getAllPartyPayables);
@@ -1007,12 +1008,15 @@ export default function Dashboard() {
   const expenseToday = filteredExpenses.reduce((a, e) => a + Number(e.amount), 0);
 
   const ownerExpensesFiltered = useMemo(() => {
-    const allW = (withdrawals.data || []);
+    const allW = [...(ownerWallet.data || []), ...(withdrawals.data || [])];
     if (!dateFilter.from && !dateFilter.to) {
-      const todayStr = new Date().toISOString().slice(0, 10);
+      const now = new Date();
+      const todayYear = now.getFullYear();
+      const todayMonth = now.getMonth();
+      const todayDate = now.getDate();
       return allW.filter((w: any) => {
         const d = parseDate(w.created_at || w.date);
-        return d ? d.toISOString().slice(0, 10) === todayStr : false;
+        return d ? (d.getFullYear() === todayYear && d.getMonth() === todayMonth && d.getDate() === todayDate) : false;
       });
     }
     return allW.filter((w: any) => {
@@ -1023,7 +1027,7 @@ export default function Dashboard() {
       if (dateFilter.to && dStr > dateFilter.to) return false;
       return true;
     });
-  }, [withdrawals.data, dateFilter]);
+  }, [ownerWallet.data, withdrawals.data, dateFilter]);
 
   const ownerExpenseTotal = ownerExpensesFiltered.reduce((sum: number, w: any) => sum + (Number(w.amount) || 0), 0);
 

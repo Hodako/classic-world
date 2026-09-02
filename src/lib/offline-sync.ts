@@ -219,6 +219,71 @@ function applyOptimisticUpdate(actionName: string, args: any) {
     writeQueryCache(["cashbox"], cashbox.filter((c) => c.ref_id !== args.data.id));
   }
 
+  else if (actionName === "createOwnerWalletEntryFn") {
+    const ownerWallet = readQueryCache<any[]>(["owner_wallet"]) ?? [];
+    const newEntry = {
+      id: crypto.randomUUID(),
+      amount: Number(args.data.amount) || 0,
+      category: args.data.category || "personal",
+      note: args.data.note ?? null,
+      cut_from_profit: args.data.cut_from_profit !== false,
+      created_at: args.data.created_at || now,
+    };
+    writeQueryCache(["owner_wallet"], [newEntry, ...ownerWallet]);
+
+    // Deduct from cashbox as withdrawal
+    if (newEntry.amount > 0) {
+      const cashbox = readQueryCache<any[]>(["cashbox"]) ?? [];
+      const newCashbox = {
+        id: crypto.randomUUID(),
+        kind: "withdraw",
+        amount: newEntry.amount,
+        note: `[মালিকের খরচ] ${newEntry.note || "ব্যক্তিগত উত্তোলন"}`,
+        ref_id: newEntry.id,
+        created_at: newEntry.created_at,
+      };
+      writeQueryCache(["cashbox"], [newCashbox, ...cashbox]);
+    }
+  }
+
+  else if (actionName === "updateOwnerWalletEntryFn") {
+    const ownerWallet = readQueryCache<any[]>(["owner_wallet"]) ?? [];
+    const updated = ownerWallet.map((w) => {
+      if (w.id === args.data.id) {
+        return {
+          ...w,
+          amount: args.data.amount !== undefined ? Number(args.data.amount) : w.amount,
+          category: args.data.category !== undefined ? args.data.category : w.category,
+          note: args.data.note !== undefined ? args.data.note : w.note,
+        };
+      }
+      return w;
+    });
+    writeQueryCache(["owner_wallet"], updated);
+
+    if (args.data.amount !== undefined) {
+      const cashbox = readQueryCache<any[]>(["cashbox"]) ?? [];
+      const updatedCashbox = cashbox.map((c) => {
+        if (c.ref_id === args.data.id) {
+          return {
+            ...c,
+            amount: Number(args.data.amount),
+            note: args.data.note ? `[মালিকের খরচ] ${args.data.note}` : c.note,
+          };
+        }
+        return c;
+      });
+      writeQueryCache(["cashbox"], updatedCashbox);
+    }
+  }
+
+  else if (actionName === "deleteOwnerWalletEntryFn") {
+    const ownerWallet = readQueryCache<any[]>(["owner_wallet"]) ?? [];
+    writeQueryCache(["owner_wallet"], ownerWallet.filter((w) => w.id !== args.data.id));
+    const cashbox = readQueryCache<any[]>(["cashbox"]) ?? [];
+    writeQueryCache(["cashbox"], cashbox.filter((c) => c.ref_id !== args.data.id));
+  }
+
   else if (actionName === "createPurchaseFn") {
     const purchases = readQueryCache<any[]>(["purchases"]) ?? [];
     const newPurchase = {

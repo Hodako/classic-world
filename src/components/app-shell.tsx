@@ -11,6 +11,7 @@ import {
   BarChart3, Receipt, PiggyBank, ShoppingCart, Moon, Sun, FileText,
   TrendingUp, TrendingDown, Sparkles, Palette, MessageSquare, HelpCircle,
   RefreshCw, Lock, Wallet, Plus, ChevronDown, Check, Crown, User, Shirt,
+  Landmark,
 } from "lucide-react";
 import { useTheme } from "@/hooks/use-theme";
 import { useT } from "@/lib/i18n";
@@ -51,7 +52,7 @@ import { AdminPopupDialog } from "@/components/admin-popup-dialog";
 
 type NavItem = {
   to: string;
-  labelKey: "home" | "products" | "sales" | "parties" | "settings" | "more" | "online_sell" | "cash_management" | "trackback" | "expenses" | "owner_expense" | "somiti" | "new_purchase" | "invoice_generator" | "due" | "profit" | "products_buy" | "losses" | "reports_generator" | "ai_audits" | "customers" | "theme_settings" | "sms" | "employees";
+  labelKey: "home" | "products" | "sales" | "parties" | "settings" | "more" | "online_sell" | "cash_management" | "trackback" | "expenses" | "owner_expense" | "somiti" | "new_purchase" | "invoice_generator" | "due" | "profit" | "products_buy" | "losses" | "reports_generator" | "ai_audits" | "customers" | "theme_settings" | "sms" | "employees" | "bank_management";
   icon: React.ElementType;
   perm?: keyof PermissionSet;
 };
@@ -77,6 +78,7 @@ const desktopNavGroups: NavGroup[] = [
       { to: "/sms", labelKey: "sms", icon: MessageSquare, perm: "sales" },
       { to: "/invoices", labelKey: "invoice_generator", icon: FileText, perm: "sales" },
       { to: "/purchases", labelKey: "new_purchase", icon: ShoppingCart, perm: "purchases" },
+      { to: "/bank", labelKey: "bank_management", icon: Landmark, perm: "expenses" },
       { to: "/expenses", labelKey: "expenses", icon: Receipt, perm: "expenses" },
       { to: "/owners-wallet", labelKey: "owner_expense", icon: Wallet, perm: "expenses" },
       { to: "/somiti", labelKey: "somiti", icon: PiggyBank, perm: "expenses" },

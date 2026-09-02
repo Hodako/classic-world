@@ -87,26 +87,32 @@ export default function OwnersWalletPage() {
     return isNaN(d.getTime()) ? null : d;
   }
 
+  function isSameDay(d1: Date, d2: Date) {
+    return (
+      d1.getFullYear() === d2.getFullYear() &&
+      d1.getMonth() === d2.getMonth() &&
+      d1.getDate() === d2.getDate()
+    );
+  }
+
   // Filtered entries
   const filteredEntries = useMemo(() => {
     const now = new Date();
-    const todayStr = now.toISOString().slice(0, 10);
     const yDate = new Date(); yDate.setDate(yDate.getDate() - 1);
-    const yesterdayStr = yDate.toISOString().slice(0, 10);
-    const currentMonthStr = todayStr.slice(0, 7);
 
     return entries.filter(e => {
       const d = parseDate(e.created_at);
-      const dStr = d ? d.toISOString().slice(0, 10) : "";
+      if (!d) return false;
 
       // Date Filtering
       if (dateFilter === "today") {
-        if (dStr !== todayStr) return false;
+        if (!isSameDay(d, now)) return false;
       } else if (dateFilter === "yesterday") {
-        if (dStr !== yesterdayStr) return false;
+        if (!isSameDay(d, yDate)) return false;
       } else if (dateFilter === "month") {
-        if (!dStr.startsWith(currentMonthStr)) return false;
+        if (d.getFullYear() !== now.getFullYear() || d.getMonth() !== now.getMonth()) return false;
       } else if (dateFilter === "custom") {
+        const dStr = d.toISOString().slice(0, 10);
         if (customStart && dStr < customStart) return false;
         if (customEnd && dStr > customEnd) return false;
       }
@@ -132,8 +138,6 @@ export default function OwnersWalletPage() {
   // Statistics Calculations
   const stats = useMemo(() => {
     const now = new Date();
-    const todayStr = now.toISOString().slice(0, 10);
-    const monthStr = todayStr.slice(0, 7);
 
     let totalAll = 0;
     let totalToday = 0;
@@ -145,10 +149,10 @@ export default function OwnersWalletPage() {
       totalAll += amt;
 
       const d = parseDate(e.created_at);
-      const dStr = d ? d.toISOString().slice(0, 10) : "";
-
-      if (dStr === todayStr) totalToday += amt;
-      if (dStr.startsWith(monthStr)) totalMonth += amt;
+      if (d) {
+        if (isSameDay(d, now)) totalToday += amt;
+        if (d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth()) totalMonth += amt;
+      }
 
       const cat = e.category || "personal";
       byCategory[cat] = (byCategory[cat] || 0) + amt;
@@ -184,6 +188,8 @@ export default function OwnersWalletPage() {
       qc.invalidateQueries({ queryKey: ["expenses"] });
       qc.invalidateQueries({ queryKey: ["reports"] });
       qc.invalidateQueries({ queryKey: ["dashboard"] });
+      qc.invalidateQueries({ queryKey: ["dashboard-stats"] });
+      qc.invalidateQueries({ queryKey: ["cash-management-stats"] });
 
       setAddOpen(false);
       setAmount("");
@@ -221,6 +227,8 @@ export default function OwnersWalletPage() {
       qc.invalidateQueries({ queryKey: ["expenses"] });
       qc.invalidateQueries({ queryKey: ["reports"] });
       qc.invalidateQueries({ queryKey: ["dashboard"] });
+      qc.invalidateQueries({ queryKey: ["dashboard-stats"] });
+      qc.invalidateQueries({ queryKey: ["cash-management-stats"] });
 
       setEditingEntry(null);
       setAmount("");
@@ -246,6 +254,8 @@ export default function OwnersWalletPage() {
       qc.invalidateQueries({ queryKey: ["expenses"] });
       qc.invalidateQueries({ queryKey: ["reports"] });
       qc.invalidateQueries({ queryKey: ["dashboard"] });
+      qc.invalidateQueries({ queryKey: ["dashboard-stats"] });
+      qc.invalidateQueries({ queryKey: ["cash-management-stats"] });
 
       setEntryToDelete(null);
     } catch (err: any) {

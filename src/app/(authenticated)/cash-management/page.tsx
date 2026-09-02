@@ -183,9 +183,14 @@ export default function CashManagementPage() {
     filtSales.forEach(s => {
       const k = new Date(s.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" });
       if (!map[k]) return;
-      if (s.type === "cash") map[k].cash += Number(s.sell_price) * s.qty;
-      if (s.type === "online") map[k].online += Number(s.sell_price) * s.qty;
-      if (s.type === "credit") map[k].credit += Number(s.due_amount);
+      const type = String(s.type || "cash").toLowerCase();
+      if (type === "online") {
+        map[k].online += getSaleTotal(s);
+      } else if (type === "credit") {
+        map[k].credit += (!isNaN(Number(s.due_amount)) ? Number(s.due_amount) : getSaleTotal(s));
+      } else {
+        map[k].cash += getSaleCash(s);
+      }
     });
     filtExp.forEach(e => {
       const k = new Date(e.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" });

@@ -4954,3 +4954,435 @@ export async function deleteEmployeeShoppingFn(input: { data: { id: string } }) 
   await db.collection("employee_shoppings").deleteOne({ _id: data.id as any, owner_id: session.ownerId });
   return { success: true, id: data.id };
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ASSET TRANSFER & DATA EXPORT KEYS
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function createAssetTransferKeyAction(input: {
+  data: {
+    name?: string;
+    expiresInHours?: number;
+    pinCode?: string;
+    options: {
+      shopProfile?: boolean;
+      products?: boolean;
+      customers?: boolean;
+      parties?: boolean;
+      sales?: boolean;
+      expenses?: boolean;
+      somiti?: boolean;
+      kpiPrefs?: boolean;
+    };
+  };
+}) {
+  const { data } = input;
+  const session = await requireSession();
+  const db = await getDb();
+
+  const options = data.options || {};
+  const payload: Record<string, any> = {};
+  const summary: Record<string, any> = {};
+
+  // 1. Collect Shop Profile
+  if (options.shopProfile) {
+    const biz = await db.collection("businesses").findOne({
+      $or: [{ _id: session.businessId as any }, { owner_id: session.ownerId }, { owner_id: session.userId }],
+    });
+    if (biz) {
+      payload.shop_profile = {
+        name: biz.name,
+        tagline: biz.tagline,
+        address: biz.address,
+        phone_numbers: biz.phone_numbers,
+        emails: biz.emails,
+        logo_url: biz.logo_url,
+        currency: biz.currency,
+        invoice_terms: biz.invoice_terms,
+      };
+      summary.shop_name = biz.name || "Store";
+    }
+  }
+
+  // 2. Collect Products
+  if (options.products) {
+    const products = await db.collection("products").find({ owner_id: session.ownerId }).toArray();
+    payload.products = products.map((p: any) => ({
+      name: p.name,
+      barcode: p.barcode,
+      sku: p.sku,
+      category: p.category,
+      buy_price: p.buy_price,
+      sell_price: p.sell_price,
+      stock: p.stock,
+      unit: p.unit,
+      min_stock_alert: p.min_stock_alert,
+      description: p.description,
+      image_url: p.image_url,
+    }));
+    summary.products_count = payload.products.length;
+  }
+
+  // 3. Collect Customers
+  if (options.customers) {
+    const customers = await db.collection("customers").find({ owner_id: session.ownerId }).toArray();
+    payload.customers = customers.map((c: any) => ({
+      name: c.name,
+      phone: c.phone,
+      address: c.address,
+      due: c.due,
+      total_spent: c.total_spent,
+      note: c.note,
+    }));
+    summary.customers_count = payload.customers.length;
+  }
+
+  // 4. Collect Parties / Suppliers
+  if (options.parties) {
+    const parties = await db.collection("parties").find({ owner_id: session.ownerId }).toArray();
+    payload.parties = parties.map((p: any) => ({
+      name: p.name,
+      phone: p.phone,
+      address: p.address,
+      company: p.company,
+      balance: p.balance,
+      type: p.type,
+      note: p.note,
+    }));
+    summary.parties_count = payload.parties.length;
+  }
+
+  // 5. Collect Sales
+  if (options.sales) {
+    const sales = await db.collection("sales").find({ owner_id: session.ownerId }).sort({ created_at: -1 }).limit(1000).toArray();
+    payload.sales = sales.map((s: any) => ({
+      invoice_no: s.invoice_no,
+      customer_name: s.customer_name,
+      customer_phone: s.customer_phone,
+      items: s.items,
+      subtotal: s.subtotal,
+      discount: s.discount,
+      total: s.total,
+      paid: s.paid,
+      due: s.due,
+      payment_method: s.payment_method,
+      created_at: s.created_at,
+      status: s.status,
+    }));
+    summary.sales_count = payload.sales.length;
+  }
+
+  // 6. Collect Expenses
+  if (options.expenses) {
+    const expenses = await db.collection("expenses").find({ owner_id: session.ownerId }).sort({ created_at: -1 }).limit(1000).toArray();
+    payload.expenses = expenses.map((e: any) => ({
+      title: e.title,
+      amount: e.amount,
+      category: e.category,
+      date: e.date,
+      note: e.note,
+    }));
+    summary.expenses_count = payload.expenses.length;
+  }
+
+  // 7. Collect Somiti
+  if (options.somiti) {
+    const somitis = await db.collection("somitis").find({ owner_id: session.ownerId }).toArray();
+    payload.somiti = somitis.map((s: any) => ({
+      name: s.name,
+      total_amount: s.total_amount,
+      installment_amount: s.installment_amount,
+      note: s.note,
+    }));
+    summary.somiti_count = payload.somiti.length;
+  }
+
+  // 8. Collect KPI Preferences
+  if (options.kpiPrefs) {
+    const userDoc = await db.collection("users").findOne({ _id: session.userId as any });
+    payload.kpi_prefs = userDoc?.kpi_order || null;
+    summary.kpi_included = !!payload.kpi_prefs;
+  }
+
+  // Generate unique formatted key e.g. TRX-7A92-K4B8
+  const rand1 = Math.random().toString(36).substring(2, 6).toUpperCase();
+  const rand2 = Math.random().toString(36).substring(2, 6).toUpperCase();
+  const key = `TRX-${rand1}-${rand2}`;
+
+  const hours = Number(data.expiresInHours) || 24;
+  const expiresAt = hours > 0 ? new Date(Date.now() + hours * 3600 * 1000).toISOString() : null;
+
+  const transferDoc = {
+    _id: crypto.randomUUID(),
+    key,
+    name: data.name || (summary.shop_name ? `${summary.shop_name} Export` : "Store Assets Package"),
+    owner_id: session.ownerId,
+    created_by: session.email || "Store Owner",
+    created_at: new Date().toISOString(),
+    expires_at: expiresAt,
+    pin_code: data.pinCode ? String(data.pinCode).trim() : null,
+    options,
+    summary,
+    payload,
+    usage_count: 0,
+  };
+
+  await db.collection("transfer_keys").insertOne(transferDoc as any);
+
+  return {
+    key,
+    name: transferDoc.name,
+    expires_at: expiresAt,
+    summary,
+    hasPin: !!data.pinCode,
+  };
+}
+
+export async function inspectAssetTransferKeyAction(input: { data: { key: string; pinCode?: string } }) {
+  const { data } = input;
+  const cleanKey = String(data.key || "").trim().toUpperCase();
+  if (!cleanKey) throw new Error("Please enter a valid transfer key");
+
+  const db = await getDb();
+  const doc: any = await db.collection("transfer_keys").findOne({ key: cleanKey });
+  if (!doc) {
+    throw new Error("Invalid or expired transfer key");
+  }
+
+  if (doc.expires_at && new Date(doc.expires_at).getTime() < Date.now()) {
+    throw new Error("This transfer key has expired");
+  }
+
+  if (doc.pin_code) {
+    if (!data.pinCode || String(data.pinCode).trim() !== String(doc.pin_code).trim()) {
+      return {
+        key: doc.key,
+        name: doc.name,
+        requiresPin: true,
+        summary: null,
+      };
+    }
+  }
+
+  return {
+    key: doc.key,
+    name: doc.name,
+    requiresPin: false,
+    created_at: doc.created_at,
+    expires_at: doc.expires_at,
+    summary: doc.summary,
+    options: doc.options,
+  };
+}
+
+export async function applyAssetTransferKeyAction(input: {
+  data: {
+    key: string;
+    pinCode?: string;
+    mode?: "merge" | "replace";
+    selectedModules?: string[];
+  };
+}) {
+  const { data } = input;
+  const cleanKey = String(data.key || "").trim().toUpperCase();
+  const session = await requireSession();
+  const db = await getDb();
+
+  const doc: any = await db.collection("transfer_keys").findOne({ key: cleanKey });
+  if (!doc) {
+    throw new Error("Invalid or expired transfer key");
+  }
+
+  if (doc.expires_at && new Date(doc.expires_at).getTime() < Date.now()) {
+    throw new Error("This transfer key has expired");
+  }
+
+  if (doc.pin_code && String(doc.pin_code).trim() !== String(data.pinCode || "").trim()) {
+    throw new Error("Incorrect Security PIN for this transfer key");
+  }
+
+  const payload = doc.payload || {};
+  const mode = data.mode || "merge";
+  const importedCounts: Record<string, number> = {};
+
+  // 1. Apply Shop Profile
+  if (payload.shop_profile) {
+    await db.collection("businesses").updateOne(
+      { $or: [{ _id: session.businessId as any }, { owner_id: session.ownerId }, { owner_id: session.userId }] },
+      { $set: { ...payload.shop_profile, updated_at: new Date().toISOString() } }
+    );
+    importedCounts.shop_profile = 1;
+  }
+
+  // 2. Apply Products
+  if (Array.isArray(payload.products) && payload.products.length > 0) {
+    if (mode === "replace") {
+      await db.collection("products").deleteMany({ owner_id: session.ownerId });
+    }
+    let pCount = 0;
+    for (const p of payload.products) {
+      const newProd = {
+        ...p,
+        _id: crypto.randomUUID(),
+        owner_id: session.ownerId,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+      if (mode === "merge" && p.barcode) {
+        const existing = await db.collection("products").findOne({ owner_id: session.ownerId, barcode: p.barcode });
+        if (existing) {
+          await db.collection("products").updateOne({ _id: existing._id }, { $set: { ...p, updated_at: new Date().toISOString() } });
+          pCount++;
+          continue;
+        }
+      }
+      await db.collection("products").insertOne(newProd as any);
+      pCount++;
+    }
+    importedCounts.products = pCount;
+  }
+
+  // 3. Apply Customers
+  if (Array.isArray(payload.customers) && payload.customers.length > 0) {
+    if (mode === "replace") {
+      await db.collection("customers").deleteMany({ owner_id: session.ownerId });
+    }
+    let cCount = 0;
+    for (const c of payload.customers) {
+      const newCust = {
+        ...c,
+        _id: crypto.randomUUID(),
+        owner_id: session.ownerId,
+        created_at: new Date().toISOString(),
+      };
+      if (mode === "merge" && c.phone) {
+        const existing = await db.collection("customers").findOne({ owner_id: session.ownerId, phone: c.phone });
+        if (existing) {
+          await db.collection("customers").updateOne({ _id: existing._id }, { $set: { ...c, updated_at: new Date().toISOString() } });
+          cCount++;
+          continue;
+        }
+      }
+      await db.collection("customers").insertOne(newCust as any);
+      cCount++;
+    }
+    importedCounts.customers = cCount;
+  }
+
+  // 4. Apply Parties
+  if (Array.isArray(payload.parties) && payload.parties.length > 0) {
+    if (mode === "replace") {
+      await db.collection("parties").deleteMany({ owner_id: session.ownerId });
+    }
+    let ptCount = 0;
+    for (const pt of payload.parties) {
+      const newParty = {
+        ...pt,
+        _id: crypto.randomUUID(),
+        owner_id: session.ownerId,
+        created_at: new Date().toISOString(),
+      };
+      await db.collection("parties").insertOne(newParty as any);
+      ptCount++;
+    }
+    importedCounts.parties = ptCount;
+  }
+
+  // 5. Apply Sales
+  if (Array.isArray(payload.sales) && payload.sales.length > 0) {
+    if (mode === "replace") {
+      await db.collection("sales").deleteMany({ owner_id: session.ownerId });
+    }
+    let sCount = 0;
+    for (const s of payload.sales) {
+      const newSale = {
+        ...s,
+        _id: crypto.randomUUID(),
+        owner_id: session.ownerId,
+      };
+      await db.collection("sales").insertOne(newSale as any);
+      sCount++;
+    }
+    importedCounts.sales = sCount;
+  }
+
+  // 6. Apply Expenses
+  if (Array.isArray(payload.expenses) && payload.expenses.length > 0) {
+    if (mode === "replace") {
+      await db.collection("expenses").deleteMany({ owner_id: session.ownerId });
+    }
+    let eCount = 0;
+    for (const exp of payload.expenses) {
+      const newExp = {
+        ...exp,
+        _id: crypto.randomUUID(),
+        owner_id: session.ownerId,
+      };
+      await db.collection("expenses").insertOne(newExp as any);
+      eCount++;
+    }
+    importedCounts.expenses = eCount;
+  }
+
+  // 7. Apply Somiti
+  if (Array.isArray(payload.somiti) && payload.somiti.length > 0) {
+    if (mode === "replace") {
+      await db.collection("somitis").deleteMany({ owner_id: session.ownerId });
+    }
+    for (const som of payload.somiti) {
+      await db.collection("somitis").insertOne({
+        ...som,
+        _id: crypto.randomUUID(),
+        owner_id: session.ownerId,
+      } as any);
+    }
+    importedCounts.somiti = payload.somiti.length;
+  }
+
+  // 8. Apply KPI Preferences
+  if (payload.kpi_prefs) {
+    await db.collection("users").updateOne(
+      { _id: session.userId as any },
+      { $set: { kpi_order: payload.kpi_prefs } }
+    );
+    importedCounts.kpi_prefs = 1;
+  }
+
+  // Increment usage
+  await db.collection("transfer_keys").updateOne({ key: cleanKey }, { $inc: { usage_count: 1 } });
+
+  return {
+    success: true,
+    importedCounts,
+    key: cleanKey,
+  };
+}
+
+export async function listMyTransferKeysAction() {
+  const session = await requireSession();
+  const db = await getDb();
+  const keys = await db
+    .collection("transfer_keys")
+    .find({ owner_id: session.ownerId })
+    .sort({ created_at: -1 })
+    .toArray();
+
+  return keys.map((k: any) => ({
+    id: k._id,
+    key: k.key,
+    name: k.name,
+    created_at: k.created_at,
+    expires_at: k.expires_at,
+    hasPin: !!k.pin_code,
+    usage_count: k.usage_count || 0,
+    summary: k.summary || {},
+  }));
+}
+
+export async function deleteTransferKeyAction(input: { data: { key: string } }) {
+  const { data } = input;
+  const session = await requireSession();
+  const db = await getDb();
+  await db.collection("transfer_keys").deleteOne({ key: data.key, owner_id: session.ownerId });
+  return { success: true, key: data.key };
+}

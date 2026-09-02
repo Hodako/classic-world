@@ -24,6 +24,11 @@ import {
   emptyRecycleBinFn,
   getCommandHistoryFn,
   undoCommandFn,
+  createAssetTransferKeyFn,
+  inspectAssetTransferKeyFn,
+  applyAssetTransferKeyFn,
+  listMyTransferKeysFn,
+  deleteTransferKeyFn,
 } from "@/lib/rpc";
 import Link from "next/link";
 import {
@@ -56,6 +61,23 @@ import {
   Users,
   Eye,
   EyeOff,
+  ArrowRightLeft,
+  KeyRound,
+  Copy,
+  Check,
+  Share2,
+  Download,
+  Package,
+  ShoppingBag,
+  Receipt,
+  DollarSign,
+  Wallet,
+  Banknote,
+  ShoppingCart,
+  Send,
+  UserCheck,
+  Smartphone,
+  CheckCheck,
 } from "lucide-react";
 import { getPosPaperConfig, savePosPaperConfig, DEFAULT_POS_CONFIG, type PosPaperSettings } from "@/lib/pos-print";
 import { DEFAULT_EMPLOYEE_PERMISSIONS, type PermissionSet } from "@/lib/permissions";
@@ -96,7 +118,7 @@ import {
 
 const BUSINESS_TYPES = ["retail", "wholesale", "fashion", "grocery", "services"];
 
-type SettingsTab = "profile" | "printing" | "sheets" | "staff" | "appearance" | "security" | "history";
+type SettingsTab = "profile" | "transfer" | "printing" | "sheets" | "staff" | "appearance" | "security" | "history";
 
 export default function SettingsPage() {
   const { lang, t } = useT();
@@ -116,11 +138,142 @@ export default function SettingsPage() {
   const [busy, setBusy] = useState(false);
   const [settingsTab, setSettingsTab] = useState<SettingsTab>("profile");
 
+  // Transfer Keys State
+  const myTransferKeys = useQuery({ queryKey: ["my-transfer-keys"], queryFn: listMyTransferKeysFn, enabled: !!user });
+  const [exportName, setExportName] = useState("");
+  const [exportExpiry, setExportExpiry] = useState("24");
+  const [exportPin, setExportPin] = useState("");
+  const [exportOptions, setExportOptions] = useState({
+    shopProfile: true,
+    products: true,
+    customers: true,
+    parties: true,
+    sales: true,
+    expenses: true,
+    somiti: false,
+    kpiPrefs: true,
+  });
+  const [createdKeyResult, setCreatedKeyResult] = useState<any | null>(null);
+  const [generatingKey, setGeneratingKey] = useState(false);
+  const [copiedKey, setCopiedKey] = useState(false);
+
+  // Import Key State
+  const [importKeyInput, setImportKeyInput] = useState("");
+  const [importPinInput, setImportPinInput] = useState("");
+  const [inspectedPackage, setInspectedPackage] = useState<any | null>(null);
+  const [inspectingKey, setInspectingKey] = useState(false);
+  const [importMode, setImportMode] = useState<"merge" | "replace">("merge");
+  const [applyingKey, setApplyingKey] = useState(false);
+  const [deletingKey, setDeletingKey] = useState<string | null>(null);
+
   // Invite Employee Form State
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteName, setInviteName] = useState("");
   const [inviteDesignation, setInviteDesignation] = useState("Sales Staff");
   const [inviteSending, setInviteSending] = useState(false);
+
+  async function handleCreateTransferKey(e: React.FormEvent) {
+    e.preventDefault();
+    setGeneratingKey(true);
+    try {
+      const res = await createAssetTransferKeyFn({
+        data: {
+          name: exportName.trim() || undefined,
+          expiresInHours: Number(exportExpiry) || 24,
+          pinCode: exportPin.trim() || undefined,
+          options: exportOptions,
+        },
+      });
+      setCreatedKeyResult(res);
+      toast.success(lang === "bn" ? "এক্সপোর্ট কি সফলভাবে তৈরি হয়েছে!" : "Export key generated successfully!");
+      qc.invalidateQueries({ queryKey: ["my-transfer-keys"] });
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to generate export key");
+    } finally {
+      setGeneratingKey(false);
+    }
+  }
+
+  async function handleInspectKey(e: React.FormEvent) {
+    e.preventDefault();
+    if (!importKeyInput.trim()) {
+      toast.error(lang === "bn" ? "এক্সপোর্ট কি লিখুন" : "Please enter an export key");
+      return;
+    }
+    setInspectingKey(true);
+    try {
+      const res = await inspectAssetTransferKeyFn({
+        data: {
+          key: importKeyInput.trim().toUpperCase(),
+          pinCode: importPinInput.trim() || undefined,
+        },
+      });
+      setInspectedPackage(res);
+      if (res.requiresPin) {
+        toast.info(lang === "bn" ? "এই কি-টির জন্য সিকিউরিটি পিন প্রয়োজন।" : "This key requires a Security PIN.");
+      } else {
+        toast.success(lang === "bn" ? "প্যাকেজ তথ্য সফলভাবে লোড হয়েছে!" : "Package inspected successfully!");
+      }
+    } catch (err: any) {
+      toast.error(err?.message || "Invalid or expired key");
+      setInspectedPackage(null);
+    } finally {
+      setInspectingKey(false);
+    }
+  }
+
+  async function handleApplyTransferKey() {
+    if (!importKeyInput.trim()) return;
+    if (importMode === "replace") {
+      if (!confirm(lang === "bn" ? "সতর্কতা: 'ডাটাবেজ প্রতিস্থাপন' মোডে বর্তমান ডাটা মুছে নতুন ডাটা যুক্ত হবে। আপনি কি নিশ্চিত?" : "Warning: 'Replace Database' mode will overwrite existing data. Are you sure?")) {
+        return;
+      }
+    }
+    setApplyingKey(true);
+    try {
+      await applyAssetTransferKeyFn({
+        data: {
+          key: importKeyInput.trim().toUpperCase(),
+          pinCode: importPinInput.trim() || undefined,
+          mode: importMode,
+        },
+      });
+      toast.success(lang === "bn" ? "অ্যাসেট সফলভাবে ইমপোর্ট ও ট্রান্সফার করা হয়েছে!" : "Assets successfully imported & applied!");
+      setInspectedPackage(null);
+      setImportKeyInput("");
+      setImportPinInput("");
+      qc.invalidateQueries({ queryKey: ["business-settings"] });
+      qc.invalidateQueries({ queryKey: ["products"] });
+      qc.invalidateQueries({ queryKey: ["customers"] });
+      qc.invalidateQueries({ queryKey: ["parties"] });
+      qc.invalidateQueries({ queryKey: ["sales"] });
+      qc.invalidateQueries({ queryKey: ["expenses"] });
+      qc.invalidateQueries({ queryKey: ["cashbox"] });
+      qc.invalidateQueries({ queryKey: ["my-transfer-keys"] });
+      refresh();
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to apply transfer key");
+    } finally {
+      setApplyingKey(false);
+    }
+  }
+
+  async function handleDeleteKey(keyToDelete: string) {
+    if (!confirm(lang === "bn" ? "আপনি কি এই এক্সপোর্ট কি-টি বাতিল/ডিলিট করতে চান?" : "Are you sure you want to revoke this transfer key?")) return;
+    setDeletingKey(keyToDelete);
+    try {
+      await deleteTransferKeyFn({ data: { key: keyToDelete } });
+      toast.success(lang === "bn" ? "এক্সপোর্ট কি সফলভাবে বাতিল করা হয়েছে!" : "Transfer key revoked!");
+      qc.invalidateQueries({ queryKey: ["my-transfer-keys"] });
+      if (createdKeyResult?.key === keyToDelete) {
+        setCreatedKeyResult(null);
+      }
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to revoke key");
+    } finally {
+      setDeletingKey(null);
+    }
+  }
 
   // KPI Reordering & Configuration Constants
   const DEFAULT_KPI_ORDER = [
@@ -959,6 +1112,7 @@ export default function SettingsPage() {
 
   const navTabs: { id: SettingsTab; label: string; icon: any; count?: number }[] = [
     { id: "profile", label: lang === "bn" ? "দোকান প্রোফাইল" : "Shop Profile", icon: Store },
+    { id: "transfer", label: lang === "bn" ? "অ্যাসেট ট্রান্সফার ও কি" : "Transfer Assets & Keys", icon: ArrowRightLeft, count: (myTransferKeys.data || []).length },
     { id: "printing", label: lang === "bn" ? "প্রিন্ট ও ইনভয়েস" : "POS & Printing", icon: Printer },
     { id: "sheets", label: lang === "bn" ? "গুগল শিট ও ক্লাউড" : "Google Sheets & Cloud", icon: FileSpreadsheet },
     { id: "staff", label: lang === "bn" ? "কর্মচারী ও আমন্ত্রণ" : "Staff & Invitations", icon: Users, count: activeEmployees.length + pendingInvites.length },
@@ -978,9 +1132,134 @@ export default function SettingsPage() {
           </h1>
           <p className="text-xs sm:text-sm text-muted-foreground mt-0.5">
             {lang === "bn"
-              ? "দোকানের প্রোফাইল, প্রিন্টার ফরম্যাট, গুগল শিট ব্যাকআপ, কর্মচারী আমন্ত্রণ এবং নিরাপত্তা পরিচালনা করুন"
-              : "Manage shop branding, thermal printing, Google Sheets sync, employee invitations, and database resets"}
+              ? "দোকানের প্রোফাইল, প্রিন্টার ফরম্যাট, ডাটা ট্রান্সফার কি, কর্মচারী আমন্ত্রণ এবং নিরাপত্তা পরিচালনা করুন"
+              : "Manage shop branding, thermal printing, asset transfer keys, employee invitations, and security"}
           </p>
+        </div>
+      </div>
+
+      {/* Top Secondary Div: Custom Entry Quick Launch Bar (PC & Mobile) */}
+      <div className="p-3.5 sm:p-4 rounded-2xl bg-card border border-border/80 shadow-xs space-y-2.5">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="size-2 rounded-full bg-[#CCFF00] animate-pulse" />
+            <span className="text-xs font-bold uppercase tracking-wider text-foreground">
+              {lang === "bn" ? "কাস্টম এন্ট্রি ও দ্রুত শর্টকাট" : "Custom Entry & Quick Actions"}
+            </span>
+          </div>
+          <span className="text-[11px] text-muted-foreground hidden sm:inline">
+            {lang === "bn" ? "সরাসরি পিওএস ট্রানজেকশন ও অ্যাকশন" : "Direct POS Transactions & Tools"}
+          </span>
+        </div>
+
+        <div className="grid grid-cols-4 sm:grid-cols-4 md:grid-cols-8 gap-2 pt-0.5">
+          {/* 1. Quick Sale */}
+          <Link
+            href="/sales"
+            className="flex flex-col items-center justify-center p-2 rounded-xl bg-muted/30 hover:bg-emerald-500/10 hover:border-emerald-500/30 border border-border/60 transition-all text-center group cursor-pointer"
+          >
+            <div className="size-7 sm:size-8 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 group-hover:scale-110 transition-transform flex items-center justify-center mb-1">
+              <ShoppingBag className="size-3.5 sm:size-4" />
+            </div>
+            <span className="text-[10px] sm:text-[11px] font-bold text-foreground truncate w-full">
+              {lang === "bn" ? "নতুন বিক্রয়" : "New Sale"}
+            </span>
+          </Link>
+
+          {/* 2. Customer Due */}
+          <Link
+            href="/dues"
+            className="flex flex-col items-center justify-center p-2 rounded-xl bg-muted/30 hover:bg-amber-500/10 hover:border-amber-500/30 border border-border/60 transition-all text-center group cursor-pointer"
+          >
+            <div className="size-7 sm:size-8 rounded-lg bg-amber-500/10 text-[#F7931A] group-hover:scale-110 transition-transform flex items-center justify-center mb-1">
+              <Banknote className="size-3.5 sm:size-4" />
+            </div>
+            <span className="text-[10px] sm:text-[11px] font-bold text-foreground truncate w-full">
+              {lang === "bn" ? "বাকি আদায়" : "Due Entry"}
+            </span>
+          </Link>
+
+          {/* 3. Add Product */}
+          <Link
+            href="/products"
+            className="flex flex-col items-center justify-center p-2 rounded-xl bg-muted/30 hover:bg-blue-500/10 hover:border-blue-500/30 border border-border/60 transition-all text-center group cursor-pointer"
+          >
+            <div className="size-7 sm:size-8 rounded-lg bg-blue-500/10 text-blue-600 dark:text-blue-400 group-hover:scale-110 transition-transform flex items-center justify-center mb-1">
+              <Package className="size-3.5 sm:size-4" />
+            </div>
+            <span className="text-[10px] sm:text-[11px] font-bold text-foreground truncate w-full">
+              {lang === "bn" ? "পণ্য যোগ" : "Add Product"}
+            </span>
+          </Link>
+
+          {/* 4. Restock / Buy */}
+          <Link
+            href="/purchases"
+            className="flex flex-col items-center justify-center p-2 rounded-xl bg-muted/30 hover:bg-indigo-500/10 hover:border-indigo-500/30 border border-border/60 transition-all text-center group cursor-pointer"
+          >
+            <div className="size-7 sm:size-8 rounded-lg bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 group-hover:scale-110 transition-transform flex items-center justify-center mb-1">
+              <ShoppingCart className="size-3.5 sm:size-4" />
+            </div>
+            <span className="text-[10px] sm:text-[11px] font-bold text-foreground truncate w-full">
+              {lang === "bn" ? "পণ্য ক্রয়" : "Restock"}
+            </span>
+          </Link>
+
+          {/* 5. Expense Entry */}
+          <Link
+            href="/expenses"
+            className="flex flex-col items-center justify-center p-2 rounded-xl bg-muted/30 hover:bg-rose-500/10 hover:border-rose-500/30 border border-border/60 transition-all text-center group cursor-pointer"
+          >
+            <div className="size-7 sm:size-8 rounded-lg bg-rose-500/10 text-rose-600 dark:text-rose-400 group-hover:scale-110 transition-transform flex items-center justify-center mb-1">
+              <Receipt className="size-3.5 sm:size-4" />
+            </div>
+            <span className="text-[10px] sm:text-[11px] font-bold text-foreground truncate w-full">
+              {lang === "bn" ? "খরচ এন্ট্রি" : "Expense"}
+            </span>
+          </Link>
+
+          {/* 6. Cash Drawer */}
+          <Link
+            href="/cash-management/cashbox"
+            className="flex flex-col items-center justify-center p-2 rounded-xl bg-muted/30 hover:bg-teal-500/10 hover:border-teal-500/30 border border-border/60 transition-all text-center group cursor-pointer"
+          >
+            <div className="size-7 sm:size-8 rounded-lg bg-teal-500/10 text-teal-600 dark:text-teal-400 group-hover:scale-110 transition-transform flex items-center justify-center mb-1">
+              <Wallet className="size-3.5 sm:size-4" />
+            </div>
+            <span className="text-[10px] sm:text-[11px] font-bold text-foreground truncate w-full">
+              {lang === "bn" ? "ক্যাশ ড্রয়ার" : "Cashbox"}
+            </span>
+          </Link>
+
+          {/* 7. Switch ID / Profile */}
+          <button
+            type="button"
+            onClick={() => {
+              window.dispatchEvent(new CustomEvent("open_mode_switcher"));
+            }}
+            className="flex flex-col items-center justify-center p-2 rounded-xl bg-muted/30 hover:bg-purple-500/10 hover:border-purple-500/30 border border-border/60 transition-all text-center group cursor-pointer"
+          >
+            <div className="size-7 sm:size-8 rounded-lg bg-purple-500/10 text-purple-600 dark:text-purple-400 group-hover:scale-110 transition-transform flex items-center justify-center mb-1">
+              <Users className="size-3.5 sm:size-4" />
+            </div>
+            <span className="text-[10px] sm:text-[11px] font-bold text-foreground truncate w-full">
+              {lang === "bn" ? "প্রোফাইল সুইচ" : "Switch ID"}
+            </span>
+          </button>
+
+          {/* 8. Transfer Assets */}
+          <button
+            type="button"
+            onClick={() => setSettingsTab("transfer")}
+            className="flex flex-col items-center justify-center p-2 rounded-xl bg-muted/30 hover:bg-amber-500/10 hover:border-[#F7931A]/40 border border-border/60 transition-all text-center group cursor-pointer"
+          >
+            <div className="size-7 sm:size-8 rounded-lg bg-amber-500/10 text-[#F7931A] group-hover:scale-110 transition-transform flex items-center justify-center mb-1">
+              <ArrowRightLeft className="size-3.5 sm:size-4" />
+            </div>
+            <span className="text-[10px] sm:text-[11px] font-bold text-foreground truncate w-full">
+              {lang === "bn" ? "অ্যাসেট ট্রান্সফার" : "Transfer Key"}
+            </span>
+          </button>
         </div>
       </div>
 
@@ -1122,6 +1401,512 @@ export default function SettingsPage() {
                   <p className="text-[10px] text-muted-foreground">Supports PNG, JPG, WEBP. Drag and zoom in the cropper modal.</p>
                 </div>
               </Card>
+            </div>
+          )}
+
+          {/* ── TAB: TRANSFER ASSETS & EXPORT KEYS ───────────────────────────── */}
+          {settingsTab === "transfer" && (
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+              {/* Left Column: Generate Export Key */}
+              <Card className="lg:col-span-7 p-5 sm:p-6 rounded-3xl bg-card border-border/80 shadow-xs space-y-5">
+                <div className="flex items-center justify-between border-b border-border/60 pb-3">
+                  <div>
+                    <h2 className="text-base font-bold text-foreground flex items-center gap-2">
+                      <Share2 className="size-5 text-[#F7931A]" />
+                      <span>{lang === "bn" ? "অ্যাসেট এক্সপোর্ট ও শেয়ার কি তৈরি" : "Create Asset Export & Share Key"}</span>
+                    </h2>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {lang === "bn"
+                        ? "আপনার প্রোডাক্ট, কাস্টমার, সেলস ও সেটিংস অন্য অ্যাকাউন্টে ট্রান্সফার করতে একটি সিকিউর কি তৈরি করুন"
+                        : "Generate an export package and share key to transfer your store data to another user account"}
+                    </p>
+                  </div>
+                  <Badge variant="outline" className="text-xs border-[#F7931A]/30 text-[#F7931A] bg-[#F7931A]/10 font-bold">
+                    EXPORT
+                  </Badge>
+                </div>
+
+                <form onSubmit={handleCreateTransferKey} className="space-y-4">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold text-foreground">
+                      {lang === "bn" ? "প্যাকেজের নাম (ঐচ্ছিক)" : "Package Name (Optional)"}
+                    </Label>
+                    <Input
+                      type="text"
+                      value={exportName}
+                      onChange={(e) => setExportName(e.target.value)}
+                      placeholder={lang === "bn" ? "যেমন: ঢাকা ব্রাঞ্চ ডাটা ট্রান্সফার" : "e.g. Branch Store Migration"}
+                      className="h-10 rounded-xl bg-muted/30 border-border/80 text-xs sm:text-sm"
+                    />
+                  </div>
+
+                  {/* Checklist of elements to export */}
+                  <div className="space-y-2 pt-1">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-xs font-bold text-foreground">
+                        {lang === "bn" ? "কোন কোন ডাটা ট্রান্সফার করবেন নির্বাচন করুন:" : "Select Data Elements to Transfer:"}
+                      </Label>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setExportOptions({
+                            shopProfile: true,
+                            products: true,
+                            customers: true,
+                            parties: true,
+                            sales: true,
+                            expenses: true,
+                            somiti: true,
+                            kpiPrefs: true,
+                          });
+                        }}
+                        className="text-[11px] text-primary cursor-pointer hover:underline font-semibold"
+                      >
+                        {lang === "bn" ? "সব নির্বাচন করুন" : "Select All"}
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+                      {/* Products */}
+                      <label className="flex items-center gap-3 p-3 rounded-xl border border-border/70 bg-muted/20 hover:bg-muted/40 transition-colors cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={exportOptions.products}
+                          onChange={(e) => setExportOptions((prev) => ({ ...prev, products: e.target.checked }))}
+                          className="size-4 rounded accent-[#F7931A] cursor-pointer"
+                        />
+                        <div className="min-w-0 flex-1">
+                          <div className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                            <Package className="size-3.5 text-blue-500" />
+                            <span>{lang === "bn" ? "প্রোডাক্ট ক্যাটালগ ও স্টক" : "Products & Stock"}</span>
+                          </div>
+                          <p className="text-[10px] text-muted-foreground truncate">
+                            {lang === "bn" ? "বারকোড, ক্রয়/বিক্রয় মূল্য ও ক্যাটাগরি" : "Barcodes, prices, categories & stock"}
+                          </p>
+                        </div>
+                      </label>
+
+                      {/* Customers */}
+                      <label className="flex items-center gap-3 p-3 rounded-xl border border-border/70 bg-muted/20 hover:bg-muted/40 transition-colors cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={exportOptions.customers}
+                          onChange={(e) => setExportOptions((prev) => ({ ...prev, customers: e.target.checked }))}
+                          className="size-4 rounded accent-[#F7931A] cursor-pointer"
+                        />
+                        <div className="min-w-0 flex-1">
+                          <div className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                            <Users className="size-3.5 text-emerald-500" />
+                            <span>{lang === "bn" ? "কাস্টমার ও বকেয়া হিসাব" : "Customers & Dues"}</span>
+                          </div>
+                          <p className="text-[10px] text-muted-foreground truncate">
+                            {lang === "bn" ? "নাম, মোবাইল ও কাস্টমার বকেয়া" : "Customer names, phones & dues"}
+                          </p>
+                        </div>
+                      </label>
+
+                      {/* Parties / Suppliers */}
+                      <label className="flex items-center gap-3 p-3 rounded-xl border border-border/70 bg-muted/20 hover:bg-muted/40 transition-colors cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={exportOptions.parties}
+                          onChange={(e) => setExportOptions((prev) => ({ ...prev, parties: e.target.checked }))}
+                          className="size-4 rounded accent-[#F7931A] cursor-pointer"
+                        />
+                        <div className="min-w-0 flex-1">
+                          <div className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                            <Store className="size-3.5 text-purple-500" />
+                            <span>{lang === "bn" ? "পার্টি ও সরবরাহকারী" : "Parties & Vendors"}</span>
+                          </div>
+                          <p className="text-[10px] text-muted-foreground truncate">
+                            {lang === "bn" ? "সাপ্লায়ার প্রোফাইল ও ব্যালেন্স" : "Suppliers & balances"}
+                          </p>
+                        </div>
+                      </label>
+
+                      {/* Sales History */}
+                      <label className="flex items-center gap-3 p-3 rounded-xl border border-border/70 bg-muted/20 hover:bg-muted/40 transition-colors cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={exportOptions.sales}
+                          onChange={(e) => setExportOptions((prev) => ({ ...prev, sales: e.target.checked }))}
+                          className="size-4 rounded accent-[#F7931A] cursor-pointer"
+                        />
+                        <div className="min-w-0 flex-1">
+                          <div className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                            <ShoppingBag className="size-3.5 text-pink-500" />
+                            <span>{lang === "bn" ? "বিক্রয় ও মেমো ইতিহাস" : "Sales & Invoices"}</span>
+                          </div>
+                          <p className="text-[10px] text-muted-foreground truncate">
+                            {lang === "bn" ? "পূর্বের মেমো ও ইনভয়েস রেকর্ড" : "Recent invoices & sales orders"}
+                          </p>
+                        </div>
+                      </label>
+
+                      {/* Expenses */}
+                      <label className="flex items-center gap-3 p-3 rounded-xl border border-border/70 bg-muted/20 hover:bg-muted/40 transition-colors cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={exportOptions.expenses}
+                          onChange={(e) => setExportOptions((prev) => ({ ...prev, expenses: e.target.checked }))}
+                          className="size-4 rounded accent-[#F7931A] cursor-pointer"
+                        />
+                        <div className="min-w-0 flex-1">
+                          <div className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                            <Receipt className="size-3.5 text-rose-500" />
+                            <span>{lang === "bn" ? "দোকান খরচ" : "Expenses"}</span>
+                          </div>
+                          <p className="text-[10px] text-muted-foreground truncate">
+                            {lang === "bn" ? "দৈনিক দোকান খরচের খাতা" : "Overhead & operating expenses"}
+                          </p>
+                        </div>
+                      </label>
+
+                      {/* Shop Profile & Settings */}
+                      <label className="flex items-center gap-3 p-3 rounded-xl border border-border/70 bg-muted/20 hover:bg-muted/40 transition-colors cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={exportOptions.shopProfile}
+                          onChange={(e) => setExportOptions((prev) => ({ ...prev, shopProfile: e.target.checked }))}
+                          className="size-4 rounded accent-[#F7931A] cursor-pointer"
+                        />
+                        <div className="min-w-0 flex-1">
+                          <div className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                            <Store className="size-3.5 text-amber-500" />
+                            <span>{lang === "bn" ? "দোকান প্রোফাইল ও সেটিংস" : "Shop Profile & Info"}</span>
+                          </div>
+                          <p className="text-[10px] text-muted-foreground truncate">
+                            {lang === "bn" ? "দোকানের নাম, ঠিকানা, লোগো ও শর্ত" : "Store name, logo, address & terms"}
+                          </p>
+                        </div>
+                      </label>
+
+                      {/* KPI Preferences */}
+                      <label className="flex items-center gap-3 p-3 rounded-xl border border-border/70 bg-muted/20 hover:bg-muted/40 transition-colors cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={exportOptions.kpiPrefs}
+                          onChange={(e) => setExportOptions((prev) => ({ ...prev, kpiPrefs: e.target.checked }))}
+                          className="size-4 rounded accent-[#F7931A] cursor-pointer"
+                        />
+                        <div className="min-w-0 flex-1">
+                          <div className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                            <Sparkles className="size-3.5 text-indigo-500" />
+                            <span>{lang === "bn" ? "ড্যাশবোর্ড কেপিআই বিন্যাস" : "KPI Preferences"}</span>
+                          </div>
+                          <p className="text-[10px] text-muted-foreground truncate">
+                            {lang === "bn" ? "কাস্টম ড্যাশবোর্ড কার্ডের ক্রম" : "Card arrangement & order"}
+                          </p>
+                        </div>
+                      </label>
+                    </div>
+                  </div>
+
+                  {/* Security PIN & Expiration */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-semibold text-foreground">
+                        {lang === "bn" ? "মেয়াদকাল" : "Expiration Time"}
+                      </Label>
+                      <select
+                        value={exportExpiry}
+                        onChange={(e) => setExportExpiry(e.target.value)}
+                        className="w-full h-10 px-3 rounded-xl bg-muted/30 border border-border/80 text-xs sm:text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                      >
+                        <option value="1">1 {lang === "bn" ? "ঘণ্টা" : "Hour"}</option>
+                        <option value="24">24 {lang === "bn" ? "ঘণ্টা (১ দিন)" : "Hours (1 Day)"}</option>
+                        <option value="168">7 {lang === "bn" ? "দিন" : "Days"}</option>
+                        <option value="720">30 {lang === "bn" ? "দিন" : "Days"}</option>
+                        <option value="0">{lang === "bn" ? "আজীবন (No Expiry)" : "Never Expire"}</option>
+                      </select>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-semibold text-foreground">
+                        {lang === "bn" ? "সিকিউরিটি পিন (ঐচ্ছিক)" : "Security PIN (Optional)"}
+                      </Label>
+                      <Input
+                        type="password"
+                        value={exportPin}
+                        onChange={(e) => setExportPin(e.target.value)}
+                        placeholder="e.g. 1234"
+                        className="h-10 rounded-xl bg-muted/30 border-border/80 text-xs sm:text-sm"
+                      />
+                    </div>
+                  </div>
+
+                  <Button
+                    type="submit"
+                    disabled={generatingKey}
+                    className="w-full h-11 rounded-xl bg-[#F7931A] hover:bg-[#e08416] text-white font-bold text-xs sm:text-sm shadow-md shadow-amber-500/20 gap-2 cursor-pointer transition-all active:scale-[0.98]"
+                  >
+                    {generatingKey ? (
+                      <RefreshCw className="size-4 animate-spin" />
+                    ) : (
+                      <>
+                        <KeyRound className="size-4" />
+                        <span>{lang === "bn" ? "এক্সপোর্ট কি তৈরি করুন" : "Generate Transfer Key"}</span>
+                      </>
+                    )}
+                  </Button>
+                </form>
+
+                {/* Generated Key Success Box */}
+                {createdKeyResult && (
+                  <div className="p-4 rounded-2xl bg-amber-500/10 border border-[#F7931A]/30 space-y-3 animate-in fade-in slide-in-from-top-2 duration-200">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <CheckCheck className="size-4 text-[#F7931A]" />
+                        <span className="text-xs font-bold text-foreground">
+                          {lang === "bn" ? "আপনার ট্রান্সফার কি প্রস্তুত!" : "Transfer Key Ready!"}
+                        </span>
+                      </div>
+                      <Badge variant="outline" className="text-[10px] bg-background">
+                        {createdKeyResult.expires_at ? `Expires: ${new Date(createdKeyResult.expires_at).toLocaleDateString()}` : "No Expiry"}
+                      </Badge>
+                    </div>
+
+                    <div className="flex items-center gap-2 p-2.5 rounded-xl bg-background border border-[#F7931A]/40">
+                      <code className="text-sm sm:text-base font-mono font-extrabold text-[#F7931A] tracking-wider flex-1 truncate">
+                        {createdKeyResult.key}
+                      </code>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => {
+                          navigator.clipboard.writeText(createdKeyResult.key);
+                          setCopiedKey(true);
+                          toast.success(lang === "bn" ? "কি কপি করা হয়েছে!" : "Key copied to clipboard!");
+                          setTimeout(() => setCopiedKey(false), 2000);
+                        }}
+                        className="h-8 px-2.5 text-xs font-bold gap-1 text-foreground hover:bg-muted cursor-pointer"
+                      >
+                        {copiedKey ? <Check className="size-3.5 text-emerald-500" /> : <Copy className="size-3.5" />}
+                        <span>{copiedKey ? (lang === "bn" ? "কপি হয়েছে" : "Copied") : (lang === "bn" ? "কপি করুন" : "Copy")}</span>
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </Card>
+
+              {/* Right Column: Claim & Import Assets from Key */}
+              <div className="lg:col-span-5 space-y-6">
+                <Card className="p-5 sm:p-6 rounded-3xl bg-card border-border/80 shadow-xs space-y-5">
+                  <div className="flex items-center justify-between border-b border-border/60 pb-3">
+                    <div>
+                      <h2 className="text-base font-bold text-foreground flex items-center gap-2">
+                        <Download className="size-5 text-emerald-500" />
+                        <span>{lang === "bn" ? "কি দিয়ে ডাটা ইমপোর্ট করুন" : "Import & Apply Transfer Key"}</span>
+                      </h2>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {lang === "bn"
+                          ? "অন্য অ্যাকাউন্ট থেকে প্রাপ্ত এক্সপোর্ট কি এখানে দিয়ে ডাটা লোড করুন"
+                          : "Enter an export key received from another user to import store assets"}
+                      </p>
+                    </div>
+                    <Badge variant="outline" className="text-xs border-emerald-500/30 text-emerald-500 bg-emerald-500/10 font-bold">
+                      IMPORT
+                    </Badge>
+                  </div>
+
+                  <form onSubmit={handleInspectKey} className="space-y-3.5">
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-semibold text-foreground">
+                        {lang === "bn" ? "এক্সপোর্ট কি লিখুন" : "Enter Transfer Key"}
+                      </Label>
+                      <Input
+                        type="text"
+                        required
+                        value={importKeyInput}
+                        onChange={(e) => setImportKeyInput(e.target.value.toUpperCase())}
+                        placeholder="e.g. TRX-7A92-K4B8"
+                        className="h-10 rounded-xl font-mono text-xs sm:text-sm uppercase tracking-wider bg-muted/30 border-border/80"
+                      />
+                    </div>
+
+                    {inspectedPackage?.requiresPin && (
+                      <div className="space-y-1.5 animate-in fade-in duration-150">
+                        <Label className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                          <Lock className="size-3.5 text-amber-500" />
+                          <span>{lang === "bn" ? "সিকিউরিটি পিন কোড" : "Security PIN Code"}</span>
+                        </Label>
+                        <Input
+                          type="password"
+                          required
+                          value={importPinInput}
+                          onChange={(e) => setImportPinInput(e.target.value)}
+                          placeholder="Enter PIN"
+                          className="h-10 rounded-xl bg-muted/30 border-border/80 text-xs sm:text-sm"
+                        />
+                      </div>
+                    )}
+
+                    <Button
+                      type="submit"
+                      disabled={inspectingKey}
+                      variant="outline"
+                      className="w-full h-10 rounded-xl text-xs font-bold gap-2 cursor-pointer"
+                    >
+                      {inspectingKey ? (
+                        <RefreshCw className="size-3.5 animate-spin" />
+                      ) : (
+                        <>
+                          <Sparkles className="size-3.5 text-primary" />
+                          <span>{lang === "bn" ? "প্যাকেজ যাচাই করুন" : "Inspect Package"}</span>
+                        </>
+                      )}
+                    </Button>
+                  </form>
+
+                  {/* Inspected Package Details & Import Trigger */}
+                  {inspectedPackage && !inspectedPackage.requiresPin && inspectedPackage.summary && (
+                    <div className="p-4 rounded-2xl bg-muted/40 border border-border/80 space-y-3 animate-in fade-in duration-200">
+                      <div className="flex items-center justify-between border-b border-border/60 pb-2">
+                        <span className="text-xs font-bold text-foreground">
+                          {inspectedPackage.name || "Store Package"}
+                        </span>
+                        <Badge variant="secondary" className="text-[10px]">
+                          {inspectedPackage.key}
+                        </Badge>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        {inspectedPackage.summary.products_count !== undefined && (
+                          <div className="p-2 rounded-lg bg-card border border-border/60">
+                            <span className="text-[10px] text-muted-foreground block">{lang === "bn" ? "পণ্য সংখ্যা" : "Products"}</span>
+                            <span className="font-bold text-foreground">{inspectedPackage.summary.products_count} Items</span>
+                          </div>
+                        )}
+                        {inspectedPackage.summary.customers_count !== undefined && (
+                          <div className="p-2 rounded-lg bg-card border border-border/60">
+                            <span className="text-[10px] text-muted-foreground block">{lang === "bn" ? "কাস্টমার" : "Customers"}</span>
+                            <span className="font-bold text-foreground">{inspectedPackage.summary.customers_count} People</span>
+                          </div>
+                        )}
+                        {inspectedPackage.summary.sales_count !== undefined && (
+                          <div className="p-2 rounded-lg bg-card border border-border/60">
+                            <span className="text-[10px] text-muted-foreground block">{lang === "bn" ? "বিক্রয় মেমো" : "Sales Records"}</span>
+                            <span className="font-bold text-foreground">{inspectedPackage.summary.sales_count} Orders</span>
+                          </div>
+                        )}
+                        {inspectedPackage.summary.parties_count !== undefined && (
+                          <div className="p-2 rounded-lg bg-card border border-border/60">
+                            <span className="text-[10px] text-muted-foreground block">{lang === "bn" ? "পার্টি ও সাপ্লায়ার" : "Parties"}</span>
+                            <span className="font-bold text-foreground">{inspectedPackage.summary.parties_count} Vendors</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Import Mode: Merge vs Replace */}
+                      <div className="space-y-1.5 pt-1">
+                        <Label className="text-xs font-semibold text-foreground">
+                          {lang === "bn" ? "ইমপোর্ট পদ্ধতি:" : "Import Strategy:"}
+                        </Label>
+                        <div className="grid grid-cols-2 gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setImportMode("merge")}
+                            className={`p-2 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
+                              importMode === "merge"
+                                ? "bg-emerald-500/10 border-emerald-500/40 text-emerald-600 dark:text-emerald-400"
+                                : "bg-muted/30 border-border text-muted-foreground"
+                            }`}
+                          >
+                            {lang === "bn" ? "বিদ্যমান ডাটার সাথে যোগ" : "Merge Data"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setImportMode("replace")}
+                            className={`p-2 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
+                              importMode === "replace"
+                                ? "bg-rose-500/10 border-rose-500/40 text-rose-600 dark:text-rose-400"
+                                : "bg-muted/30 border-border text-muted-foreground"
+                            }`}
+                          >
+                            {lang === "bn" ? "ডাটাবেজ প্রতিস্থাপন" : "Replace All"}
+                          </button>
+                        </div>
+                      </div>
+
+                      <Button
+                        type="button"
+                        disabled={applyingKey}
+                        onClick={handleApplyTransferKey}
+                        className="w-full h-11 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs sm:text-sm shadow-md shadow-emerald-500/20 gap-2 cursor-pointer transition-all active:scale-[0.98]"
+                      >
+                        {applyingKey ? (
+                          <RefreshCw className="size-4 animate-spin" />
+                        ) : (
+                          <>
+                            <Check className="size-4" />
+                            <span>{lang === "bn" ? "অ্যাসেট ইমপোর্ট ও যুক্ত করুন" : "Apply & Import Assets Now"}</span>
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  )}
+                </Card>
+
+                {/* Active Generated Keys Ledger */}
+                <Card className="p-5 rounded-3xl bg-card border-border/80 shadow-xs space-y-3">
+                  <div className="flex items-center justify-between border-b border-border/60 pb-2.5">
+                    <h3 className="text-xs font-bold uppercase tracking-wider text-foreground flex items-center gap-1.5">
+                      <KeyRound className="size-3.5 text-primary" />
+                      <span>{lang === "bn" ? "সক্রিয় এক্সপোর্ট কি-সমূহ" : "Active Export Keys"}</span>
+                    </h3>
+                    <Badge variant="secondary" className="text-[10px]">
+                      {(myTransferKeys.data || []).length}
+                    </Badge>
+                  </div>
+
+                  {(myTransferKeys.data || []).length === 0 ? (
+                    <p className="text-xs text-muted-foreground py-4 text-center">
+                      {lang === "bn" ? "কোন সক্রিয় এক্সপোর্ট কি নেই" : "No active export keys generated yet"}
+                    </p>
+                  ) : (
+                    <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1">
+                      {(myTransferKeys.data || []).map((k: any) => (
+                        <div key={k.id || k.key} className="p-2.5 rounded-xl bg-muted/30 border border-border/60 flex items-center justify-between gap-2">
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-1.5">
+                              <code className="text-xs font-mono font-bold text-primary">{k.key}</code>
+                              {k.hasPin && <Lock className="size-3 text-amber-500" />}
+                            </div>
+                            <p className="text-[10px] text-muted-foreground truncate">
+                              {k.name} • {new Date(k.created_at).toLocaleDateString()}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => {
+                                navigator.clipboard.writeText(k.key);
+                                toast.success(lang === "bn" ? "কি কপি করা হয়েছে!" : "Copied!");
+                              }}
+                              className="size-7 p-0 cursor-pointer"
+                            >
+                              <Copy className="size-3 text-muted-foreground" />
+                            </Button>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="ghost"
+                              disabled={deletingKey === k.key}
+                              onClick={() => handleDeleteKey(k.key)}
+                              className="size-7 p-0 text-rose-500 hover:text-rose-600 hover:bg-rose-500/10 cursor-pointer"
+                            >
+                              <Trash2 className="size-3" />
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </Card>
+              </div>
             </div>
           )}
 

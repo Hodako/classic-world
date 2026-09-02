@@ -179,226 +179,9 @@ async function runWriteAction<T>(actionName: string, args: any): Promise<T | any
   }
 }
 
-import * as fs from "./firestore-service";
-
-// Direct Firestore Action Map for 100% Reliable Client Execution
-const fsActionMap: Record<string, (args?: any) => Promise<any>> = {
-  // Reads
-  getProductsFn: async () => fs.fsGetProducts(),
-  getStorefrontBySlug: async () => fs.fsGetProducts(),
-  getPartiesFn: async () => fs.fsGetParties(),
-  getPartyFn: async (args: any) => {
-    const list = await fs.fsGetParties();
-    return list.find((p: any) => p.id === (args?.data?.id || args?.id)) || null;
-  },
-  getCustomersFn: async () => fs.fsGetCustomers(),
-  getCustomerFn: async (args: any) => {
-    const list = await fs.fsGetCustomers();
-    return list.find((c: any) => c.id === (args?.data?.id || args?.id)) || null;
-  },
-  getAllPartyReceivablesFn: async () => fs.fsGetAllPartyReceivables(),
-  getPartyReceivablesFn: async (args: any) => {
-    const list = await fs.fsGetAllPartyReceivables();
-    const pid = args?.data?.partyId || args?.partyId;
-    return list.filter((r: any) => r.party_id === pid);
-  },
-  getAllPartyPayablesFn: async () => fs.fsGetAllPartyPayables(),
-  getPartyPayablesFn: async (args: any) => {
-    const list = await fs.fsGetAllPartyPayables();
-    const pid = args?.data?.partyId || args?.partyId;
-    return list.filter((p: any) => p.party_id === pid);
-  },
-  getAllPayableSettlementsFn: async () => fs.fsGetAllPayableSettlements(),
-  getPayableSettlementsFn: async (args: any) => {
-    const list = await fs.fsGetAllPayableSettlements();
-    const pid = args?.data?.partyId || args?.partyId;
-    return list.filter((s: any) => s.party_id === pid);
-  },
-  getSalesFn: async () => fs.fsGetSales(),
-  getSalesForPartyFn: async (args: any) => {
-    const list = await fs.fsGetSales();
-    const pid = args?.data?.partyId || args?.partyId;
-    return list.filter((s: any) => s.party_id === pid);
-  },
-  getReturnsFn: async () => fs.fsGetReturns(),
-  getPurchasesFn: async () => fs.fsGetPurchases(),
-  getExpensesFn: async () => fs.fsGetExpenses(),
-  getAllPaymentsFn: async () => fs.fsGetAllPayments(),
-  getPaymentsForPartyFn: async (args: any) => {
-    const list = await fs.fsGetAllPayments();
-    const pid = args?.data?.partyId || args?.partyId;
-    return list.filter((p: any) => p.party_id === pid);
-  },
-  getSomitiFn: async () => fs.fsGetSomiti(),
-  getWithdrawalsFn: async () => fs.fsGetWithdrawals(),
-  getOwnerWalletFn: async () => fs.fsGetOwnerWallet(),
-  getCashboxFn: async () => fs.fsGetCashbox(),
-  getRemindersFn: async () => fs.fsGetReminders(),
-  getBankAccountsFn: async () => fs.fsGetBankAccounts(),
-  getBankLoansFn: async () => fs.fsGetBankLoans(),
-  getEmployeesFn: async () => fs.fsGetEmployees(),
-  getEmployeeSalariesFn: async () => fs.fsGetEmployeeSalaries(),
-  getEmployeeExpensesFn: async () => fs.fsGetEmployeeExpenses(),
-  getEmployeeShoppingsFn: async () => fs.fsGetEmployeeShoppings(),
-
-  // Writes
-  createProductFn: async (args: any) => fs.fsCreateProduct(args?.data || args),
-  updateProductFn: async (args: any) => fs.fsUpdateProduct(args?.data?.id || args?.id, args?.data || args),
-  deleteProductFn: async (args: any) => fs.fsDeleteProduct(args?.data?.id || args?.id),
-  archiveProductFn: async (args: any) => fs.fsUpdateProduct(args?.data?.id || args?.id, { archived: args?.data?.archived ?? true }),
-
-  createPartyFn: async (args: any) => fs.fsCreateParty(args?.data || args),
-  updatePartyFn: async (args: any) => fs.fsUpdateParty(args?.data?.id || args?.id, args?.data || args),
-  deletePartyFn: async (args: any) => fs.fsDeleteParty(args?.data?.id || args?.id),
-  archivePartyFn: async (args: any) => fs.fsUpdateParty(args?.data?.id || args?.id, { archived: args?.data?.archived ?? true }),
-
-  createCustomerFn: async (args: any) => fs.fsCreateCustomer(args?.data || args),
-  updateCustomerFn: async (args: any) => fs.fsUpdateCustomer(args?.data?.id || args?.id, args?.data || args),
-  deleteCustomerFn: async (args: any) => fs.fsDeleteCustomer(args?.data?.id || args?.id),
-  archiveCustomerFn: async (args: any) => fs.fsUpdateCustomer(args?.data?.id || args?.id, { archived: args?.data?.archived ?? true }),
-
-  createPartyReceivableFn: async (args: any) => fs.fsCreatePartyReceivable(args?.data || args),
-  deletePartyReceivableFn: async (args: any) => fs.fsDeletePartyReceivable(args?.data?.id || args?.id),
-  createPartyPayableFn: async (args: any) => fs.fsCreatePartyPayable(args?.data || args),
-  deletePartyPayableFn: async (args: any) => fs.fsDeletePartyPayable(args?.data?.id || args?.id),
-  createPayableSettlementFn: async (args: any) => fs.fsCreatePayableSettlement(args?.data || args),
-  deletePayableSettlementFn: async (args: any) => fs.fsDeletePayableSettlement(args?.data?.id || args?.id),
-
-  createSaleFn: async (args: any) => fs.fsCreateSale(args?.data || args),
-  editSaleFn: async (args: any) => fs.fsEditSale(args?.data?.id || args?.id, args?.data || args),
-  deleteSaleFn: async (args: any) => fs.fsDeleteSale(args?.data?.id || args?.id),
-  approveCourierPaymentFn: async (args: any) => fs.fsApproveCourierPayment(args?.data?.id || args?.id),
-  cancelCourierOrderFn: async (args: any) => fs.fsCancelCourierOrder(args?.data?.id || args?.id),
-  acceptDigitalPaymentFn: async (args: any) => fs.fsAcceptDigitalPayment(args?.data?.id || args?.id),
-
-  createReturnFn: async (args: any) => fs.fsCreateReturn(args?.data || args),
-  createDirectProductReturnFn: async (args: any) => fs.fsCreateReturn(args?.data || args),
-  createPartyReturnFn: async (args: any) => fs.fsCreateReturn(args?.data || args),
-  deleteReturnFn: async (args: any) => fs.fsDeleteReturn(args?.data?.id || args?.id),
-  exchangeProductsFn: async (args: any) => fs.fsExchangeProducts(args?.data || args),
-
-  createPurchaseFn: async (args: any) => fs.fsCreatePurchase(args?.data || args),
-  editPurchaseFn: async (args: any) => fs.fsEditPurchase(args?.data?.id || args?.id, args?.data || args),
-  deletePurchaseFn: async (args: any) => fs.fsDeletePurchase(args?.data?.id || args?.id),
-
-  createExpenseFn: async (args: any) => fs.fsCreateExpense(args?.data || args),
-  deleteExpenseFn: async (args: any) => fs.fsDeleteExpense(args?.data?.id || args?.id),
-
-  createPaymentFn: async (args: any) => fs.fsCreatePayment(args?.data || args),
-  deletePaymentFn: async (args: any) => fs.fsDeletePayment(args?.data?.id || args?.id),
-
-  createSomitiFn: async (args: any) => fs.fsCreateSomiti(args?.data || args),
-  updateSomitiFn: async (args: any) => fs.fsUpdateSomiti(args?.data?.id || args?.id, args?.data || args),
-  deleteSomitiFn: async (args: any) => fs.fsDeleteSomiti(args?.data?.id || args?.id),
-  renameSomitiFn: async (args: any) => fs.fsRenameSomiti(args?.data || args),
-  deleteSomitiFnByName: async (args: any) => fs.fsDeleteSomitiByName(args?.data || args),
-
-  createWithdrawalFn: async (args: any) => fs.fsCreateWithdrawal(args?.data || args),
-
-  createOwnerWalletEntryFn: async (args: any) => fs.fsCreateOwnerWalletEntry(args?.data || args),
-  updateOwnerWalletEntryFn: async (args: any) => fs.fsUpdateOwnerWalletEntry(args?.data?.id || args?.id, args?.data || args),
-  deleteOwnerWalletEntryFn: async (args: any) => fs.fsDeleteOwnerWalletEntry(args?.data?.id || args?.id),
-
-  createCashboxFn: async (args: any) => fs.fsCreateCashbox(args?.data || args),
-  updateCashboxFn: async (args: any) => fs.fsUpdateCashbox(args?.data?.id || args?.id, args?.data || args),
-  deleteCashboxFn: async (args: any) => fs.fsDeleteCashbox(args?.data?.id || args?.id),
-  repairCashboxDbFn: async () => fs.fsRepairCashbox(),
-  emptyCashboxFn: async () => fs.fsEmptyCashbox(),
-
-  createReminderFn: async (args: any) => fs.fsCreateReminder(args?.data || args),
-  toggleReminderFn: async (args: any) => fs.fsToggleReminder(args?.data?.id || args?.id, args?.data || args),
-  deleteReminderFn: async (args: any) => fs.fsDeleteReminder(args?.data?.id || args?.id),
-
-  createBankAccountFn: async (args: any) => fs.fsCreateBankAccount(args?.data || args),
-  updateBankAccountFn: async (args: any) => fs.fsUpdateBankAccount(args?.data?.id || args?.id, args?.data || args),
-  deleteBankAccountFn: async (args: any) => fs.fsDeleteBankAccount(args?.data?.id || args?.id),
-  createBankTransactionFn: async (args: any) => fs.fsCreateBankTransaction(args?.data || args),
-  createBankLoanFn: async (args: any) => fs.fsCreateBankLoan(args?.data || args),
-  payBankLoanInstallmentFn: async (args: any) => fs.fsPayBankLoanInstallment(args?.data || args),
-  deleteBankLoanFn: async (args: any) => fs.fsDeleteBankLoan(args?.data?.id || args?.id),
-
-  addEmployeeFn: async (args: any) => fs.fsAddEmployee(args?.data || args),
-  updateEmployeeFn: async (args: any) => fs.fsUpdateEmployee(args?.data?.id || args?.id, args?.data || args),
-  deleteEmployeeFn: async (args: any) => fs.fsDeleteEmployee(args?.data?.id || args?.id),
-
-  createEmployeeSalaryFn: async (args: any) => fs.fsCreateEmployeeSalary(args?.data || args),
-  deleteEmployeeSalaryFn: async (args: any) => fs.fsDeleteEmployeeSalary(args?.data?.id || args?.id),
-
-  createEmployeeExpenseFn: async (args: any) => fs.fsCreateEmployeeExpense(args?.data || args),
-  deleteEmployeeExpenseFn: async (args: any) => fs.fsDeleteEmployeeExpense(args?.data?.id || args?.id),
-
-  createEmployeeShoppingFn: async (args: any) => fs.fsCreateEmployeeShopping(args?.data || args),
-  deleteEmployeeShoppingFn: async (args: any) => fs.fsDeleteEmployeeShopping(args?.data?.id || args?.id),
-
-  resetProductsFn: async () => fs.fsResetProducts(),
-  resetSalesFn: async () => fs.fsResetSales(),
-  resetPurchasesFn: async () => fs.fsResetPurchases(),
-  resetSomitiFn: async () => fs.fsResetSomiti(),
-  resetExpensesFn: async () => fs.fsResetExpenses(),
-  resetPartiesFn: async () => fs.fsResetParties(),
-  resetAllDataFn: async () => fs.fsResetAllData(),
-
-  verifyOwnerPasswordFn: async (args: any) => fs.fsVerifyOwnerPassword(args?.data || args),
-  changeMyPasswordFn: async (args: any) => fs.fsChangeMyPassword(args?.data || args),
-
-  loginFn: async (args: any) => fs.fsLogin(args?.data || args),
-  employeeLoginFn: async (args: any) => fs.fsEmployeeLogin(args?.data || args),
-  registerFn: async (args: any) => fs.fsRegister(args?.data || args),
-  getMeFn: async () => fs.fsGetMe(),
-  getBusinessSettingsFn: async () => fs.fsGetBusinessSettings(),
-  updateBusinessSettingsFn: async (args: any) => fs.fsUpdateBusinessSettings(args?.data || args),
-  getActiveAdminPopupsFn: async () => fs.fsGetActiveAdminPopups(),
-  dismissAdminPopupFn: async (args: any) => fs.fsDismissAdminPopup(args?.data?.popupId || args?.popupId),
-  firebaseAuthSyncFn: async (args: any) => fs.fsFirebaseAuthSync(args?.data || args),
-
-  uploadImageFn: async (args: any) => fs.fsUploadImage(args?.data || args),
-  toggleGoogleSheetsSyncFn: async (args: any) => fs.fsToggleGoogleSheetsSync(args?.data || args),
-  bulkExportToGoogleSheetsFn: async () => fs.fsBulkExportToGoogleSheets(),
-
-  listEmployeeInvitationsFn: async () => fs.fsListEmployeeInvitations(),
-  sendEmployeeInvitationFn: async (args: any) => fs.fsSendEmployeeInvitation(args?.data || args),
-  cancelEmployeeInvitationFn: async (args: any) => fs.fsCancelEmployeeInvitation(args?.data?.id || args?.id),
-  removeEmployeeFn: async (args: any) => fs.fsRemoveEmployee(args?.data?.employeeId || args?.employeeId),
-  updateEmployeePermissionsFn: async (args: any) => fs.fsUpdateEmployeePermissions(args?.data || args),
-
-  getSmsSettingsFn: async () => fs.fsGetSmsSettings(),
-  updateSmsSettingsFn: async (args: any) => fs.fsUpdateSmsSettings(args?.data || args),
-  checkSmsBalanceFn: async () => fs.fsCheckSmsBalance(),
-  getSmsLogsFn: async () => fs.fsGetSmsLogs(),
-  sendSmsCampaignFn: async (args: any) => fs.fsSendSmsCampaign(args?.data || args),
-  checkSmsDeliveryStatusFn: async (args: any) => fs.fsCheckSmsDeliveryStatus(args?.data || args),
-  deleteSmsLogFn: async (args: any) => fs.fsDeleteSmsLog(args?.data?.id || args?.id),
-
-  // ── 7-Day Recycle Bin System ──
-  getRecycleBinFn: async () => fs.fsGetRecycleBin(),
-  restoreFromRecycleBinFn: async (args: any) => fs.fsRestoreFromRecycleBin(args?.data?.id || args?.id),
-  permanentDeleteRecycleBinFn: async (args: any) => fs.fsPermanentDeleteRecycleBin(args?.data?.id || args?.id),
-
-  // ── License Key Engine ──
-  generateOwnerLicenseKeyFn: async (args: any) => fs.fsGenerateOwnerLicenseKey(args?.data || args),
-  generateEmployeeLicenseKeyFn: async (args: any) => fs.fsGenerateEmployeeLicenseKey(args?.data || args),
-  listLicensesFn: async (args: any) => fs.fsListLicenses(args?.data?.type || args?.type),
-  revokeLicenseFn: async (args: any) => fs.fsRevokeLicense(args?.data?.key || args?.key),
-  validateAndActivateLicenseFn: async (args: any) => fs.fsValidateAndActivateLicense(args?.data?.licenseKey || args?.licenseKey, args?.data?.userUid || args?.userUid, args?.data?.userEmail || args?.userEmail),
-  activateLicenseFn: async (args: any) => fs.fsValidateAndActivateLicense(args?.data?.licenseKey || args?.licenseKey, args?.data?.userUid || args?.userUid, args?.data?.userEmail || args?.userEmail),
-};
-
-async function executeAction(name: string, args: any): Promise<any> {
-  const handler = fsActionMap[name];
-  if (handler) {
-    try {
-      return await handler(args);
-    } catch (fsErr) {
-      console.warn(`Firestore action ${name} error:`, fsErr);
-      throw fsErr;
-    }
-  }
-  return await callRemoteRpc(name, args);
-}
-
-// Action factories - Route directly through executeAction so Firestore handles everything locally and reliably!
-const makeReadAction = (name: string) => (args?: any) => executeAction(name, args);
-const makeWriteAction = (name: string) => (args?: any) => executeAction(name, args);
+// Action factories
+const makeReadAction = (name: string) => (args?: any) => callRemoteRpc(name, args);
+const makeWriteAction = (name: string) => (args?: any) => runWriteAction(name, args);
 
 // ─── Export READS ────────────────────────────────────────────────────────────
 export const getMeFn = makeReadAction("getMeFn");
@@ -516,6 +299,25 @@ export const createReminderFn = makeWriteAction("createReminderFn");
 export const toggleReminderFn = makeWriteAction("toggleReminderFn");
 export const deleteReminderFn = makeWriteAction("deleteReminderFn");
 
+// ─── Employees & Staff Management ─────────────────────────────────────────────
+export const getEmployeesFn = makeReadAction("getEmployeesFn");
+export const createEmployeeFn = makeWriteAction("createEmployeeFn");
+export const addEmployeeFn = createEmployeeFn;
+export const updateEmployeeFn = makeWriteAction("updateEmployeeFn");
+export const deleteEmployeeFn = makeWriteAction("deleteEmployeeFn");
+
+export const getEmployeeSalariesFn = makeReadAction("getEmployeeSalariesFn");
+export const createEmployeeSalaryFn = makeWriteAction("createEmployeeSalaryFn");
+export const deleteEmployeeSalaryFn = makeWriteAction("deleteEmployeeSalaryFn");
+
+export const getEmployeeExpensesFn = makeReadAction("getEmployeeExpensesFn");
+export const createEmployeeExpenseFn = makeWriteAction("createEmployeeExpenseFn");
+export const deleteEmployeeExpenseFn = makeWriteAction("deleteEmployeeExpenseFn");
+
+export const getEmployeeShoppingsFn = makeReadAction("getEmployeeShoppingsFn");
+export const createEmployeeShoppingFn = makeWriteAction("createEmployeeShoppingFn");
+export const deleteEmployeeShoppingFn = makeWriteAction("deleteEmployeeShoppingFn");
+
 // ─── Export Reset Operations ─────────────────────────────────────────────────
 export const emptyCashboxFn = makeReadAction("emptyCashboxFn");
 export const resetProductsFn = makeReadAction("resetProductsFn");
@@ -538,7 +340,11 @@ const actionsList = [
   "createPurchaseFn", "deletePurchaseFn", "createExpenseFn", "deleteExpenseFn",
   "createPaymentFn", "deletePaymentFn", "createSomitiFn", "updateSomitiFn", "deleteSomitiFn",
   "renameSomitiFn", "deleteSomitiFnByName", "createWithdrawalFn",
-  "createReminderFn", "toggleReminderFn", "deleteReminderFn"
+  "createReminderFn", "toggleReminderFn", "deleteReminderFn",
+  "createEmployeeFn", "updateEmployeeFn", "deleteEmployeeFn",
+  "createEmployeeSalaryFn", "deleteEmployeeSalaryFn",
+  "createEmployeeExpenseFn", "deleteEmployeeExpenseFn",
+  "createEmployeeShoppingFn", "deleteEmployeeShoppingFn"
 ];
 
 const syncActions: Record<string, Function> = {};
@@ -616,13 +422,14 @@ export const getBusinessSettingsFn = makeReadAction("getBusinessSettingsFn");
 // ── Recycle Bin & Command History ──────────────────────────────────────────
 export const getRecycleBinFn = makeReadAction("getRecycleBinFn");
 export const restoreRecycleItemFn = makeWriteAction("restoreRecycleItemFn");
+export const restoreFromRecycleBinFn = restoreRecycleItemFn;
 export const permanentDeleteRecycleItemFn = makeWriteAction("permanentDeleteRecycleItemFn");
+export const permanentDeleteRecycleBinFn = permanentDeleteRecycleItemFn;
 export const emptyRecycleBinFn = makeWriteAction("emptyRecycleBinFn");
 export const getCommandHistoryFn = makeReadAction("getCommandHistoryFn");
 export const undoCommandFn = makeWriteAction("undoCommandFn");
 
-
-// ── Additional Classic-World Specific Actions ──────────────────────────────
+// ── Additional License Key Actions ─────────────────────────────────────────
 export const generateOwnerLicenseKeyFn = makeWriteAction("generateOwnerLicenseKeyFn");
 export const generateEmployeeLicenseKeyFn = makeWriteAction("generateEmployeeLicenseKeyFn");
 export const listLicensesFn = makeReadAction("listLicensesFn");
@@ -630,22 +437,9 @@ export const revokeLicenseFn = makeWriteAction("revokeLicenseFn");
 export const validateAndActivateLicenseFn = makeWriteAction("validateAndActivateLicenseFn");
 export const activateLicenseFn = makeWriteAction("activateLicenseFn");
 
-export const restoreFromRecycleBinFn = makeWriteAction("restoreFromRecycleBinFn");
-export const permanentDeleteRecycleBinFn = makeWriteAction("permanentDeleteRecycleBinFn");
-
-export const getEmployeesFn = makeReadAction("getEmployeesFn");
-export const addEmployeeFn = makeWriteAction("addEmployeeFn");
-export const updateEmployeeFn = makeWriteAction("updateEmployeeFn");
-export const deleteEmployeeFn = makeWriteAction("deleteEmployeeFn");
-
-export const getEmployeeSalariesFn = makeReadAction("getEmployeeSalariesFn");
-export const createEmployeeSalaryFn = makeWriteAction("createEmployeeSalaryFn");
-export const deleteEmployeeSalaryFn = makeWriteAction("deleteEmployeeSalaryFn");
-
-export const getEmployeeExpensesFn = makeReadAction("getEmployeeExpensesFn");
-export const createEmployeeExpenseFn = makeWriteAction("createEmployeeExpenseFn");
-export const deleteEmployeeExpenseFn = makeWriteAction("deleteEmployeeExpenseFn");
-
-export const getEmployeeShoppingsFn = makeReadAction("getEmployeeShoppingsFn");
-export const createEmployeeShoppingFn = makeWriteAction("createEmployeeShoppingFn");
-export const deleteEmployeeShoppingFn = makeWriteAction("deleteEmployeeShoppingFn");
+// ── Asset Transfer & Export Keys ──────────────────────────────────────────
+export const createAssetTransferKeyFn = makeWriteAction("createAssetTransferKeyAction");
+export const inspectAssetTransferKeyFn = makeReadAction("inspectAssetTransferKeyAction");
+export const applyAssetTransferKeyFn = makeWriteAction("applyAssetTransferKeyAction");
+export const listMyTransferKeysFn = makeReadAction("listMyTransferKeysAction");
+export const deleteTransferKeyFn = makeWriteAction("deleteTransferKeyAction");

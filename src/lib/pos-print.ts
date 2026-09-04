@@ -17,7 +17,7 @@ export const DEFAULT_POS_CONFIG: PosPaperSettings = {
 export function getPosPaperConfig(): PosPaperSettings {
   if (typeof window === "undefined") return DEFAULT_POS_CONFIG;
   try {
-    const saved = localStorage.getItem("cw_pos_paper_config") || localStorage.getItem("dreamfashion_pos_paper_config");
+    const saved = localStorage.getItem("dreamfashion_pos_paper_config");
     if (saved) {
       const parsed = JSON.parse(saved);
       return {
@@ -38,7 +38,7 @@ export function savePosPaperConfig(config: Partial<PosPaperSettings>): PosPaperS
     ...config,
   };
   if (typeof window !== "undefined") {
-    localStorage.setItem("cw_pos_paper_config", JSON.stringify(updated));
+    localStorage.setItem("dreamfashion_pos_paper_config", JSON.stringify(updated));
     window.dispatchEvent(new Event("hz-pos-config-updated"));
   }
   return updated;
@@ -67,10 +67,10 @@ export function printPwaPosReceipt(data: {
 
   const itemsRows = data.items
     .map(
-      (item) => `
+      (item, idx) => `
       <tr style="border-bottom: 1px dashed #d1d5db;">
         <td style="padding: 4px 0; text-align: left; vertical-align: top;">
-          <div style="font-weight: 700; font-size: 11px; color: #000000; line-height: 1.2;">${item.name}</div>
+          <div style="font-weight: 700; font-size: 11px; color: #000000; line-height: 1.2;">${idx + 1}. ${item.name}</div>
           <div style="font-size: 9px; color: #4b5563; font-family: monospace;">${item.qty} x ৳${item.price.toLocaleString()}</div>
         </td>
         <td style="padding: 4px 0; text-align: right; vertical-align: top; font-family: monospace; font-weight: 700; font-size: 11px; color: #000000;">

@@ -1230,14 +1230,14 @@ function SalesTab({
                     <span className="text-[10px] font-bold uppercase text-muted-foreground tracking-wider block font-balooda">
                       {lang === "bn" ? "কার্ট আইটেম তালিকা" : "Cart Items"}
                     </span>
-                    {s.items.map((item) => {
+                    {s.items.map((item, idx) => {
                       const itemProfit = item.profit !== undefined
                         ? Number(item.profit)
                         : (Number(item.sell_price) - Number(item.buy_price || 0)) * (Number(item.qty) || 1);
                       return (
                         <div key={item.id} className="flex justify-between items-center text-xs py-1 border-b border-border/30 last:border-0 font-balooda">
                           <div className="truncate mr-2">
-                            <span className="font-bold text-foreground">{item.product_name}</span>
+                            <span className="font-bold text-foreground">{idx + 1}. {item.product_name}</span>
                             <span className="text-muted-foreground font-mono ml-1">×{item.qty}</span>
                           </div>
                           <div className="flex items-center gap-2 shrink-0">

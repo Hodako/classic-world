@@ -208,7 +208,6 @@ export function SaleDialog({
   }
 
   const sellTotal = cart.reduce((a, l) => a + lineTotal(l), 0);
-  const discTotal = cart.reduce((a, l) => a + ((Number(l.discount) || 0) * (Number(l.qty) || 1)), 0);
   const profitTotal = cart.reduce((a, l) => {
     const p = products.find(x => x.id === l.productId);
     const sell = Number(l.sellPrice) || (p ? p.sell_price : 0) || 0;
@@ -376,7 +375,7 @@ export function SaleDialog({
         invoiceNo: `INV-${cartId.slice(-6).toUpperCase()}`,
         customerName: cust?.name || (lang === "bn" ? "সম্মানিত ক্রেতা" : "Valued Customer"),
         customerPhone: cust?.phone || "",
-        shopName: user.business_name || user.full_name || "Classic World",
+        shopName: user.business_name || user.full_name || "Dream Fashion",
         shopPhone: user.business_phone_numbers || "",
         items: cart.map(c => {
           const prod = products.find(p => p.id === c.productId);
@@ -386,8 +385,8 @@ export function SaleDialog({
             price: Math.max((Number(c.sellPrice) || prod?.sell_price || 0) - (Number(c.discount) || 0), 0),
           };
         }),
-        subtotal: sellTotal + discTotal,
-        discount: discTotal,
+        subtotal: sellTotal + cart.reduce((acc, c) => acc + ((Number(c.discount) || 0) * (Number(c.qty) || 1)), 0),
+        discount: cart.reduce((acc, c) => acc + ((Number(c.discount) || 0) * (Number(c.qty) || 1)), 0),
         total: sellTotal,
         paidAmount: type === "online" ? 0 : (type === "credit" ? paidNum : sellTotal),
         dueAmount: type === "online" ? sellTotal : (type === "credit" ? due : 0),
@@ -423,7 +422,7 @@ export function SaleDialog({
           : "CASH (নগদ)";
 
         const invoiceParams = {
-          businessName: user.business_name || user.full_name || "Classic World POS",
+          businessName: user.business_name || user.full_name || "Dream Fashion POS",
           userEmail: user.business_emails || user.email || "",
           shopAddress: user.business_address || "",
           shopPhoneNumbers: user.business_phone_numbers || "",
@@ -446,8 +445,8 @@ export function SaleDialog({
               sellPrice: Math.max((Number(c.sellPrice) || prod?.sell_price || 0) - (Number(c.discount) || 0), 0),
             };
           }),
-          subtotal: sellTotal + discTotal,
-          discountAmount: discTotal,
+          subtotal: sellTotal + cart.reduce((acc, c) => acc + ((Number(c.discount) || 0) * (Number(c.qty) || 1)), 0),
+          discountAmount: cart.reduce((acc, c) => acc + ((Number(c.discount) || 0) * (Number(c.qty) || 1)), 0),
           total: sellTotal,
           paidAmount: type === "online" ? 0 : (type === "credit" ? paidNum : sellTotal),
           due: type === "online" ? sellTotal : (type === "credit" ? due : 0),
@@ -455,6 +454,7 @@ export function SaleDialog({
         };
 
         printPwaInvoice(invoiceParams);
+        toast.success(lang === "bn" ? "ইনভয়েস প্রিন্ট প্রস্তুত হচ্ছে!" : "Opening invoice print view!");
       }
 
       onOpenChange(false);
@@ -771,7 +771,7 @@ export function SaleDialog({
                           <div key={`${line.productId}-${i}`} className="border border-border/80 rounded-xl p-2.5 text-xs bg-card space-y-1.5 shadow-2xs">
                             <div className="flex items-center justify-between font-semibold">
                               <span className="truncate flex-1 text-zinc-900 dark:text-zinc-100 font-medium" title={p?.name}>
-                                {p?.name}
+                                {i + 1}. {p?.name}
                               </span>
                               <Button
                                 type="button"

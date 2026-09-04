@@ -432,7 +432,7 @@ export default function InvoicePage() {
     return `INV-${Date.now().toString().slice(-6)}`;
   }, [invoiceItems.length === 0]);
 
-  const businessName = user?.business_name || "Classic World";
+  const businessName = user?.business_name || "Dream IT";
   const userEmail = user?.email || "";
   const tagline = t("tagline") || "Quality Products & Service";
   const invoiceDate = fmtDateTime(new Date().toISOString());
@@ -867,11 +867,11 @@ export default function InvoicePage() {
               </div>
             ) : (
               <div className="divide-y divide-border border rounded-lg overflow-hidden text-xs bg-card">
-                {invoiceItems.map((item) => (
+                {invoiceItems.map((item, idx) => (
                   <div key={item.product.id} className="p-2.5 flex items-center justify-between gap-2 hover:bg-muted/20 transition-colors">
                     {/* Item Details */}
                     <div className="min-w-0 flex-1">
-                      <div className="font-medium text-foreground truncate">{item.product.name}</div>
+                      <div className="font-medium text-foreground truncate">{idx + 1}. {item.product.name}</div>
                       <div className="flex items-center gap-1.5 mt-1 text-[11px] text-muted-foreground">
                         <span>৳</span>
                         <input

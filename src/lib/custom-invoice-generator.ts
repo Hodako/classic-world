@@ -151,9 +151,9 @@ export function generateCustomPosInvoiceCanvas(data: CustomInvoiceData): HTMLCan
   y += 12 * scale;
 
   // 4. ITEMS LIST
-  data.items.forEach((item) => {
-    // Truncate long item names
-    let name = item.name;
+  data.items.forEach((item, idx) => {
+    // Truncate long item names with 1. , 2. numbering
+    let name = `${idx + 1}. ${item.name}`;
     if (name.length > 28) name = name.substring(0, 26) + "..";
 
     drawText(name, pad, y, { weight: "bold", sizePx: 10.5 * scale });

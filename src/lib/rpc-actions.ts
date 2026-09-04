@@ -71,8 +71,21 @@ async function insertCashboxEntry(
   return { ...doc, id };
 }
 
-function saleCashboxAmount(data: { type: string; sell_price: number; qty: number; paid_amount: number; discount?: number }) {
+function saleCashboxAmount(data: {
+  type: string;
+  sell_price: number;
+  qty: number;
+  paid_amount: number;
+  discount?: number;
+  split_cash?: number;
+  split_bkash?: number;
+  split_bank?: number;
+}) {
   const lineTotal = Math.max(0, (Number(data.sell_price) * (Number(data.qty) || 1)) - (Number(data.discount) || 0));
+  if (data.type === "split") {
+    // In split payments, the cash portion deposits directly into physical cashbox drawer
+    return Number(data.split_cash) || 0;
+  }
   if (data.type === "credit") return Number(data.paid_amount) || 0;
   // bKash and Bank payments are pending verification until user accepts payment
   if (data.type === "bkash" || data.type === "bank") return 0;
@@ -754,12 +767,35 @@ export async function getSalesForPartyFn(input: { data: { partyId: string } }) {
   return items.map((s) => ({ ...s, id: s._id as any as string }));
 }
 
-export async function createSaleFn(input: { data: { product_id?: string | null; product_name: string; qty: number; buy_price: number; sell_price: number; profit: number; type: string; party_id?: string | null; paid_amount: number; due_amount: number; note?: string | null; cart_id?: string | null; courier_name?: string | null; tracking_code?: string | null; courier_status?: string | null; created_at?: string } }) {
+export async function createSaleFn(input: {
+  data: {
+    product_id?: string | null;
+    product_name: string;
+    qty: number;
+    buy_price: number;
+    sell_price: number;
+    profit: number;
+    type: string;
+    party_id?: string | null;
+    paid_amount: number;
+    due_amount: number;
+    split_cash?: number;
+    split_bkash?: number;
+    split_bank?: number;
+    note?: string | null;
+    cart_id?: string | null;
+    courier_name?: string | null;
+    tracking_code?: string | null;
+    courier_status?: string | null;
+    created_at?: string;
+  };
+}) {
   const { data } = input;
   const session = await requireSession();
   const db = await getDb();
   const id = crypto.randomUUID();
   const isOnline = data.type === "online";
+  const isSplit = data.type === "split";
   const safeQty = Math.max(1, Number(data.qty) || 1);
   const safeSellPrice = Math.max(0, Number(data.sell_price) || 0);
   const safeBuyPrice = Math.max(0, Number(data.buy_price) || 0);
@@ -775,6 +811,9 @@ export async function createSaleFn(input: { data: { product_id?: string | null; 
     sell_price: safeSellPrice,
     buy_price: safeBuyPrice,
     profit: safeProfit,
+    split_cash: isSplit ? (Number(data.split_cash) || 0) : undefined,
+    split_bkash: isSplit ? (Number(data.split_bkash) || 0) : undefined,
+    split_bank: isSplit ? (Number(data.split_bank) || 0) : undefined,
     courier_status: isOnline ? (data.courier_status || "pending") : undefined,
     courier_name: data.courier_name || (isOnline ? "Courier Delivery" : undefined),
     tracking_code: data.tracking_code || undefined,
@@ -790,7 +829,10 @@ export async function createSaleFn(input: { data: { product_id?: string | null; 
   }
   const cashAmt = isOnline ? (doc.courier_status === "collected" ? Number(doc.paid_amount) : 0) : saleCashboxAmount(data);
   if (cashAmt > 0) {
-    const methodTag = data.type === "online" ? " [Paid by COURIER]" : data.type ? ` [Paid by ${data.type.toUpperCase()}]` : "";
+    let methodTag = data.type === "online" ? " [Paid by COURIER]" : data.type ? ` [Paid by ${data.type.toUpperCase()}]` : "";
+    if (isSplit) {
+      methodTag = ` [Split Cash: ৳${Number(data.split_cash) || 0}, bKash: ৳${Number(data.split_bkash) || 0}]`;
+    }
     await insertCashboxEntry(db, session.ownerId, {
       kind: "sale",
       amount: cashAmt,
@@ -1768,7 +1810,18 @@ export async function getAllPaymentsFn(): Promise<any[]> {
   return items.map((p) => ({ ...p, id: p._id as any as string }));
 }
 
-export async function createPaymentFn(input: { data: { party_id: string; amount: number; note?: string | null; created_at?: string } }) {
+export async function createPaymentFn(input: {
+  data: {
+    party_id: string;
+    amount: number;
+    payment_method?: string;
+    split_cash?: number;
+    split_bkash?: number;
+    split_bank?: number;
+    note?: string | null;
+    created_at?: string;
+  };
+}) {
   const { data } = input;
   const session = await requireSession();
   const db = await getDb();
@@ -1783,13 +1836,24 @@ export async function createPaymentFn(input: { data: { party_id: string; amount:
     party = await db.collection("parties").findOne({ _id: data.party_id, owner_id: session.ownerId } as any);
   }
   const partyName = party ? (party.name || "Party") : "Party";
-  await insertCashboxEntry(db, session.ownerId, {
-    kind: "deposit",
-    amount: data.amount,
-    note: data.note || `Collected dues from ${partyName}`,
-    ref_id: id,
-    created_at: isoDate,
-  });
+
+  const isSplit = data.payment_method === "split";
+  const cashAmt = isSplit
+    ? (Number(data.split_cash) || 0)
+    : (data.payment_method === "bkash" || data.payment_method === "bank" ? 0 : Number(data.amount) || 0);
+
+  if (cashAmt > 0) {
+    const methodNote = isSplit
+      ? ` [Cash: ৳${cashAmt}, bKash: ৳${Number(data.split_bkash) || 0}]`
+      : (data.payment_method ? ` [${data.payment_method.toUpperCase()}]` : "");
+    await insertCashboxEntry(db, session.ownerId, {
+      kind: "deposit",
+      amount: cashAmt,
+      note: data.note ? `${data.note}${methodNote}` : `Collected dues from ${partyName}${methodNote}`,
+      ref_id: id,
+      created_at: isoDate,
+    });
+  }
 
   return { ...doc, id };
 }
@@ -2840,6 +2904,8 @@ export async function repairCashboxDbFn() {
       cashAmount = !isNaN(p) && p >= 0 ? p : lineTotal;
     } else if (type === "credit") {
       cashAmount = !isNaN(p) && p > 0 ? p : 0;
+    } else if (type === "split") {
+      cashAmount = (s as any).split_cash !== undefined ? (Number((s as any).split_cash) || 0) : (!isNaN(p) && p > 0 ? p : 0);
     } else if (type === "bkash" || type === "bank" || type === "rocket") {
       if ((s as any).payment_status === "rejected" || (s as any).payment_status === "cancelled") {
         cashAmount = 0;

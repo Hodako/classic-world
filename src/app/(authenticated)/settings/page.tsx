@@ -1146,7 +1146,7 @@ export default function SettingsPage() {
           </div>
         </div>
 
-        <div className="flex items-center gap-2.5 self-start sm:self-auto">
+        <div className="hidden md:flex items-center gap-2.5 self-start sm:self-auto">
           <Button
             type="button"
             onClick={() => {
@@ -1164,8 +1164,8 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      {/* Top Secondary Div: Custom Entry Quick Launch Hub (PC & Mobile) */}
-      <div className="p-4 sm:p-5 rounded-2xl bg-card border border-border/80 shadow-xs space-y-3.5">
+      {/* Top Secondary Div: Custom Entry Quick Launch Hub (PC & Tablet Only - hidden on phone) */}
+      <div className="hidden md:block p-4 sm:p-5 rounded-2xl bg-card border border-border/80 shadow-xs space-y-3.5">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
           <div className="flex items-center gap-2.5">
             <div className="size-2.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)] animate-pulse" />
@@ -1362,7 +1362,32 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      {/* Modern Desktop Segmented Tab Bar */}
+      {/* Mobile Tab Selector (Compact & Direct for Phones) */}
+      <div className="md:hidden w-full space-y-1.5">
+        <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+          <Store className="size-3.5 text-primary" />
+          <span>{lang === "bn" ? "সেটিংস বিভাগ নির্বাচন" : "Settings Section"}</span>
+        </label>
+        <div className="relative">
+          <select
+            value={settingsTab}
+            onChange={(e) => setSettingsTab(e.target.value as SettingsTab)}
+            aria-label={lang === "bn" ? "সেটিংস বিভাগ" : "Settings Section"}
+            className="w-full h-11 px-3.5 pr-10 rounded-xl bg-card border border-border/80 text-xs font-bold text-foreground appearance-none shadow-xs focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all cursor-pointer"
+          >
+            {navTabs.map((tab) => (
+              <option key={tab.id} value={tab.id}>
+                {tab.label} {tab.count !== undefined && tab.count > 0 ? `(${tab.count})` : ""}
+              </option>
+            ))}
+          </select>
+          <div className="absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none text-muted-foreground">
+            <ChevronDown className="size-4" />
+          </div>
+        </div>
+      </div>
+
+      {/* Modern Desktop & Mobile Horizontal Scrollable Segmented Tab Bar */}
       <div className="flex items-center gap-1.5 p-1.5 bg-muted/60 dark:bg-muted/30 border border-border/80 rounded-2xl overflow-x-auto scrollbar-none shadow-xs">
         {navTabs.map((tab) => {
           const Icon = tab.icon;

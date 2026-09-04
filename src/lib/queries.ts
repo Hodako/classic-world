@@ -47,16 +47,30 @@ export type Customer = { id: string; name: string; phone: string | null; address
 export type Sale = {
   id: string; product_id: string | null; product_name: string;
   qty: number; buy_price: number; sell_price: number; profit: number;
-  type: "cash" | "bkash" | "credit" | "online"; party_id: string | null;
+  type: "cash" | "bkash" | "bank" | "credit" | "online" | "split" | string; party_id: string | null;
   paid_amount: number; due_amount: number; created_at: string;
+  split_cash?: number;
+  split_bkash?: number;
+  split_bank?: number;
   returned?: boolean; return_qty?: number;
   parties?: { name: string } | null;
   customer?: { id?: string; name: string; phone?: string | null; address?: string | null } | null;
   note?: string | null;
   cart_id?: string | null;
   discount?: number;
+  courier_status?: string | null;
+  courier_name?: string | null;
+  tracking_code?: string | null;
+  payment_status?: string | null;
+  payment_accepted?: boolean;
 };
-export type Payment = { id: string; party_id: string; amount: number; note: string | null; created_at: string };
+export type Payment = {
+  id: string; party_id: string; amount: number; note: string | null; created_at: string;
+  payment_method?: string;
+  split_cash?: number;
+  split_bkash?: number;
+  split_bank?: number;
+};
 export type PartyLedger = { id: string; party_id: string; amount: number; note: string | null; created_at: string };
 export type Return = {
   id: string; sale_id: string; product_id: string; product_name: string;

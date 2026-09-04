@@ -47,6 +47,8 @@ const dict = {
   custom: { bn: "কাস্টম", en: "Custom" },
   cash_sale: { bn: "নগদ বিক্রি", en: "Cash sale" },
   credit_sale: { bn: "বাকী বিক্রি", en: "Credit sale" },
+  split_sale: { bn: "মিক্সড / আংশিক বিক্রি", en: "Split / Mixed sale" },
+  split_payment: { bn: "মিক্সড পেমেন্ট", en: "Split Payment" },
   profit: { bn: "লাভ", en: "Profit" },
   expense: { bn: "দোকান খরচ", en: "Expense" },
   due: { bn: "মোট বাকী", en: "Total dues" },

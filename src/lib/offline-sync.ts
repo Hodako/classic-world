@@ -75,6 +75,9 @@ function applyOptimisticUpdate(actionName: string, args: any) {
       party_id: args.data.party_id ?? null,
       paid_amount: Number(args.data.paid_amount) || 0,
       due_amount: Number(args.data.due_amount) || 0,
+      split_cash: args.data.split_cash !== undefined ? Number(args.data.split_cash) : undefined,
+      split_bkash: args.data.split_bkash !== undefined ? Number(args.data.split_bkash) : undefined,
+      split_bank: args.data.split_bank !== undefined ? Number(args.data.split_bank) : undefined,
       note: args.data.note ?? null,
       cart_id: args.data.cart_id ?? null,
       created_at: now,
@@ -95,14 +98,51 @@ function applyOptimisticUpdate(actionName: string, args: any) {
 
     // 3. Update cashbox ledger
     const cashbox = readQueryCache<any[]>(["cashbox"]) ?? [];
-    const newCashbox = {
-      id: crypto.randomUUID(),
-      kind: "sale",
-      amount: newSale.type === "credit" ? newSale.paid_amount : newSale.sell_price * newSale.qty,
-      note: newSale.note || `Sale: ${newSale.product_name}`,
-      created_at: now,
-    };
-    writeQueryCache(["cashbox"], [newCashbox, ...cashbox]);
+    let cashAmt = 0;
+    if (newSale.type === "credit") {
+      cashAmt = newSale.paid_amount;
+    } else if (newSale.type === "split") {
+      cashAmt = Number(args.data.split_cash) || 0;
+    } else if (newSale.type === "bkash" || newSale.type === "bank" || newSale.type === "online") {
+      cashAmt = 0;
+    } else {
+      cashAmt = newSale.paid_amount || (newSale.sell_price * newSale.qty);
+    }
+
+    if (cashAmt > 0) {
+      const newCashbox = {
+        id: crypto.randomUUID(),
+        kind: "sale",
+        amount: cashAmt,
+        note: newSale.type === "split"
+          ? `Sale [Split Cash: ৳${cashAmt}, bKash: ৳${Number(args.data.split_bkash) || 0}]: ${newSale.product_name}`
+          : (newSale.note || `Sale: ${newSale.product_name}`),
+        ref_id: newSale.id,
+        created_at: now,
+      };
+      writeQueryCache(["cashbox"], [newCashbox, ...cashbox]);
+    }
+  }
+
+  else if (actionName === "createPaymentFn") {
+    const isSplit = args.data.payment_method === "split";
+    const cashAmt = isSplit
+      ? (Number(args.data.split_cash) || 0)
+      : (args.data.payment_method === "bkash" || args.data.payment_method === "bank" ? 0 : Number(args.data.amount) || 0);
+
+    if (cashAmt > 0) {
+      const cashbox = readQueryCache<any[]>(["cashbox"]) ?? [];
+      const newCashbox = {
+        id: crypto.randomUUID(),
+        kind: "deposit",
+        amount: cashAmt,
+        note: isSplit
+          ? `Collected dues [Cash: ৳${cashAmt}, bKash: ৳${Number(args.data.split_bkash) || 0}]`
+          : (args.data.note || "Collected dues"),
+        created_at: now,
+      };
+      writeQueryCache(["cashbox"], [newCashbox, ...cashbox]);
+    }
   }
 
   else if (actionName === "createProductFn") {

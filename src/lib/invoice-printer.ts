@@ -31,6 +31,9 @@ export interface PrintInvoiceParams {
   paidAmount: number;
   due: number;
   changeAmount?: number;
+  splitCash?: number;
+  splitBkash?: number;
+  splitBank?: number;
   paymentStatus?: string;
   paymentMode?: string;
   colorTheme?: string;
@@ -206,9 +209,21 @@ export function printPwaInvoice(data: PrintInvoiceParams) {
       </div>
 
       <div style="display: flex; justify-content: space-between; font-weight: 700; color: #059669;">
-        <span>পরিশোধ (Cash Paid):</span>
+        <span>পরিশোধ (Total Paid):</span>
         <span style="font-family: monospace;">৳${data.paidAmount.toLocaleString()}</span>
       </div>
+
+      ${
+        data.splitCash !== undefined && (data.splitCash > 0 || (data.splitBkash && data.splitBkash > 0) || (data.splitBank && data.splitBank > 0))
+          ? `
+            <div style="background: #f4f4f5; border: 1px dashed #a1a1aa; padding: 2px 4px; border-radius: 4px; margin: 3px 0; font-size: 7.5pt; color: #000000;">
+              ${data.splitCash > 0 ? `<div style="display: flex; justify-content: space-between;"><span>• নগদ (Cash):</span><span style="font-family: monospace; font-weight: 700;">৳${data.splitCash.toLocaleString()}</span></div>` : ""}
+              ${data.splitBkash && data.splitBkash > 0 ? `<div style="display: flex; justify-content: space-between;"><span>• বিকাশ (bKash):</span><span style="font-family: monospace; font-weight: 700;">৳${data.splitBkash.toLocaleString()}</span></div>` : ""}
+              ${data.splitBank && data.splitBank > 0 ? `<div style="display: flex; justify-content: space-between;"><span>• ব্যাংক (Bank):</span><span style="font-family: monospace; font-weight: 700;">৳${data.splitBank.toLocaleString()}</span></div>` : ""}
+            </div>
+          `
+          : ""
+      }
 
       ${
         data.due > 0

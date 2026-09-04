@@ -68,7 +68,10 @@ interface GroupedSale {
   profit: number;
   due_amount: number;
   paid_amount: number;
-  type: "cash" | "bkash" | "bank" | "credit" | "online" | string;
+  type: "cash" | "bkash" | "bank" | "credit" | "online" | "split" | string;
+  split_cash?: number;
+  split_bkash?: number;
+  split_bank?: number;
   courier_status?: string | null;
   courier_name?: string | null;
   tracking_code?: string | null;
@@ -109,6 +112,9 @@ function groupSales(sales: Sale[]): GroupedSale[] {
         due_amount: Number(s.due_amount) || 0,
         paid_amount: Number(s.paid_amount) || 0,
         type: s.type || "cash",
+        split_cash: (s as any).split_cash,
+        split_bkash: (s as any).split_bkash,
+        split_bank: (s as any).split_bank,
         courier_status: (s as any).courier_status || (s.type === "online" ? "pending" : null),
         courier_name: (s as any).courier_name || (s.type === "online" ? "Courier" : null),
         tracking_code: (s as any).tracking_code || null,
@@ -141,6 +147,9 @@ function groupSales(sales: Sale[]): GroupedSale[] {
     }, 0);
     const totalDue = items.reduce((sum, x) => sum + (Number(x.due_amount) || 0), 0);
     const totalPaid = items.reduce((sum, x) => sum + (Number(x.paid_amount) || 0), 0);
+    const totalSplitCash = items.reduce((sum, x) => sum + (Number((x as any).split_cash) || 0), 0);
+    const totalSplitBkash = items.reduce((sum, x) => sum + (Number((x as any).split_bkash) || 0), 0);
+    const totalSplitBank = items.reduce((sum, x) => sum + (Number((x as any).split_bank) || 0), 0);
 
     const names = items.map(x => `${x.product_name} (×${x.qty})`).join(", ");
 
@@ -155,6 +164,9 @@ function groupSales(sales: Sale[]): GroupedSale[] {
       due_amount: totalDue,
       paid_amount: totalPaid,
       type: firstItem.type || "cash",
+      split_cash: totalSplitCash > 0 ? totalSplitCash : undefined,
+      split_bkash: totalSplitBkash > 0 ? totalSplitBkash : undefined,
+      split_bank: totalSplitBank > 0 ? totalSplitBank : undefined,
       courier_status: (firstItem as any).courier_status || (firstItem.type === "online" ? "pending" : null),
       courier_name: (firstItem as any).courier_name || (firstItem.type === "online" ? "Courier" : null),
       tracking_code: (firstItem as any).tracking_code || null,

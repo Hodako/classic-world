@@ -15,7 +15,7 @@ import { toast } from "sonner";
 import { getCustomers, getProducts, type Product } from "@/lib/queries";
 import { fmtMoney, fmtDateTime } from "@/lib/format";
 import { createSaleFn, createCustomerFn } from "@/lib/rpc";
-import { Plus, Minus, Trash2, Scan, Printer, History, Banknote, Smartphone, CreditCard, DollarSign, ShoppingCart, Truck, PackageCheck, Share2 } from "lucide-react";
+import { Plus, Minus, Trash2, Scan, Printer, History, Banknote, Smartphone, CreditCard, DollarSign, ShoppingCart, Truck, PackageCheck, Share2, Split } from "lucide-react";
 import Link from "next/link";
 import { safeUUID } from "@/lib/utils";
 import { printPwaInvoice, downloadPwaInvoicePdf } from "@/lib/invoice-printer";
@@ -23,7 +23,7 @@ import { playTapSound, playScanSuccessSound, playSaleSuccessSound, playErrorSoun
 import { getWhatsAppInvoiceUrl } from "@/lib/whatsapp-helper";
 
 type CartLine = { productId: string; qty: string; sellPrice: string; discount: string };
-export type SalePaymentType = "cash" | "bkash" | "bank" | "credit" | "online";
+export type SalePaymentType = "cash" | "bkash" | "bank" | "credit" | "online" | "split";
 
 function BkashLogo({ className = "size-4" }: { className?: string }) {
   return (
@@ -65,6 +65,9 @@ export function SaleDialog({
   const [cart, setCart] = useState<CartLine[]>([]);
   const [draft, setDraft] = useState<CartLine>({ productId: "", qty: "1", sellPrice: "", discount: "" });
   const [paid, setPaid] = useState("");
+  const [splitCash, setSplitCash] = useState("");
+  const [splitBkash, setSplitBkash] = useState("");
+  const [splitBank, setSplitBank] = useState("");
   const [courierName, setCourierName] = useState("Steadfast Courier");
   const [trackingCode, setTrackingCode] = useState("");
   const [customerAddress, setCustomerAddress] = useState("");
@@ -153,6 +156,9 @@ export function SaleDialog({
       setType(presetType ?? "cash");
       setPartyId("");
       setPaid("");
+      setSplitCash("");
+      setSplitBkash("");
+      setSplitBank("");
       if (presetCart && presetCart.length > 0) {
         setCart(presetCart.map(x => ({ ...x, discount: x.discount ?? "" })));
       } else if (presetProductId) {
@@ -218,8 +224,16 @@ export function SaleDialog({
     return a + (finalPrice - buy) * qty;
   }, 0);
 
-  const isFullPaid = type === "cash" || type === "bkash" || type === "online";
-  const paidNum = isFullPaid ? sellTotal : Number(paid) || 0;
+  const isFullPaid = type === "cash" || type === "bkash" || type === "bank";
+  const splitCashNum = Math.max(0, Number(splitCash) || 0);
+  const splitBkashNum = Math.max(0, Number(splitBkash) || 0);
+  const splitBankNum = Math.max(0, Number(splitBank) || 0);
+  const totalSplitPaid = splitCashNum + splitBkashNum + splitBankNum;
+
+  const paidNum = type === "split"
+    ? totalSplitPaid
+    : (type === "online" ? 0 : (isFullPaid ? sellTotal : Number(paid) || 0));
+
   const due = Math.max(sellTotal - paidNum, 0);
 
   function addToCart() {
@@ -299,15 +313,18 @@ export function SaleDialog({
       playErrorSound();
       return toast.error(t("select_product"));
     }
-    if (type === "credit" && !partyId) {
+    if ((type === "credit" || (type === "split" && due > 0)) && !partyId) {
       playErrorSound();
-      return toast.error((lang === "bn" ? "কাস্টমার" : "Customer") + " " + t("required"));
+      return toast.error(lang === "bn" ? "বকেয়া থাকার কারণে কাস্টমার নির্বাচন করা আবশ্যক" : "Customer is required when there is remaining due");
     }
     setBusy(true);
     try {
       const cartId = safeUUID();
-      let remainingPaid = type === "credit" ? paidNum : sellTotal;
-      let remainingDue = type === "credit" ? due : 0;
+      let remainingCash = splitCashNum;
+      let remainingBkash = splitBkashNum;
+      let remainingBank = splitBankNum;
+      let remainingPaid = (type === "credit" || type === "split") ? paidNum : sellTotal;
+      let remainingDue = (type === "credit" || type === "split") ? due : 0;
 
       for (let i = 0; i < cart.length; i++) {
         const line = cart[i];
@@ -322,26 +339,54 @@ export function SaleDialog({
         const lineSell = finalUnitSell * qtyNum;
         const lineProfit = (finalUnitSell - Number(product.buy_price || 0)) * qtyNum;
 
-        // Proportional paid & due distribution for credit sales
+        // Proportional paid & due distribution
         let linePaid = 0;
         let lineDue = 0;
+        let lineCash = 0;
+        let lineBkash = 0;
+        let lineBank = 0;
+
         if (type === "online") {
           linePaid = 0;
           lineDue = lineSell;
+        } else if (type === "split") {
+          if (i === cart.length - 1) {
+            lineCash = Math.max(remainingCash, 0);
+            lineBkash = Math.max(remainingBkash, 0);
+            lineBank = Math.max(remainingBank, 0);
+            linePaid = lineCash + lineBkash + lineBank;
+            lineDue = Math.max(remainingDue, 0);
+          } else {
+            const ratio = sellTotal > 0 ? lineSell / sellTotal : 1 / cart.length;
+            lineCash = Math.min(Math.round(splitCashNum * ratio), remainingCash);
+            lineBkash = Math.min(Math.round(splitBkashNum * ratio), remainingBkash);
+            lineBank = Math.min(Math.round(splitBankNum * ratio), remainingBank);
+            linePaid = lineCash + lineBkash + lineBank;
+            lineDue = Math.max(lineSell - linePaid, 0);
+            remainingCash -= lineCash;
+            remainingBkash -= lineBkash;
+            remainingBank -= lineBank;
+            remainingDue -= lineDue;
+          }
         } else if (type === "credit") {
           if (i === cart.length - 1) {
             linePaid = Math.max(remainingPaid, 0);
             lineDue = Math.max(remainingDue, 0);
+            lineCash = linePaid;
           } else {
             const ratio = sellTotal > 0 ? lineSell / sellTotal : 1 / cart.length;
             linePaid = Math.min(Math.round(paidNum * ratio), remainingPaid);
             lineDue = Math.max(lineSell - linePaid, 0);
+            lineCash = linePaid;
             remainingPaid -= linePaid;
             remainingDue -= lineDue;
           }
         } else {
           linePaid = lineSell;
           lineDue = 0;
+          if (type === "cash") lineCash = lineSell;
+          else if (type === "bkash") lineBkash = lineSell;
+          else if (type === "bank") lineBank = lineSell;
         }
 
         await createSaleFn({
@@ -356,6 +401,9 @@ export function SaleDialog({
             party_id: partyId || null,
             paid_amount: linePaid,
             due_amount: lineDue,
+            split_cash: lineCash,
+            split_bkash: lineBkash,
+            split_bank: lineBank,
             cart_id: cartId,
             discount: 0,
             courier_name: type === "online" ? courierName : undefined,
@@ -372,6 +420,24 @@ export function SaleDialog({
       await qc.invalidateQueries({ queryKey: ["cashbox"] });
 
       playSaleSuccessSound();
+
+      let paymentModeStr = "CASH (নগদ)";
+      if (type === "online") {
+        paymentModeStr = `COURIER [${courierName}]`;
+      } else if (type === "bkash") {
+        paymentModeStr = "BKASH (বিকাশ)";
+      } else if (type === "bank") {
+        paymentModeStr = "BANK (ব্যাংক)";
+      } else if (type === "credit") {
+        paymentModeStr = due > 0 ? `CREDIT (বাকী) [জমা: ৳${paidNum}]` : "CASH (নগদ)";
+      } else if (type === "split") {
+        const parts: string[] = [];
+        if (splitCashNum > 0) parts.push(`নগদ: ৳${splitCashNum}`);
+        if (splitBkashNum > 0) parts.push(`বিকাশ: ৳${splitBkashNum}`);
+        if (splitBankNum > 0) parts.push(`ব্যাংক: ৳${splitBankNum}`);
+        if (due > 0) parts.push(`বাকী: ৳${due}`);
+        paymentModeStr = `MIXED (${parts.join(" + ")})`;
+      }
 
       const cust = customers.find(c => c.id === partyId);
       const waUrl = getWhatsAppInvoiceUrl({
@@ -391,9 +457,9 @@ export function SaleDialog({
         subtotal: sellTotal + cart.reduce((acc, c) => acc + ((Number(c.discount) || 0) * (Number(c.qty) || 1)), 0),
         discount: cart.reduce((acc, c) => acc + ((Number(c.discount) || 0) * (Number(c.qty) || 1)), 0),
         total: sellTotal,
-        paidAmount: type === "online" ? 0 : (type === "credit" ? paidNum : sellTotal),
-        dueAmount: type === "online" ? sellTotal : (type === "credit" ? due : 0),
-        paymentMethod: type,
+        paidAmount: type === "online" ? 0 : paidNum,
+        dueAmount: type === "online" ? sellTotal : due,
+        paymentMethod: paymentModeStr,
       }, lang as any);
 
       toast.success(
@@ -414,16 +480,6 @@ export function SaleDialog({
       );
 
       if (action === "print") {
-        const paymentModeStr = type === "online"
-          ? `COURIER [${courierName}]`
-          : type === "bkash"
-          ? "BKASH (বিকাশ)"
-          : type === "bank"
-          ? "BANK (ব্যাংক)"
-          : type === "credit"
-          ? "CREDIT (বাকী)"
-          : "CASH (নগদ)";
-
         const invoiceParams = {
           businessName: user.business_name || user.full_name || "Dream Fashion POS",
           userEmail: user.business_emails || user.email || "",
@@ -440,6 +496,9 @@ export function SaleDialog({
           customerName: cust?.name || (lang === "bn" ? "সাধারণ কাস্টমার" : "Walk-in Customer"),
           customerPhone: cust?.phone || "",
           paymentMode: paymentModeStr,
+          splitCash: type === "split" ? splitCashNum : (type === "cash" ? paidNum : undefined),
+          splitBkash: type === "split" ? splitBkashNum : (type === "bkash" ? paidNum : undefined),
+          splitBank: type === "split" ? splitBankNum : (type === "bank" ? paidNum : undefined),
           items: cart.map(c => {
             const prod = products.find(p => p.id === c.productId);
             return {
@@ -451,8 +510,8 @@ export function SaleDialog({
           subtotal: sellTotal + cart.reduce((acc, c) => acc + ((Number(c.discount) || 0) * (Number(c.qty) || 1)), 0),
           discountAmount: cart.reduce((acc, c) => acc + ((Number(c.discount) || 0) * (Number(c.qty) || 1)), 0),
           total: sellTotal,
-          paidAmount: type === "online" ? 0 : (type === "credit" ? paidNum : sellTotal),
-          due: type === "online" ? sellTotal : (type === "credit" ? due : 0),
+          paidAmount: type === "online" ? 0 : paidNum,
+          due: type === "online" ? sellTotal : due,
           terms: user.invoice_terms || "",
         };
 
@@ -559,7 +618,7 @@ export function SaleDialog({
                     <Label className="text-xs font-semibold text-muted-foreground">
                       {lang === "bn" ? "পেমেন্ট মাধ্যম" : "Payment Method"}
                     </Label>
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5">
                       <button
                         type="button"
                         onClick={() => setType("cash")}
@@ -611,13 +670,34 @@ export function SaleDialog({
                         <CreditCard className="size-4 text-amber-600 dark:text-amber-400" />
                         <span>{lang === "bn" ? "বাকী" : "Credit"}</span>
                       </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setType("split");
+                          if (!splitCash && !splitBkash) {
+                            const half = Math.round(sellTotal / 2);
+                            setSplitCash(String(half));
+                            setSplitBkash(String(sellTotal - half));
+                            setSplitBank("0");
+                          }
+                        }}
+                        className={`flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-xl border text-xs font-semibold transition-all cursor-pointer ${
+                          type === "split"
+                            ? "bg-purple-500/15 border-purple-500 text-purple-700 dark:text-purple-300 shadow-xs ring-1 ring-purple-500/30"
+                            : "border-border bg-card text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+                        }`}
+                      >
+                        <Split className="size-4 text-purple-600 dark:text-purple-400" />
+                        <span>{lang === "bn" ? "মিক্সড / আংশিক" : "Split / Mixed"}</span>
+                      </button>
                     </div>
                   </div>
                 )}
 
                 <div className="space-y-1">
                   <Label className="text-xs font-medium text-muted-foreground">
-                    {lang === "bn" ? "কাস্টমার" : "Customer"} {type === "credit" ? "*" : ""}
+                    {lang === "bn" ? "কাস্টমার" : "Customer"} {(type === "credit" || (type === "split" && due > 0)) ? "*" : ""}
                   </Label>
                   <div className="flex items-center gap-1.5">
                     <div className="flex-1">
@@ -828,6 +908,175 @@ export function SaleDialog({
                   )}
                 </div>
 
+                {type === "split" && (
+                  <div className="border border-purple-500/30 bg-purple-500/5 rounded-xl p-3 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5">
+                        <Split className="size-4 text-purple-600 dark:text-purple-400" />
+                        <Label className="text-xs font-bold text-purple-900 dark:text-purple-200">
+                          {lang === "bn" ? "আংশিক / মিক্সড পেমেন্ট হিসাব" : "Split Payment Breakdown"}
+                        </Label>
+                      </div>
+                      <span className="text-[11px] font-bold text-muted-foreground font-mono">
+                        {lang === "bn" ? "মোট বিল:" : "Total Bill:"} ৳{sellTotal}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                      {/* Cash Input */}
+                      <div className="space-y-1 bg-background/80 p-2 rounded-lg border border-emerald-500/30">
+                        <div className="flex items-center justify-between">
+                          <Label className="text-[11px] font-bold text-emerald-700 dark:text-emerald-300 flex items-center gap-1">
+                            <Banknote className="size-3 text-emerald-600" />
+                            {lang === "bn" ? "নগদ (Cash)" : "Cash"}
+                          </Label>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const rest = Math.max(0, sellTotal - splitBkashNum - splitBankNum);
+                              setSplitCash(String(rest));
+                            }}
+                            className="text-[10px] text-emerald-600 dark:text-emerald-400 hover:underline font-bold cursor-pointer"
+                          >
+                            {lang === "bn" ? "বাকি ক্যাশ" : "Rest Cash"}
+                          </button>
+                        </div>
+                        <Input
+                          type="number"
+                          step="any"
+                          inputMode="decimal"
+                          placeholder="0"
+                          value={splitCash}
+                          onChange={e => setSplitCash(e.target.value)}
+                          className="h-8 text-xs font-bold font-serif bg-background"
+                        />
+                      </div>
+
+                      {/* bKash Input */}
+                      <div className="space-y-1 bg-background/80 p-2 rounded-lg border border-[#E2136E]/30">
+                        <div className="flex items-center justify-between">
+                          <Label className="text-[11px] font-bold text-[#E2136E] dark:text-pink-300 flex items-center gap-1">
+                            <BkashLogo className="size-3" />
+                            {lang === "bn" ? "বিকাশ (bKash)" : "bKash"}
+                          </Label>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const rest = Math.max(0, sellTotal - splitCashNum - splitBankNum);
+                              setSplitBkash(String(rest));
+                            }}
+                            className="text-[10px] text-[#E2136E] dark:text-pink-400 hover:underline font-bold cursor-pointer"
+                          >
+                            {lang === "bn" ? "বাকি বিকাশ" : "Rest bKash"}
+                          </button>
+                        </div>
+                        <Input
+                          type="number"
+                          step="any"
+                          inputMode="decimal"
+                          placeholder="0"
+                          value={splitBkash}
+                          onChange={e => setSplitBkash(e.target.value)}
+                          className="h-8 text-xs font-bold font-serif bg-background"
+                        />
+                      </div>
+
+                      {/* Bank / Card Input */}
+                      <div className="space-y-1 bg-background/80 p-2 rounded-lg border border-sky-500/30">
+                        <div className="flex items-center justify-between">
+                          <Label className="text-[11px] font-bold text-sky-700 dark:text-sky-300 flex items-center gap-1">
+                            <DollarSign className="size-3 text-sky-600" />
+                            {lang === "bn" ? "ব্যাংক (Bank)" : "Bank"}
+                          </Label>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const rest = Math.max(0, sellTotal - splitCashNum - splitBkashNum);
+                              setSplitBank(String(rest));
+                            }}
+                            className="text-[10px] text-sky-600 dark:text-sky-400 hover:underline font-bold cursor-pointer"
+                          >
+                            {lang === "bn" ? "বাকি ব্যাংক" : "Rest Bank"}
+                          </button>
+                        </div>
+                        <Input
+                          type="number"
+                          step="any"
+                          inputMode="decimal"
+                          placeholder="0"
+                          value={splitBank}
+                          onChange={e => setSplitBank(e.target.value)}
+                          className="h-8 text-xs font-bold font-serif bg-background"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Quick Split Presets */}
+                    <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+                      <span className="text-[10.5px] font-semibold text-muted-foreground">{lang === "bn" ? "দ্রুত ভাগ করুন:" : "Quick Split:"}</span>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-6 text-[10px] px-2 rounded-md font-bold cursor-pointer"
+                        onClick={() => {
+                          const half = Math.round(sellTotal / 2);
+                          setSplitCash(String(half));
+                          setSplitBkash(String(sellTotal - half));
+                          setSplitBank("0");
+                        }}
+                      >
+                        ৫০% ক্যাশ + ৫০% বিকাশ
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-6 text-[10px] px-2 rounded-md font-bold cursor-pointer"
+                        onClick={() => {
+                          setSplitCash(String(sellTotal));
+                          setSplitBkash("0");
+                          setSplitBank("0");
+                        }}
+                      >
+                        ১০০% ক্যাশ
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-6 text-[10px] px-2 rounded-md font-bold cursor-pointer"
+                        onClick={() => {
+                          setSplitCash("0");
+                          setSplitBkash(String(sellTotal));
+                          setSplitBank("0");
+                        }}
+                      >
+                        ১০০% বিকাশ
+                      </Button>
+                    </div>
+
+                    {/* Summary row */}
+                    <div className="flex justify-between items-center text-xs font-bold pt-1.5 border-t border-purple-500/20">
+                      <div>
+                        <span className="text-muted-foreground">{lang === "bn" ? "মোট পরিশোধ:" : "Total Paid:"} </span>
+                        <span className="font-serif text-emerald-600 dark:text-emerald-400 font-black">৳{totalSplitPaid}</span>
+                      </div>
+                      <div>
+                        {due > 0 ? (
+                          <span className="text-rose-600 dark:text-rose-400 font-black">
+                            {lang === "bn" ? "⚠️ বাকী থাকবে (Due):" : "⚠️ Remaining Due:"} ৳{due}
+                          </span>
+                        ) : (
+                          <span className="text-emerald-600 dark:text-emerald-400 font-black">
+                            {lang === "bn" ? "✓ সম্পূর্ণ পরিশোধিত" : "✓ Paid in Full"}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {type === "credit" && (
                   <div className="border border-amber-500/30 bg-amber-500/5 rounded-xl p-3 space-y-2">
                     <div className="flex items-center justify-between">
@@ -887,7 +1136,17 @@ export function SaleDialog({
                   <div className="flex justify-between text-muted-foreground">
                     <span>{lang === "bn" ? "পেমেন্ট মাধ্যম" : "Payment Method"}</span>
                     <span className="font-bold uppercase text-foreground">
-                      {type === "bkash" ? (lang === "bn" ? "বিকাশ" : "bKash") : type === "credit" ? (lang === "bn" ? "বাকী" : "Credit") : type === "online" ? (lang === "bn" ? "ব্যাংক" : "Bank") : (lang === "bn" ? "নগদ" : "Cash")}
+                      {type === "split"
+                        ? (lang === "bn" ? "মিক্সড / আংশিক" : "Split / Mixed")
+                        : type === "bkash"
+                        ? (lang === "bn" ? "বিকাশ" : "bKash")
+                        : type === "credit"
+                        ? (lang === "bn" ? "বাকী" : "Credit")
+                        : type === "online"
+                        ? (lang === "bn" ? "অনলাইন" : "Online")
+                        : type === "bank"
+                        ? (lang === "bn" ? "ব্যাংক" : "Bank")
+                        : (lang === "bn" ? "নগদ" : "Cash")}
                     </span>
                   </div>
                   <div className="border-t border-border/80 pt-1.5 flex justify-between items-baseline font-bold text-sm">

@@ -38,7 +38,7 @@ export function EditSaleDialog({
   const [productId, setProductId] = useState("");
   const [qty, setQty] = useState("");
   const [sellPrice, setSellPrice] = useState("");
-  const [type, setType] = useState<"cash" | "bkash" | "credit" | "online">("cash");
+  const [type, setType] = useState<"cash" | "bkash" | "bank" | "credit" | "online">("cash");
   const [partyId, setPartyId] = useState("");
   const [paid, setPaid] = useState("");
   const [note, setNote] = useState("");
@@ -49,7 +49,7 @@ export function EditSaleDialog({
       setProductId(sale.product_id || "");
       setQty(String(sale.qty));
       setSellPrice(String(sale.sell_price));
-      setType(sale.type || "cash");
+      setType((sale.type as any) || "cash");
       setPartyId(sale.party_id || "");
       setPaid(String(sale.paid_amount));
       setNote(sale.note || "");
@@ -64,7 +64,7 @@ export function EditSaleDialog({
   const buyPrice = selectedProduct ? selectedProduct.buy_price : (sale?.buy_price || 0);
   const profit = (sellPriceNum - buyPrice) * qtyNum;
 
-  const paidNum = (type === "cash" || type === "bkash" || type === "online") ? lineSell : Number(paid) || 0;
+  const paidNum = (type === "cash" || type === "bkash" || type === "bank" || type === "online") ? lineSell : Number(paid) || 0;
   const due = Math.max(lineSell - paidNum, 0);
 
   async function handleSubmit(e: React.FormEvent) {
@@ -137,6 +137,7 @@ export function EditSaleDialog({
               <SelectContent>
                 <SelectItem value="cash">{t("cash_sale")}</SelectItem>
                 <SelectItem value="bkash">bKash</SelectItem>
+                <SelectItem value="bank">{lang === "bn" ? "ব্যাংক" : "Bank"}</SelectItem>
                 <SelectItem value="credit">{t("credit_sale")}</SelectItem>
                 <SelectItem value="online">{t("online_sell")}</SelectItem>
               </SelectContent>

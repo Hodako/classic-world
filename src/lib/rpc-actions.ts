@@ -44,7 +44,8 @@ async function insertCashboxEntry(
   entry: { kind: CashboxKind; amount: number; note?: string | null; ref_id?: string | null; created_at?: string },
   bypassValidation = false
 ) {
-  const delta = (entry.kind === "deposit" || entry.kind === "sale") ? entry.amount : -entry.amount;
+  const safeAmount = Math.abs(Number(entry.amount) || 0);
+  const delta = (entry.kind === "deposit" || entry.kind === "sale") ? safeAmount : -safeAmount;
   if (delta < 0 && !bypassValidation) {
     await checkCashboxBalanceEffect(db, ownerId, delta);
   }
@@ -54,7 +55,7 @@ async function insertCashboxEntry(
     _id: id,
     owner_id: ownerId,
     kind: entry.kind,
-    amount: entry.amount,
+    amount: safeAmount,
     note: entry.note ?? null,
     ref_id: entry.ref_id ?? null,
     created_at: entry.created_at || new Date().toISOString(),
@@ -1756,12 +1757,13 @@ export async function getAllPaymentsFn(): Promise<any[]> {
   return items.map((p) => ({ ...p, id: p._id as any as string }));
 }
 
-export async function createPaymentFn(input: { data: { party_id: string; amount: number; note?: string | null } }) {
+export async function createPaymentFn(input: { data: { party_id: string; amount: number; note?: string | null; created_at?: string } }) {
   const { data } = input;
   const session = await requireSession();
   const db = await getDb();
   const id = crypto.randomUUID();
-  const doc = { _id: id, owner_id: session.ownerId, ...data, created_at: new Date().toISOString() };
+  const isoDate = data.created_at || new Date().toISOString();
+  const doc = { _id: id, owner_id: session.ownerId, ...data, created_at: isoDate };
   await db.collection("payments").insertOne(doc as any);
 
   // Also insert cashbox entry when party pays
@@ -1775,6 +1777,7 @@ export async function createPaymentFn(input: { data: { party_id: string; amount:
     amount: data.amount,
     note: data.note || `Collected dues from ${partyName}`,
     ref_id: id,
+    created_at: isoDate,
   });
 
   return { ...doc, id };
@@ -1839,9 +1842,10 @@ export async function updateSomitiFn(input: { data: { id: string; kind: string; 
   const session = await requireSession();
   const db = await getDb();
   const { id, ...updates } = data;
+  const safeAmount = Math.abs(Number(data.amount) || 0);
   await db.collection("somiti_entries").updateOne(
     { _id: id as any, owner_id: session.ownerId },
-    { $set: updates }
+    { $set: { ...updates, amount: safeAmount } }
   );
 
   const cashboxKind = data.kind === "withdraw" ? "deposit" : "withdraw";
@@ -1849,7 +1853,7 @@ export async function updateSomitiFn(input: { data: { id: string; kind: string; 
     { owner_id: session.ownerId, ref_id: id },
     { $set: {
         kind: cashboxKind,
-        amount: Number(data.amount),
+        amount: safeAmount,
         note: data.note ? `Samity (${data.kind}): ${data.note}` : `Samity ${data.kind}`,
       }
     }
@@ -2087,10 +2091,11 @@ export async function updateCashboxFn(input: { data: { id: string; kind: string;
   if (!oldEntry) throw new Error("Cashbox entry not found.");
 
   const oldIsPositive = oldEntry.kind === "deposit" || oldEntry.kind === "sale";
-  const oldDelta = oldIsPositive ? Number(oldEntry.amount) : -Number(oldEntry.amount);
+  const oldDelta = oldIsPositive ? Math.abs(Number(oldEntry.amount) || 0) : -Math.abs(Number(oldEntry.amount) || 0);
 
+  const safeNewAmount = Math.abs(Number(data.amount) || 0);
   const newIsPositive = data.kind === "deposit" || data.kind === "sale";
-  const newDelta = newIsPositive ? Number(data.amount) : -Number(data.amount);
+  const newDelta = newIsPositive ? safeNewAmount : -safeNewAmount;
 
   const deltaEffect = newDelta - oldDelta;
   if (deltaEffect < 0) {
@@ -2101,7 +2106,7 @@ export async function updateCashboxFn(input: { data: { id: string; kind: string;
     { _id: data.id as any, owner_id: session.ownerId },
     { $set: {
         kind: data.kind,
-        amount: Number(data.amount),
+        amount: safeNewAmount,
         note: data.note ?? null,
         ...(data.created_at ? { created_at: data.created_at } : {}),
       }
@@ -3219,7 +3224,15 @@ export async function deleteBankLoanFn(input: { data: { id: string } }) {
   const { data } = input;
   const session = await requireSession();
   const db = await getDb();
-  await db.collection("cashbox_entries").deleteMany({ owner_id: session.ownerId, ref_id: data.id });
+  const loanPayments = await db.collection("bank_loan_payments").find({ owner_id: session.ownerId, loan_id: data.id }).toArray();
+  const paymentIds = loanPayments.map(p => p._id.toString());
+  await db.collection("cashbox_entries").deleteMany({
+    owner_id: session.ownerId,
+    $or: [
+      { ref_id: data.id },
+      { ref_id: { $in: paymentIds } }
+    ]
+  });
   await db.collection("bank_loan_payments").deleteMany({ owner_id: session.ownerId, loan_id: data.id });
   await db.collection("bank_loans").deleteOne({ _id: data.id as any, owner_id: session.ownerId });
   return { success: true };

@@ -78,6 +78,9 @@ import {
   UserCheck,
   Smartphone,
   CheckCheck,
+  ArrowDownLeft,
+  ArrowUpRight,
+  Calendar,
 } from "lucide-react";
 import { getPosPaperConfig, savePosPaperConfig, DEFAULT_POS_CONFIG, type PosPaperSettings } from "@/lib/pos-print";
 import { DEFAULT_EMPLOYEE_PERMISSIONS, type PermissionSet } from "@/lib/permissions";
@@ -1124,112 +1127,200 @@ export default function SettingsPage() {
   return (
     <div className="p-3 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border/60 pb-4">
-        <div>
-          <h1 className="text-xl sm:text-2xl lg:text-3xl font-extrabold tracking-tight text-foreground flex items-center gap-2.5">
-            <Store className="size-6 text-primary" />
-            <span>{lang === "bn" ? "সিস্টেম সেটিংস ও কনফিগারেশন" : "System Settings & Business Hub"}</span>
-          </h1>
-          <p className="text-xs sm:text-sm text-muted-foreground mt-0.5">
-            {lang === "bn"
-              ? "দোকানের প্রোফাইল, প্রিন্টার ফরম্যাট, ডাটা ট্রান্সফার কি, কর্মচারী আমন্ত্রণ এবং নিরাপত্তা পরিচালনা করুন"
-              : "Manage shop branding, thermal printing, asset transfer keys, employee invitations, and security"}
-          </p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border/60 pb-5">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 rounded-xl bg-primary/10 text-primary border border-primary/20">
+              <Store className="size-6 text-primary" />
+            </div>
+            <div>
+              <h1 className="text-xl sm:text-2xl lg:text-3xl font-extrabold tracking-tight text-foreground flex items-center gap-2">
+                <span>{lang === "bn" ? "সিস্টেম সেটিংস ও কনফিগারেশন" : "System Settings & Business Hub"}</span>
+              </h1>
+              <p className="text-xs sm:text-sm text-muted-foreground">
+                {lang === "bn"
+                  ? "দোকানের প্রোফাইল, প্রিন্টার ফরম্যাট, ডাটা ট্রান্সফার কি, কর্মচারী আমন্ত্রণ এবং নিরাপত্তা পরিচালনা করুন"
+                  : "Manage shop branding, thermal printing, asset transfer keys, employee invitations, and security"}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2.5 self-start sm:self-auto">
+          <Button
+            type="button"
+            onClick={() => {
+              window.dispatchEvent(new CustomEvent("open_custom_entry", { detail: { initialType: "sale" } }));
+            }}
+            className="h-9 px-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs gap-2 shadow-xs cursor-pointer transition-all hover:scale-[1.02] active:scale-95"
+            title={lang === "bn" ? "যেকোনো তারিখ ও সময়ের এন্ট্রি ডায়ালগ খুলুন [Alt+C]" : "Open Custom Entry Dialog with Date [Alt+C]"}
+          >
+            <Sparkles className="size-4 animate-pulse" />
+            <span>{lang === "bn" ? "⚡ কাস্টম এন্ট্রি ডায়ালগ" : "⚡ Custom Entry Dialog"}</span>
+            <kbd className="hidden md:inline-flex text-[10px] px-1.5 py-0.5 bg-black/20 rounded font-mono leading-none">
+              Alt+C
+            </kbd>
+          </Button>
         </div>
       </div>
 
-      {/* Top Secondary Div: Custom Entry Quick Launch Bar (PC & Mobile) */}
-      <div className="p-3.5 sm:p-4 rounded-2xl bg-card border border-border/80 shadow-xs space-y-2.5">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="size-2 rounded-full bg-[#CCFF00] animate-pulse" />
-            <span className="text-xs font-bold uppercase tracking-wider text-foreground">
-              {lang === "bn" ? "কাস্টম এন্ট্রি ও দ্রুত শর্টকাট" : "Custom Entry & Quick Actions"}
-            </span>
+      {/* Top Secondary Div: Custom Entry Quick Launch Hub (PC & Mobile) */}
+      <div className="p-4 sm:p-5 rounded-2xl bg-card border border-border/80 shadow-xs space-y-3.5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+          <div className="flex items-center gap-2.5">
+            <div className="size-2.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)] animate-pulse" />
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs sm:text-sm font-bold uppercase tracking-wider text-foreground">
+                  {lang === "bn" ? "কাস্টম এন্ট্রি ও দ্রুত শর্টকাট" : "Custom Entry & Quick Actions"}
+                </span>
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/25 text-emerald-600 dark:text-emerald-400 font-bold flex items-center gap-1">
+                  <Calendar className="size-3" />
+                  {lang === "bn" ? "তারিখ নির্বাচন সমর্থিত" : "Custom Date Supported"}
+                </span>
+              </div>
+              <p className="text-[11px] text-muted-foreground mt-0.5">
+                {lang === "bn"
+                  ? "যেকোনো পেছনের বা বর্তমান তারিখ ও সময় নির্বাচন করে সরাসরি সেল, খরচ, ক্রয় ও ক্যাশ এন্ট্রি করুন"
+                  : "Record backdated or forward-dated sales, expenses, purchases, and cashbox transactions"}
+              </p>
+            </div>
           </div>
-          <span className="text-[11px] text-muted-foreground hidden sm:inline">
-            {lang === "bn" ? "সরাসরি পিওএস ট্রানজেকশন ও অ্যাকশন" : "Direct POS Transactions & Tools"}
-          </span>
+
+          <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground bg-muted/50 px-2.5 py-1 rounded-lg border border-border/50 self-start sm:self-auto">
+            <span>{lang === "bn" ? "পিসি শর্টকাট:" : "PC Hotkey:"}</span>
+            <kbd className="font-mono font-bold text-foreground bg-background px-1 py-0.2 rounded border border-border text-[10px]">Alt + C</kbd>
+            <span className="opacity-60">|</span>
+            <kbd className="font-mono font-bold text-foreground bg-background px-1 py-0.2 rounded border border-border text-[10px]">Alt + 1..6</kbd>
+          </div>
         </div>
 
-        <div className="grid grid-cols-4 sm:grid-cols-4 md:grid-cols-8 gap-2 pt-0.5">
-          {/* 1. Quick Sale */}
-          <Link
-            href="/sales"
-            className="flex flex-col items-center justify-center p-2 rounded-xl bg-muted/30 hover:bg-emerald-500/10 hover:border-emerald-500/30 border border-border/60 transition-all text-center group cursor-pointer"
+        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2.5 pt-1">
+          {/* 1. Custom Sale (with date) */}
+          <button
+            type="button"
+            onClick={() => {
+              window.dispatchEvent(new CustomEvent("open_custom_entry", { detail: { initialType: "sale" } }));
+            }}
+            className="flex flex-col items-center justify-center p-2.5 rounded-xl bg-muted/40 hover:bg-emerald-500/10 hover:border-emerald-500/30 border border-border/60 transition-all text-center group cursor-pointer active:scale-95 shadow-2xs"
+            title={lang === "bn" ? "তারিখসহ বিক্রি এন্ট্রি [Alt+1]" : "Custom Sale with Date [Alt+1]"}
           >
-            <div className="size-7 sm:size-8 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 group-hover:scale-110 transition-transform flex items-center justify-center mb-1">
-              <ShoppingBag className="size-3.5 sm:size-4" />
+            <div className="size-8 sm:size-9 rounded-xl bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 group-hover:scale-110 transition-transform flex items-center justify-center mb-1.5 shadow-2xs">
+              <ShoppingBag className="size-4" />
             </div>
-            <span className="text-[10px] sm:text-[11px] font-bold text-foreground truncate w-full">
-              {lang === "bn" ? "নতুন বিক্রয়" : "New Sale"}
+            <span className="text-[11px] font-bold text-foreground truncate w-full">
+              {lang === "bn" ? "কাস্টম বিক্রি" : "Custom Sale"}
             </span>
-          </Link>
+            <span className="text-[9px] font-medium text-emerald-600 dark:text-emerald-400 mt-0.5 flex items-center gap-0.5">
+              <Calendar className="size-2.5" />
+              {lang === "bn" ? "তারিখসহ" : "With Date"}
+            </span>
+          </button>
 
-          {/* 2. Customer Due */}
-          <Link
-            href="/dues"
-            className="flex flex-col items-center justify-center p-2 rounded-xl bg-muted/30 hover:bg-amber-500/10 hover:border-amber-500/30 border border-border/60 transition-all text-center group cursor-pointer"
+          {/* 2. Custom Expense (with date) */}
+          <button
+            type="button"
+            onClick={() => {
+              window.dispatchEvent(new CustomEvent("open_custom_entry", { detail: { initialType: "expense" } }));
+            }}
+            className="flex flex-col items-center justify-center p-2.5 rounded-xl bg-muted/40 hover:bg-rose-500/10 hover:border-rose-500/30 border border-border/60 transition-all text-center group cursor-pointer active:scale-95 shadow-2xs"
+            title={lang === "bn" ? "তারিখসহ খরচ এন্ট্রি [Alt+2]" : "Custom Expense with Date [Alt+2]"}
           >
-            <div className="size-7 sm:size-8 rounded-lg bg-amber-500/10 text-[#F7931A] group-hover:scale-110 transition-transform flex items-center justify-center mb-1">
-              <Banknote className="size-3.5 sm:size-4" />
+            <div className="size-8 sm:size-9 rounded-xl bg-rose-500/15 text-rose-600 dark:text-rose-400 group-hover:scale-110 transition-transform flex items-center justify-center mb-1.5 shadow-2xs">
+              <Receipt className="size-4" />
             </div>
-            <span className="text-[10px] sm:text-[11px] font-bold text-foreground truncate w-full">
-              {lang === "bn" ? "বাকি আদায়" : "Due Entry"}
+            <span className="text-[11px] font-bold text-foreground truncate w-full">
+              {lang === "bn" ? "কাস্টম খরচ" : "Custom Expense"}
             </span>
-          </Link>
+            <span className="text-[9px] font-medium text-rose-600 dark:text-rose-400 mt-0.5 flex items-center gap-0.5">
+              <Calendar className="size-2.5" />
+              {lang === "bn" ? "তারিখসহ" : "With Date"}
+            </span>
+          </button>
 
-          {/* 3. Add Product */}
-          <Link
-            href="/products"
-            className="flex flex-col items-center justify-center p-2 rounded-xl bg-muted/30 hover:bg-blue-500/10 hover:border-blue-500/30 border border-border/60 transition-all text-center group cursor-pointer"
+          {/* 3. Custom Purchase / Restock (with date) */}
+          <button
+            type="button"
+            onClick={() => {
+              window.dispatchEvent(new CustomEvent("open_custom_entry", { detail: { initialType: "purchase" } }));
+            }}
+            className="flex flex-col items-center justify-center p-2.5 rounded-xl bg-muted/40 hover:bg-indigo-500/10 hover:border-indigo-500/30 border border-border/60 transition-all text-center group cursor-pointer active:scale-95 shadow-2xs"
+            title={lang === "bn" ? "তারিখসহ ক্রয় এন্ট্রি [Alt+3]" : "Custom Purchase with Date [Alt+3]"}
           >
-            <div className="size-7 sm:size-8 rounded-lg bg-blue-500/10 text-blue-600 dark:text-blue-400 group-hover:scale-110 transition-transform flex items-center justify-center mb-1">
-              <Package className="size-3.5 sm:size-4" />
+            <div className="size-8 sm:size-9 rounded-xl bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 group-hover:scale-110 transition-transform flex items-center justify-center mb-1.5 shadow-2xs">
+              <ShoppingCart className="size-4" />
             </div>
-            <span className="text-[10px] sm:text-[11px] font-bold text-foreground truncate w-full">
-              {lang === "bn" ? "পণ্য যোগ" : "Add Product"}
+            <span className="text-[11px] font-bold text-foreground truncate w-full">
+              {lang === "bn" ? "কাস্টম ক্রয়" : "Custom Buy"}
             </span>
-          </Link>
+            <span className="text-[9px] font-medium text-indigo-600 dark:text-indigo-400 mt-0.5 flex items-center gap-0.5">
+              <Calendar className="size-2.5" />
+              {lang === "bn" ? "তারিখসহ" : "With Date"}
+            </span>
+          </button>
 
-          {/* 4. Restock / Buy */}
-          <Link
-            href="/purchases"
-            className="flex flex-col items-center justify-center p-2 rounded-xl bg-muted/30 hover:bg-indigo-500/10 hover:border-indigo-500/30 border border-border/60 transition-all text-center group cursor-pointer"
+          {/* 4. Cash Deposit / Add Money (with date) */}
+          <button
+            type="button"
+            onClick={() => {
+              window.dispatchEvent(new CustomEvent("open_custom_entry", { detail: { initialType: "deposit" } }));
+            }}
+            className="flex flex-col items-center justify-center p-2.5 rounded-xl bg-muted/40 hover:bg-emerald-500/10 hover:border-emerald-500/30 border border-border/60 transition-all text-center group cursor-pointer active:scale-95 shadow-2xs"
+            title={lang === "bn" ? "ক্যাশবক্সে টাকা জমা (তারিখসহ) [Alt+4]" : "Cash Deposit with Date [Alt+4]"}
           >
-            <div className="size-7 sm:size-8 rounded-lg bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 group-hover:scale-110 transition-transform flex items-center justify-center mb-1">
-              <ShoppingCart className="size-3.5 sm:size-4" />
+            <div className="size-8 sm:size-9 rounded-xl bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 group-hover:scale-110 transition-transform flex items-center justify-center mb-1.5 shadow-2xs">
+              <ArrowDownLeft className="size-4" />
             </div>
-            <span className="text-[10px] sm:text-[11px] font-bold text-foreground truncate w-full">
-              {lang === "bn" ? "পণ্য ক্রয়" : "Restock"}
+            <span className="text-[11px] font-bold text-foreground truncate w-full">
+              {lang === "bn" ? "টাকা জমা" : "Deposit"}
             </span>
-          </Link>
+            <span className="text-[9px] font-medium text-emerald-600 dark:text-emerald-400 mt-0.5 flex items-center gap-0.5">
+              <Calendar className="size-2.5" />
+              {lang === "bn" ? "ক্যাশবক্স" : "Cashbox"}
+            </span>
+          </button>
 
-          {/* 5. Expense Entry */}
-          <Link
-            href="/expenses"
-            className="flex flex-col items-center justify-center p-2 rounded-xl bg-muted/30 hover:bg-rose-500/10 hover:border-rose-500/30 border border-border/60 transition-all text-center group cursor-pointer"
+          {/* 5. Cash Withdraw (with date) */}
+          <button
+            type="button"
+            onClick={() => {
+              window.dispatchEvent(new CustomEvent("open_custom_entry", { detail: { initialType: "withdraw" } }));
+            }}
+            className="flex flex-col items-center justify-center p-2.5 rounded-xl bg-muted/40 hover:bg-amber-500/10 hover:border-amber-500/30 border border-border/60 transition-all text-center group cursor-pointer active:scale-95 shadow-2xs"
+            title={lang === "bn" ? "ক্যাশবক্স থেকে টাকা উত্তোলন (তারিখসহ) [Alt+5]" : "Cash Withdraw with Date [Alt+5]"}
           >
-            <div className="size-7 sm:size-8 rounded-lg bg-rose-500/10 text-rose-600 dark:text-rose-400 group-hover:scale-110 transition-transform flex items-center justify-center mb-1">
-              <Receipt className="size-3.5 sm:size-4" />
+            <div className="size-8 sm:size-9 rounded-xl bg-amber-500/15 text-amber-600 dark:text-amber-400 group-hover:scale-110 transition-transform flex items-center justify-center mb-1.5 shadow-2xs">
+              <ArrowUpRight className="size-4" />
             </div>
-            <span className="text-[10px] sm:text-[11px] font-bold text-foreground truncate w-full">
-              {lang === "bn" ? "খরচ এন্ট্রি" : "Expense"}
+            <span className="text-[11px] font-bold text-foreground truncate w-full">
+              {lang === "bn" ? "টাকা উত্তোলন" : "Withdraw"}
             </span>
-          </Link>
+            <span className="text-[9px] font-medium text-amber-600 dark:text-amber-400 mt-0.5 flex items-center gap-0.5">
+              <Calendar className="size-2.5" />
+              {lang === "bn" ? "ক্যাশবক্স" : "Cashbox"}
+            </span>
+          </button>
 
-          {/* 6. Cash Drawer */}
-          <Link
-            href="/cash-management/cashbox"
-            className="flex flex-col items-center justify-center p-2 rounded-xl bg-muted/30 hover:bg-teal-500/10 hover:border-teal-500/30 border border-border/60 transition-all text-center group cursor-pointer"
+          {/* 6. Due Collection (with date) */}
+          <button
+            type="button"
+            onClick={() => {
+              window.dispatchEvent(new CustomEvent("open_custom_entry", { detail: { initialType: "due_collection" } }));
+            }}
+            className="flex flex-col items-center justify-center p-2.5 rounded-xl bg-muted/40 hover:bg-cyan-500/10 hover:border-cyan-500/30 border border-border/60 transition-all text-center group cursor-pointer active:scale-95 shadow-2xs"
+            title={lang === "bn" ? "তারিখসহ বাকি আদায় [Alt+6]" : "Due Collection with Date [Alt+6]"}
           >
-            <div className="size-7 sm:size-8 rounded-lg bg-teal-500/10 text-teal-600 dark:text-teal-400 group-hover:scale-110 transition-transform flex items-center justify-center mb-1">
-              <Wallet className="size-3.5 sm:size-4" />
+            <div className="size-8 sm:size-9 rounded-xl bg-cyan-500/15 text-cyan-600 dark:text-cyan-400 group-hover:scale-110 transition-transform flex items-center justify-center mb-1.5 shadow-2xs">
+              <Banknote className="size-4" />
             </div>
-            <span className="text-[10px] sm:text-[11px] font-bold text-foreground truncate w-full">
-              {lang === "bn" ? "ক্যাশ ড্রয়ার" : "Cashbox"}
+            <span className="text-[11px] font-bold text-foreground truncate w-full">
+              {lang === "bn" ? "বাকি আদায়" : "Due Collect"}
             </span>
-          </Link>
+            <span className="text-[9px] font-medium text-cyan-600 dark:text-cyan-400 mt-0.5 flex items-center gap-0.5">
+              <Calendar className="size-2.5" />
+              {lang === "bn" ? "তারিখসহ" : "With Date"}
+            </span>
+          </button>
 
           {/* 7. Switch ID / Profile */}
           <button
@@ -1237,13 +1328,17 @@ export default function SettingsPage() {
             onClick={() => {
               window.dispatchEvent(new CustomEvent("open_mode_switcher"));
             }}
-            className="flex flex-col items-center justify-center p-2 rounded-xl bg-muted/30 hover:bg-purple-500/10 hover:border-purple-500/30 border border-border/60 transition-all text-center group cursor-pointer"
+            className="flex flex-col items-center justify-center p-2.5 rounded-xl bg-muted/40 hover:bg-purple-500/10 hover:border-purple-500/30 border border-border/60 transition-all text-center group cursor-pointer active:scale-95 shadow-2xs"
+            title={lang === "bn" ? "মোড ও প্রোফাইল পরিবর্তন" : "Switch Profile & Mode"}
           >
-            <div className="size-7 sm:size-8 rounded-lg bg-purple-500/10 text-purple-600 dark:text-purple-400 group-hover:scale-110 transition-transform flex items-center justify-center mb-1">
-              <Users className="size-3.5 sm:size-4" />
+            <div className="size-8 sm:size-9 rounded-xl bg-purple-500/15 text-purple-600 dark:text-purple-400 group-hover:scale-110 transition-transform flex items-center justify-center mb-1.5 shadow-2xs">
+              <Users className="size-4" />
             </div>
-            <span className="text-[10px] sm:text-[11px] font-bold text-foreground truncate w-full">
+            <span className="text-[11px] font-bold text-foreground truncate w-full">
               {lang === "bn" ? "প্রোফাইল সুইচ" : "Switch ID"}
+            </span>
+            <span className="text-[9px] font-medium text-purple-600 dark:text-purple-400 mt-0.5">
+              {lang === "bn" ? "আইডি বদল" : "Multi-ID"}
             </span>
           </button>
 
@@ -1251,13 +1346,17 @@ export default function SettingsPage() {
           <button
             type="button"
             onClick={() => setSettingsTab("transfer")}
-            className="flex flex-col items-center justify-center p-2 rounded-xl bg-muted/30 hover:bg-amber-500/10 hover:border-[#F7931A]/40 border border-border/60 transition-all text-center group cursor-pointer"
+            className="flex flex-col items-center justify-center p-2.5 rounded-xl bg-muted/40 hover:bg-amber-500/10 hover:border-amber-500/30 border border-border/60 transition-all text-center group cursor-pointer active:scale-95 shadow-2xs"
+            title={lang === "bn" ? "অ্যাসেট ট্রান্সফার কি তৈরি করুন" : "Transfer Assets & Keys"}
           >
-            <div className="size-7 sm:size-8 rounded-lg bg-amber-500/10 text-[#F7931A] group-hover:scale-110 transition-transform flex items-center justify-center mb-1">
-              <ArrowRightLeft className="size-3.5 sm:size-4" />
+            <div className="size-8 sm:size-9 rounded-xl bg-amber-500/15 text-amber-600 dark:text-amber-400 group-hover:scale-110 transition-transform flex items-center justify-center mb-1.5 shadow-2xs">
+              <ArrowRightLeft className="size-4" />
             </div>
-            <span className="text-[10px] sm:text-[11px] font-bold text-foreground truncate w-full">
+            <span className="text-[11px] font-bold text-foreground truncate w-full">
               {lang === "bn" ? "অ্যাসেট ট্রান্সফার" : "Transfer Key"}
+            </span>
+            <span className="text-[9px] font-medium text-amber-600 dark:text-amber-400 mt-0.5">
+              {lang === "bn" ? "ডাটা কি" : "Data Key"}
             </span>
           </button>
         </div>

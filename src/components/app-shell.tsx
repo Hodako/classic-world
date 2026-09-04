@@ -43,6 +43,7 @@ import { PermissionGuard } from "@/components/permission-guard";
 import { FloatingAiChat } from "@/components/floating-ai-chat";
 import { PWAInstallButton } from "@/components/pwa-install-button";
 import { ModeSwitcherDialog } from "@/components/mode-switcher-dialog";
+import { CustomEntryDialog, type CustomEntryType } from "@/components/custom-entry-dialog";
 import { useCashboxQuery } from "@/hooks/use-cashbox-query";
 import { fmtMoney } from "@/lib/format";
 import { cashboxBalance } from "@/lib/cashbox-utils";
@@ -168,10 +169,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       const hasModifier = e.ctrlKey || e.metaKey || e.altKey;
       const key = e.key.toLowerCase();
       const isCtrlK = (e.ctrlKey || e.metaKey) && key === "k";
+      const isAltC = e.altKey && (key === "c" || e.code === "KeyC");
       const isSlash = e.key === "/" && !e.shiftKey && !hasModifier;
 
       // Allow browser native shortcuts (Ctrl+C for copy, Ctrl+R for reload, etc.)
-      if (hasModifier && !isCtrlK) {
+      if (hasModifier && !isCtrlK && !isAltC) {
+        return;
+      }
+
+      if (isAltC) {
+        e.preventDefault();
+        window.dispatchEvent(new CustomEvent("open_custom_entry", { detail: { initialType: "sale" } }));
         return;
       }
 
@@ -300,6 +308,21 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [createProfileOpen, setCreateProfileOpen] = useState(false);
   const [newProfileName, setNewProfileName] = useState("");
   const [isSwitchingProfile, setIsSwitchingProfile] = useState(false);
+
+  // Custom Entry Popup Widget State (PC & Global)
+  const [customEntryOpen, setCustomEntryOpen] = useState(false);
+  const [customEntryType, setCustomEntryType] = useState<CustomEntryType>("sale");
+
+  useEffect(() => {
+    const handleOpenCustomEntry = (e: any) => {
+      if (e?.detail?.initialType) {
+        setCustomEntryType(e.detail.initialType);
+      }
+      setCustomEntryOpen(true);
+    };
+    window.addEventListener("open_custom_entry", handleOpenCustomEntry as EventListener);
+    return () => window.removeEventListener("open_custom_entry", handleOpenCustomEntry as EventListener);
+  }, []);
 
   const activeProfileId = user.activeProfile || "default";
   const profiles = user.profiles && user.profiles.length > 0
@@ -476,6 +499,20 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   <span className="text-[9px] opacity-60">⇄</span>
                 </button>
               )}
+              {/* Dedicated PC/Tablet Custom Entry Quick Widget */}
+              <button
+                type="button"
+                onClick={() => {
+                  setCustomEntryType("sale");
+                  setCustomEntryOpen(true);
+                }}
+                className="hidden md:inline-flex items-center gap-1.5 h-7 px-2.5 rounded-full bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 text-[11px] font-bold transition-all cursor-pointer shrink-0 shadow-2xs hover:scale-105 active:scale-95"
+                title={lang === "bn" ? "কাস্টম এন্ট্রি উইজেট (তারিখসহ লেনদেন) [Alt+C]" : "Custom Entry Widget (With Date) [Alt+C]"}
+              >
+                <Sparkles className="size-3 text-emerald-600 dark:text-emerald-400 animate-pulse" />
+                <span>{lang === "bn" ? "⚡ কাস্টম এন্ট্রি" : "⚡ Custom Entry"}</span>
+                <span className="hidden lg:inline-flex text-[9px] px-1 py-0.2 bg-background/80 rounded border border-border/80 text-muted-foreground font-mono">Alt+C</span>
+              </button>
               <PWAInstallButton variant="outline" className="hidden sm:inline-flex h-8 px-2.5 text-xs" />
               <UniversalSearch role={user.role} permissions={user.permissions} />
               <Link href="/more" title={lang === "bn" ? "হেল্প ও সাপোর্ট" : "Help & Support"} className="hidden md:inline-flex">
@@ -603,6 +640,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
           <div className="md:hidden mobile-bottom-spacer" aria-hidden />
           <ModeSwitcherDialog open={modeSwitcherOpen} onOpenChange={setModeSwitcherOpen} />
+          <CustomEntryDialog open={customEntryOpen} onOpenChange={setCustomEntryOpen} initialType={customEntryType} />
         </main>
       </div>
 

@@ -15,7 +15,7 @@ import {
 import { useT } from "@/lib/i18n";
 import { getExpenses, getSales, getWithdrawals, getProducts, getParties, getReminders, getAllPayments, getAllPartyReceivables, getAllPartyPayables, getAllPayableSettlements, getPurchases, getSomiti, getReturns, getOwnerWallet } from "@/lib/queries";
 import type { Reminder } from "@/lib/queries";
-import { cashboxBalance } from "@/lib/cashbox-utils";
+import { cashboxBalance, cashboxDelta } from "@/lib/cashbox-utils";
 import { fmtMoney, fmtDateTime } from "@/lib/format";
 import { Card } from "@/components/ui/card";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -1647,11 +1647,12 @@ export default function Dashboard() {
           />
         ) : <div key="due" className="hidden" />;
       case "cashbox":
-        const displayedCashbox = (!dateFilter.from && !dateFilter.to) ? (cashToday + bkashBankCollected - expenseToday - ownerExpenseTotal) : cashboxTotal;
+        const todayCashboxNet = filteredCashbox.reduce((sum, c) => sum + cashboxDelta(c.kind, c.amount), 0);
+        const displayedCashbox = (!dateFilter.from && !dateFilter.to) ? todayCashboxNet : cashboxTotal;
         const cashboxSubText = isHidden && !isRevealed
           ? (lang === "bn" ? "ট্যাপ করে দেখুন" : "Tap to reveal")
           : (!dateFilter.from && !dateFilter.to)
-          ? (lang === "bn" ? `আজকের নিট ক্যাশ (মোট: ${fmtMoney(cashboxTotal)})` : `Today Net Cash (Total: ${fmtMoney(cashboxTotal)})`)
+          ? (lang === "bn" ? `আজকের নিট ক্যাশ (মোট: ${fmtMoney(cashboxTotal)})` : `Today's Net Cash (Total: ${fmtMoney(cashboxTotal)})`)
           : dateRangeLabel;
 
         return canAccess(perms, "cashbox") ? (
@@ -1664,7 +1665,7 @@ export default function Dashboard() {
             icon={Banknote}
             color="bg-emerald-600"
             trendUp={displayedCashbox >= 0}
-            trend={lang === "bn" ? "আদায়" : t("balance")}
+            trend={(!dateFilter.from && !dateFilter.to) ? (lang === "bn" ? "নিট ক্যাশ" : "Net Cash") : (lang === "bn" ? "ব্যালেন্স" : t("balance"))}
             isDesktop={true}
             hotkey={hotkey}
             className="h-full cursor-pointer"
@@ -1919,17 +1920,25 @@ const renderWidget = (widgetId: string) => {
                 />
               );
             case "cashbox":
+              const gridCashboxNet = filteredCashbox.reduce((sum, c) => sum + cashboxDelta(c.kind, c.amount), 0);
+              const gridCashboxVal = (!dateFilter.from && !dateFilter.to) ? gridCashboxNet : cashboxTotal;
+              const gridCashboxSub = isHidden && !isRevealed
+                ? (lang === "bn" ? "ট্যাপ করে দেখুন" : "Tap to reveal")
+                : (!dateFilter.from && !dateFilter.to)
+                ? (lang === "bn" ? `আজকের নিট ক্যাশ (মোট: ${fmtMoney(cashboxTotal)})` : `Today's Net Cash (Total: ${fmtMoney(cashboxTotal)})`)
+                : dateRangeLabel;
+
               return (
                 <KPICard
                   key="cashbox"
-                  label={t("cashbox")}
-                  value={fmtMoney(cashboxTotal)}
-                  sub={dateRangeLabel}
+                  label={lang === "bn" ? "ক্যাশ বক্স / নগদ" : t("cashbox")}
+                  value={fmtMoney(gridCashboxVal)}
+                  sub={gridCashboxSub}
                   imageUrl="/icons/cashbox_icon.png"
                   icon={Banknote}
                   color="bg-emerald-600"
-                  trendUp={cashboxTotal >= 0}
-                  trend={t("balance")}
+                  trendUp={gridCashboxVal >= 0}
+                  trend={(!dateFilter.from && !dateFilter.to) ? (lang === "bn" ? "নিট ক্যাশ" : "Net Cash") : (lang === "bn" ? "ব্যালেন্স" : t("balance"))}
                   isDesktop={true}
                   hotkey={hotkey}
                   className="h-full cursor-pointer"

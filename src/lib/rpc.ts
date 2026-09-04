@@ -290,10 +290,10 @@ export const updateOwnerWalletEntryFn = makeWriteAction("updateOwnerWalletEntryF
 export const deleteOwnerWalletEntryFn = makeWriteAction("deleteOwnerWalletEntryFn");
 
 export const createWithdrawalFn = makeWriteAction("createWithdrawalFn");
-export const createCashboxFn = makeReadAction("createCashboxFn");
-export const updateCashboxFn = makeReadAction("updateCashboxFn");
-export const deleteCashboxFn = makeReadAction("deleteCashboxFn");
-export const repairCashboxDbFn = makeReadAction("repairCashboxDbFn");
+export const createCashboxFn = makeWriteAction("createCashboxFn");
+export const updateCashboxFn = makeWriteAction("updateCashboxFn");
+export const deleteCashboxFn = makeWriteAction("deleteCashboxFn");
+export const repairCashboxDbFn = makeWriteAction("repairCashboxDbFn");
 
 export const createReminderFn = makeWriteAction("createReminderFn");
 export const toggleReminderFn = makeWriteAction("toggleReminderFn");
@@ -340,6 +340,7 @@ const actionsList = [
   "createPurchaseFn", "deletePurchaseFn", "createExpenseFn", "deleteExpenseFn",
   "createPaymentFn", "deletePaymentFn", "createSomitiFn", "updateSomitiFn", "deleteSomitiFn",
   "renameSomitiFn", "deleteSomitiFnByName", "createWithdrawalFn",
+  "createCashboxFn", "updateCashboxFn", "deleteCashboxFn",
   "createReminderFn", "toggleReminderFn", "deleteReminderFn",
   "createEmployeeFn", "updateEmployeeFn", "deleteEmployeeFn",
   "createEmployeeSalaryFn", "deleteEmployeeSalaryFn",

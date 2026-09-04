@@ -141,8 +141,10 @@ export default function CashboxDetailsPage() {
   async function confirmDelete() {
     if (!deleteTarget) return;
     setDeleteBusy(true);
+    const targetId = deleteTarget.id;
     try {
-      await deleteCashboxFn({ data: { id: deleteTarget.id } });
+      qc.setQueryData<CashboxEntry[]>(["cashbox"], (old = []) => old.filter(e => e.id !== targetId));
+      await deleteCashboxFn({ data: { id: targetId } });
       toast.success(t("deleted" as any) || "Deleted");
       setDeleteConfirmOpen(false);
       setDeleteTarget(null);
@@ -259,7 +261,7 @@ export default function CashboxDetailsPage() {
           {balance !== null && (
             <div className="flex flex-col sm:items-end bg-background/60 backdrop-blur-xs px-3 py-1.5 rounded-xl border border-border/60">
               <span className="text-[10px] text-muted-foreground font-medium">
-                {lang === "bn" ? "সর্বমোট ক্যাশবক্স ব্যালেন্স" : "All-Time Total Balance"}
+                {lang === "bn" ? "সর্বমোট ক্যাশবক্স ব্যালেন্স" : "Total Cashbox Balance"}
               </span>
               <span className="text-sm sm:text-base font-bold text-foreground font-serif">
                 {fmtMoney(balance)}
@@ -471,7 +473,9 @@ function CashboxDialog({
         setKind(initialKind);
         setAmount("");
         setNote("");
-        setDateVal("");
+        const now = new Date();
+        const pad = (n: number) => String(n).padStart(2, "0");
+        setDateVal(`${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}`);
       }
     }
   }, [open, initialKind, editEntry]);
@@ -482,7 +486,9 @@ function CashboxDialog({
     if (amt <= 0) return toast.error(t("amount") + " > 0");
     setBusy(true);
     try {
+      let entryId: string;
       if (isEdit && editEntry) {
+        entryId = editEntry.id;
         await updateCashboxFn({
           data: {
             id: editEntry.id,
@@ -494,7 +500,7 @@ function CashboxDialog({
         });
         toast.success(lang === "bn" ? "এন্ট্রি আপডেট সফল হয়েছে" : "Entry updated");
       } else {
-        await createCashboxFn({
+        const res = await createCashboxFn({
           data: {
             kind,
             amount: amt,
@@ -502,8 +508,27 @@ function CashboxDialog({
             created_at: dateVal ? new Date(dateVal).toISOString() : undefined,
           },
         });
+        entryId = res?.id || crypto.randomUUID();
         toast.success(lang === "bn" ? "ক্যাশ এন্ট্রি সফল হয়েছে" : "Entry recorded");
       }
+
+      const isoDate = dateVal ? new Date(dateVal).toISOString() : new Date().toISOString();
+      const updatedEntry: CashboxEntry = {
+        id: entryId,
+        kind,
+        amount: amt,
+        note: note.trim() || null,
+        ref_id: isEdit && editEntry ? editEntry.ref_id : null,
+        created_at: isoDate,
+      };
+
+      qc.setQueryData<CashboxEntry[]>(["cashbox"], (old = []) => {
+        if (isEdit) {
+          return old.map(e => e.id === entryId ? updatedEntry : e);
+        }
+        return [updatedEntry, ...old];
+      });
+
       onOpenChange(false);
       await refreshQueries(qc, ["cashbox"]);
     } catch (err: unknown) {

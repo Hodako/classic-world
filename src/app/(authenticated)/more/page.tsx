@@ -554,7 +554,7 @@ export default function MorePage() {
   };
 
   // Custom date mutation states
-  const [txnType, setTxnType] = useState<"sale" | "expense" | "purchase" | "withdraw">("sale");
+  const [txnType, setTxnType] = useState<"sale" | "expense" | "purchase" | "withdraw" | "deposit">("sale");
   const [customDate, setCustomDate] = useState("");
   const [txnSubmitting, setTxnSubmitting] = useState(false);
 
@@ -662,6 +662,21 @@ export default function MorePage() {
           }
         });
         toast.success(lang === "bn" ? "ক্যাশবক্স উত্তোলন সফলভাবে যুক্ত হয়েছে!" : "Custom Cashbox Withdrawal added successfully!");
+        setWithAmt(""); setWithNote("");
+      } else if (txnType === "deposit") {
+        const amtVal = Number(withAmt) || 0;
+        if (amtVal <= 0) {
+          throw new Error("Please enter a valid deposit amount.");
+        }
+        await createCashboxFn({
+          data: {
+            kind: "deposit",
+            amount: amtVal,
+            note: withNote.trim() || "Manual Cashbox Deposit",
+            created_at: isoDate,
+          }
+        });
+        toast.success(lang === "bn" ? "ক্যাশবক্স জমা সফলভাবে যুক্ত হয়েছে!" : "Custom Cashbox Deposit added successfully!");
         setWithAmt(""); setWithNote("");
       }
       qc.invalidateQueries();
@@ -2275,6 +2290,7 @@ export default function MorePage() {
                   <SelectItem value="sale">{lang === "bn" ? "বিক্রি (Sale)" : "Sale"}</SelectItem>
                   <SelectItem value="expense">{lang === "bn" ? "খরচ (Expense)" : "Expense"}</SelectItem>
                   <SelectItem value="purchase">{lang === "bn" ? "ক্রয় (Purchase/Buy)" : "Purchase"}</SelectItem>
+                  <SelectItem value="deposit">{lang === "bn" ? "ক্যাশবক্স জমা (Deposit / Add Money)" : "Cashbox Deposit (Add Money)"}</SelectItem>
                   <SelectItem value="withdraw">{lang === "bn" ? "ক্যাশবক্স উত্তোলন (Withdrawal)" : "Cashbox Withdrawal"}</SelectItem>
                 </SelectContent>
               </Select>
@@ -2411,16 +2427,20 @@ export default function MorePage() {
             </div>
           )}
 
-          {txnType === "withdraw" && (
+          {(txnType === "withdraw" || txnType === "deposit") && (
             <div className="space-y-3 p-3 bg-background/50 rounded-lg border border-amber-500/10 animate-in fade-in duration-200">
               <div className="grid grid-cols-2 gap-2.5">
                 <div className="space-y-1">
-                  <Label className="text-xs">{lang === "bn" ? "উত্তোলন পরিমাণ" : "Withdrawal Amount *"}</Label>
+                  <Label className="text-xs">
+                    {txnType === "deposit"
+                      ? (lang === "bn" ? "জমার পরিমাণ *" : "Deposit Amount *")
+                      : (lang === "bn" ? "উত্তোলন পরিমাণ *" : "Withdrawal Amount *")}
+                  </Label>
                   <Input type="number" step="any" inputMode="decimal" pattern="[0-9.]*" value={withAmt} onChange={e => setWithAmt(e.target.value)} required placeholder="0" className="h-8 text-xs" />
                 </div>
                 <div className="space-y-1">
-                  <Label className="text-xs">{lang === "bn" ? "নোট/বিবরণ" : "Withdrawal Note"}</Label>
-                  <Input value={withNote} onChange={e => setWithNote(e.target.value)} placeholder="E.g. Owner emergency cash" className="h-8 text-xs" />
+                  <Label className="text-xs">{lang === "bn" ? "নোট/বিবরণ" : "Note"}</Label>
+                  <Input value={withNote} onChange={e => setWithNote(e.target.value)} placeholder={txnType === "deposit" ? (lang === "bn" ? "যেমন: নগদ জমা" : "E.g. Cash float added") : "E.g. Owner emergency cash"} className="h-8 text-xs" />
                 </div>
               </div>
             </div>

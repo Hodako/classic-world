@@ -284,6 +284,41 @@ function applyOptimisticUpdate(actionName: string, args: any) {
     writeQueryCache(["cashbox"], cashbox.filter((c) => c.ref_id !== args.data.id));
   }
 
+  else if (actionName === "createCashboxFn") {
+    const cashbox = readQueryCache<any[]>(["cashbox"]) ?? [];
+    const newEntry = {
+      id: crypto.randomUUID(),
+      kind: args.data.kind || "deposit",
+      amount: Math.abs(Number(args.data.amount) || 0),
+      note: args.data.note ?? null,
+      ref_id: null,
+      created_at: args.data.created_at || now,
+    };
+    writeQueryCache(["cashbox"], [newEntry, ...cashbox]);
+  }
+
+  else if (actionName === "updateCashboxFn") {
+    const cashbox = readQueryCache<any[]>(["cashbox"]) ?? [];
+    const updated = cashbox.map((c) => {
+      if (c.id === args.data.id) {
+        return {
+          ...c,
+          kind: args.data.kind !== undefined ? args.data.kind : c.kind,
+          amount: args.data.amount !== undefined ? Math.abs(Number(args.data.amount) || 0) : c.amount,
+          note: args.data.note !== undefined ? args.data.note : c.note,
+          created_at: args.data.created_at || c.created_at,
+        };
+      }
+      return c;
+    });
+    writeQueryCache(["cashbox"], updated);
+  }
+
+  else if (actionName === "deleteCashboxFn") {
+    const cashbox = readQueryCache<any[]>(["cashbox"]) ?? [];
+    writeQueryCache(["cashbox"], cashbox.filter((c) => c.id !== args.data.id));
+  }
+
   else if (actionName === "createPurchaseFn") {
     const purchases = readQueryCache<any[]>(["purchases"]) ?? [];
     const newPurchase = {

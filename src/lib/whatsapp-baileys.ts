@@ -228,6 +228,7 @@ export async function startWhatsAppSession(businessId: string) {
 
   const logger = pino({ level: "silent" });
 
+  // eslint-disable-next-line react-hooks/rules-of-hooks
   const { state, saveCreds } = await useMultiFileAuthState(sessionDir);
   const { version } = await fetchLatestBaileysVersion().catch(() => ({ version: [2, 3000, 1015901307] as any }));
 

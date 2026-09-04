@@ -443,13 +443,30 @@ export default function InvoicePage() {
     // Save sales record to database for all items in the invoice
     try {
       const cartId = safeUUID();
-      const duePerItem = due > 0 ? due / invoiceItems.length : 0;
-      const paidPerItem = due > 0 ? paidAmount / invoiceItems.length : 0;
+      let remainingPaid = due > 0 ? paidAmount : total;
+      let remainingDue = due > 0 ? due : 0;
 
-      for (const item of invoiceItems) {
+      for (let i = 0; i < invoiceItems.length; i++) {
+        const item = invoiceItems[i];
         const lineSell = item.sellPrice * item.qty;
         const buyPrice = item.product.buy_price || 0;
         const profit = (item.sellPrice - buyPrice) * item.qty;
+
+        let linePaid = lineSell;
+        let lineDue = 0;
+
+        if (due > 0) {
+          if (i === invoiceItems.length - 1) {
+            linePaid = Math.max(0, remainingPaid);
+            lineDue = Math.max(0, remainingDue);
+          } else {
+            const ratio = total > 0 ? lineSell / total : 1 / invoiceItems.length;
+            linePaid = Math.min(Math.round(paidAmount * ratio), remainingPaid);
+            lineDue = Math.max(0, lineSell - linePaid);
+            remainingPaid -= linePaid;
+            remainingDue -= lineDue;
+          }
+        }
 
         await createSaleFn({
           data: {
@@ -461,8 +478,8 @@ export default function InvoicePage() {
             profit,
             type: due > 0 ? "credit" : "cash",
             party_id: selectedCustomerId !== "walk-in" ? selectedCustomerId : null,
-            paid_amount: due > 0 ? paidPerItem : lineSell,
-            due_amount: due > 0 ? duePerItem : 0,
+            paid_amount: linePaid,
+            due_amount: lineDue,
             cart_id: cartId,
           },
         });

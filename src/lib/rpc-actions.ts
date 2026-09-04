@@ -760,22 +760,33 @@ export async function createSaleFn(input: { data: { product_id?: string | null; 
   const db = await getDb();
   const id = crypto.randomUUID();
   const isOnline = data.type === "online";
+  const safeQty = Math.max(1, Number(data.qty) || 1);
+  const safeSellPrice = Math.max(0, Number(data.sell_price) || 0);
+  const safeBuyPrice = Math.max(0, Number(data.buy_price) || 0);
+  const safeProfit = data.profit !== undefined && !isNaN(Number(data.profit))
+    ? Number(data.profit)
+    : (safeSellPrice - safeBuyPrice) * safeQty;
+
   const doc = {
     _id: id,
     owner_id: session.ownerId,
     ...data,
+    qty: safeQty,
+    sell_price: safeSellPrice,
+    buy_price: safeBuyPrice,
+    profit: safeProfit,
     courier_status: isOnline ? (data.courier_status || "pending") : undefined,
     courier_name: data.courier_name || (isOnline ? "Courier Delivery" : undefined),
     tracking_code: data.tracking_code || undefined,
-    paid_amount: isOnline ? (data.courier_status === "collected" ? data.paid_amount : 0) : data.paid_amount,
-    due_amount: isOnline ? (data.courier_status === "collected" ? 0 : Number(data.sell_price) * (Number(data.qty) || 1)) : data.due_amount,
+    paid_amount: isOnline ? (data.courier_status === "collected" ? data.paid_amount : 0) : Math.max(0, Number(data.paid_amount) || 0),
+    due_amount: isOnline ? (data.courier_status === "collected" ? 0 : safeSellPrice * safeQty) : Math.max(0, Number(data.due_amount) || 0),
     party_id: data.party_id || null,
     created_at: data.created_at || new Date().toISOString()
   };
   await db.collection("sales").insertOne(doc as any);
   if (data.product_id) {
     const product = await db.collection("products").findOne({ _id: data.product_id as any });
-    if (product) await db.collection("products").updateOne({ _id: data.product_id as any }, { $set: { stock: Math.max(((product.stock as number) ?? 0) - data.qty, 0) } });
+    if (product) await db.collection("products").updateOne({ _id: data.product_id as any }, { $set: { stock: Math.max(((product.stock as number) ?? 0) - safeQty, 0) } });
   }
   const cashAmt = isOnline ? (doc.courier_status === "collected" ? Number(doc.paid_amount) : 0) : saleCashboxAmount(data);
   if (cashAmt > 0) {

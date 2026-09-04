@@ -311,10 +311,13 @@ export function SaleDialog({
 
       for (let i = 0; i < cart.length; i++) {
         const line = cart[i];
-        const product = products.find(p => p.id === line.productId)!;
-        const qtyNum = Number(line.qty) || 1;
+        const product = products.find(p => p.id === line.productId);
+        if (!product) {
+          throw new Error(lang === "bn" ? "কার্টের একটি পণ্য ডাটাবেজে পাওয়া যায়নি!" : "A product in your cart could not be found!");
+        }
+        const qtyNum = Math.max(1, Number(line.qty) || 1);
         const rawSellPrice = Number(line.sellPrice) || product.sell_price || 0;
-        const disc = Number(line.discount) || 0;
+        const disc = Math.max(0, Number(line.discount) || 0);
         const finalUnitSell = Math.max(rawSellPrice - disc, 0);
         const lineSell = finalUnitSell * qtyNum;
         const lineProfit = (finalUnitSell - Number(product.buy_price || 0)) * qtyNum;

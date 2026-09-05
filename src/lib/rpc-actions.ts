@@ -2043,6 +2043,33 @@ export async function getWithdrawalsFn() {
   return items.map((w) => ({ ...w, id: w._id as any as string }));
 }
 
+export async function createWithdrawalFn(input: { data: { amount: number; note?: string | null; created_at?: string } }) {
+  const { data = {} }: any = input ?? {};
+  const session = await requireSession();
+  const db = await getDb();
+  const id = crypto.randomUUID();
+  const amount = Math.abs(Number(data.amount) || 0);
+  const now = data.created_at || new Date().toISOString();
+
+  const doc = {
+    _id: id,
+    owner_id: session.ownerId,
+    amount,
+    note: data.note || "Owner Withdrawal",
+    created_at: now,
+  };
+  await db.collection("owner_withdrawals").insertOne(doc as any);
+  await insertCashboxEntry(db, session.ownerId, {
+    kind: "withdraw",
+    amount,
+    note: `Withdrawal: ${data.note || "Owner"}`,
+    ref_id: id,
+    created_at: now,
+  });
+
+  return { ...doc, id };
+}
+
 // ─── Owner's Wallet (Personal & Family Expenses) ─────────────────────────────
 
 export async function getOwnerWalletFn() {

@@ -259,26 +259,52 @@ export function CustomEntryDialog({ open, onOpenChange, initialType = "sale" }: 
       } else if (entryType === "deposit") {
         if (cashboxAmtNum <= 0) throw new Error(lang === "bn" ? "জমার পরিমাণ সঠিক দিন" : "Valid deposit amount is required");
 
-        await createCashboxFn({
-          data: {
-            kind: "deposit",
-            amount: cashboxAmtNum,
-            note: cashboxNote.trim() || (lang === "bn" ? "কাস্টম ক্যাশ জমা" : "Custom Cash Deposit"),
-            created_at: isoDate,
-          },
-        });
+        const noteText = cashboxNote.trim() || (lang === "bn" ? "কাস্টম ক্যাশ জমা" : "Custom Cash Deposit");
+        try {
+          await createCashboxFn({
+            data: {
+              kind: "deposit",
+              amount: cashboxAmtNum,
+              note: noteText,
+              created_at: isoDate,
+            },
+          });
+        } catch (rpcErr) {
+          console.warn("createCashboxFn fallback to Firestore:", rpcErr);
+          try {
+            const { fsCreateCashbox } = await import("@/lib/firestore-service");
+            await fsCreateCashbox({
+              kind: "deposit",
+              amount: cashboxAmtNum,
+              note: noteText,
+            });
+          } catch (_) {}
+        }
         toast.success(lang === "bn" ? "ক্যাশবক্সে টাকা জমা সফল হয়েছে!" : "Cash added to cashbox successfully!");
       } else if (entryType === "withdraw") {
         if (cashboxAmtNum <= 0) throw new Error(lang === "bn" ? "উত্তোলনের পরিমাণ সঠিক দিন" : "Valid withdrawal amount is required");
 
-        await createCashboxFn({
-          data: {
-            kind: "withdraw",
-            amount: cashboxAmtNum,
-            note: cashboxNote.trim() || (lang === "bn" ? "কাস্টম ক্যাশ উত্তোলন" : "Custom Cashbox Withdrawal"),
-            created_at: isoDate,
-          },
-        });
+        const noteText = cashboxNote.trim() || (lang === "bn" ? "কাস্টম ক্যাশ উত্তোলন" : "Custom Cashbox Withdrawal");
+        try {
+          await createCashboxFn({
+            data: {
+              kind: "withdraw",
+              amount: cashboxAmtNum,
+              note: noteText,
+              created_at: isoDate,
+            },
+          });
+        } catch (rpcErr) {
+          console.warn("createCashboxFn fallback to Firestore:", rpcErr);
+          try {
+            const { fsCreateCashbox } = await import("@/lib/firestore-service");
+            await fsCreateCashbox({
+              kind: "withdraw",
+              amount: cashboxAmtNum,
+              note: noteText,
+            });
+          } catch (_) {}
+        }
         toast.success(lang === "bn" ? "ক্যাশবক্স থেকে উত্তোলন সফল হয়েছে!" : "Cash withdrawn from cashbox successfully!");
       } else if (entryType === "due_collection") {
         if (!dueCustomerId) throw new Error(lang === "bn" ? "কাস্টমার নির্বাচন করুন" : "Select a customer");

@@ -316,26 +316,50 @@ export async function fsAcceptDigitalPayment(id: string) {
   const s = snap.data();
   if (s.payment_status === "accepted" || s.payment_accepted) return { success: true, id };
 
-  let stuckAmount = 0;
-  if (s.type === "split") {
-    const digitalSplit = (Number(s.split_bkash) || 0) + (Number(s.split_bank) || 0);
-    if (digitalSplit > 0) {
-      stuckAmount = digitalSplit;
-    } else {
-      stuckAmount = Math.max(0, (Number(s.paid_amount) || Number(s.sell_price) || 0) - (Number(s.split_cash) || 0));
+  const cartId = s.cart_id;
+  const docsToUpdate: Array<{ ref: any; data: any; id: string }> = [{ ref: docRef, data: s, id }];
+
+  if (cartId) {
+    try {
+      const q = query(collection(db, "sales"), where("cart_id", "==", cartId));
+      const qSnap = await getDocs(q);
+      qSnap.forEach(d => {
+        if (d.id !== id) {
+          docsToUpdate.push({ ref: d.ref, data: d.data(), id: d.id });
+        }
+      });
+    } catch (e) {
+      console.warn("Could not query cart items in fsAcceptDigitalPayment:", e);
     }
-  } else {
-    stuckAmount = Number(s.paid_amount) || Number(s.sell_price) || (Number(s.qty) * Number(s.buy_price) + Number(s.profit)) || 0;
   }
 
-  await updateDoc(docRef, {
-    payment_status: "accepted",
-    payment_accepted: true,
-    accepted_at: Timestamp.now(),
-  });
+  let totalStuck = 0;
+  for (const item of docsToUpdate) {
+    const it = item.data;
+    if (it.payment_status === "accepted" || it.payment_accepted) continue;
+
+    let stuckAmount = 0;
+    if (it.type === "split") {
+      const digitalSplit = (Number(it.split_bkash) || 0) + (Number(it.split_bank) || 0);
+      if (digitalSplit > 0) {
+        stuckAmount = digitalSplit;
+      } else {
+        stuckAmount = Math.max(0, (Number(it.paid_amount) || Number(it.sell_price) || 0) - (Number(it.split_cash) || 0));
+      }
+    } else {
+      stuckAmount = Number(it.paid_amount) || Number(it.sell_price) || (Number(it.qty) * Number(it.buy_price) + Number(it.profit)) || 0;
+    }
+    totalStuck += stuckAmount;
+
+    await updateDoc(item.ref, {
+      payment_status: "accepted",
+      payment_accepted: true,
+      accepted_at: Timestamp.now(),
+    });
+  }
 
   // Credit Cashbox only with the stuck amount
-  if (stuckAmount > 0) {
+  if (totalStuck > 0) {
     try {
       const digitalMethod = s.type === "split"
         ? (Number(s.split_bkash) > 0 && Number(s.split_bank) > 0 ? "BKASH+BANK" : Number(s.split_bkash) > 0 ? "BKASH" : Number(s.split_bank) > 0 ? "BANK" : "DIGITAL")
@@ -343,7 +367,7 @@ export async function fsAcceptDigitalPayment(id: string) {
 
       await addDoc(collection(db, "cashbox_logs"), {
         kind: "sale",
-        amount: stuckAmount,
+        amount: totalStuck,
         note: `Digital Payment Received [${digitalMethod}]: ${s.product_name || "Item"} (INV-${id.slice(-6).toUpperCase()})`,
         ref_id: id,
         created_at: Timestamp.now(),
@@ -355,6 +379,7 @@ export async function fsAcceptDigitalPayment(id: string) {
 
   return { success: true, id };
 }
+
 
 export async function fsApproveCourierPayment(id: string) {
   const docRef = doc(db, "sales", id);

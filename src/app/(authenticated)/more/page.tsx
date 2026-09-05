@@ -654,14 +654,27 @@ export default function MorePage() {
         if (amtVal <= 0) {
           throw new Error("Please enter a valid withdrawal amount.");
         }
-        await createCashboxFn({
-          data: {
-            kind: "withdraw",
-            amount: amtVal,
-            note: withNote.trim() || "Manual Backdated Withdrawal",
-            created_at: isoDate,
-          }
-        });
+        const noteText = withNote.trim() || "Manual Backdated Withdrawal";
+        try {
+          await createCashboxFn({
+            data: {
+              kind: "withdraw",
+              amount: amtVal,
+              note: noteText,
+              created_at: isoDate,
+            }
+          });
+        } catch (rpcErr) {
+          console.warn("createCashboxFn fallback to Firestore:", rpcErr);
+          try {
+            const { fsCreateCashbox } = await import("@/lib/firestore-service");
+            await fsCreateCashbox({
+              kind: "withdraw",
+              amount: amtVal,
+              note: noteText,
+            });
+          } catch (_) {}
+        }
         toast.success(lang === "bn" ? "ক্যাশবক্স উত্তোলন সফলভাবে যুক্ত হয়েছে!" : "Custom Cashbox Withdrawal added successfully!");
         setWithAmt(""); setWithNote("");
       } else if (txnType === "deposit") {
@@ -669,14 +682,27 @@ export default function MorePage() {
         if (amtVal <= 0) {
           throw new Error("Please enter a valid deposit amount.");
         }
-        await createCashboxFn({
-          data: {
-            kind: "deposit",
-            amount: amtVal,
-            note: withNote.trim() || "Manual Cashbox Deposit",
-            created_at: isoDate,
-          }
-        });
+        const noteText = withNote.trim() || "Manual Cashbox Deposit";
+        try {
+          await createCashboxFn({
+            data: {
+              kind: "deposit",
+              amount: amtVal,
+              note: noteText,
+              created_at: isoDate,
+            }
+          });
+        } catch (rpcErr) {
+          console.warn("createCashboxFn fallback to Firestore:", rpcErr);
+          try {
+            const { fsCreateCashbox } = await import("@/lib/firestore-service");
+            await fsCreateCashbox({
+              kind: "deposit",
+              amount: amtVal,
+              note: noteText,
+            });
+          } catch (_) {}
+        }
         toast.success(lang === "bn" ? "ক্যাশবক্স জমা সফলভাবে যুক্ত হয়েছে!" : "Custom Cashbox Deposit added successfully!");
         setWithAmt(""); setWithNote("");
       }

@@ -73,6 +73,8 @@ interface GroupedSale {
   split_cash?: number;
   split_bkash?: number;
   split_bank?: number;
+  payment_status?: string | null;
+  payment_accepted?: boolean;
   courier_status?: string | null;
   courier_name?: string | null;
   tracking_code?: string | null;
@@ -116,6 +118,8 @@ function groupSales(sales: Sale[]): GroupedSale[] {
         split_cash: (s as any).split_cash,
         split_bkash: (s as any).split_bkash,
         split_bank: (s as any).split_bank,
+        payment_status: (s as any).payment_status || ((s as any).payment_accepted ? "accepted" : undefined),
+        payment_accepted: Boolean((s as any).payment_accepted || (s as any).payment_status === "accepted"),
         courier_status: (s as any).courier_status || (s.type === "online" ? "pending" : null),
         courier_name: (s as any).courier_name || (s.type === "online" ? "Courier" : null),
         tracking_code: (s as any).tracking_code || null,
@@ -152,6 +156,9 @@ function groupSales(sales: Sale[]): GroupedSale[] {
     const totalSplitBkash = items.reduce((sum, x) => sum + (Number((x as any).split_bkash) || 0), 0);
     const totalSplitBank = items.reduce((sum, x) => sum + (Number((x as any).split_bank) || 0), 0);
 
+    const isAnyAccepted = items.some(x => (x as any).payment_status === "accepted" || (x as any).payment_accepted);
+    const paymentStatus = isAnyAccepted ? "accepted" : (firstItem as any).payment_status;
+
     const names = items.map(x => `${x.product_name} (×${x.qty})`).join(", ");
 
     grouped.push({
@@ -168,6 +175,8 @@ function groupSales(sales: Sale[]): GroupedSale[] {
       split_cash: totalSplitCash > 0 ? totalSplitCash : undefined,
       split_bkash: totalSplitBkash > 0 ? totalSplitBkash : undefined,
       split_bank: totalSplitBank > 0 ? totalSplitBank : undefined,
+      payment_status: paymentStatus,
+      payment_accepted: isAnyAccepted,
       courier_status: (firstItem as any).courier_status || (firstItem.type === "online" ? "pending" : null),
       courier_name: (firstItem as any).courier_name || (firstItem.type === "online" ? "Courier" : null),
       tracking_code: (firstItem as any).tracking_code || null,
@@ -989,16 +998,42 @@ function SalesTab({
 
   async function handleAcceptDigitalPayment(id: string) {
     setActionBusyId(id);
+
+    // Optimistically update query cache immediately so the button immediately turns into "Deposited in Cashbox"
+    qc.setQueryData<Sale[]>(["sales"], (old = []) => {
+      const target = old.find(item => item.id === id);
+      const targetCartId = target?.cart_id;
+      return old.map(item => {
+        if (item.id === id || (targetCartId && item.cart_id === targetCartId)) {
+          return {
+            ...item,
+            payment_status: "accepted",
+            payment_accepted: true,
+          };
+        }
+        return item;
+      });
+    });
+
     try {
       await acceptDigitalPaymentFn({ data: { id } });
       toast.success(lang === "bn" ? "ডিজিটাল পেমেন্ট গ্রহণ করা হয়েছে এবং ক্যাশবক্সে যোগ হয়েছে!" : "Digital payment accepted and deposited into Cashbox!");
+    } catch (err: any) {
+      console.warn("acceptDigitalPaymentFn failed, attempting direct Firestore fallback:", err);
+      try {
+        const { fsAcceptDigitalPayment } = await import("@/lib/firestore-service");
+        await fsAcceptDigitalPayment(id);
+        toast.success(lang === "bn" ? "ডিজিটাল পেমেন্ট গ্রহণ করা হয়েছে এবং ক্যাশবক্সে যোগ হয়েছে!" : "Digital payment accepted and deposited into Cashbox!");
+      } catch (fsErr: any) {
+        toast.error(err.message || fsErr.message || String(err));
+        qc.invalidateQueries({ queryKey: ["sales"] });
+        return;
+      }
+    } finally {
+      setActionBusyId(null);
       qc.invalidateQueries({ queryKey: ["sales"] });
       qc.invalidateQueries({ queryKey: ["cashbox"] });
       qc.invalidateQueries({ queryKey: ["dashboard-kpis"] });
-    } catch (err: any) {
-      toast.error(err.message || String(err));
-    } finally {
-      setActionBusyId(null);
     }
   }
 

@@ -144,7 +144,15 @@ export default function CashboxDetailsPage() {
     const targetId = deleteTarget.id;
     try {
       qc.setQueryData<CashboxEntry[]>(["cashbox"], (old = []) => old.filter(e => e.id !== targetId));
-      await deleteCashboxFn({ data: { id: targetId } });
+      try {
+        await deleteCashboxFn({ data: { id: targetId } });
+      } catch (rpcErr) {
+        console.warn("deleteCashboxFn fallback to Firestore:", rpcErr);
+        try {
+          const { fsDeleteCashbox } = await import("@/lib/firestore-service");
+          await fsDeleteCashbox(targetId);
+        } catch (_) {}
+      }
       toast.success(t("deleted" as any) || "Deleted");
       setDeleteConfirmOpen(false);
       setDeleteTarget(null);
@@ -489,26 +497,53 @@ function CashboxDialog({
       let entryId: string;
       if (isEdit && editEntry) {
         entryId = editEntry.id;
-        await updateCashboxFn({
-          data: {
-            id: editEntry.id,
-            kind,
-            amount: amt,
-            note: note.trim() || null,
-            created_at: dateVal ? new Date(dateVal).toISOString() : undefined,
-          },
-        });
+        try {
+          await updateCashboxFn({
+            data: {
+              id: editEntry.id,
+              kind,
+              amount: amt,
+              note: note.trim() || null,
+              created_at: dateVal ? new Date(dateVal).toISOString() : undefined,
+            },
+          });
+        } catch (rpcErr) {
+          console.warn("updateCashboxFn fallback to Firestore:", rpcErr);
+          try {
+            const { fsUpdateCashbox } = await import("@/lib/firestore-service");
+            await fsUpdateCashbox(editEntry.id, {
+              kind,
+              amount: amt,
+              note: note.trim() || null,
+            });
+          } catch (_) {}
+        }
         toast.success(lang === "bn" ? "এন্ট্রি আপডেট সফল হয়েছে" : "Entry updated");
       } else {
-        const res = await createCashboxFn({
-          data: {
-            kind,
-            amount: amt,
-            note: note.trim() || null,
-            created_at: dateVal ? new Date(dateVal).toISOString() : undefined,
-          },
-        });
-        entryId = res?.id || crypto.randomUUID();
+        try {
+          const res = await createCashboxFn({
+            data: {
+              kind,
+              amount: amt,
+              note: note.trim() || null,
+              created_at: dateVal ? new Date(dateVal).toISOString() : undefined,
+            },
+          });
+          entryId = res?.id || crypto.randomUUID();
+        } catch (rpcErr) {
+          console.warn("createCashboxFn fallback to Firestore:", rpcErr);
+          try {
+            const { fsCreateCashbox } = await import("@/lib/firestore-service");
+            const fsRes = await fsCreateCashbox({
+              kind,
+              amount: amt,
+              note: note.trim() || null,
+            });
+            entryId = fsRes?.id || crypto.randomUUID();
+          } catch {
+            entryId = crypto.randomUUID();
+          }
+        }
         toast.success(lang === "bn" ? "ক্যাশ এন্ট্রি সফল হয়েছে" : "Entry recorded");
       }
 

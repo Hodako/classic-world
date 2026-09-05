@@ -29,7 +29,8 @@ export function PartyReturnDialog({
   const qc = useQueryClient();
   
   const { data: products = [] } = useCachedQuery(["products"], getProducts);
-  const { data: customers = [] } = useCachedQuery(["customers"], getCustomers);
+  const { data: rawCustomers = [] } = useCachedQuery(["customers"], getCustomers);
+  const customers = rawCustomers.filter((c: any) => c.type !== "supplier" && !c.is_supplier);
 
   const [partyId, setPartyId] = useState(initialPartyId ?? "");
   const [productId, setProductId] = useState("");

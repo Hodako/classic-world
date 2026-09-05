@@ -125,8 +125,11 @@ export default function DuesPage() {
     return Math.max(totalDues - paid, 0);
   };
 
-  // Compile parties with calculations
-  const parsedParties = (parties.data ?? []).filter(Boolean).map(p => {
+  // Compile parties with calculations (strictly customers only)
+  const parsedParties = (parties.data ?? [])
+    .filter(Boolean)
+    .filter(p => (p as any).type !== "supplier" && !(p as any).is_supplier)
+    .map(p => {
     const outstanding = getOutstanding(p.id);
     const totalDues = (duesByParty[p.id] ?? 0) + (receivablesByParty[p.id] ?? 0);
     const totalPaid = paidByParty[p.id] ?? 0;

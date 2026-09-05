@@ -78,22 +78,25 @@ export default function CustomersPage() {
     return Math.max(getCustomerBalance(customerId), 0);
   };
 
-  const totalOutstanding = (customers.data ?? []).filter(Boolean).reduce((sum, p) => {
+  const onlyCustomers = (customers.data ?? [])
+    .filter(Boolean)
+    .filter(p => (p as any).type !== "supplier" && !(p as any).is_supplier);
+
+  const totalOutstanding = onlyCustomers.reduce((sum, p) => {
     if (p.archived) return sum;
     const bal = getCustomerBalance(p.id);
     return sum + (bal > 0 ? bal : 0);
   }, 0);
 
-  const totalAdvance = (customers.data ?? []).filter(Boolean).reduce((sum, p) => {
+  const totalAdvance = onlyCustomers.reduce((sum, p) => {
     if (p.archived) return sum;
     const bal = getCustomerBalance(p.id);
     return sum + (bal < 0 ? Math.abs(bal) : 0);
   }, 0);
 
-  const activeCustomerCount = (customers.data ?? []).filter(p => !p.archived).length;
+  const activeCustomerCount = onlyCustomers.filter(p => !p.archived).length;
 
-  const filtered = (customers.data ?? [])
-    .filter(Boolean)
+  const filtered = onlyCustomers
     .filter(p => {
       const matchesSearch = (p.name || "").toLowerCase().includes(search.toLowerCase()) || (p.phone ?? "").includes(search);
       const matchesTab = activeTab === "archived" ? p.archived === true : p.archived !== true;

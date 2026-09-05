@@ -24,9 +24,10 @@ export function CustomerSearchSelect({ customers, value, onChange, placeholder }
 
   // Filter customers based on search query (name or phone)
   const filteredCustomers = useMemo(() => {
+    const validCustomers = (customers || []).filter(c => (c as any).type !== "supplier" && !(c as any).is_supplier);
     const q = searchQuery.toLowerCase().trim();
-    if (!q) return customers;
-    return customers.filter(c => 
+    if (!q) return validCustomers;
+    return validCustomers.filter(c => 
       (c.name || "").toLowerCase().includes(q) || 
       (c.phone || "").includes(q)
     );

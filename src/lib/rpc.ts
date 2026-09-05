@@ -16,7 +16,8 @@ export const API_BASE = (
 ).replace(/\/$/, "");
 
 
-async function callRemoteRpc(actionName: string, args: any): Promise<any> {
+async function callRemoteRpc(actionName: string, args: any = {}): Promise<any> {
+  const safeArgs = args ?? {};
   const url = `${API_BASE}/api/rpc`;
   let token = typeof window !== "undefined" ? window.localStorage.getItem("auth_token") : null;
 
@@ -68,7 +69,7 @@ async function callRemoteRpc(actionName: string, args: any): Promise<any> {
       method: "POST",
       headers,
       credentials: "include",
-      body: JSON.stringify({ actionName, args, token, activeProfile }),
+      body: JSON.stringify({ actionName, args: safeArgs, token, activeProfile }),
       signal: controller.signal,
     });
     clearTimeout(timeoutId);
@@ -154,13 +155,14 @@ async function callRemoteRpc(actionName: string, args: any): Promise<any> {
 }
 
 // Helper to determine if we are offline or if a network error occurs
-async function runWriteAction<T>(actionName: string, args: any): Promise<T | any> {
+async function runWriteAction<T>(actionName: string, args: any = {}): Promise<T | any> {
+  const safeArgs = args ?? {};
   if (typeof window !== "undefined" && !navigator.onLine) {
-    queueOfflineAction(actionName, args);
+    queueOfflineAction(actionName, safeArgs);
     return { success: true, offline: true, id: crypto.randomUUID() };
   }
   try {
-    return await callRemoteRpc(actionName, args);
+    return await callRemoteRpc(actionName, safeArgs);
   } catch (err: any) {
     if (typeof window !== "undefined") {
       const isNetworkError =
@@ -171,7 +173,7 @@ async function runWriteAction<T>(actionName: string, args: any): Promise<T | any
 
       if (isNetworkError) {
         console.warn(`Write action ${actionName} failed due to network error, queuing offline:`, err);
-        queueOfflineAction(actionName, args);
+        queueOfflineAction(actionName, safeArgs);
         return { success: true, offline: true, id: crypto.randomUUID() };
       }
     }
@@ -180,8 +182,8 @@ async function runWriteAction<T>(actionName: string, args: any): Promise<T | any
 }
 
 // Action factories
-const makeReadAction = (name: string) => (args?: any) => callRemoteRpc(name, args);
-const makeWriteAction = (name: string) => (args?: any) => runWriteAction(name, args);
+const makeReadAction = (name: string) => (args: any = {}) => callRemoteRpc(name, args ?? {});
+const makeWriteAction = (name: string) => (args: any = {}) => runWriteAction(name, args ?? {});
 
 // ─── Export READS ────────────────────────────────────────────────────────────
 export const getMeFn = makeReadAction("getMeFn");

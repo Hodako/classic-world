@@ -201,7 +201,7 @@ export async function getMeFn() {
 }
 
 export async function loginFn(input: { data: { email?: string; phone?: string; identifier?: string; password: string } }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   const rawId = (data.identifier || data.email || data.phone || "").trim();
   if (!rawId || !data.password) {
     const err = new Error("Email/Phone number and password are required");
@@ -244,7 +244,7 @@ export async function loginFn(input: { data: { email?: string; phone?: string; i
 }
 
 export async function employeeLoginFn(input: { data: { username: string; password: string } }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   const db = await getDb();
   const identifier = (data.username || "").trim().toLowerCase();
   if (!identifier || !data.password) {
@@ -325,7 +325,7 @@ function validateEmail(email: string) {
 }
 
 export async function registerFn(input: { data: { email?: string; phone?: string; identifier?: string; password: string; fullName?: string; role?: "owner" | "employee" } }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   const rawId = (data.identifier || data.email || data.phone || "").trim();
   if (!rawId) {
     throw new Error("Email or Phone number is required for registration");
@@ -409,7 +409,7 @@ export async function registerFn(input: { data: { email?: string; phone?: string
 }
 
 export async function firebaseAuthSyncFn(input: { data: { email: string; fullName?: string; firebaseUid?: string; photoUrl?: string } }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   if (!data.email) throw new Error("Email is required for authentication");
   validateEmail(data.email);
   const cleanEmail = data.email.toLowerCase().trim();
@@ -487,7 +487,7 @@ export async function getProductsFn() {
 }
 
 export async function createProductFn(input: { data: { name: string; image_url?: string | null; buy_price?: number; sell_price?: number; stock?: number; attributes?: Record<string, string>; min_stock?: number; category?: string; barcode?: string | null } }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   const session = await requireSession();
   const db = await getDb();
   const id = crypto.randomUUID();
@@ -526,7 +526,7 @@ export async function deleteImgbbImage(imageUrl?: string | null) {
 }
 
 export async function updateProductFn(input: { data: { id: string; name?: string; image_url?: string | null; buy_price?: number; sell_price?: number; stock?: number; attributes?: Record<string, string>; min_stock?: number; category?: string; barcode?: string | null; archived?: boolean } }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   const session = await requireSession();
   const { id, ...updates } = data;
   
@@ -552,7 +552,7 @@ export async function updateProductFn(input: { data: { id: string; name?: string
 }
 
 export async function deleteProductFn(input: { data: { id: string } }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   const session = await requireSession();
   const db = await getDb();
 
@@ -568,7 +568,7 @@ export async function deleteProductFn(input: { data: { id: string } }) {
 }
 
 export async function archiveProductFn(input: { data: { id: string; archived: boolean } }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   const session = await requireSession();
   const db = await getDb();
   await db.collection("products").updateOne({ _id: data.id as any, owner_id: session.ownerId }, { $set: { archived: data.archived } });
@@ -580,12 +580,18 @@ export async function archiveProductFn(input: { data: { id: string; archived: bo
 export async function getPartiesFn() {
   const session = await requireSession();
   const db = await getDb();
-  const items = await db.collection("parties").find({ owner_id: session.ownerId, type: { $ne: "customer" } }).sort({ name: 1 }).toArray();
-  return items.map((p) => ({ ...p, id: p._id as any as string }));
+  const items = await db.collection("parties").find({
+    owner_id: session.ownerId,
+    type: { $ne: "customer" },
+    is_customer: { $ne: true }
+  }).sort({ name: 1 }).toArray();
+  return items
+    .filter((p: any) => p.type !== "customer" && !p.is_customer)
+    .map((p) => ({ ...p, id: p._id as any as string, type: "supplier", is_supplier: true }));
 }
 
 export async function createPartyFn(input: { data: { name: string; phone?: string | null; address?: string | null } }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   const session = await requireSession();
   const db = await getDb();
   const id = crypto.randomUUID();
@@ -595,7 +601,7 @@ export async function createPartyFn(input: { data: { name: string; phone?: strin
 }
 
 export async function updatePartyFn(input: { data: { id: string; name?: string; phone?: string | null; address?: string | null } }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   const session = await requireSession();
   const { id, ...updates } = data;
   const db = await getDb();
@@ -605,7 +611,7 @@ export async function updatePartyFn(input: { data: { id: string; name?: string; 
 }
 
 export async function deletePartyFn(input: { data: { id: string } }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   const session = await requireSession();
   const db = await getDb();
   const partyDoc = await db.collection("parties").findOne({ _id: data.id as any, owner_id: session.ownerId });
@@ -615,7 +621,7 @@ export async function deletePartyFn(input: { data: { id: string } }) {
 }
 
 export async function archivePartyFn(input: { data: { id: string; archived: boolean } }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   const session = await requireSession();
   const db = await getDb();
   await db.collection("parties").updateOne({ _id: data.id as any, owner_id: session.ownerId }, { $set: { archived: data.archived } });
@@ -623,7 +629,7 @@ export async function archivePartyFn(input: { data: { id: string; archived: bool
 }
 
 export async function getPartyFn(input: { data: { id: string } }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   const session = await requireSession();
   const db = await getDb();
   const p = await db.collection("parties").findOne({ _id: data.id as any, owner_id: session.ownerId });
@@ -632,7 +638,7 @@ export async function getPartyFn(input: { data: { id: string } }) {
 }
 
 export async function createPartyReceivableFn(input: { data: { party_id: string; amount: number; note?: string | null } }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   const session = await requireSession();
   const db = await getDb();
   const id = crypto.randomUUID();
@@ -642,7 +648,7 @@ export async function createPartyReceivableFn(input: { data: { party_id: string;
 }
 
 export async function createPartyPayableFn(input: { data: { party_id: string; amount: number; note?: string | null } }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   const session = await requireSession();
   const db = await getDb();
   const id = crypto.randomUUID();
@@ -673,7 +679,7 @@ export async function getAllPayableSettlementsFn() {
 }
 
 export async function getPartyReceivablesFn(input: { data: { partyId: string } }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   const session = await requireSession();
   const db = await getDb();
   const items = await db.collection("party_receivables").find({ owner_id: session.ownerId, party_id: data.partyId }).sort({ created_at: -1 }).toArray();
@@ -681,7 +687,7 @@ export async function getPartyReceivablesFn(input: { data: { partyId: string } }
 }
 
 export async function getPartyPayablesFn(input: { data: { partyId: string } }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   const session = await requireSession();
   const db = await getDb();
   const items = await db.collection("party_payables").find({ owner_id: session.ownerId, party_id: data.partyId }).sort({ created_at: -1 }).toArray();
@@ -689,7 +695,7 @@ export async function getPartyPayablesFn(input: { data: { partyId: string } }) {
 }
 
 export async function deletePartyReceivableFn(input: { data: { id: string } }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   const session = await requireSession();
   const db = await getDb();
   await db.collection("party_receivables").deleteOne({ _id: data.id as any, owner_id: session.ownerId });
@@ -697,7 +703,7 @@ export async function deletePartyReceivableFn(input: { data: { id: string } }) {
 }
 
 export async function deletePartyPayableFn(input: { data: { id: string } }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   const session = await requireSession();
   const db = await getDb();
   await db.collection("party_payables").deleteOne({ _id: data.id as any, owner_id: session.ownerId });
@@ -705,7 +711,7 @@ export async function deletePartyPayableFn(input: { data: { id: string } }) {
 }
 
 export async function createPayableSettlementFn(input: { data: { party_id: string; amount: number; note?: string | null } }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   const session = await requireSession();
   const db = await getDb();
   const id = crypto.randomUUID();
@@ -726,7 +732,7 @@ export async function createPayableSettlementFn(input: { data: { party_id: strin
 }
 
 export async function getPayableSettlementsFn(input: { data: { partyId: string } }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   const session = await requireSession();
   const db = await getDb();
   const items = await db.collection("party_payable_settlements").find({ owner_id: session.ownerId, party_id: data.partyId }).sort({ created_at: -1 }).toArray();
@@ -760,7 +766,7 @@ export async function getSalesFn() {
 }
 
 export async function getSalesForPartyFn(input: { data: { partyId: string } }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   const session = await requireSession();
   const db = await getDb();
   const items = await db.collection("sales").find({ owner_id: session.ownerId, party_id: data.partyId }).sort({ created_at: -1 }).toArray();
@@ -790,12 +796,14 @@ export async function createSaleFn(input: {
     created_at?: string;
   };
 }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   const session = await requireSession();
   const db = await getDb();
   const id = crypto.randomUUID();
   const isOnline = data.type === "online";
   const isSplit = data.type === "split";
+  const hasDigitalSplit = isSplit && ((Number(data.split_bkash) || 0) > 0 || (Number(data.split_bank) || 0) > 0);
+  const isDigitalPending = data.type === "bkash" || data.type === "bank" || hasDigitalSplit;
   const safeQty = Math.max(1, Number(data.qty) || 1);
   const safeSellPrice = Math.max(0, Number(data.sell_price) || 0);
   const safeBuyPrice = Math.max(0, Number(data.buy_price) || 0);
@@ -811,6 +819,8 @@ export async function createSaleFn(input: {
     sell_price: safeSellPrice,
     buy_price: safeBuyPrice,
     profit: safeProfit,
+    payment_status: isDigitalPending ? "pending" : "accepted",
+    payment_accepted: !isDigitalPending,
     split_cash: isSplit ? (Number(data.split_cash) || 0) : undefined,
     split_bkash: isSplit ? (Number(data.split_bkash) || 0) : undefined,
     split_bank: isSplit ? (Number(data.split_bank) || 0) : undefined,
@@ -865,7 +875,7 @@ export async function createSaleFn(input: {
 }
 
 export async function approveCourierPaymentFn(input: { data: { id: string } }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   const session = await requireSession();
   const db = await getDb();
 
@@ -880,7 +890,7 @@ export async function approveCourierPaymentFn(input: { data: { id: string } }) {
 
   const nowStr = new Date().toISOString();
   for (const s of salesToApprove) {
-    const totalAmount = Number(s.sell_price) || (Number(s.qty) * Number(s.buy_price) + Number(s.profit));
+    const totalAmount = Number(s.sell_price) * (Number(s.qty) || 1) - (Number(s.discount) || 0);
     await db.collection("sales").updateOne(
       { _id: s._id as any, owner_id: session.ownerId },
       {
@@ -890,25 +900,27 @@ export async function approveCourierPaymentFn(input: { data: { id: string } }) {
           due_amount: 0,
           collected_at: nowStr,
           updated_at: nowStr,
-        }
+        },
       }
     );
 
-    // Deposit remittance into Cashbox
-    await insertCashboxEntry(db, session.ownerId, {
-      kind: "sale",
-      amount: totalAmount,
-      note: `Online Courier Payment Collected: ${s.product_name} [${s.courier_name || "Courier"}] (INV-${String(s._id).slice(-6).toUpperCase()})`,
-      ref_id: String(s._id),
-      created_at: nowStr,
-    });
+    // Deposit into Cashbox
+    if (totalAmount > 0) {
+      await insertCashboxEntry(db, session.ownerId, {
+        kind: "sale",
+        amount: totalAmount,
+        note: `Courier Payment Collected: ${s.product_name} (INV-${String(s._id).slice(-6).toUpperCase()})`,
+        ref_id: String(s._id),
+        created_at: nowStr,
+      });
+    }
   }
 
   return { success: true };
 }
 
 export async function acceptDigitalPaymentFn(input: { data: { id: string } }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   const session = await requireSession();
   const db = await getDb();
 
@@ -923,7 +935,23 @@ export async function acceptDigitalPaymentFn(input: { data: { id: string } }) {
 
   const nowStr = new Date().toISOString();
   for (const s of salesToAccept) {
-    const totalAmount = Number(s.paid_amount) || Number(s.sell_price) || 0;
+    if (s.payment_status === "accepted" || s.payment_accepted) continue;
+
+    // Calculate ONLY the remaining stuck digital amount:
+    let stuckAmount = 0;
+    if (s.type === "split") {
+      // In split payments, split_cash was already deposited into physical cashbox at creation.
+      // Only the pending digital portion (split_bkash + split_bank) is stuck.
+      const digitalSplit = (Number(s.split_bkash) || 0) + (Number(s.split_bank) || 0);
+      if (digitalSplit > 0) {
+        stuckAmount = digitalSplit;
+      } else {
+        stuckAmount = Math.max(0, (Number(s.paid_amount) || Number(s.sell_price) || 0) - (Number(s.split_cash) || 0));
+      }
+    } else {
+      stuckAmount = Number(s.paid_amount) || Number(s.sell_price) || 0;
+    }
+
     await db.collection("sales").updateOne(
       { _id: s._id as any, owner_id: session.ownerId },
       {
@@ -936,15 +964,27 @@ export async function acceptDigitalPaymentFn(input: { data: { id: string } }) {
       }
     );
 
-    // Deposit into Cashbox
-    if (totalAmount > 0) {
-      await insertCashboxEntry(db, session.ownerId, {
-        kind: "sale",
-        amount: totalAmount,
-        note: `Digital Payment Received [${(s.type || "bkash").toUpperCase()}]: ${s.product_name} (INV-${String(s._id).slice(-6).toUpperCase()})`,
+    // Deposit ONLY the remaining stuck amount into Cashbox (idempotently)
+    if (stuckAmount > 0) {
+      const alreadyLogged = await db.collection("cashbox_entries").findOne({
         ref_id: String(s._id),
-        created_at: nowStr,
+        owner_id: session.ownerId,
+        note: { $regex: /Digital Payment Received/i },
       });
+
+      if (!alreadyLogged) {
+        const methodTag = s.type === "split"
+          ? (Number(s.split_bkash) > 0 && Number(s.split_bank) > 0 ? "BKASH+BANK" : Number(s.split_bkash) > 0 ? "BKASH" : Number(s.split_bank) > 0 ? "BANK" : "DIGITAL")
+          : (s.type || "bkash").toUpperCase();
+
+        await insertCashboxEntry(db, session.ownerId, {
+          kind: "sale",
+          amount: stuckAmount,
+          note: `Digital Payment Received [${methodTag}]: ${s.product_name} (INV-${String(s._id).slice(-6).toUpperCase()})`,
+          ref_id: String(s._id),
+          created_at: nowStr,
+        });
+      }
     }
   }
 
@@ -952,7 +992,7 @@ export async function acceptDigitalPaymentFn(input: { data: { id: string } }) {
 }
 
 export async function cancelCourierOrderFn(input: { data: { id: string } }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   const session = await requireSession();
   const db = await getDb();
 
@@ -999,7 +1039,7 @@ export async function cancelCourierOrderFn(input: { data: { id: string } }) {
 
 export async function deleteSaleFn(input: { data: { id: string } }) {
   try {
-    const { data } = input;
+    const { data = {} }: any = input ?? {};
     const session = await requireSession();
     const db = await getDb();
     const sale = await db.collection("sales").findOne({ _id: data.id as any, owner_id: session.ownerId });
@@ -1071,7 +1111,7 @@ export async function editSaleFn(input: {
     note?: string | null;
   };
 }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   const session = await requireSession();
   const db = await getDb();
 
@@ -1141,7 +1181,7 @@ export async function editSaleFn(input: {
 }
  
 export async function updateUserAvatarFn(input: { data: { avatar_url: string } }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   const session = await requireSession();
   const db = await getDb();
 
@@ -1159,7 +1199,7 @@ export async function updateUserAvatarFn(input: { data: { avatar_url: string } }
 }
  
 export async function createReturnFn(input: { data: { sale_id: string; qty: number; note?: string | null } }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   const session = await requireSession();
   const db = await getDb();
   const sale = await db.collection("sales").findOne({ _id: data.sale_id as any, owner_id: session.ownerId });
@@ -1227,7 +1267,7 @@ export async function createReturnFn(input: { data: { sale_id: string; qty: numb
 
 
 export async function createDirectProductReturnFn(input: { data: { product_id: string; qty: number; return_price: number; buy_date?: string; return_date?: string; profit_adjustment?: number; note?: string | null } }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   const session = await requireSession();
   const db = await getDb();
   const product = await db.collection("products").findOne({ _id: data.product_id as any, owner_id: session.ownerId });
@@ -1280,7 +1320,7 @@ export async function createDirectProductReturnFn(input: { data: { product_id: s
 }
 
 export async function createPartyReturnFn(input: { data: { party_id: string; product_id: string; qty: number; refund_amount: number; deduct_type: "receivable" | "payable" | "cash"; note?: string | null } }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   const session = await requireSession();
   const db = await getDb();
   
@@ -1365,7 +1405,7 @@ export async function getReturnsFn() {
 
 export async function deleteReturnFn(input: { data: { id: string } }) {
   try {
-    const { data } = input;
+    const { data = {} }: any = input ?? {};
     const session = await requireSession();
     const db = await getDb();
 
@@ -1433,7 +1473,7 @@ export async function exchangeProductsFn(input: {
     note?: string | null;
   };
 }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   const session = await requireSession();
   const db = await getDb();
 
@@ -1554,7 +1594,7 @@ export async function getPurchasesFn() {
 }
 
 export async function createPurchaseFn(input: { data: { product_id?: string | null; product_name: string; qty: number; unit_cost: number; sell_price?: number; total: number; note?: string | null; created_at?: string; party_id?: string | null; payment_type?: "cash" | "credit" | null } }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   const session = await requireSession();
   const db = await getDb();
   const id = crypto.randomUUID();
@@ -1626,7 +1666,7 @@ export async function createPurchaseFn(input: { data: { product_id?: string | nu
 }
 
 export async function deletePurchaseFn(input: { data: { id: string } }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   const session = await requireSession();
   const db = await getDb();
   const purchase = await db.collection("purchases").findOne({ _id: data.id as any, owner_id: session.ownerId });
@@ -1681,7 +1721,7 @@ export async function editPurchaseFn(input: {
     party_id?: string | null;
   };
 }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   const session = await requireSession();
   const db = await getDb();
 
@@ -1751,7 +1791,7 @@ export async function getExpensesFn() {
 }
 
 export async function createExpenseFn(input: { data: { title: string; amount: number; category?: string | null; note?: string | null; created_at?: string } }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   const session = await requireSession();
   const db = await getDb();
   const id = crypto.randomUUID();
@@ -1783,7 +1823,7 @@ export async function createExpenseFn(input: { data: { title: string; amount: nu
 }
 
 export async function deleteExpenseFn(input: { data: { id: string } }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   const session = await requireSession();
   const db = await getDb();
   await db.collection("cashbox_entries").deleteOne({ owner_id: session.ownerId, ref_id: data.id, kind: "expense" });
@@ -1796,7 +1836,7 @@ export async function deleteExpenseFn(input: { data: { id: string } }) {
 // ─── Payments ─────────────────────────────────────────────────────────────────
 
 export async function getPaymentsForPartyFn(input: { data: { partyId: string } }): Promise<any[]> {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   const session = await requireSession();
   const db = await getDb();
   const items = await db.collection("payments").find({ owner_id: session.ownerId, party_id: data.partyId }).sort({ created_at: -1 }).toArray();
@@ -1822,7 +1862,7 @@ export async function createPaymentFn(input: {
     created_at?: string;
   };
 }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   const session = await requireSession();
   const db = await getDb();
   const id = crypto.randomUUID();
@@ -1859,7 +1899,7 @@ export async function createPaymentFn(input: {
 }
 
 export async function deletePaymentFn(input: { data: { id: string } }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   const session = await requireSession();
   const db = await getDb();
   
@@ -1890,7 +1930,7 @@ export async function getSomitiFn() {
 }
 
 export async function createSomitiFn(input: { data: { kind: string; amount: number; note?: string | null; skipCashbox?: boolean; is_initial?: boolean } }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   const session = await requireSession();
   const db = await getDb();
   const id = crypto.randomUUID();
@@ -1913,7 +1953,7 @@ export async function createSomitiFn(input: { data: { kind: string; amount: numb
 }
 
 export async function updateSomitiFn(input: { data: { id: string; kind: string; amount: number; note?: string | null } }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   const session = await requireSession();
   const db = await getDb();
   const { id, ...updates } = data;
@@ -1939,7 +1979,7 @@ export async function updateSomitiFn(input: { data: { id: string; kind: string; 
 }
 
 export async function deleteSomitiFn(input: { data: { id: string } }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   const session = await requireSession();
   const db = await getDb();
   // Clean up linked cashbox entry before deleting the somiti record
@@ -1949,7 +1989,7 @@ export async function deleteSomitiFn(input: { data: { id: string } }) {
 }
 
 export async function renameSomitiFn(input: { data: { oldName: string; newName: string } }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   const session = await requireSession();
   const db = await getDb();
   const entries = await db.collection("somiti_entries").find({ owner_id: session.ownerId }).toArray();
@@ -1974,7 +2014,7 @@ export async function renameSomitiFn(input: { data: { oldName: string; newName: 
 }
 
 export async function deleteSomitiFnByName(input: { data: { name: string } }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   const session = await requireSession();
   const db = await getDb();
   const entries = await db.collection("somiti_entries").find({ owner_id: session.ownerId }).toArray();
@@ -2025,7 +2065,7 @@ export async function createOwnerWalletEntryFn(input: {
     cut_from_profit?: boolean;
   };
 }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   const session = await requireSession();
   const db = await getDb();
   const id = crypto.randomUUID();
@@ -2083,7 +2123,7 @@ export async function updateOwnerWalletEntryFn(input: {
     note?: string | null;
   };
 }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   const session = await requireSession();
   const db = await getDb();
   const { id, ...updates } = data;
@@ -2112,7 +2152,7 @@ export async function updateOwnerWalletEntryFn(input: {
 }
 
 export async function deleteOwnerWalletEntryFn(input: { data: { id: string } }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   const session = await requireSession();
   const db = await getDb();
 
@@ -2141,7 +2181,7 @@ export async function getCashboxFn() {
 }
 
 export async function createCashboxFn(input: { data: { kind: "deposit" | "withdraw"; amount: number; note?: string | null; created_at?: string } }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   const session = await requireSession();
   const db = await getDb();
   const saved = await insertCashboxEntry(db, session.ownerId, {
@@ -2154,7 +2194,7 @@ export async function createCashboxFn(input: { data: { kind: "deposit" | "withdr
 }
 
 export async function updateCashboxFn(input: { data: { id: string; kind: string; amount: number; note?: string | null; created_at?: string } }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   const session = await requireSession();
   if (session.role !== "owner" && session.role !== "superadmin") {
     throw new Error("Only owners can edit cashbox entries.");
@@ -2193,7 +2233,7 @@ export async function updateCashboxFn(input: { data: { id: string; kind: string;
 }
 
 export async function deleteCashboxFn(input: { data: { id: string } }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   const session = await requireSession();
   if (session.role !== "owner" && session.role !== "superadmin") {
     throw new Error("Only owners can delete cashbox entries.");
@@ -2269,7 +2309,7 @@ export async function getRemindersFn() {
 }
 
 export async function createReminderFn(input: { data: { title: string; due_date: string; logic_type?: string; logic_config?: any } }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   const session = await requireSession();
   const db = await getDb();
   const id = crypto.randomUUID();
@@ -2288,7 +2328,7 @@ export async function createReminderFn(input: { data: { title: string; due_date:
 }
 
 export async function toggleReminderFn(input: { data: { id: string; completed: boolean } }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   const session = await requireSession();
   const db = await getDb();
   await db.collection("reminders").updateOne({ _id: data.id as any, owner_id: session.ownerId }, { $set: { completed: data.completed } });
@@ -2296,7 +2336,7 @@ export async function toggleReminderFn(input: { data: { id: string; completed: b
 }
 
 export async function deleteReminderFn(input: { data: { id: string } }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   const session = await requireSession();
   const db = await getDb();
   await db.collection("reminders").deleteOne({ _id: data.id as any, owner_id: session.ownerId });
@@ -2304,7 +2344,7 @@ export async function deleteReminderFn(input: { data: { id: string } }) {
 }
 
 export async function deletePayableSettlementFn(input: { data: { id: string } }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   const session = await requireSession();
   const db = await getDb();
   await db.collection("party_payable_settlements").deleteOne({ _id: data.id as any, owner_id: session.ownerId });
@@ -2441,7 +2481,7 @@ export async function resetAllDataFn() {
 }
 
 export async function toggleGoogleSheetsSyncFn(input: { data: { enabled: boolean } }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   const session = await requireSession();
   const db = await getDb();
   await db.collection("businesses").updateOne(
@@ -2458,7 +2498,7 @@ export async function bulkExportToGoogleSheetsFn() {
 }
 
 export async function changeMyPasswordFn(input: { data: { currentPassword?: string; newPassword: string } }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   const session = await requireSession();
   if (!data.newPassword || data.newPassword.trim().length < 6) {
     throw new Error("New password must be at least 6 characters long");
@@ -2483,7 +2523,7 @@ export async function changeMyPasswordFn(input: { data: { currentPassword?: stri
 }
 
 export async function createProfileFn(input: { data: { name: string } }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   const session = await requireSession();
   const db = await getDb();
   
@@ -2514,7 +2554,7 @@ export async function createProfileFn(input: { data: { name: string } }) {
 }
 
 export async function switchProfileFn(input: { data: { profileId: string } }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   const session = await requireSession();
   const db = await getDb();
 
@@ -2537,7 +2577,7 @@ export async function switchProfileFn(input: { data: { profileId: string } }) {
 }
 
 export async function importProfileModuleFn(input: { data: { fromProfileId: string; module: "products" | "somiti" | "party" | "customer" | "sales" | "purchases" | "expenses" | "cashbox" } }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   const session = await requireSession();
   const db = await getDb();
 
@@ -2751,52 +2791,60 @@ export async function getCustomersFn() {
   const [customerDocs, partyDocs, saleDocs] = await Promise.all([
     db.collection("customers").find({ owner_id: session.ownerId }).toArray(),
     db.collection("parties").find({ owner_id: session.ownerId }).toArray(),
-    db.collection("sales").find({ owner_id: session.ownerId }).project({ customer_name: 1, customer_phone: 1, party_id: 1, party_name: 1, party_phone: 1, created_at: 1 }).toArray(),
+    db.collection("sales").find({ owner_id: session.ownerId }).project({ customer_name: 1, customer_phone: 1, created_at: 1 }).toArray(),
   ]);
 
-  const map = new Map<string, any>();
+  // Set of supplier IDs, phones, and names to strictly avoid showing any supplier as customer
+  const supplierIds = new Set<string>();
+  const supplierPhones = new Set<string>();
+  const supplierNames = new Set<string>();
 
-  // 1. Add all from customers collection
-  for (const c of customerDocs) {
-    const id = c._id.toString();
-    const phone = (c.phone || "").trim();
-    const key = phone ? phone.replace(/[^0-9]/g, "") : `id_${id}`;
-    map.set(key, { ...c, id });
-  }
-
-  // 2. Add all customer parties from parties collection
   for (const p of partyDocs) {
-    if (p.type === "supplier") continue;
-    const id = p._id.toString();
-    const phone = (p.phone || "").trim();
-    const key = phone ? phone.replace(/[^0-9]/g, "") : `id_${id}`;
-    if (!map.has(key)) {
-      map.set(key, {
-        _id: p._id,
-        id,
-        owner_id: p.owner_id,
-        name: p.name,
-        phone: p.phone || null,
-        address: p.address || null,
-        created_at: p.created_at || new Date().toISOString(),
-      });
+    if (p.type === "supplier" || p.is_supplier || p.type !== "customer") {
+      supplierIds.add(p._id.toString());
+      if (p.phone) supplierPhones.add(p.phone.trim().replace(/[^0-9]/g, ""));
+      if (p.name) supplierNames.add(p.name.trim().toLowerCase());
     }
   }
 
-  // 3. Add all buyers from historical sales
-  for (const s of saleDocs) {
-    const phone = (s.customer_phone || s.party_phone || "").trim();
+  const map = new Map<string, any>();
+
+  // 1. Add all from customers collection (strictly exclude any supplier)
+  for (const c of customerDocs) {
+    if ((c as any).type === "supplier" || (c as any).is_supplier) continue;
+    const id = c._id.toString();
+    if (supplierIds.has(id)) continue;
+    const phone = (c.phone || "").trim();
     const cleanPhone = phone.replace(/[^0-9]/g, "");
+    if (cleanPhone && supplierPhones.has(cleanPhone)) continue;
+    const name = (c.name || "").trim().toLowerCase();
+    if (name && supplierNames.has(name)) continue;
+
+    const key = cleanPhone ? cleanPhone : `id_${id}`;
+    map.set(key, { ...c, id, type: "customer", is_customer: true });
+  }
+
+  // 2. Add buyers from sales ONLY if they are NOT in supplier lists
+  for (const s of saleDocs) {
+    const phone = (s.customer_phone || "").trim();
+    const cleanPhone = phone.replace(/[^0-9]/g, "");
+    const rawName = (s.customer_name || "").trim();
+    const lowerName = rawName.toLowerCase();
+
+    if (lowerName && supplierNames.has(lowerName)) continue;
+    if (cleanPhone && supplierPhones.has(cleanPhone)) continue;
+
     if (cleanPhone.length >= 10 && !map.has(cleanPhone)) {
-      const name = (s.customer_name || s.party_name || "Customer").trim();
-      const fakeId = s.party_id || crypto.randomUUID();
+      const fakeId = crypto.randomUUID();
       map.set(cleanPhone, {
         _id: fakeId,
         id: fakeId,
         owner_id: session.ownerId,
-        name,
+        name: rawName || "Customer",
         phone,
         address: null,
+        type: "customer",
+        is_customer: true,
         created_at: s.created_at || new Date().toISOString(),
       });
     }
@@ -2808,7 +2856,7 @@ export async function getCustomersFn() {
 }
 
 export async function getCustomerFn(input: { data: { id: string } }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   const session = await requireSession();
   const db = await getDb();
   const doc = await db.collection("customers").findOne({ _id: data.id as any, owner_id: session.ownerId });
@@ -2817,7 +2865,7 @@ export async function getCustomerFn(input: { data: { id: string } }) {
 }
 
 export async function createCustomerFn(input: { data: { name: string; phone?: string | null; address?: string | null } }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   const session = await requireSession();
   const db = await getDb();
   const id = crypto.randomUUID();
@@ -2837,7 +2885,7 @@ export async function createCustomerFn(input: { data: { name: string; phone?: st
 }
 
 export async function updateCustomerFn(input: { data: { id: string; name: string; phone?: string | null; address?: string | null } }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   const session = await requireSession();
   const db = await getDb();
   const updates = {
@@ -3127,7 +3175,7 @@ export async function getBankAccountsFn() {
 }
 
 export async function createBankAccountFn(input: { data: { bank_name: string; account_name: string; account_number: string; branch?: string | null; balance?: number; note?: string | null } }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   const session = await requireSession();
   const db = await getDb();
   const id = crypto.randomUUID();
@@ -3147,7 +3195,7 @@ export async function createBankAccountFn(input: { data: { bank_name: string; ac
 }
 
 export async function updateBankAccountFn(input: { data: { id: string; bank_name?: string; account_name?: string; account_number?: string; branch?: string | null; balance?: number; note?: string | null } }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   const session = await requireSession();
   const db = await getDb();
   const { id, ...updates } = data;
@@ -3160,7 +3208,7 @@ export async function updateBankAccountFn(input: { data: { id: string; bank_name
 }
 
 export async function deleteBankAccountFn(input: { data: { id: string } }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   const session = await requireSession();
   const db = await getDb();
   await db.collection("bank_accounts").deleteOne({ _id: data.id as any, owner_id: session.ownerId });
@@ -3168,7 +3216,7 @@ export async function deleteBankAccountFn(input: { data: { id: string } }) {
 }
 
 export async function createBankTransactionFn(input: { data: { account_id: string; type: "deposit" | "withdraw"; amount: number; note?: string | null; sync_cashbox?: boolean } }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   const session = await requireSession();
   const db = await getDb();
   const amount = Number(data.amount) || 0;
@@ -3215,7 +3263,7 @@ export async function getBankLoansFn() {
 }
 
 export async function createBankLoanFn(input: { data: { bank_name: string; loan_title: string; principal_amount: number; total_repayable: number; total_installments: number; installment_amount: number; receive_to_cashbox?: boolean; note?: string | null } }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   const session = await requireSession();
   const db = await getDb();
   const loanId = crypto.randomUUID();
@@ -3251,7 +3299,7 @@ export async function createBankLoanFn(input: { data: { bank_name: string; loan_
 }
 
 export async function payBankLoanInstallmentFn(input: { data: { loan_id: string; amount: number; payment_method?: string; note?: string | null } }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   const session = await requireSession();
   const db = await getDb();
   const amount = Number(data.amount) || 0;
@@ -3298,7 +3346,7 @@ export async function payBankLoanInstallmentFn(input: { data: { loan_id: string;
 }
 
 export async function deleteBankLoanFn(input: { data: { id: string } }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   const session = await requireSession();
   const db = await getDb();
   const loanPayments = await db.collection("bank_loan_payments").find({ owner_id: session.ownerId, loan_id: data.id }).toArray();
@@ -3460,7 +3508,7 @@ export async function updateSmsSettingsFn(input: {
     offer_sms_template?: string;
   };
 }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   const session = await requireSession();
   const db = await getDb();
 
@@ -3520,7 +3568,7 @@ export async function sendSmsCampaignFn(input: {
     isPersonalized?: boolean;
   };
 }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   const session = await requireSession();
   const db = await getDb();
 
@@ -3582,10 +3630,10 @@ export async function sendSmsCampaignFn(input: {
   } else if (data.recipientType === "direct_numbers") {
     const rawNumbers = (data.directNumbers || "")
       .split(/[\n,;]+/)
-      .map((s) => s.trim())
+      .map((s: string) => s.trim())
       .filter(Boolean);
 
-    recipients = rawNumbers.map((num, idx) => ({
+    recipients = rawNumbers.map((num: string, idx: number) => ({
       name: `Recipient ${idx + 1}`,
       phone: num,
     }));
@@ -3732,7 +3780,7 @@ export async function getSmsLogsFn() {
 }
 
 export async function checkSmsDeliveryStatusFn(input: { data: { trackingId: string; logId?: string } }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   const session = await requireSession();
   const db = await getDb();
   const platform = await db.collection("platform_settings").findOne({ _id: "global" as any });
@@ -3760,7 +3808,7 @@ export async function checkSmsDeliveryStatusFn(input: { data: { trackingId: stri
 }
 
 export async function deleteSmsLogFn(input: { data: { id: string } }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   const session = await requireSession();
   const db = await getDb();
   await db.collection("sms_logs").deleteOne({ _id: data.id as any, owner_id: session.ownerId });
@@ -3792,7 +3840,7 @@ export async function getActiveAdminPopupsFn() {
 }
 
 export async function dismissAdminPopupFn(input: { data: { popupId: string } }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   const session = await requireSession();
   const db = await getDb();
 
@@ -3846,7 +3894,7 @@ export async function createShopEmployeeFn(input: {
     permissions?: PermissionSet;
   };
 }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   const session = await requireSession();
   if (session.role === "employee") {
     throw new Error("Access denied: Only shop owners can create employee accounts");
@@ -3937,7 +3985,7 @@ export async function updateShopEmployeeFn(input: {
     isActive?: boolean;
   };
 }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   const session = await requireSession();
   if (session.role === "employee") {
     throw new Error("Access denied: Only shop owners can update employee accounts");
@@ -3982,7 +4030,7 @@ export async function updateShopEmployeeFn(input: {
 }
 
 export async function deleteShopEmployeeFn(input: { data: { employeeId: string } }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   const session = await requireSession();
   if (session.role === "employee") {
     throw new Error("Access denied: Only shop owners can delete employee accounts");
@@ -4013,7 +4061,7 @@ export async function inviteEmployeeByEmailFn(input: {
     phone?: string;
   };
 }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   const session = await requireSession();
   if (session.role === "employee") {
     throw new Error("Access denied: Only business owners can invite employees");
@@ -4146,7 +4194,7 @@ export async function listEmployeeInvitationsFn() {
 }
 
 export async function cancelEmployeeInvitationFn(input: { data: { invitationId: string } }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   const session = await requireSession();
   const db = await getDb();
 
@@ -4213,7 +4261,7 @@ export async function respondToEmployeeInvitationFn(input: {
     action: "accept" | "reject";
   };
 }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   const session = await requireSession();
   const db = await getDb();
   const user = await db.collection("users").findOne({ _id: session.userId as any });
@@ -4335,7 +4383,7 @@ export async function sendWhatsAppMessageFn(input: {
   };
 }) {
   const session = await requireSession();
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   if (!data.phone || !data.message) {
     throw new Error("Recipient phone and message text are required");
   }
@@ -4368,7 +4416,7 @@ export async function sendWhatsAppCampaignFn(input: {
   };
 }) {
   const session = await requireSession();
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   const db = await getDb();
 
   interface TargetRecipient {
@@ -4419,10 +4467,10 @@ export async function sendWhatsAppCampaignFn(input: {
   } else if (data.recipientType === "direct_numbers") {
     const rawNumbers = (data.directNumbers || "")
       .split(/[\n,;]+/)
-      .map((s) => s.trim())
+      .map((s: string) => s.trim())
       .filter(Boolean);
 
-    recipients = rawNumbers.map((num, idx) => ({
+    recipients = rawNumbers.map((num: string, idx: number) => ({
       name: `Recipient ${idx + 1}`,
       phone: num,
     }));
@@ -4449,7 +4497,7 @@ export async function connectGoogleSheetsOAuthFn(input: {
     spreadsheetId?: string;
   };
 }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   const session = await requireSession();
   if (session.role === "employee") {
     throw new Error("Access denied: Only owners can configure Google Sheets integration");
@@ -4577,7 +4625,7 @@ export async function getRecycleBinFn() {
 }
 
 export async function restoreRecycleItemFn(input: { data: { id: string } }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   const session = await requireSession();
   const db = await getDb();
 
@@ -4650,7 +4698,7 @@ export async function restoreRecycleItemFn(input: { data: { id: string } }) {
 }
 
 export async function permanentDeleteRecycleItemFn(input: { data: { id: string } }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   const session = await requireSession();
   const db = await getDb();
   await db.collection("recycle_bin").deleteOne({ _id: data.id as any, owner_id: session.ownerId });
@@ -4745,7 +4793,7 @@ export async function getCommandHistoryFn() {
 }
 
 export async function undoCommandFn(input: { data: { id: string; undoType: string; recycleId?: string } }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   if (data.undoType === "sale") {
     return await deleteSaleFn({ data: { id: data.id } });
   } else if (data.undoType === "expense") {
@@ -4771,7 +4819,7 @@ export async function getEmployeesFn(): Promise<any[]> {
 }
 
 export async function createEmployeeFn(input: { data: any }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   const session = await requireSession();
   const db = await getDb();
   const id = crypto.randomUUID();
@@ -4807,7 +4855,7 @@ export async function createEmployeeFn(input: { data: any }) {
 }
 
 export async function updateEmployeeFn(input: { data: any }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   const session = await requireSession();
   const db = await getDb();
   const { id, ...updates } = data;
@@ -4819,7 +4867,7 @@ export async function updateEmployeeFn(input: { data: any }) {
 }
 
 export async function deleteEmployeeFn(input: { data: { id: string } }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   const session = await requireSession();
   const db = await getDb();
   await db.collection("employees").deleteOne({ _id: data.id as any, owner_id: session.ownerId });
@@ -4836,7 +4884,7 @@ export async function getEmployeeSalariesFn(): Promise<any[]> {
 }
 
 export async function createEmployeeSalaryFn(input: { data: any }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   const session = await requireSession();
   const db = await getDb();
   const id = crypto.randomUUID();
@@ -4892,7 +4940,7 @@ export async function createEmployeeSalaryFn(input: { data: any }) {
 }
 
 export async function deleteEmployeeSalaryFn(input: { data: { id: string } }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   const session = await requireSession();
   const db = await getDb();
   await db.collection("cashbox_entries").deleteMany({ owner_id: session.ownerId, ref_id: data.id });
@@ -4910,7 +4958,7 @@ export async function getEmployeeExpensesFn(): Promise<any[]> {
 }
 
 export async function createEmployeeExpenseFn(input: { data: any }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   const session = await requireSession();
   const db = await getDb();
   const id = crypto.randomUUID();
@@ -4964,7 +5012,7 @@ export async function createEmployeeExpenseFn(input: { data: any }) {
 }
 
 export async function deleteEmployeeExpenseFn(input: { data: { id: string } }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   const session = await requireSession();
   const db = await getDb();
   await db.collection("cashbox_entries").deleteMany({ owner_id: session.ownerId, ref_id: data.id });
@@ -4982,7 +5030,7 @@ export async function getEmployeeShoppingsFn(): Promise<any[]> {
 }
 
 export async function createEmployeeShoppingFn(input: { data: any }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   const session = await requireSession();
   const db = await getDb();
   const id = crypto.randomUUID();
@@ -5038,7 +5086,7 @@ export async function createEmployeeShoppingFn(input: { data: any }) {
 }
 
 export async function deleteEmployeeShoppingFn(input: { data: { id: string } }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   const session = await requireSession();
   const db = await getDb();
   await db.collection("cashbox_entries").deleteMany({ owner_id: session.ownerId, ref_id: data.id });
@@ -5067,7 +5115,7 @@ export async function createAssetTransferKeyAction(input: {
     };
   };
 }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   const session = await requireSession();
   const db = await getDb();
 
@@ -5232,7 +5280,7 @@ export async function createAssetTransferKeyAction(input: {
 }
 
 export async function inspectAssetTransferKeyAction(input: { data: { key: string; pinCode?: string } }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   const cleanKey = String(data.key || "").trim().toUpperCase();
   if (!cleanKey) throw new Error("Please enter a valid transfer key");
 
@@ -5276,7 +5324,7 @@ export async function applyAssetTransferKeyAction(input: {
     selectedModules?: string[];
   };
 }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   const cleanKey = String(data.key || "").trim().toUpperCase();
   const session = await requireSession();
   const db = await getDb();
@@ -5473,7 +5521,7 @@ export async function listMyTransferKeysAction() {
 }
 
 export async function deleteTransferKeyAction(input: { data: { key: string } }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   const session = await requireSession();
   const db = await getDb();
   await db.collection("transfer_keys").deleteOne({ key: data.key, owner_id: session.ownerId });

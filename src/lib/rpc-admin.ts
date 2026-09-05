@@ -60,7 +60,7 @@ async function callRemoteRpc(actionName: string, args: any) {
   }
 }
 
-const makeAdminAction = (name: string) => (args?: any) => callRemoteRpc(name, args);
+const makeAdminAction = (name: string) => (args: any = {}) => callRemoteRpc(name, args ?? {});
 
 // Expose admin actions
 export const superAdminLoginFn = makeAdminAction("superAdminLoginFn");

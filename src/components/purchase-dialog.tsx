@@ -239,7 +239,7 @@ export function PurchaseDialog({
                 className="w-full h-8 rounded border border-border bg-background px-2 text-xs font-sans"
               >
                 <option value="">{lang === "bn" ? "— সাপ্লায়ার বা পার্টি নির্বাচন করুন —" : "— Select Supplier —"}</option>
-                {parties.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                {parties.filter(p => (p as any).type !== "customer" && !(p as any).is_customer).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
             </div>
             <div className="space-y-1">

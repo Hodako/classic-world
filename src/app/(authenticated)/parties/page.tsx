@@ -82,13 +82,16 @@ export default function PartiesPage() {
     return Math.max(payableTotal - settledTotal, 0);
   };
 
-  const totalPayable = (parties.data ?? []).filter(Boolean).reduce((sum, p) => {
+  const onlySuppliers = (parties.data ?? [])
+    .filter(Boolean)
+    .filter(p => (p as any).type !== "customer" && !(p as any).is_customer);
+
+  const totalPayable = onlySuppliers.reduce((sum, p) => {
     if (p.archived) return sum;
     return sum + getPartyPayable(p.id);
   }, 0);
 
-  const filtered = (parties.data ?? [])
-    .filter(Boolean)
+  const filtered = onlySuppliers
     .filter(p => {
       const matchesSearch = (p.name || "").toLowerCase().includes(search.toLowerCase()) || (p.phone ?? "").includes(search);
       const matchesTab = activeTab === "archived" ? p.archived === true : p.archived !== true;

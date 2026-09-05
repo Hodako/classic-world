@@ -33,7 +33,7 @@ async function requireSuperAdminSession() {
 // ─── Super Admin Auth ────────────────────────────────────────────────────────
 
 export async function superAdminLoginFn(input: { data: { username: string; password: string } }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   await ensureSuperAdmin();
   const db = await getDb();
   const admin = await db.collection("super_admins").findOne({ username: data.username });
@@ -62,7 +62,7 @@ export async function superAdminCheckFn() {
 }
 
 export async function generatePlatformLicenseFn(input: { data: { employeeLimit?: number; note?: string } }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   await requireSuperAdminSession();
   const db = await getDb();
   const key = generateLicenseKey("HZ");
@@ -279,7 +279,7 @@ export async function getPlatformActivitiesFn(): Promise<any[]> {
 }
 
 export async function suspendBusinessFn(input: { data: { businessId: string; suspend: boolean } }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   await requireSuperAdminSession();
   const db = await getDb();
   await db.collection("businesses").updateOne(
@@ -290,7 +290,7 @@ export async function suspendBusinessFn(input: { data: { businessId: string; sus
 }
 
 export async function deleteBusinessFn(input: { data: { businessId: string } }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   await requireSuperAdminSession();
   const db = await getDb();
 
@@ -318,7 +318,7 @@ export async function deleteBusinessFn(input: { data: { businessId: string } }) 
 // ─── User activation & licenses ──────────────────────────────────────────────
 
 export async function activateLicenseFn(input: { data: { licenseKey: string } }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   const session = await requireSession(false);
   if (session.activated) throw new Error("Already activated");
 
@@ -499,7 +499,7 @@ export async function updateBusinessSettingsFn(input: {
     [key: string]: any;
   };
 }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   const session = await requireSession();
   if (session.role !== "owner") throw new Error("Only business owner can change settings");
   const db = await getDb();
@@ -548,7 +548,7 @@ export async function updateBusinessSettingsFn(input: {
 }
 
 export async function createEmployeeLicenseFn(input: { data: { permissions?: PermissionSet } }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   const session = await requireSession();
   if (session.role !== "owner") throw new Error("Only owner can create employee licenses");
   const db = await getDb();
@@ -578,7 +578,7 @@ export async function createEmployeeLicenseFn(input: { data: { permissions?: Per
 }
 
 export async function updateEmployeePermissionsFn(input: { data: { employeeId: string; permissions: PermissionSet } }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   const session = await requireSession();
   if (session.role !== "owner") throw new Error("Only owner can update permissions");
   const db = await getDb();
@@ -590,7 +590,7 @@ export async function updateEmployeePermissionsFn(input: { data: { employeeId: s
 }
 
 export async function deleteLicenseFn(input: { data: { licenseKey: string } }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   const db = await getDb();
   const key = data.licenseKey.trim().toUpperCase();
   const license = await db.collection("licenses").findOne({ _id: key as any });
@@ -617,7 +617,7 @@ export async function deleteLicenseFn(input: { data: { licenseKey: string } }) {
 }
 
 export async function impersonateUserFn(input: { data: { userId: string } }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   await requireSuperAdminSession();
   const db = await getDb();
   const user = await db.collection("users").findOne({ _id: data.userId as any });
@@ -631,7 +631,7 @@ export async function impersonateUserFn(input: { data: { userId: string } }) {
 }
 
 export async function deleteUserFn(input: { data: { userId: string } }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   await requireSuperAdminSession();
   const db = await getDb();
 
@@ -654,7 +654,7 @@ export async function deleteUserFn(input: { data: { userId: string } }) {
 }
 
 export async function changeUserPasswordFn(input: { data: { userId: string; newPassword: string } }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   await requireSuperAdminSession();
   const cleanPass = data.newPassword.trim();
   if (!cleanPass || cleanPass.length < 6) {
@@ -675,7 +675,7 @@ export async function changeUserPasswordFn(input: { data: { userId: string; newP
 }
 
 export async function changeSuperAdminPasswordFn(input: { data: { currentPassword?: string; newPassword: string } }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   await requireSuperAdminSession();
   const cleanPass = data.newPassword.trim();
   if (!cleanPass || cleanPass.length < 6) {
@@ -701,7 +701,7 @@ export async function changeSuperAdminPasswordFn(input: { data: { currentPasswor
 }
 
 export async function resetSalesFn(input: { data: { businessId: string } }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   await requireSuperAdminSession();
   const db = await getDb();
   const biz = await db.collection("businesses").findOne({ _id: data.businessId as any });
@@ -716,7 +716,7 @@ export async function resetSalesFn(input: { data: { businessId: string } }) {
 }
 
 export async function resetSomitiFn(input: { data: { businessId: string } }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   await requireSuperAdminSession();
   const db = await getDb();
   const biz = await db.collection("businesses").findOne({ _id: data.businessId as any });
@@ -729,7 +729,7 @@ export async function resetSomitiFn(input: { data: { businessId: string } }) {
 }
 
 export async function resetExpensesFn(input: { data: { businessId: string } }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   await requireSuperAdminSession();
   const db = await getDb();
   const biz = await db.collection("businesses").findOne({ _id: data.businessId as any });
@@ -752,7 +752,7 @@ export async function refillBusinessSmsFn(input: {
     note?: string;
   };
 }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   await requireSuperAdminSession();
   const db = await getDb();
 
@@ -805,7 +805,7 @@ export async function freezeBusinessFn(input: {
     subscription_expires_at?: string;
   };
 }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   await requireSuperAdminSession();
   const db = await getDb();
 
@@ -849,7 +849,7 @@ export async function setBusinessLimitsFn(input: {
     subscription_expires_at?: string;
   };
 }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   await requireSuperAdminSession();
   const db = await getDb();
 
@@ -885,7 +885,7 @@ export async function createAdminPopupFn(input: {
     expires_at?: string;
   };
 }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   await requireSuperAdminSession();
   const db = await getDb();
 
@@ -919,7 +919,7 @@ export async function listAdminPopupsFn(): Promise<any[]> {
 }
 
 export async function deleteAdminPopupFn(input: { data: { popupId: string } }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   await requireSuperAdminSession();
   const db = await getDb();
   await db.collection("admin_popups").deleteOne({ _id: data.popupId as any });
@@ -949,7 +949,7 @@ export async function updateMasterSmsSettingsFn(input: {
     adminWhatsapp?: string;
   };
 }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   await requireSuperAdminSession();
   const db = await getDb();
 
@@ -977,7 +977,7 @@ export async function directSendSmsAsAdminFn(input: {
     routeType?: "T" | "P";
   };
 }) {
-  const { data } = input;
+  const { data = {} }: any = input ?? {};
   await requireSuperAdminSession();
   const db = await getDb();
 

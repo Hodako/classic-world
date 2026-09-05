@@ -80,9 +80,10 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <head>
+      <body className="antialiased site-bg text-foreground min-h-screen relative overflow-x-hidden" suppressHydrationWarning>
         <script
           id="theme-initializer"
+          suppressHydrationWarning
           dangerouslySetInnerHTML={{
             __html: `
               (function() {
@@ -100,13 +101,11 @@ export default function RootLayout({
                   var isDark = mode === 'dark' || (mode === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
                   var cfg = accents[accent] || accents.mechanix;
                   var val = isDark ? cfg.dark : cfg.light;
-                  var st = document.getElementById('theme-init-style');
-                  if (!st) {
-                    st = document.createElement('style');
-                    st.id = 'theme-init-style';
-                    document.head.appendChild(st);
-                  }
-                  st.textContent = ':root { --primary: ' + val + '; --ring: ' + val + '; --loader-color: ' + val + '; --sidebar-primary: ' + val + '; }';
+                  var root = document.documentElement;
+                  root.style.setProperty('--primary', val);
+                  root.style.setProperty('--ring', val);
+                  root.style.setProperty('--loader-color', val);
+                  root.style.setProperty('--sidebar-primary', val);
                 } catch (e) {}
 
                 // Register PWA Service Worker with cache-busting for phone browsers & standalone mode
@@ -121,8 +120,6 @@ export default function RootLayout({
             `,
           }}
         />
-      </head>
-      <body className="antialiased site-bg text-foreground min-h-screen relative overflow-x-hidden" suppressHydrationWarning>
         <div className="content relative z-10 w-full min-h-screen" suppressHydrationWarning>
           <Providers>
             {children}

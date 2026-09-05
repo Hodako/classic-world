@@ -100,15 +100,17 @@ export default function SmsPage() {
     queryFn: () => getSmsLogsFn(),
   });
 
-  const { data: customers = [] } = useQuery({
+  const { data: rawCustomers = [] } = useQuery({
     queryKey: ["customers"],
     queryFn: () => getCustomers(),
   });
+  const customers = rawCustomers.filter((c: any) => c.type !== "supplier" && !c.is_supplier);
 
-  const { data: parties = [] } = useQuery({
+  const { data: rawParties = [] } = useQuery({
     queryKey: ["parties"],
     queryFn: () => getParties(),
   });
+  const parties = rawParties.filter((p: any) => p.type !== "customer" && !p.is_customer);
 
   const { data: sales = [] } = useQuery({
     queryKey: ["sales"],

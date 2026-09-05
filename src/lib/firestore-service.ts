@@ -229,6 +229,9 @@ export async function fsCreateSale(data: any) {
     return_qty: 0,
     note: data.note || null,
     cart_id: data.cart_id || null,
+    split_cash: data.split_cash !== undefined ? Number(data.split_cash) : undefined,
+    split_bkash: data.split_bkash !== undefined ? Number(data.split_bkash) : undefined,
+    split_bank: data.split_bank !== undefined ? Number(data.split_bank) : undefined,
     created_at: Timestamp.now(),
   };
 
@@ -249,12 +252,25 @@ export async function fsCreateSale(data: any) {
 
   // 2. Cashbox log if cash payment
   const isDirectPayment = data.type === "cash" || data.type === "nagad" || data.type === "card" || data.type === "pos";
-  const isDigitalPending = data.type === "bkash" || data.type === "bank";
+  const hasDigitalSplit = data.type === "split" && ((Number(data.split_bkash) || 0) > 0 || (Number(data.split_bank) || 0) > 0);
+  const isDigitalPending = data.type === "bkash" || data.type === "bank" || hasDigitalSplit;
   const isOnline = data.type === "online";
-  const cashReceived = (isOnline || isDigitalPending) ? 0 : (isDirectPayment ? (paidAmount || (sellPrice * qty - discount)) : paidAmount);
+  const cashReceived = isOnline
+    ? 0
+    : data.type === "split"
+    ? (Number(data.split_cash) || 0)
+    : isDigitalPending
+    ? 0
+    : isDirectPayment
+    ? (paidAmount || (sellPrice * qty - discount))
+    : paidAmount;
+
   if (cashReceived > 0) {
     try {
-      const methodTag = data.type ? ` [Paid by ${data.type.toUpperCase()}]` : "";
+      let methodTag = data.type ? ` [Paid by ${data.type.toUpperCase()}]` : "";
+      if (data.type === "split") {
+        methodTag = ` [Split Cash: ৳${Number(data.split_cash) || 0}, bKash: ৳${Number(data.split_bkash) || 0}]`;
+      }
       await addDoc(collection(db, "cashbox_logs"), {
         kind: "sale",
         amount: cashReceived,
@@ -298,7 +314,19 @@ export async function fsAcceptDigitalPayment(id: string) {
   const snap = await getDoc(docRef);
   if (!snap.exists()) throw new Error("Sale not found");
   const s = snap.data();
-  const total = Number(s.paid_amount) || Number(s.sell_price) || (Number(s.qty) * Number(s.buy_price) + Number(s.profit));
+  if (s.payment_status === "accepted" || s.payment_accepted) return { success: true, id };
+
+  let stuckAmount = 0;
+  if (s.type === "split") {
+    const digitalSplit = (Number(s.split_bkash) || 0) + (Number(s.split_bank) || 0);
+    if (digitalSplit > 0) {
+      stuckAmount = digitalSplit;
+    } else {
+      stuckAmount = Math.max(0, (Number(s.paid_amount) || Number(s.sell_price) || 0) - (Number(s.split_cash) || 0));
+    }
+  } else {
+    stuckAmount = Number(s.paid_amount) || Number(s.sell_price) || (Number(s.qty) * Number(s.buy_price) + Number(s.profit)) || 0;
+  }
 
   await updateDoc(docRef, {
     payment_status: "accepted",
@@ -306,17 +334,23 @@ export async function fsAcceptDigitalPayment(id: string) {
     accepted_at: Timestamp.now(),
   });
 
-  // Credit Cashbox
-  try {
-    await addDoc(collection(db, "cashbox_logs"), {
-      kind: "sale",
-      amount: total,
-      note: `Digital Payment Received [${(s.type || "bkash").toUpperCase()}]: ${s.product_name || "Item"} (INV-${id.slice(-6).toUpperCase()})`,
-      ref_id: id,
-      created_at: Timestamp.now(),
-    });
-  } catch (err) {
-    console.warn("Cashbox digital payment log skipped:", err);
+  // Credit Cashbox only with the stuck amount
+  if (stuckAmount > 0) {
+    try {
+      const digitalMethod = s.type === "split"
+        ? (Number(s.split_bkash) > 0 && Number(s.split_bank) > 0 ? "BKASH+BANK" : Number(s.split_bkash) > 0 ? "BKASH" : Number(s.split_bank) > 0 ? "BANK" : "DIGITAL")
+        : (s.type || "bkash").toUpperCase();
+
+      await addDoc(collection(db, "cashbox_logs"), {
+        kind: "sale",
+        amount: stuckAmount,
+        note: `Digital Payment Received [${digitalMethod}]: ${s.product_name || "Item"} (INV-${id.slice(-6).toUpperCase()})`,
+        ref_id: id,
+        created_at: Timestamp.now(),
+      });
+    } catch (err) {
+      console.warn("Cashbox digital payment log skipped:", err);
+    }
   }
 
   return { success: true, id };
@@ -889,11 +923,14 @@ export async function fsDeleteSomiti(id: string) {
   return { success: true, id };
 }
 
-// ── Parties ──────────────────────────────────────────────────────────────────
+// ── Parties (Suppliers) ──────────────────────────────────────────────────────
 export async function fsGetParties() {
   try {
     const snap = await getDocs(collection(db, "parties"));
-    return snap.docs.map(docToData);
+    return snap.docs
+      .map(docToData)
+      .filter((p: any) => p.type !== "customer" && !p.is_customer)
+      .map((p: any) => ({ ...p, type: "supplier", is_supplier: true }));
   } catch (err) {
     return [];
   }
@@ -904,14 +941,16 @@ export async function fsCreateParty(data: any) {
     name: data.name || "",
     phone: data.phone || null,
     address: data.address || null,
+    type: "supplier",
+    is_supplier: true,
     archived: false,
     created_at: Timestamp.now(),
   });
-  return { success: true, id: docRef.id };
+  return { success: true, id: docRef.id, type: "supplier", is_supplier: true };
 }
 
 export async function fsUpdateParty(id: string, data: any) {
-  await updateDoc(doc(db, "parties", id), data);
+  await updateDoc(doc(db, "parties", id), { ...data, type: "supplier", is_supplier: true });
   return { success: true, id };
 }
 
@@ -925,7 +964,10 @@ export async function fsDeleteParty(id: string) {
 export async function fsGetCustomers() {
   try {
     const snap = await getDocs(collection(db, "customers"));
-    return snap.docs.map(docToData);
+    return snap.docs
+      .map(docToData)
+      .filter((c: any) => c.type !== "supplier" && !c.is_supplier)
+      .map((c: any) => ({ ...c, type: "customer", is_customer: true }));
   } catch (err) {
     return [];
   }
@@ -936,10 +978,12 @@ export async function fsCreateCustomer(data: any) {
     name: data.name || "",
     phone: data.phone || null,
     address: data.address || null,
+    type: "customer",
+    is_customer: true,
     archived: false,
     created_at: Timestamp.now(),
   });
-  return { success: true, id: docRef.id };
+  return { success: true, id: docRef.id, type: "customer", is_customer: true };
 }
 
 export async function fsUpdateCustomer(id: string, data: any) {

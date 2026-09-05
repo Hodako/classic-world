@@ -720,7 +720,7 @@ export default function InvoicePage() {
                   <SelectContent>
                     <SelectItem value="walk-in">{t("walk_in_customer")}</SelectItem>
                     {customers
-                      .filter((c) => !(c as any).archived)
+                      .filter((c) => !(c as any).archived && (c as any).type !== "supplier" && !(c as any).is_supplier)
                       .map((c) => (
                         <SelectItem key={c.id} value={c.id}>
                           {c.name} ({c.phone || "No phone"})

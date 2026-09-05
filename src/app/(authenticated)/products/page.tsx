@@ -115,7 +115,7 @@ export default function ProductsPage() {
   const [sellBusy, setSellBusy] = useState(false);
 
   const customersQuery = useCachedQuery(["customers"], getCustomers);
-  const customers = customersQuery.data ?? [];
+  const customers = (customersQuery.data ?? []).filter((c: any) => c.type !== "supplier" && !c.is_supplier);
 
   async function handleCompleteDirectSell() {
     if (sellCart.length === 0) return;

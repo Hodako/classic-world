@@ -274,8 +274,85 @@ async function runWriteAction<T>(actionName: string, args: any = {}): Promise<T 
   }
 }
 
+async function runReadAction(name: string, args: any = {}): Promise<any> {
+  const safeArgs = args ?? {};
+  try {
+    const res = await callRemoteRpc(name, safeArgs);
+    if (Array.isArray(res) && res.length === 0 && typeof window !== "undefined") {
+      if (name === "getOwnerWalletFn") {
+        try {
+          const { fsGetOwnerWallet } = await import("@/lib/firestore-service");
+          const fsData = await fsGetOwnerWallet();
+          if (Array.isArray(fsData) && fsData.length > 0) return fsData;
+        } catch (_) {}
+      }
+    }
+    return res;
+  } catch (err: any) {
+    if (typeof window !== "undefined") {
+      try {
+        if (name === "getOwnerWalletFn") {
+          const { fsGetOwnerWallet } = await import("@/lib/firestore-service");
+          return await fsGetOwnerWallet();
+        }
+        if (name === "getExpensesFn") {
+          const { fsGetExpenses } = await import("@/lib/firestore-service");
+          return await fsGetExpenses();
+        }
+        if (name === "getSalesFn") {
+          const { fsGetSales } = await import("@/lib/firestore-service");
+          return await fsGetSales();
+        }
+        if (name === "getPurchasesFn") {
+          const { fsGetPurchases } = await import("@/lib/firestore-service");
+          return await fsGetPurchases();
+        }
+        if (name === "getCashboxFn") {
+          const { fsGetCashbox } = await import("@/lib/firestore-service");
+          return await fsGetCashbox();
+        }
+        if (name === "getWithdrawalsFn") {
+          const { fsGetWithdrawals } = await import("@/lib/firestore-service");
+          return await fsGetWithdrawals();
+        }
+        if (name === "getSomitiFn") {
+          const { fsGetSomiti } = await import("@/lib/firestore-service");
+          return await fsGetSomiti();
+        }
+        if (name === "getPartiesFn") {
+          const { fsGetParties } = await import("@/lib/firestore-service");
+          return await fsGetParties();
+        }
+        if (name === "getCustomersFn") {
+          const { fsGetCustomers } = await import("@/lib/firestore-service");
+          return await fsGetCustomers();
+        }
+        if (name === "getAllPaymentsFn") {
+          const { fsGetAllPayments } = await import("@/lib/firestore-service");
+          return await fsGetAllPayments();
+        }
+        if (name === "getReturnsFn") {
+          const { fsGetReturns } = await import("@/lib/firestore-service");
+          return await fsGetReturns();
+        }
+        if (name === "getRemindersFn") {
+          const { fsGetReminders } = await import("@/lib/firestore-service");
+          return await fsGetReminders();
+        }
+        if (name === "getProductsFn") {
+          const { fsGetProducts } = await import("@/lib/firestore-service");
+          return await fsGetProducts();
+        }
+      } catch (fsErr) {
+        console.warn(`Firestore read fallback error for ${name}:`, fsErr);
+      }
+    }
+    throw err;
+  }
+}
+
 // Action factories
-const makeReadAction = (name: string) => (args: any = {}) => callRemoteRpc(name, args ?? {});
+const makeReadAction = (name: string) => (args: any = {}) => runReadAction(name, args ?? {});
 const makeWriteAction = (name: string) => (args: any = {}) => runWriteAction(name, args ?? {});
 
 // ─── Export READS ────────────────────────────────────────────────────────────

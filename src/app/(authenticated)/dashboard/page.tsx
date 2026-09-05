@@ -56,6 +56,15 @@ function dayLabel(dateStr: string) {
   return new Date(dateStr).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
+function parseDateRobust(val: any): Date | null {
+  if (!val) return null;
+  if (typeof val?.toDate === "function") return val.toDate();
+  if (typeof val?.seconds === "number") return new Date(val.seconds * 1000);
+  if (typeof val?._seconds === "number") return new Date(val._seconds * 1000);
+  const d = new Date(val);
+  return isNaN(d.getTime()) ? null : d;
+}
+
 function groupAllDataByDay(sales: any[], expenses: any[], days: number, ownerWalletEntries?: any[]) {
   const result: Record<string, { date: string; sales: number; profit: number; expenses: number; rawDate: string }> = {};
   
@@ -71,8 +80,8 @@ function groupAllDataByDay(sales: any[], expenses: any[], days: number, ownerWal
   // Populate sales and profit
   for (const s of sales || []) {
     if (s.returned) continue;
-    if (!s.created_at) continue;
-    const sDate = new Date(s.created_at);
+    const sDate = parseDateRobust(s.created_at || s.date);
+    if (!sDate) continue;
     const key = sDate.toLocaleDateString("en-CA");
     if (result[key]) {
       const saleVal = (Number(s.sell_price) || 0) * (Number(s.qty) || 1);
@@ -83,8 +92,8 @@ function groupAllDataByDay(sales: any[], expenses: any[], days: number, ownerWal
 
   // Populate expenses
   for (const e of expenses || []) {
-    if (!e.created_at) continue;
-    const eDate = new Date(e.created_at);
+    const eDate = parseDateRobust(e.created_at || e.date);
+    if (!eDate) continue;
     const key = eDate.toLocaleDateString("en-CA");
     if (result[key]) {
       result[key].expenses += Number(e.amount) || 0;
@@ -92,14 +101,36 @@ function groupAllDataByDay(sales: any[], expenses: any[], days: number, ownerWal
   }
 
   // Deduct owner personal expenses marked to cut from profit
+  const seenOwnerIds = new Set<string>();
   for (const w of ownerWalletEntries || []) {
     if (w.cut_from_profit === false) continue;
-    const wDateStr = w.created_at || w.date;
-    if (!wDateStr) continue;
-    const wDate = new Date(wDateStr);
+    const wDate = parseDateRobust(w.created_at || w.date);
+    if (!wDate) continue;
     const key = wDate.toLocaleDateString("en-CA");
     if (result[key]) {
       result[key].profit -= Number(w.amount) || 0;
+      seenOwnerIds.add(w.id);
+    }
+  }
+
+  // Also deduct any mirrored/orphan owner personal expenses from expenses list if not already deducted
+  for (const e of expenses || []) {
+    const isOwnerExp = 
+      e.category === "owner_personal" || 
+      (e.note && e.note.includes("Owner Wallet ID:")) ||
+      (e.title && e.title.includes("[মালিকের খরচ]"));
+    if (!isOwnerExp) continue;
+
+    const match = e.note?.match(/Owner Wallet ID:\s*([a-zA-Z0-9_-]+)/);
+    const linkedId = match ? match[1] : null;
+    if (linkedId && seenOwnerIds.has(linkedId)) continue;
+
+    const eDate = parseDateRobust(e.created_at || e.date);
+    if (!eDate) continue;
+    const key = eDate.toLocaleDateString("en-CA");
+    if (result[key]) {
+      result[key].profit -= Number(e.amount) || 0;
+      if (linkedId) seenOwnerIds.add(linkedId);
     }
   }
 
@@ -526,6 +557,7 @@ export default function Dashboard() {
     if (!val) return null;
     if (typeof val?.toDate === "function") return val.toDate();
     if (typeof val?.seconds === "number") return new Date(val.seconds * 1000);
+    if (typeof val?._seconds === "number") return new Date(val._seconds * 1000);
     const d = new Date(val);
     return isNaN(d.getTime()) ? null : d;
   };
@@ -1009,20 +1041,19 @@ export default function Dashboard() {
     .reduce((sum, r) => sum + Number(r.profit_adjustment || 0), 0);
   const ownerExpensesFiltered = useMemo(() => {
     const allW = [...(ownerWallet.data || []), ...(withdrawals.data || [])];
+    const now = new Date();
+    const todayStr = now.toLocaleDateString("en-CA");
+
     if (!dateFilter.from && !dateFilter.to) {
-      const now = new Date();
-      const todayYear = now.getFullYear();
-      const todayMonth = now.getMonth();
-      const todayDate = now.getDate();
       return allW.filter((w: any) => {
         const d = parseDate(w.created_at || w.date);
-        return d ? (d.getFullYear() === todayYear && d.getMonth() === todayMonth && d.getDate() === todayDate) : false;
+        return d ? d.toLocaleDateString("en-CA") === todayStr : false;
       });
     }
     return allW.filter((w: any) => {
       const d = parseDate(w.created_at || w.date);
       if (!d) return false;
-      const dStr = d.toISOString().slice(0, 10);
+      const dStr = d.toLocaleDateString("en-CA");
       if (dateFilter.from && dStr < dateFilter.from) return false;
       if (dateFilter.to && dStr > dateFilter.to) return false;
       return true;
@@ -1032,10 +1063,34 @@ export default function Dashboard() {
   const ownerExpenseTotal = ownerExpensesFiltered.reduce((sum: number, w: any) => sum + (Number(w.amount) || 0), 0);
 
   const ownerExpensesToCutFromProfit = useMemo(() => {
-    return ownerExpensesFiltered
-      .filter((w: any) => w.cut_from_profit !== false)
-      .reduce((sum: number, w: any) => sum + (Number(w.amount) || 0), 0);
-  }, [ownerExpensesFiltered]);
+    const seenIds = new Set<string>();
+    let total = 0;
+
+    for (const w of ownerExpensesFiltered) {
+      if (w.cut_from_profit !== false) {
+        total += Number(w.amount || 0);
+        seenIds.add(w.id);
+      }
+    }
+
+    // Include any orphan/mirrored owner personal expenses from filteredExpenses
+    for (const e of filteredExpenses) {
+      const isOwnerExp = 
+        e.category === "owner_personal" || 
+        (e.note && e.note.includes("Owner Wallet ID:")) ||
+        (e.title && e.title.includes("[মালিকের খরচ]"));
+      if (isOwnerExp) {
+        const match = e.note?.match(/Owner Wallet ID:\s*([a-zA-Z0-9_-]+)/);
+        const linkedId = match ? match[1] : null;
+        if (!linkedId || !seenIds.has(linkedId)) {
+          total += Number(e.amount || 0);
+          if (linkedId) seenIds.add(linkedId);
+        }
+      }
+    }
+
+    return total;
+  }, [ownerExpensesFiltered, filteredExpenses]);
 
   const grossProfitToday = validFilteredSales.reduce((a, s) => a + calcSaleProfit(s), 0) + returnProfitAdj;
   const profitToday = grossProfitToday - ownerExpensesToCutFromProfit;

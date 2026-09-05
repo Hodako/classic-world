@@ -83,6 +83,7 @@ export default function OwnersWalletPage() {
     if (!val) return null;
     if (typeof val?.toDate === "function") return val.toDate();
     if (typeof val?.seconds === "number") return new Date(val.seconds * 1000);
+    if (typeof val?._seconds === "number") return new Date(val._seconds * 1000);
     const d = new Date(val);
     return isNaN(d.getTime()) ? null : d;
   }
@@ -168,12 +169,23 @@ export default function OwnersWalletPage() {
 
     setBusy(true);
     try {
+      const now = new Date();
+      const todayDateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+      let createdAtIso: string;
+      if (entryDate === todayDateStr) {
+        createdAtIso = now.toISOString();
+      } else {
+        const [y, m, d] = entryDate.split("-").map(Number);
+        const customDate = new Date(y, m - 1, d, now.getHours(), now.getMinutes(), now.getSeconds());
+        createdAtIso = customDate.toISOString();
+      }
+
       await createOwnerWalletEntryFn({
         data: {
           amount: num,
           category,
           note: note.trim() || null,
-          created_at: new Date(entryDate).toISOString(),
+          created_at: createdAtIso,
           cut_from_profit: cutFromProfit,
         },
       });

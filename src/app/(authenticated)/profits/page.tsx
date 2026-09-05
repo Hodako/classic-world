@@ -28,54 +28,50 @@ function inRange(dateInput: any, range: Range, from?: string, to?: string) {
   let d: Date;
   if (typeof dateInput?.toDate === "function") {
     d = dateInput.toDate();
-  } else if (dateInput?.seconds !== undefined) {
+  } else if (typeof dateInput?.seconds === "number") {
     d = new Date(dateInput.seconds * 1000);
+  } else if (typeof dateInput?._seconds === "number") {
+    d = new Date(dateInput._seconds * 1000);
   } else {
     d = new Date(dateInput);
   }
   if (isNaN(d.getTime())) return false;
 
-  if (from) {
-    const fromBoundary = new Date(`${from}T00:00:00`);
-    if (d < fromBoundary) return false;
-  }
-  if (to) {
-    const toBoundary = new Date(`${to}T23:59:59.999`);
-    if (d > toBoundary) return false;
-  }
+  const dStr = d.toLocaleDateString("en-CA"); // Local calendar YYYY-MM-DD
+
+  if (from && dStr < from) return false;
+  if (to && dStr > to) return false;
   if (from || to) return true;
 
   const now = new Date();
+  const todayStr = now.toLocaleDateString("en-CA");
+
   if (range === "today") {
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
-    const tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 0);
-    return d >= today && d < tomorrow;
+    return dStr === todayStr;
   }
   if (range === "yesterday") {
-    const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 0, 0, 0);
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
-    return d >= yesterday && d < today;
+    const yDate = new Date(now);
+    yDate.setDate(yDate.getDate() - 1);
+    return dStr === yDate.toLocaleDateString("en-CA");
   }
   if (range === "week") {
-    const startOfWeek = new Date(now);
-    startOfWeek.setDate(now.getDate() - 7);
-    startOfWeek.setHours(0, 0, 0, 0);
-    return d >= startOfWeek;
+    const weekStart = new Date(now);
+    weekStart.setDate(now.getDate() - 6);
+    return dStr >= weekStart.toLocaleDateString("en-CA") && dStr <= todayStr;
   }
   if (range === "this_month") {
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0);
-    return d >= startOfMonth;
+    const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
+    return dStr >= monthStart && dStr <= todayStr;
   }
   if (range === "last_month") {
-    const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1, 0, 0, 0);
-    const endOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999);
-    return d >= startOfLastMonth && d <= endOfLastMonth;
+    const lastMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const lastMonthPrefix = `${lastMonthDate.getFullYear()}-${String(lastMonthDate.getMonth() + 1).padStart(2, "0")}`;
+    return dStr.startsWith(lastMonthPrefix);
   }
   if (range === "month") {
     const startOf30Days = new Date(now);
     startOf30Days.setDate(now.getDate() - 30);
-    startOf30Days.setHours(0, 0, 0, 0);
-    return d >= startOf30Days;
+    return dStr >= startOf30Days.toLocaleDateString("en-CA") && dStr <= todayStr;
   }
   return true;
 }
@@ -103,25 +99,30 @@ export default function ProfitPage() {
   );
 
   const filteredExpenses = useMemo(
-    () => (expenses.data ?? []).filter(e => inRange(e.created_at, range, from, to)),
+    () => (expenses.data ?? []).filter(e => inRange(e.created_at || (e as any).date, range, from, to)),
     [expenses.data, range, from, to],
   );
 
   const filteredReturns = useMemo(
-    () => (returns.data ?? []).filter(r => inRange(r.created_at, range, from, to)),
+    () => (returns.data ?? []).filter(r => inRange(r.created_at || (r as any).date || (r as any).return_date, range, from, to)),
     [returns.data, range, from, to],
   );
 
   const filteredOwnerExpenses = useMemo(
-    () => (ownerWallet.data ?? []).filter(w => inRange(w.created_at, range, from, to)),
+    () => (ownerWallet.data ?? []).filter(w => inRange(w.created_at || (w as any).date, range, from, to)),
     [ownerWallet.data, range, from, to],
   );
 
   // Pure shop overhead expenses (excluding any mirrored owner personal expenses)
   const overheadExpenses = useMemo(() => {
-    return filteredExpenses.filter(
-      e => e.category !== "owner_personal" && !(e.note && e.note.includes("Owner Wallet ID:"))
-    );
+    return filteredExpenses.filter(e => {
+      const isOwner = 
+        e.category === "owner_personal" ||
+        e.category === "personal" ||
+        (e.note && e.note.includes("Owner Wallet ID:")) ||
+        (e.title && e.title.includes("[মালিকের খরচ]"));
+      return !isOwner;
+    });
   }, [filteredExpenses]);
 
   // Owner personal expenses marked to cut from profit (deduplication protected)
@@ -136,15 +137,19 @@ export default function ProfitPage() {
           amount: Number(w.amount || 0),
           note: w.note,
           category: w.category || null,
-          created_at: w.created_at,
+          created_at: w.created_at || (w as any).date,
         });
         seenIds.add(w.id);
       }
     }
 
-    // Include any orphan owner_personal expenses from expenses table not linked to known owner wallet id
+    // Include any orphan/mirrored owner_personal expenses from expenses table not linked to known owner wallet id
     for (const e of filteredExpenses) {
-      if (e.category === "owner_personal" || (e.note && e.note.includes("Owner Wallet ID:"))) {
+      const isOwner = 
+        e.category === "owner_personal" ||
+        (e.note && e.note.includes("Owner Wallet ID:")) ||
+        (e.title && e.title.includes("[মালিকের খরচ]"));
+      if (isOwner) {
         const match = e.note?.match(/Owner Wallet ID:\s*([a-zA-Z0-9_-]+)/);
         const linkedId = match ? match[1] : null;
         if (!linkedId || !seenIds.has(linkedId)) {
@@ -153,8 +158,9 @@ export default function ProfitPage() {
             amount: Number(e.amount || 0),
             note: e.note || e.title,
             category: "personal",
-            created_at: e.created_at,
+            created_at: e.created_at || (e as any).date,
           });
+          if (linkedId) seenIds.add(linkedId);
         }
       }
     }

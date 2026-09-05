@@ -21,11 +21,15 @@ import * as jose from "jose";
 
 // Helper to convert Firestore documents into clean JSON objects
 function docToData<T = any>(docSnap: any): T {
-  const data = docSnap.data();
+  const data = docSnap.data() || {};
   let createdAtStr = new Date().toISOString();
 
-  if (data?.created_at?.toDate) {
+  if (data?.created_at?.toDate && typeof data.created_at.toDate === "function") {
     createdAtStr = data.created_at.toDate().toISOString();
+  } else if (typeof data?.created_at?.seconds === "number") {
+    createdAtStr = new Date(data.created_at.seconds * 1000).toISOString();
+  } else if (typeof data?.created_at?._seconds === "number") {
+    createdAtStr = new Date(data.created_at._seconds * 1000).toISOString();
   } else if (typeof data?.created_at === "string") {
     createdAtStr = data.created_at;
   }
@@ -853,15 +857,21 @@ export async function fsUpdateOwnerWalletEntry(id: string, data: any) {
   const amount = Number(data.amount) || 0;
   const category = data.category || "personal";
   const note = data.note || "";
+  const cutFromProfit = data.cut_from_profit !== undefined ? data.cut_from_profit !== false : undefined;
   const catLabel = category === "family" ? "পরিবার খরচ" : category === "bazar" ? "বাজার খরচ" : category === "home_rent" ? "বাসা ভাড়া" : category === "medical" ? "চিকিৎসা" : "ব্যক্তিগত";
   const title = `[মালিকের খরচ] ${catLabel}: ${note || "ব্যক্তিগত উত্তোলন"}`;
 
-  await updateDoc(doc(db, "owner_wallet", id), {
+  const updates: any = {
     amount,
     category,
     note: note || null,
     updated_at: Timestamp.now(),
-  });
+  };
+  if (cutFromProfit !== undefined) {
+    updates.cut_from_profit = cutFromProfit;
+  }
+
+  await updateDoc(doc(db, "owner_wallet", id), updates);
 
   try {
     const cbSnap = await getDocs(query(collection(db, "cashbox_logs"), where("ref_id", "==", id)));
@@ -869,13 +879,29 @@ export async function fsUpdateOwnerWalletEntry(id: string, data: any) {
       await updateDoc(d.ref, { amount, note: title });
     }
   } catch (_) {}
+
   try {
     const expSnap = await getDocs(query(collection(db, "expenses"), where("category", "==", "owner_personal")));
+    let found = false;
     for (const d of expSnap.docs) {
       const dData = d.data();
       if (dData.note?.includes(id)) {
-        await updateDoc(d.ref, { amount, title, note: `Owner Wallet ID: ${id} - ${note}` });
+        found = true;
+        if (cutFromProfit === false) {
+          await deleteDoc(d.ref);
+        } else {
+          await updateDoc(d.ref, { amount, title, note: `Owner Wallet ID: ${id} - ${note}` });
+        }
       }
+    }
+    if (!found && cutFromProfit === true && amount > 0) {
+      await addDoc(collection(db, "expenses"), {
+        title,
+        amount,
+        category: "owner_personal",
+        note: `Owner Wallet ID: ${id} - ${note}`,
+        created_at: Timestamp.now(),
+      });
     }
   } catch (_) {}
 

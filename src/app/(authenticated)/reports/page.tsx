@@ -230,7 +230,10 @@ export default function ReportsGeneratorPage() {
   const nonProductExpenses = useMemo(() => {
     return filteredExpenses.filter(e => {
       const isProductExp = e.category === "purchase" || e.title?.startsWith("Product Purchase:") || e.note?.includes("Purchased");
-      const isOwnerPersonalExp = e.category === "owner_personal" || e.note?.includes("Owner Wallet ID:");
+      const isOwnerPersonalExp = 
+        e.category === "owner_personal" || 
+        (e.note && e.note.includes("Owner Wallet ID:")) ||
+        (e.title && e.title.includes("[মালিকের খরচ]"));
       return !isProductExp && !isOwnerPersonalExp;
     }).reduce((a, e) => a + Number(e.amount || 0), 0);
   }, [filteredExpenses]);
@@ -246,11 +249,16 @@ export default function ReportsGeneratorPage() {
       }
     }
     for (const e of filteredExpenses) {
-      if (e.category === "owner_personal" || (e.note && e.note.includes("Owner Wallet ID:"))) {
+      const isOwnerPersonalExp = 
+        e.category === "owner_personal" || 
+        (e.note && e.note.includes("Owner Wallet ID:")) ||
+        (e.title && e.title.includes("[মালিকের খরচ]"));
+      if (isOwnerPersonalExp) {
         const match = e.note?.match(/Owner Wallet ID:\s*([a-zA-Z0-9_-]+)/);
         const linkedId = match ? match[1] : null;
         if (!linkedId || !seenIds.has(linkedId)) {
           total += Number(e.amount || 0);
+          if (linkedId) seenIds.add(linkedId);
         }
       }
     }

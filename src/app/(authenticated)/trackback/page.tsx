@@ -28,20 +28,37 @@ import {
 
 type Range = "today" | "week" | "month" | "all";
 
-function startOfRange(range: Range) {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  if (range === "week") d.setDate(d.getDate() - 7);
-  if (range === "month") d.setDate(d.getDate() - 30);
-  if (range === "all") return new Date(0);
-  return d;
+function parseDateRobust(val: any): Date | null {
+  if (!val) return null;
+  if (typeof val?.toDate === "function") return val.toDate();
+  if (typeof val?.seconds === "number") return new Date(val.seconds * 1000);
+  if (typeof val?._seconds === "number") return new Date(val._seconds * 1000);
+  const d = new Date(val);
+  return isNaN(d.getTime()) ? null : d;
 }
 
-function inRange(dateStr: string, range: Range, from?: string, to?: string) {
-  const d = new Date(dateStr);
-  if (from && d < new Date(from)) return false;
-  if (to && d > new Date(to + "T23:59:59")) return false;
-  return d >= startOfRange(range);
+function inRange(dateInput: any, range: Range, from?: string, to?: string) {
+  const d = parseDateRobust(dateInput);
+  if (!d) return false;
+  const dStr = d.toLocaleDateString("en-CA");
+  if (from && dStr < from) return false;
+  if (to && dStr > to) return false;
+  if (from || to) return true;
+
+  const now = new Date();
+  const todayStr = now.toLocaleDateString("en-CA");
+  if (range === "today") return dStr === todayStr;
+  if (range === "week") {
+    const weekStart = new Date(now);
+    weekStart.setDate(now.getDate() - 6);
+    return dStr >= weekStart.toLocaleDateString("en-CA") && dStr <= todayStr;
+  }
+  if (range === "month") {
+    const monthStart = new Date(now);
+    monthStart.setDate(now.getDate() - 30);
+    return dStr >= monthStart.toLocaleDateString("en-CA") && dStr <= todayStr;
+  }
+  return true;
 }
 
 export default function TrackbackPage() {
@@ -195,9 +212,14 @@ export default function TrackbackPage() {
   );
 
   const overheadExpenses = useMemo(() => {
-    return filteredExpenses.filter(
-      e => e.category !== "owner_personal" && !(e.note && e.note.includes("Owner Wallet ID:"))
-    );
+    return filteredExpenses.filter(e => {
+      const isOwner = 
+        e.category === "owner_personal" || 
+        e.category === "personal" ||
+        (e.note && e.note.includes("Owner Wallet ID:")) ||
+        (e.title && e.title.includes("[মালিকের খরচ]"));
+      return !isOwner;
+    });
   }, [filteredExpenses]);
 
   const ownerExpensesToDeduct = useMemo(() => {
@@ -210,14 +232,18 @@ export default function TrackbackPage() {
           id: w.id,
           amount: Number(w.amount || 0),
           note: w.note,
-          created_at: w.created_at,
+          created_at: w.created_at || (w as any).date,
         });
         seenIds.add(w.id);
       }
     }
 
     for (const e of filteredExpenses) {
-      if (e.category === "owner_personal" || (e.note && e.note.includes("Owner Wallet ID:"))) {
+      const isOwner = 
+        e.category === "owner_personal" || 
+        (e.note && e.note.includes("Owner Wallet ID:")) ||
+        (e.title && e.title.includes("[মালিকের খরচ]"));
+      if (isOwner) {
         const match = e.note?.match(/Owner Wallet ID:\s*([a-zA-Z0-9_-]+)/);
         const linkedId = match ? match[1] : null;
         if (!linkedId || !seenIds.has(linkedId)) {
@@ -225,8 +251,9 @@ export default function TrackbackPage() {
             id: e.id,
             amount: Number(e.amount || 0),
             note: e.note || e.title,
-            created_at: e.created_at,
+            created_at: e.created_at || (e as any).date,
           });
+          if (linkedId) seenIds.add(linkedId);
         }
       }
     }

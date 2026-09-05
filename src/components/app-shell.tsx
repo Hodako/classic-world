@@ -11,7 +11,7 @@ import {
   BarChart3, Receipt, PiggyBank, ShoppingCart, Moon, Sun, FileText,
   TrendingUp, TrendingDown, Sparkles, Palette, MessageSquare, HelpCircle,
   RefreshCw, Lock, Wallet, Plus, ChevronDown, Check, Crown, User, Shirt,
-  Landmark,
+  Landmark, CalendarPlus, Calendar, ArrowDownLeft, ArrowUpRight, HandCoins,
 } from "lucide-react";
 import { useTheme } from "@/hooks/use-theme";
 import { useT } from "@/lib/i18n";
@@ -500,19 +500,108 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 </button>
               )}
               {/* Dedicated PC/Tablet Custom Entry Quick Widget */}
-              <button
-                type="button"
-                onClick={() => {
-                  setCustomEntryType("sale");
-                  setCustomEntryOpen(true);
-                }}
-                className="hidden md:inline-flex items-center gap-1.5 h-7 px-2.5 rounded-full bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 text-[11px] font-bold transition-all cursor-pointer shrink-0 shadow-2xs hover:scale-105 active:scale-95"
-                title={lang === "bn" ? "কাস্টম এন্ট্রি উইজেট (তারিখসহ লেনদেন) [Alt+C]" : "Custom Entry Widget (With Date) [Alt+C]"}
-              >
-                <Sparkles className="size-3 text-emerald-600 dark:text-emerald-400 animate-pulse" />
-                <span>{lang === "bn" ? "⚡ কাস্টম এন্ট্রি" : "⚡ Custom Entry"}</span>
-                <span className="hidden lg:inline-flex text-[9px] px-1 py-0.2 bg-background/80 rounded border border-border/80 text-muted-foreground font-mono">Alt+C</span>
-              </button>
+              <DropdownMenu>
+                <div className="hidden md:inline-flex items-center rounded-full bg-emerald-500/10 hover:bg-emerald-500/15 border border-emerald-500/30 transition-all shadow-2xs">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCustomEntryType("sale");
+                      setCustomEntryOpen(true);
+                    }}
+                    className="inline-flex items-center gap-1.5 h-7 pl-2.5 pr-1.5 text-emerald-600 dark:text-emerald-400 text-[11px] font-bold cursor-pointer hover:opacity-85 active:scale-95 transition-all"
+                    title={lang === "bn" ? "কাস্টম এন্ট্রি উইজেট (তারিখসহ লেনদেন) [Alt+C]" : "Custom Entry Widget (With Date) [Alt+C]"}
+                  >
+                    <CalendarPlus className="size-3.5 text-emerald-600 dark:text-emerald-400" />
+                    <span>{lang === "bn" ? "কাস্টম এন্ট্রি" : "Custom Entry"}</span>
+                    <span className="hidden lg:inline-flex text-[9px] px-1 py-0.2 bg-background/80 rounded border border-border/80 text-muted-foreground font-mono">Alt+C</span>
+                  </button>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      type="button"
+                      className="h-7 px-1.5 text-emerald-600 dark:text-emerald-400 border-l border-emerald-500/30 hover:bg-emerald-500/20 rounded-r-full cursor-pointer flex items-center justify-center transition-colors"
+                      title={lang === "bn" ? "দ্রুত কাস্টম এন্ট্রি শর্টকাট" : "Quick Custom Entry Shortcuts"}
+                    >
+                      <ChevronDown className="size-3" />
+                    </button>
+                  </DropdownMenuTrigger>
+                </div>
+                <DropdownMenuContent align="end" className="w-56 p-1.5 rounded-2xl shadow-xl border-border/80 bg-card">
+                  <DropdownMenuLabel className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider px-2 py-1">
+                    {lang === "bn" ? "তারিখসহ দ্রুত লেনদেন" : "Quick Custom Entries"}
+                  </DropdownMenuLabel>
+                  <DropdownMenuItem
+                    onClick={() => { setCustomEntryType("sale"); setCustomEntryOpen(true); }}
+                    className="flex items-center justify-between text-xs py-2 px-2.5 rounded-xl cursor-pointer"
+                  >
+                    <div className="flex items-center gap-2">
+                      <ShoppingBag className="size-3.5 text-emerald-500" />
+                      <span>{lang === "bn" ? "কাস্টম বিক্রি" : "Custom Sale"}</span>
+                    </div>
+                    <kbd className="text-[9px] font-mono text-muted-foreground bg-muted px-1.5 py-0.5 rounded">Alt+1</kbd>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => { setCustomEntryType("expense"); setCustomEntryOpen(true); }}
+                    className="flex items-center justify-between text-xs py-2 px-2.5 rounded-xl cursor-pointer"
+                  >
+                    <div className="flex items-center gap-2">
+                      <Receipt className="size-3.5 text-rose-500" />
+                      <span>{lang === "bn" ? "কাস্টম খরচ" : "Custom Expense"}</span>
+                    </div>
+                    <kbd className="text-[9px] font-mono text-muted-foreground bg-muted px-1.5 py-0.5 rounded">Alt+2</kbd>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => { setCustomEntryType("purchase"); setCustomEntryOpen(true); }}
+                    className="flex items-center justify-between text-xs py-2 px-2.5 rounded-xl cursor-pointer"
+                  >
+                    <div className="flex items-center gap-2">
+                      <ShoppingCart className="size-3.5 text-indigo-500" />
+                      <span>{lang === "bn" ? "কাস্টম ক্রয়" : "Custom Purchase"}</span>
+                    </div>
+                    <kbd className="text-[9px] font-mono text-muted-foreground bg-muted px-1.5 py-0.5 rounded">Alt+3</kbd>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => { setCustomEntryType("deposit"); setCustomEntryOpen(true); }}
+                    className="flex items-center justify-between text-xs py-2 px-2.5 rounded-xl cursor-pointer"
+                  >
+                    <div className="flex items-center gap-2">
+                      <ArrowDownLeft className="size-3.5 text-sky-500" />
+                      <span>{lang === "bn" ? "ক্যাশবক্সে টাকা জমা" : "Cash Deposit"}</span>
+                    </div>
+                    <kbd className="text-[9px] font-mono text-muted-foreground bg-muted px-1.5 py-0.5 rounded">Alt+4</kbd>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => { setCustomEntryType("withdraw"); setCustomEntryOpen(true); }}
+                    className="flex items-center justify-between text-xs py-2 px-2.5 rounded-xl cursor-pointer"
+                  >
+                    <div className="flex items-center gap-2">
+                      <ArrowUpRight className="size-3.5 text-amber-500" />
+                      <span>{lang === "bn" ? "ক্যাশবক্স উত্তোলন" : "Cash Withdraw"}</span>
+                    </div>
+                    <kbd className="text-[9px] font-mono text-muted-foreground bg-muted px-1.5 py-0.5 rounded">Alt+5</kbd>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => { setCustomEntryType("due_collection"); setCustomEntryOpen(true); }}
+                    className="flex items-center justify-between text-xs py-2 px-2.5 rounded-xl cursor-pointer"
+                  >
+                    <div className="flex items-center gap-2">
+                      <HandCoins className="size-3.5 text-purple-500" />
+                      <span>{lang === "bn" ? "বাকি আদায়" : "Due Collection"}</span>
+                    </div>
+                    <kbd className="text-[9px] font-mono text-muted-foreground bg-muted px-1.5 py-0.5 rounded">Alt+6</kbd>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator className="my-1" />
+                  <DropdownMenuItem
+                    onClick={() => { setCustomEntryOpen(true); }}
+                    className="flex items-center justify-between text-xs py-2 px-2.5 rounded-xl font-bold text-primary cursor-pointer"
+                  >
+                    <div className="flex items-center gap-2">
+                      <Calendar className="size-3.5" />
+                      <span>{lang === "bn" ? "সম্পূর্ণ উইজেট খুলুন" : "Open Full Widget"}</span>
+                    </div>
+                    <kbd className="text-[9px] font-mono text-muted-foreground bg-muted px-1.5 py-0.5 rounded">Alt+C</kbd>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
               <PWAInstallButton variant="outline" className="hidden sm:inline-flex h-8 px-2.5 text-xs" />
               <UniversalSearch role={user.role} permissions={user.permissions} />
               <Link href="/more" title={lang === "bn" ? "হেল্প ও সাপোর্ট" : "Help & Support"} className="hidden md:inline-flex">

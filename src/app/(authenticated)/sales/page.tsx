@@ -44,6 +44,7 @@ import {
   Loader2,
   CloudUpload,
   RefreshCw,
+  Split,
 } from "lucide-react";
 import { toast } from "sonner";
 import { createReturnFn, deleteSaleFn, approveCourierPaymentFn, cancelCourierOrderFn, acceptDigitalPaymentFn, toggleGoogleSheetsSyncFn, bulkExportToGoogleSheetsFn } from "@/lib/rpc";
@@ -320,10 +321,16 @@ export default function SalesPage() {
 
       // 2. Tab / Payment Method Filter
       if (activeTab !== "all") {
-        if (activeTab === "cash" && s.type !== "cash") return false;
-        if (activeTab === "bkash" && s.type !== "bkash") return false;
-        if (activeTab === "bank" && s.type !== "bank") return false;
-        if (activeTab === "credit" && s.type !== "credit") return false;
+        if (activeTab === "cash" && s.type !== "cash" && !(s.type === "split" && (Number(s.split_cash) > 0))) return false;
+        if (activeTab === "bkash") {
+          const isBkashDirect = s.type === "bkash";
+          const isBkashSplit = s.type === "split" && (Number(s.split_bkash) > 0);
+          const isBkashPartial = (s.type === "bkash" || (Number(s.split_bkash) > 0)) && s.due_amount > 0;
+          if (!isBkashDirect && !isBkashSplit && !isBkashPartial) return false;
+        }
+        if (activeTab === "bank" && s.type !== "bank" && !(s.type === "split" && (Number(s.split_bank) > 0))) return false;
+        if (activeTab === "partial" && !((s.due_amount > 0 && s.paid_amount > 0) || (s.type === "split" && s.due_amount > 0))) return false;
+        if (activeTab === "credit" && s.type !== "credit" && s.due_amount <= 0) return false;
         if (activeTab === "courier_pending" && (s.type !== "online" || s.courier_status === "collected" || s.courier_status === "cancelled" || s.returned)) return false;
         if (activeTab === "online" && s.type !== "online") return false;
       }
@@ -361,6 +368,15 @@ export default function SalesPage() {
 
   const filteredTotalDue = useMemo(() => {
     return filteredSales.reduce((acc, s) => acc + (s.returned ? 0 : s.due_amount), 0);
+  }, [filteredSales]);
+
+  const bkashPendingDueTotal = useMemo(() => {
+    return filteredSales.reduce((acc, s) => {
+      if (s.returned) return acc;
+      const hasBkash = s.type === "bkash" || (s.type === "split" && Number(s.split_bkash) > 0);
+      if (hasBkash && s.due_amount > 0) return acc + s.due_amount;
+      return acc;
+    }, 0);
   }, [filteredSales]);
 
   // CSV Exporter
@@ -827,8 +843,9 @@ export default function SalesPage() {
           >
             <option value="all">{lang === "bn" ? "সব বিক্রি" : "All Sales"}</option>
             <option value="cash">{lang === "bn" ? "নগদ" : "Cash"}</option>
-            <option value="bkash">{lang === "bn" ? "বিকাশ" : "bKash"}</option>
+            <option value="bkash">{lang === "bn" ? "বিকাশ (আংশিক ও পেন্ডিং সহ)" : "bKash (Inc. Partial & Due)"}</option>
             <option value="bank">{lang === "bn" ? "ব্যাংক" : "Bank"}</option>
+            <option value="partial">{lang === "bn" ? "আংশিক পেমেন্ট (Partial)" : "Partial Payments"}</option>
             <option value="credit">{lang === "bn" ? "বাকী" : "Credit"}</option>
             <option value="courier_pending">{lang === "bn" ? "⏳ কুরিয়ার পেন্ডিং" : "⏳ Pending Courier"}</option>
             <option value="online">{lang === "bn" ? "অনলাইন সব" : "All Online"}</option>
@@ -836,29 +853,58 @@ export default function SalesPage() {
         </div>
 
         {/* Desktop Tabs List */}
-        <TabsList className="hidden sm:grid sm:grid-cols-7 w-full text-xs font-bold font-balooda p-1 bg-muted/80 rounded-xl gap-1">
+        <TabsList className="hidden sm:grid sm:grid-cols-8 w-full text-xs font-bold font-balooda p-1 bg-muted/80 rounded-xl gap-1">
           <TabsTrigger value="all" className="rounded-lg text-xs font-bold">
             {lang === "bn" ? "সব বিক্রি" : "All Sales"}
           </TabsTrigger>
           <TabsTrigger value="cash" className="rounded-lg text-xs font-bold">
             {lang === "bn" ? "নগদ" : "Cash"}
           </TabsTrigger>
-          <TabsTrigger value="bkash" className="rounded-lg text-xs font-bold">
+          <TabsTrigger value="bkash" className="rounded-lg text-xs font-bold text-[#E2136E]">
             {lang === "bn" ? "বিকাশ" : "bKash"}
           </TabsTrigger>
-          <TabsTrigger value="bank" className="rounded-lg text-xs font-bold">
+          <TabsTrigger value="bank" className="rounded-lg text-xs font-bold text-sky-700 dark:text-sky-300">
             {lang === "bn" ? "ব্যাংক" : "Bank"}
           </TabsTrigger>
-          <TabsTrigger value="credit" className="rounded-lg text-xs font-bold">
+          <TabsTrigger value="partial" className="rounded-lg text-xs font-bold text-purple-700 dark:text-purple-300">
+            {lang === "bn" ? "আংশিক" : "Partial"}
+          </TabsTrigger>
+          <TabsTrigger value="credit" className="rounded-lg text-xs font-bold text-amber-700 dark:text-amber-300">
             {lang === "bn" ? "বাকী" : "Credit"}
           </TabsTrigger>
           <TabsTrigger value="courier_pending" className="rounded-lg text-xs font-bold text-amber-700 dark:text-amber-300">
-            ⏳ {lang === "bn" ? "কুরিয়ার পেন্ডিং" : "Pending Courier"}
+            ⏳ {lang === "bn" ? "কুরিয়ার" : "Courier"}
           </TabsTrigger>
           <TabsTrigger value="online" className="rounded-lg text-xs font-bold">
             {lang === "bn" ? "অনলাইন সব" : "All Online"}
           </TabsTrigger>
         </TabsList>
+
+        {/* bKash Partial / Pending Notice Strip */}
+        {activeTab === "bkash" && (
+          <div className="mt-2 p-2.5 sm:p-3 rounded-xl bg-gradient-to-r from-[#E2136E]/15 via-purple-500/10 to-transparent border border-[#E2136E]/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 font-balooda">
+            <div className="flex items-center gap-2">
+              <span className="font-bold text-xs sm:text-sm text-[#E2136E] flex items-center gap-1.5">
+                <span className="size-2 rounded-full bg-[#E2136E] animate-pulse" />
+                {lang === "bn" ? "বিকাশ পেমেন্ট ও আংশিক পেন্ডিং হিসাব:" : "bKash Payments & Partial Ledger:"}
+              </span>
+              <span className="text-[11px] text-muted-foreground">
+                ({filteredSales.length} {lang === "bn" ? "টি বিক্রয় রেকর্ড" : "records"})
+              </span>
+            </div>
+            {bkashPendingDueTotal > 0 ? (
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="text-xs font-extrabold text-rose-600 dark:text-rose-400 bg-rose-500/15 border border-rose-500/30 px-2 py-0.5 rounded-lg font-serif">
+                  {lang === "bn" ? "⚠️ বিকাশে আংশিক পেন্ডিং বকেয়া:" : "⚠️ Partial Pending Due:"} ৳{bkashPendingDueTotal}
+                </span>
+              </div>
+            ) : (
+              <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400">
+                {lang === "bn" ? "✓ কোনো আংশিক পেন্ডিং বকেয়া নেই" : "✓ No pending dues on bKash"}
+              </span>
+            )}
+          </div>
+        )}
 
         <div className="pt-3 space-y-2">
           <SalesTab
@@ -1042,15 +1088,41 @@ function SalesTab({
         const isGroup = s.isGroup;
         const expanded = expandedGroups[s.id] || false;
 
-        // Payment Method Badge Color
+        // Payment Method Badge Color & State
         const isPendingCourier = s.type === "online" && s.courier_status !== "collected" && s.courier_status !== "cancelled" && !s.returned;
         const isCollectedCourier = s.type === "online" && s.courier_status === "collected";
         const isCancelled = s.returned || s.courier_status === "cancelled";
+        const isSplit = s.type === "split";
+        const hasDue = s.due_amount > 0;
+        const hasPaid = s.paid_amount > 0;
+        const isPartial = (hasDue && hasPaid) || (isSplit && hasDue);
+
+        // Calculate payment methods used
+        const methodsUsed: string[] = [];
+        if (isSplit) {
+          if (Number(s.split_cash) > 0) methodsUsed.push(`${lang === "bn" ? "নগদ" : "Cash"} ৳${s.split_cash}`);
+          if (Number(s.split_bkash) > 0) methodsUsed.push(`${lang === "bn" ? "বিকাশ" : "bKash"} ৳${s.split_bkash}`);
+          if (Number(s.split_bank) > 0) methodsUsed.push(`${lang === "bn" ? "ব্যাংক" : "Bank"} ৳${s.split_bank}`);
+        } else if (hasPaid) {
+          const methodTitle = s.type === "bkash" ? (lang === "bn" ? "বিকাশ" : "bKash")
+            : s.type === "bank" ? (lang === "bn" ? "ব্যাংক" : "Bank")
+            : (lang === "bn" ? "নগদ" : "Cash");
+          methodsUsed.push(`${methodTitle} ৳${s.paid_amount}`);
+        } else if (s.type === "credit") {
+          methodsUsed.push(lang === "bn" ? "সম্পূর্ণ বাকী" : "Full Credit");
+        } else {
+          const methodTitle = s.type === "bkash" ? (lang === "bn" ? "বিকাশ" : "bKash")
+            : s.type === "bank" ? (lang === "bn" ? "ব্যাংক" : "Bank")
+            : (lang === "bn" ? "নগদ" : "Cash");
+          methodsUsed.push(`${methodTitle} ৳${s.sell_price}`);
+        }
 
         const badgeColor =
           isCancelled ? "bg-rose-500/15 text-rose-700 dark:text-rose-300 border-rose-500/30 line-through" :
           isPendingCourier ? "bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30" :
           isCollectedCourier ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30" :
+          isPartial ? "bg-purple-500/15 text-purple-700 dark:text-purple-300 border-purple-500/40" :
+          isSplit ? "bg-purple-500/15 text-purple-700 dark:text-purple-300 border-purple-500/30" :
           s.type === "bkash" ? "bg-[#E2136E]/15 text-[#E2136E] border-[#E2136E]/30" :
           s.type === "bank" ? "bg-sky-500/15 text-sky-700 dark:text-sky-300 border-sky-500/30" :
           s.type === "credit" ? "bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30" :
@@ -1060,6 +1132,8 @@ function SalesTab({
           isCancelled ? (lang === "bn" ? "বাতিল" : "Cancelled") :
           isPendingCourier ? (lang === "bn" ? "⏳ কুরিয়ার" : "⏳ Courier") :
           isCollectedCourier ? (lang === "bn" ? "✓ কুরিয়ার" : "✓ Courier") :
+          isPartial ? (lang === "bn" ? "আংশিক পেমেন্ট (Partial)" : "Partial Payment") :
+          isSplit ? (lang === "bn" ? "মিক্সড পেমেন্ট" : "Split Payment") :
           s.type === "bkash" ? (lang === "bn" ? "বিকাশ" : "bKash") :
           s.type === "bank" ? (lang === "bn" ? "ব্যাংক" : "Bank") :
           s.type === "credit" ? (lang === "bn" ? "বাকী" : "Credit") :
@@ -1074,10 +1148,10 @@ function SalesTab({
                 : "border-black/70 dark:border-white/30 hover:border-black dark:hover:border-white bg-card"
             }`}
           >
-            {/* Clickable Compact 2-Line Summary Statement */}
+            {/* Clickable Compact Summary Statement */}
             <div
               onClick={() => toggleGroup(s.id)}
-              className="p-2.5 sm:p-3 cursor-pointer select-none space-y-1"
+              className="p-2.5 sm:p-3 cursor-pointer select-none space-y-1.5"
             >
               {/* Line 1: Product Name & Count | Total Amount & Payment Badge */}
               <div className="flex items-center justify-between gap-2">
@@ -1099,6 +1173,25 @@ function SalesTab({
                   <span className={`text-xs sm:text-sm font-extrabold font-serif text-foreground ${isCancelled ? "line-through text-muted-foreground" : ""}`}>
                     {fmtMoney(s.sell_price)}
                   </span>
+                </div>
+              </div>
+
+              {/* Line 1.5: Used Payment Methods Pill Row */}
+              <div className="flex items-center justify-between gap-2 flex-wrap text-[10.5px]">
+                <div className="flex items-center gap-1 flex-wrap">
+                  <span className="text-[10px] font-bold text-muted-foreground font-balooda">
+                    {lang === "bn" ? "পেমেন্ট মাধ্যম:" : "Methods:"}
+                  </span>
+                  {methodsUsed.map((m, idx) => (
+                    <span key={idx} className="text-[10px] font-extrabold font-serif px-1.5 py-0.2 rounded bg-muted/90 text-foreground border border-border/50">
+                      {m}
+                    </span>
+                  ))}
+                  {hasDue && !isCancelled && (
+                    <span className="text-[10px] font-extrabold font-serif px-1.5 py-0.2 rounded bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20">
+                      {lang === "bn" ? "বাকী:" : "Due:"} ৳{s.due_amount}
+                    </span>
+                  )}
                 </div>
               </div>
 
@@ -1200,15 +1293,16 @@ function SalesTab({
                   </div>
                 )}
 
-                {/* Inline Digital Payment (bKash / Bank) Verification Actions */}
-                {(s.type === "bkash" || s.type === "bank") && (
-                  <div className="p-2 rounded-lg bg-pink-500/10 border-[0.5px] border-pink-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-xs">
+                {/* Inline Digital Payment (bKash / Bank / Split) Verification Actions */}
+                {(s.type === "bkash" || s.type === "bank" || (s.type === "split" && (Number(s.split_bkash) > 0 || Number(s.split_bank) > 0))) && (
+                  <div className="p-2.5 rounded-xl bg-pink-500/10 border-[0.5px] border-pink-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-xs font-balooda">
                     <div className="flex items-center gap-1.5 flex-wrap">
                       <span className="font-bold text-pink-900 dark:text-pink-200 uppercase font-balooda">
-                        {s.type === "bkash" ? "bKash (বিকাশ)" : "Bank (ব্যাংক)"}
+                        {s.type === "bkash" ? "bKash (বিকাশ)" : s.type === "bank" ? "Bank (ব্যাংক)" : "bKash / Bank (ডিজিটাল)"}
                       </span>
                       <span className="text-[10.5px] text-muted-foreground font-balooda">
-                        ({lang === "bn" ? "পেমেন্ট পরিমাণ:" : "Amount:"} {fmtMoney(s.sell_price)})
+                        ({lang === "bn" ? "ডিজিটাল প্রাপ্তি:" : "Amount:"} ৳{s.type === "split" ? (Number(s.split_bkash || 0) + Number(s.split_bank || 0)) : s.sell_price}
+                        {s.due_amount > 0 ? ` · ${lang === "bn" ? "বকেয়া:" : "Due:"} ৳${s.due_amount}` : ""})
                       </span>
                     </div>
 
@@ -1233,6 +1327,48 @@ function SalesTab({
                         </Button>
                       </div>
                     )}
+                  </div>
+                )}
+
+                {/* Split / Partial Payment Breakdown Card in Drawer */}
+                {(isSplit || isPartial) && (
+                  <div className="p-2.5 rounded-xl bg-purple-500/10 border-[0.5px] border-purple-500/30 space-y-1.5 text-xs font-balooda">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-purple-950 dark:text-purple-200 flex items-center gap-1.5">
+                        <Split className="size-3.5 text-purple-600" />
+                        {lang === "bn" ? "আংশিক / মিক্সড পেমেন্ট হিসাব বিবরণ:" : "Partial / Split Payment Details:"}
+                      </span>
+                      <span className="text-[10.5px] font-serif font-bold text-muted-foreground">
+                        {lang === "bn" ? "মোট বিল:" : "Total Bill:"} ৳{s.sell_price}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1.5 flex-wrap text-[11px] font-serif">
+                      {Number(s.split_cash) > 0 && (
+                        <span className="bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-md font-bold">
+                          {lang === "bn" ? "নগদ:" : "Cash:"} ৳{s.split_cash}
+                        </span>
+                      )}
+                      {Number(s.split_bkash) > 0 && (
+                        <span className="bg-[#E2136E]/15 text-[#E2136E] border border-[#E2136E]/30 px-2 py-0.5 rounded-md font-bold">
+                          {lang === "bn" ? "বিকাশ:" : "bKash:"} ৳{s.split_bkash}
+                        </span>
+                      )}
+                      {Number(s.split_bank) > 0 && (
+                        <span className="bg-sky-500/15 text-sky-700 dark:text-sky-300 border border-sky-500/30 px-2 py-0.5 rounded-md font-bold">
+                          {lang === "bn" ? "ব্যাংক:" : "Bank:"} ৳{s.split_bank}
+                        </span>
+                      )}
+                      {!isSplit && hasPaid && (
+                        <span className="bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-md font-bold">
+                          {lang === "bn" ? "পরিশোধিত:" : "Paid:"} ৳{s.paid_amount}
+                        </span>
+                      )}
+                      {hasDue && (
+                        <span className="bg-rose-500/15 text-rose-700 dark:text-rose-300 border border-rose-500/30 px-2 py-0.5 rounded-md font-bold">
+                          {lang === "bn" ? "বকেয়া (Due):" : "Remaining Due:"} ৳{s.due_amount}
+                        </span>
+                      )}
+                    </div>
                   </div>
                 )}
 

@@ -1156,7 +1156,7 @@ export default function SettingsPage() {
             title={lang === "bn" ? "যেকোনো তারিখ ও সময়ের এন্ট্রি ডায়ালগ খুলুন [Alt+C]" : "Open Custom Entry Dialog with Date [Alt+C]"}
           >
             <Sparkles className="size-4 animate-pulse" />
-            <span>{lang === "bn" ? "⚡ কাস্টম এন্ট্রি ডায়ালগ" : "⚡ Custom Entry Dialog"}</span>
+            <span>{lang === "bn" ? "কাস্টম এন্ট্রি ডায়ালগ" : "Custom Entry Dialog"}</span>
             <kbd className="hidden md:inline-flex text-[10px] px-1.5 py-0.5 bg-black/20 rounded font-mono leading-none">
               Alt+C
             </kbd>

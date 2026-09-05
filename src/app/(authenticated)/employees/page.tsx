@@ -145,6 +145,30 @@ export default function EmployeesPage() {
 
   const [busy, setBusy] = useState(false);
 
+  // Identify currently logged-in employee
+  const currentEmployee = useMemo(() => {
+    if (!user) return null;
+    return employees.find(e =>
+      (e.email && user.email && e.email.toLowerCase() === user.email.toLowerCase()) ||
+      (e.phone && (user as any)?.phone && e.phone.replace(/[^0-9]/g, "") === (user as any).phone.replace(/[^0-9]/g, "")) ||
+      (e.name && user.full_name && e.name.toLowerCase() === user.full_name.toLowerCase()) ||
+      e.id === user.id
+    ) || null;
+  }, [employees, user]);
+
+  const [shopFilter, setShopFilter] = useState<"all" | "my">(user?.role === "employee" ? "my" : "all");
+
+  const handleOpenAddShop = () => {
+    if (currentEmployee) {
+      setShopEmpId(currentEmployee.id);
+    } else if (employees.length > 0 && !shopEmpId) {
+      setShopEmpId(employees[0].id);
+    }
+    setShopItems([]);
+    setShopNote("");
+    setAddShopOpen(true);
+  };
+
   // Filtered lists
   const filteredEmployees = useMemo(() => {
     return employees.filter(e => {
@@ -175,9 +199,14 @@ export default function EmployeesPage() {
   const filteredShoppings = useMemo(() => {
     return shoppings.filter(s => {
       const q = search.toLowerCase();
-      return s.employee_name.toLowerCase().includes(q) || (s.note || "").toLowerCase().includes(q);
+      const matchSearch = s.employee_name.toLowerCase().includes(q) || (s.note || "").toLowerCase().includes(q);
+      if (!matchSearch) return false;
+      if (shopFilter === "my" && currentEmployee) {
+        return s.employee_id === currentEmployee.id || s.employee_name.toLowerCase() === currentEmployee.name.toLowerCase();
+      }
+      return true;
     });
-  }, [shoppings, search]);
+  }, [shoppings, search, shopFilter, currentEmployee]);
 
   // Totals
   const totalSalariesPaid = useMemo(() => salaries.reduce((a, b) => a + (Number(b.amount) || 0), 0), [salaries]);
@@ -434,7 +463,7 @@ export default function EmployeesPage() {
 
           {activeTab === "shoppings" && (
             <Button
-              onClick={() => setAddShopOpen(true)}
+              onClick={handleOpenAddShop}
               size="sm"
               className="h-8.5 rounded-xl text-xs font-bold gap-1.5 bg-pink-600 hover:bg-pink-700 text-white shadow-sm cursor-pointer"
             >
@@ -773,6 +802,53 @@ export default function EmployeesPage() {
 
         {/* ── TAB 4: SHOPPINGS ── */}
         <TabsContent value="shoppings" className="space-y-3">
+          {/* Shopping Filter & Quick Action Bar */}
+          <div className="flex items-center justify-between gap-2 flex-wrap bg-card border border-border/80 p-2 sm:p-2.5 rounded-xl shadow-xs">
+            <div className="flex items-center gap-1.5 p-1 bg-muted/60 rounded-xl border border-border/80 text-xs font-semibold">
+              <button
+                type="button"
+                onClick={() => setShopFilter("all")}
+                className={`flex items-center gap-1 px-3 py-1 rounded-lg transition-all cursor-pointer ${
+                  shopFilter === "all"
+                    ? "bg-card text-foreground shadow-xs border border-border/80 font-bold"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                <span>{lang === "bn" ? "সকলের কেনাকাটা" : "All Staff"}</span>
+                <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4">
+                  {shoppings.length}
+                </Badge>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShopFilter("my")}
+                className={`flex items-center gap-1.5 px-3 py-1 rounded-lg transition-all cursor-pointer ${
+                  shopFilter === "my"
+                    ? "bg-card text-pink-600 dark:text-pink-400 shadow-xs border border-pink-500/30 font-bold"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                <Shirt className="size-3 text-pink-600" />
+                <span>{lang === "bn" ? "আমার কেনাকাটা" : "My Shopping"}</span>
+                {currentEmployee && (
+                  <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4 bg-pink-500/10 text-pink-600">
+                    {shoppings.filter(s => s.employee_id === currentEmployee.id || s.employee_name.toLowerCase() === currentEmployee.name.toLowerCase()).length}
+                  </Badge>
+                )}
+              </button>
+            </div>
+
+            <Button
+              size="sm"
+              onClick={handleOpenAddShop}
+              className="h-8 rounded-xl text-xs font-bold gap-1 bg-pink-600 hover:bg-pink-700 text-white shadow-xs cursor-pointer"
+            >
+              <Plus className="size-3.5" />
+              <span>{lang === "bn" ? "কেনাকাটা এন্ট্রি" : "Add Record"}</span>
+            </Button>
+          </div>
+
           <Card className="rounded-2xl border border-border/80 overflow-hidden bg-card shadow-xs">
             {filteredShoppings.length === 0 ? (
               <div className="p-8 text-center space-y-2">
@@ -780,7 +856,7 @@ export default function EmployeesPage() {
                 <p className="text-sm font-semibold text-muted-foreground font-balooda">
                   {lang === "bn" ? "কোনো কেনাকাটা রেকর্ড পাওয়া যায়নি" : "No employee shopping records"}
                 </p>
-                <Button size="sm" variant="outline" onClick={() => setAddShopOpen(true)} className="text-xs rounded-xl">
+                <Button size="sm" variant="outline" onClick={handleOpenAddShop} className="text-xs rounded-xl">
                   {lang === "bn" ? "প্রথম কেনাকাটা রেকর্ড করুন" : "Record first shopping"}
                 </Button>
               </div>

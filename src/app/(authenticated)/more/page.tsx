@@ -62,6 +62,7 @@ const businessLinks = [
   { to: "/dues",           labelKey: "due",             desc: "Customer dues & collections history", icon: Banknote, perm: "parties"    as const },
   { to: "/parties",        labelKey: "parties",         desc: "Suppliers, vendors, and partner logs", icon: Users, perm: "parties"    as const },
   { to: "/employees",      labelKey: "employees" as any, desc: "Employee accounts, salary ledger, attendance & permissions", icon: Users, perm: "sales" as const },
+  { to: "/employees?tab=shoppings", labelKey: "employee_shopping" as any, desc: "Staff clothing draws, shopping records & vouchers", icon: Shirt, perm: "sales" as const },
   { to: "/settings",       labelKey: "settings",        desc: "Advanced settings & configurations", icon: Settings,     perm: "settings"   as const },
 ] as const;
 
@@ -2682,7 +2683,44 @@ export default function MorePage() {
   };
 
   const renderEmployeeManagement = () => {
-    if (user?.role !== "owner") return null;
+    if (user?.role !== "owner") {
+      return (
+        <Card className="p-4 sm:p-5 rounded-2xl bg-gradient-to-br from-pink-500/10 via-purple-500/5 to-card border-pink-500/25 shadow-xs space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="size-10 rounded-2xl bg-pink-500/15 text-pink-600 dark:text-pink-400 grid place-items-center border border-pink-500/20 shadow-2xs">
+                <Shirt className="size-5" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-base font-bold font-charukola text-foreground">
+                    {lang === "bn" ? "কর্মচারী পোশাক ও কেনাকাটা রেজিস্টার" : "Staff Clothing & Shopping Records"}
+                  </h3>
+                  <Badge variant="outline" className="text-[10px] bg-pink-500/10 text-pink-600 border-pink-500/20">
+                    {lang === "bn" ? "কর্মচারী একাউন্ট" : "Staff Portal"}
+                  </Badge>
+                </div>
+                <p className="text-xs text-muted-foreground font-balooda">
+                  {lang === "bn"
+                    ? "দোকান থেকে নেওয়া পণ্য, পোশাকের ড্র ভাউচার এবং ব্যক্তিগত কেনাকাটার হিসাব দেখুন।"
+                    : "Access and record your staff clothing draws, shopping slips, and personal records."}
+                </p>
+              </div>
+            </div>
+
+            <Link href="/employees?tab=shoppings">
+              <Button
+                size="sm"
+                className="h-8.5 rounded-xl text-xs font-bold gap-1.5 bg-pink-600 hover:bg-pink-700 text-white shadow-xs cursor-pointer"
+              >
+                <Shirt className="size-3.5" />
+                <span>{lang === "bn" ? "কেনাকাটা পেজে যান" : "Open Shopping Ledger"}</span>
+              </Button>
+            </Link>
+          </div>
+        </Card>
+      );
+    }
 
     return (
       <Card className="p-4 sm:p-5 rounded-2xl bg-card border-border/80 shadow-xs space-y-4">

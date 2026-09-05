@@ -226,15 +226,38 @@ export default function ReportsGeneratorPage() {
     return filteredCashbox.filter(c => c.kind === "withdraw" || c.kind === "expense").reduce((a, c) => a + Number(c.amount || 0), 0);
   }, [filteredCashbox]);
 
-  // Net Profit (Sales Profit - Operating Expenses excluding pure inventory product purchase duplicates)
+  // Net Profit (Sales Profit - Operating Expenses excluding pure inventory product purchase duplicates and owner personal)
   const nonProductExpenses = useMemo(() => {
     return filteredExpenses.filter(e => {
       const isProductExp = e.category === "purchase" || e.title?.startsWith("Product Purchase:") || e.note?.includes("Purchased");
-      return !isProductExp;
+      const isOwnerPersonalExp = e.category === "owner_personal" || e.note?.includes("Owner Wallet ID:");
+      return !isProductExp && !isOwnerPersonalExp;
     }).reduce((a, e) => a + Number(e.amount || 0), 0);
   }, [filteredExpenses]);
 
-  const netBusinessProfit = totalSalesProfitVal - nonProductExpenses;
+  // Owner wallet personal expenses marked to cut from profit (with deduplication safety)
+  const ownerWalletCutFromProfit = useMemo(() => {
+    const seenIds = new Set<string>();
+    let total = 0;
+    for (const w of filteredOwnerWallet) {
+      if (w.cut_from_profit !== false) {
+        total += Number(w.amount || 0);
+        seenIds.add(w.id);
+      }
+    }
+    for (const e of filteredExpenses) {
+      if (e.category === "owner_personal" || (e.note && e.note.includes("Owner Wallet ID:"))) {
+        const match = e.note?.match(/Owner Wallet ID:\s*([a-zA-Z0-9_-]+)/);
+        const linkedId = match ? match[1] : null;
+        if (!linkedId || !seenIds.has(linkedId)) {
+          total += Number(e.amount || 0);
+        }
+      }
+    }
+    return total;
+  }, [filteredOwnerWallet, filteredExpenses]);
+
+  const netBusinessProfit = totalSalesProfitVal - nonProductExpenses - ownerWalletCutFromProfit;
 
   // Paginated Slices for On-Screen Display
   const { items: pagedSales, totalPages: salesTotalPages, safePage: safeSalesPage } = paginate(filteredSales, salesPage, pageSize);

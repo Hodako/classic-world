@@ -246,6 +246,27 @@ async function runWriteAction<T>(actionName: string, args: any = {}): Promise<T 
             return { success: true, offline: true, id: fsRes?.id || crypto.randomUUID() };
           } catch (_) {}
         }
+        if (actionName === "createOwnerWalletEntryFn") {
+          try {
+            const { fsCreateOwnerWalletEntry } = await import("@/lib/firestore-service");
+            const fsRes = await fsCreateOwnerWalletEntry(safeArgs?.data);
+            return { success: true, offline: true, id: fsRes?.id || crypto.randomUUID() };
+          } catch (_) {}
+        }
+        if (actionName === "updateOwnerWalletEntryFn") {
+          try {
+            const { fsUpdateOwnerWalletEntry } = await import("@/lib/firestore-service");
+            await fsUpdateOwnerWalletEntry(safeArgs?.data?.id, safeArgs?.data);
+            return { success: true, offline: true };
+          } catch (_) {}
+        }
+        if (actionName === "deleteOwnerWalletEntryFn") {
+          try {
+            const { fsDeleteOwnerWalletEntry } = await import("@/lib/firestore-service");
+            await fsDeleteOwnerWalletEntry(safeArgs?.data?.id);
+            return { success: true, offline: true };
+          } catch (_) {}
+        }
         return { success: true, offline: true, id: crypto.randomUUID() };
       }
     }
@@ -414,6 +435,7 @@ const actionsList = [
   "createPurchaseFn", "deletePurchaseFn", "createExpenseFn", "deleteExpenseFn",
   "createPaymentFn", "deletePaymentFn", "createSomitiFn", "updateSomitiFn", "deleteSomitiFn",
   "renameSomitiFn", "deleteSomitiFnByName", "createWithdrawalFn",
+  "createOwnerWalletEntryFn", "updateOwnerWalletEntryFn", "deleteOwnerWalletEntryFn",
   "createCashboxFn", "updateCashboxFn", "deleteCashboxFn",
   "createReminderFn", "toggleReminderFn", "deleteReminderFn",
   "createEmployeeFn", "updateEmployeeFn", "deleteEmployeeFn",

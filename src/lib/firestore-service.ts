@@ -779,12 +779,20 @@ export async function fsCreateOwnerWalletEntry(data: any) {
   const catLabel = category === "family" ? "পরিবার খরচ" : category === "bazar" ? "বাজার খরচ" : category === "home_rent" ? "বাসা ভাড়া" : category === "medical" ? "চিকিৎসা" : "ব্যক্তিগত";
   const title = `[মালিকের খরচ] ${catLabel}: ${note || "ব্যক্তিগত উত্তোলন"}`;
 
+  let createdAtTs: Timestamp;
+  if (data.created_at) {
+    const d = new Date(data.created_at);
+    createdAtTs = isNaN(d.getTime()) ? Timestamp.now() : Timestamp.fromDate(d);
+  } else {
+    createdAtTs = Timestamp.now();
+  }
+
   const docRef = await addDoc(collection(db, "owner_wallet"), {
     amount,
     category,
     note: note || null,
     cut_from_profit: cutFromProfit,
-    created_at: Timestamp.now(),
+    created_at: createdAtTs,
   });
 
   // 1. Log in cashbox as withdrawal to reduce cash balance (Always)
@@ -795,7 +803,7 @@ export async function fsCreateOwnerWalletEntry(data: any) {
         amount,
         note: title,
         ref_id: docRef.id,
-        created_at: Timestamp.now(),
+        created_at: createdAtTs,
       });
     } catch (err) {
       console.warn("Cashbox owner wallet log skipped:", err);
@@ -809,7 +817,7 @@ export async function fsCreateOwnerWalletEntry(data: any) {
           amount,
           category: "owner_personal",
           note: `Owner Wallet ID: ${docRef.id} - ${note}`,
-          created_at: Timestamp.now(),
+          created_at: createdAtTs,
         });
       } catch (err) {
         console.warn("Expense owner wallet log skipped:", err);

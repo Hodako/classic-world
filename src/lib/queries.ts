@@ -84,7 +84,7 @@ export type Purchase = {
 export type Expense = { id: string; title: string; amount: number; category?: string | null; note: string | null; created_at: string };
 export type Somiti = { id: string; kind: "deposit" | "withdraw"; amount: number; note: string | null; created_at: string };
 export type Withdrawal = { id: string; amount: number; note: string | null; created_at: string };
-export type OwnerWalletEntry = { id: string; amount: number; category?: string | null; note: string | null; created_at: string };
+export type OwnerWalletEntry = { id: string; amount: number; category?: string | null; note: string | null; cut_from_profit?: boolean; created_at: string };
 export type CashboxEntry = {
   id: string;
   kind: "deposit" | "withdraw" | "sale" | "expense";

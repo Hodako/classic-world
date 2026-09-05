@@ -283,6 +283,20 @@ function applyOptimisticUpdate(actionName: string, args: any) {
         created_at: newEntry.created_at,
       };
       writeQueryCache(["cashbox"], [newCashbox, ...cashbox]);
+
+      // Add to expenses cache if cut_from_profit
+      if (newEntry.cut_from_profit) {
+        const expenses = readQueryCache<any[]>(["expenses"]) ?? [];
+        const newExpense = {
+          id: crypto.randomUUID(),
+          title: `[মালিকের খরচ] ${newEntry.note || "ব্যক্তিগত উত্তোলন"}`,
+          amount: newEntry.amount,
+          category: "owner_personal",
+          note: `Owner Wallet ID: ${newEntry.id} - ${newEntry.note || ""}`,
+          created_at: newEntry.created_at,
+        };
+        writeQueryCache(["expenses"], [newExpense, ...expenses]);
+      }
     }
   }
 
@@ -315,6 +329,22 @@ function applyOptimisticUpdate(actionName: string, args: any) {
       });
       writeQueryCache(["cashbox"], updatedCashbox);
     }
+
+    if (args.data.amount !== undefined || args.data.note !== undefined) {
+      const expenses = readQueryCache<any[]>(["expenses"]) ?? [];
+      const updatedExpenses = expenses.map((e) => {
+        if (e.note && e.note.includes(args.data.id)) {
+          return {
+            ...e,
+            amount: args.data.amount !== undefined ? Number(args.data.amount) : e.amount,
+            title: args.data.note ? `[মালিকের খরচ] ${args.data.note}` : e.title,
+            note: `Owner Wallet ID: ${args.data.id} - ${args.data.note || ""}`,
+          };
+        }
+        return e;
+      });
+      writeQueryCache(["expenses"], updatedExpenses);
+    }
   }
 
   else if (actionName === "deleteOwnerWalletEntryFn") {
@@ -322,6 +352,8 @@ function applyOptimisticUpdate(actionName: string, args: any) {
     writeQueryCache(["owner_wallet"], ownerWallet.filter((w) => w.id !== args.data.id));
     const cashbox = readQueryCache<any[]>(["cashbox"]) ?? [];
     writeQueryCache(["cashbox"], cashbox.filter((c) => c.ref_id !== args.data.id));
+    const expenses = readQueryCache<any[]>(["expenses"]) ?? [];
+    writeQueryCache(["expenses"], expenses.filter((e) => !e.note || !e.note.includes(args.data.id)));
   }
 
   else if (actionName === "createCashboxFn") {

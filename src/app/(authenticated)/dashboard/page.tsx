@@ -56,7 +56,7 @@ function dayLabel(dateStr: string) {
   return new Date(dateStr).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
-function groupAllDataByDay(sales: any[], expenses: any[], days: number) {
+function groupAllDataByDay(sales: any[], expenses: any[], days: number, ownerWalletEntries?: any[]) {
   const result: Record<string, { date: string; sales: number; profit: number; expenses: number; rawDate: string }> = {};
   
   // Initialize date buckets for each day
@@ -88,6 +88,18 @@ function groupAllDataByDay(sales: any[], expenses: any[], days: number) {
     const key = eDate.toLocaleDateString("en-CA");
     if (result[key]) {
       result[key].expenses += Number(e.amount) || 0;
+    }
+  }
+
+  // Deduct owner personal expenses marked to cut from profit
+  for (const w of ownerWalletEntries || []) {
+    if (w.cut_from_profit === false) continue;
+    const wDateStr = w.created_at || w.date;
+    if (!wDateStr) continue;
+    const wDate = new Date(wDateStr);
+    const key = wDate.toLocaleDateString("en-CA");
+    if (result[key]) {
+      result[key].profit -= Number(w.amount) || 0;
     }
   }
 
@@ -995,18 +1007,6 @@ export default function Dashboard() {
       return true;
     })
     .reduce((sum, r) => sum + Number(r.profit_adjustment || 0), 0);
-  const profitToday  = validFilteredSales.reduce((a, s) => a + calcSaleProfit(s), 0) + returnProfitAdj;
-  
-  // loss today
-  const lossToday = validFilteredSales.filter(s => calcSaleProfit(s) < 0).reduce((a, s) => a + Math.abs(calcSaleProfit(s)), 0);
-  
-  const totalDues = allParties.reduce((sum, p) => {
-    if (p.archived) return sum;
-    return sum + getPartyOutstanding(p.id);
-  }, 0);
-
-  const expenseToday = filteredExpenses.reduce((a, e) => a + Number(e.amount), 0);
-
   const ownerExpensesFiltered = useMemo(() => {
     const allW = [...(ownerWallet.data || []), ...(withdrawals.data || [])];
     if (!dateFilter.from && !dateFilter.to) {
@@ -1030,6 +1030,25 @@ export default function Dashboard() {
   }, [ownerWallet.data, withdrawals.data, dateFilter]);
 
   const ownerExpenseTotal = ownerExpensesFiltered.reduce((sum: number, w: any) => sum + (Number(w.amount) || 0), 0);
+
+  const ownerExpensesToCutFromProfit = useMemo(() => {
+    return ownerExpensesFiltered
+      .filter((w: any) => w.cut_from_profit !== false)
+      .reduce((sum: number, w: any) => sum + (Number(w.amount) || 0), 0);
+  }, [ownerExpensesFiltered]);
+
+  const grossProfitToday = validFilteredSales.reduce((a, s) => a + calcSaleProfit(s), 0) + returnProfitAdj;
+  const profitToday = grossProfitToday - ownerExpensesToCutFromProfit;
+  
+  // loss today
+  const lossToday = validFilteredSales.filter(s => calcSaleProfit(s) < 0).reduce((a, s) => a + Math.abs(calcSaleProfit(s)), 0);
+  
+  const totalDues = allParties.reduce((sum, p) => {
+    if (p.archived) return sum;
+    return sum + getPartyOutstanding(p.id);
+  }, 0);
+
+  const expenseToday = filteredExpenses.reduce((a, e) => a + Number(e.amount), 0);
 
   // Cashbox balance is a running total across ALL time or up to the filtered period
   const cashboxTotal = useMemo(() => {
@@ -1070,7 +1089,7 @@ export default function Dashboard() {
   const topDemandedProducts = allDemandedProducts.slice(0, bestSellingLimit);
 
   // Custom graph data
-  const customGraphData = groupAllDataByDay(allSales, allExpenses, chartRange);
+  const customGraphData = groupAllDataByDay(allSales, allExpenses, chartRange, ownerWallet.data);
 
   // Hourly Traffic & Peak Sales
   const hourlySalesData = useMemo(() => {
@@ -1575,10 +1594,16 @@ export default function Dashboard() {
             key="profit"
             label={t("profit")}
             value={fmtMoney(profitToday)}
-            sub={isHidden && !isRevealed ? (lang === "bn" ? "ট্যাপ করে দেখুন" : "Tap to reveal") : (dateRangeLabel + (lang === "bn" ? " • বিস্তারিত দেখতে ট্যাপ করুন" : " • Tap to open"))}
+            sub={
+              isHidden && !isRevealed
+                ? (lang === "bn" ? "ট্যাপ করে দেখুন" : "Tap to reveal")
+                : ownerExpensesToCutFromProfit > 0
+                ? (lang === "bn" ? `মালিকের খরচ কর্তিত: ৳${ownerExpensesToCutFromProfit.toLocaleString()}` : `Owner Exp Cut: ৳${ownerExpensesToCutFromProfit.toLocaleString()}`)
+                : (dateRangeLabel + (lang === "bn" ? " • বিস্তারিত দেখতে ট্যাপ করুন" : " • Tap to open"))
+            }
             imageUrl="/icons/profit_icon.png"
-            icon={TrendingUp}
-            color="bg-emerald-500"
+            icon={profitToday >= 0 ? TrendingUp : TrendingDown}
+            color={profitToday >= 0 ? "bg-emerald-500" : "bg-rose-500"}
             isDesktop={true}
             hotkey={hotkey}
             className="h-full cursor-pointer"
@@ -1844,10 +1869,14 @@ const renderWidget = (widgetId: string) => {
                   key="profit"
                   label={t("profit")}
                   value={fmtMoney(profitToday)}
-                  sub={dateRangeLabel}
+                  sub={
+                    ownerExpensesToCutFromProfit > 0
+                      ? (lang === "bn" ? `মালিকের খরচ কর্তিত: ৳${ownerExpensesToCutFromProfit.toLocaleString()}` : `Owner Exp Cut: ৳${ownerExpensesToCutFromProfit.toLocaleString()}`)
+                      : dateRangeLabel
+                  }
                   imageUrl="/icons/profit_icon.png"
-                  icon={TrendingUp}
-                  color="bg-emerald-500"
+                  icon={profitToday >= 0 ? TrendingUp : TrendingDown}
+                  color={profitToday >= 0 ? "bg-emerald-500" : "bg-rose-500"}
                   isDesktop={true}
                   hotkey={hotkey}
                   className="h-full cursor-pointer"

@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useT } from "@/lib/i18n";
 import { useCachedQuery } from "@/hooks/use-cached-query";
-import { getSales, getPurchases, getExpenses, getReturns } from "@/lib/queries";
+import { getSales, getPurchases, getExpenses, getReturns, getOwnerWallet } from "@/lib/queries";
 import { fmtMoney, fmtDateTime } from "@/lib/format";
 import { downloadCsv, exportDateStamp } from "@/lib/export";
 import { PaginationBar, paginate } from "@/components/ui/pagination-bar";
@@ -94,6 +94,7 @@ export default function ProfitPage() {
   const purchases = useCachedQuery(["purchases"], getPurchases);
   const expenses = useCachedQuery(["expenses"], getExpenses);
   const returns = useCachedQuery(["returns"], getReturns);
+  const ownerWallet = useCachedQuery(["owner_wallet"], getOwnerWallet);
 
   // Filter lists based on selected range
   const filteredSales = useMemo(
@@ -111,31 +112,90 @@ export default function ProfitPage() {
     [returns.data, range, from, to],
   );
 
+  const filteredOwnerExpenses = useMemo(
+    () => (ownerWallet.data ?? []).filter(w => inRange(w.created_at, range, from, to)),
+    [ownerWallet.data, range, from, to],
+  );
+
+  // Pure shop overhead expenses (excluding any mirrored owner personal expenses)
+  const overheadExpenses = useMemo(() => {
+    return filteredExpenses.filter(
+      e => e.category !== "owner_personal" && !(e.note && e.note.includes("Owner Wallet ID:"))
+    );
+  }, [filteredExpenses]);
+
+  // Owner personal expenses marked to cut from profit (deduplication protected)
+  const ownerExpensesDeductedList = useMemo(() => {
+    const list: Array<{ id: string; amount: number; note?: string | null; category?: string | null; created_at: string }> = [];
+    const seenIds = new Set<string>();
+
+    for (const w of filteredOwnerExpenses) {
+      if (w.cut_from_profit !== false) {
+        list.push({
+          id: w.id,
+          amount: Number(w.amount || 0),
+          note: w.note,
+          category: w.category || null,
+          created_at: w.created_at,
+        });
+        seenIds.add(w.id);
+      }
+    }
+
+    // Include any orphan owner_personal expenses from expenses table not linked to known owner wallet id
+    for (const e of filteredExpenses) {
+      if (e.category === "owner_personal" || (e.note && e.note.includes("Owner Wallet ID:"))) {
+        const match = e.note?.match(/Owner Wallet ID:\s*([a-zA-Z0-9_-]+)/);
+        const linkedId = match ? match[1] : null;
+        if (!linkedId || !seenIds.has(linkedId)) {
+          list.push({
+            id: e.id,
+            amount: Number(e.amount || 0),
+            note: e.note || e.title,
+            category: "personal",
+            created_at: e.created_at,
+          });
+        }
+      }
+    }
+
+    return list;
+  }, [filteredOwnerExpenses, filteredExpenses]);
+
   // Group metrics by day for custom interactive charts
   const chartData = useMemo(() => {
-    const map: Record<string, { date: string; dateObj: Date; profit: number; sales: number; expenses: number }> = {};
+    const map: Record<string, { date: string; dateObj: Date; profit: number; sales: number; expenses: number; ownerExpenses: number }> = {};
     
     // Aggregate sales profit
     for (const s of filteredSales) {
       if (s.returned) continue;
       const date = new Date(s.created_at);
       const key = date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-      if (!map[key]) map[key] = { date: key, dateObj: date, profit: 0, sales: 0, expenses: 0 };
+      if (!map[key]) map[key] = { date: key, dateObj: date, profit: 0, sales: 0, expenses: 0, ownerExpenses: 0 };
       map[key].profit += Number(s.profit);
       map[key].sales += Number(s.sell_price) * s.qty;
     }
     
-    // Subtract expenses
-    for (const e of filteredExpenses) {
+    // Subtract overhead expenses
+    for (const e of overheadExpenses) {
       const date = new Date(e.created_at);
       const key = date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-      if (!map[key]) map[key] = { date: key, dateObj: date, profit: 0, sales: 0, expenses: 0 };
+      if (!map[key]) map[key] = { date: key, dateObj: date, profit: 0, sales: 0, expenses: 0, ownerExpenses: 0 };
       map[key].expenses += e.amount;
       map[key].profit -= e.amount; // Direct deduction from net profit
     }
+
+    // Subtract owner personal expenses
+    for (const w of ownerExpensesDeductedList) {
+      const date = new Date(w.created_at);
+      const key = date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+      if (!map[key]) map[key] = { date: key, dateObj: date, profit: 0, sales: 0, expenses: 0, ownerExpenses: 0 };
+      map[key].ownerExpenses += w.amount;
+      map[key].profit -= w.amount; // Direct deduction of owner expense from net profit
+    }
     
     return Object.values(map).sort((a, b) => +a.dateObj - +b.dateObj);
-  }, [filteredSales, filteredExpenses]);
+  }, [filteredSales, overheadExpenses, ownerExpensesDeductedList]);
 
   // Aggregated totals
   const totalSalesRevenue = useMemo(() => {
@@ -151,12 +211,16 @@ export default function ProfitPage() {
   }, [totalSalesRevenue, totalSalesProfit]);
 
   const totalOverheadExpenses = useMemo(() => {
-    return filteredExpenses.reduce((sum, e) => sum + e.amount, 0);
-  }, [filteredExpenses]);
+    return overheadExpenses.reduce((sum, e) => sum + Number(e.amount || 0), 0);
+  }, [overheadExpenses]);
+
+  const totalOwnerExpenses = useMemo(() => {
+    return ownerExpensesDeductedList.reduce((sum, w) => sum + w.amount, 0);
+  }, [ownerExpensesDeductedList]);
 
   const netProfit = useMemo(() => {
-    return totalSalesProfit - totalOverheadExpenses;
-  }, [totalSalesProfit, totalOverheadExpenses]);
+    return totalSalesProfit - totalOverheadExpenses - totalOwnerExpenses;
+  }, [totalSalesProfit, totalOverheadExpenses, totalOwnerExpenses]);
 
   // Filter transaction level ledger
   const transactions = useMemo(() => {
@@ -190,8 +254,8 @@ export default function ProfitPage() {
       });
     });
 
-    // Add expenses
-    filteredExpenses.forEach(e => {
+    // Add overhead expenses
+    overheadExpenses.forEach(e => {
       list.push({
         id: e.id,
         date: e.created_at,
@@ -205,8 +269,24 @@ export default function ProfitPage() {
       });
     });
 
+    // Add owner personal expenses
+    ownerExpensesDeductedList.forEach(w => {
+      const catLabel = w.category === "family" ? "পরিবার খরচ" : w.category === "bazar" ? "বাজার খরচ" : w.category === "home_rent" ? "বাসা ভাড়া" : w.category === "medical" ? "চিকিৎসা" : "ব্যক্তিগত";
+      list.push({
+        id: w.id,
+        date: w.created_at,
+        name: lang === "bn" ? `মালিকের খরচ: ${catLabel}${w.note ? ` (${w.note})` : ""}` : `Owner Expense: ${w.note || catLabel}`,
+        qty: 1,
+        revenue: 0,
+        cost: w.amount,
+        profit: -w.amount,
+        margin: 0,
+        type: "expense"
+      });
+    });
+
     return list.sort((a, b) => +new Date(b.date) - +new Date(a.date));
-  }, [filteredSales, filteredExpenses, t]);
+  }, [filteredSales, overheadExpenses, ownerExpensesDeductedList, t, lang]);
 
   // Search filter
   const searchedTransactions = useMemo(() => {
@@ -300,7 +380,7 @@ export default function ProfitPage() {
       </div>
 
       {/* Financial KPI Summary Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2.5">
         <Card className="p-3.5 bg-card border-border beveled-card shadow-sm flex flex-col justify-between h-24">
           <div className="text-[10px] text-muted-foreground uppercase tracking-wide font-medium">{lang === "bn" ? "মোট বিক্রি" : "Total Revenue"}</div>
           <div className="mt-2">
@@ -330,6 +410,14 @@ export default function ProfitPage() {
           <div className="mt-2">
             <div className="text-lg font-bold font-serif text-rose-600">-{fmtMoney(totalOverheadExpenses)}</div>
             <span className="text-[9px] text-muted-foreground block">{lang === "bn" ? "দোকান ও ব্যবসা খরচ" : "Overheads / Spends"}</span>
+          </div>
+        </Card>
+
+        <Card className="p-3.5 bg-card border-border beveled-card shadow-sm flex flex-col justify-between h-24">
+          <div className="text-[10px] text-muted-foreground uppercase tracking-wide font-medium">{lang === "bn" ? "মালিকের খরচ" : "Owner's Expense"}</div>
+          <div className="mt-2">
+            <div className="text-lg font-bold font-serif text-amber-600 dark:text-amber-400">-{fmtMoney(totalOwnerExpenses)}</div>
+            <span className="text-[9px] text-muted-foreground block">{lang === "bn" ? "লাভ হতে কর্তনকৃত" : "Cut from profit"}</span>
           </div>
         </Card>
 

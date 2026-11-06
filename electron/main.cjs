@@ -119,7 +119,8 @@ async function createWindow() {
     minHeight: 680,
     title: "Classic World — Ultimate POS System",
     icon: path.join(__dirname, "../public/logo.png"),
-    backgroundColor: "#0f172a",
+    backgroundColor: "#ffffff",
+    show: true,
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
       nodeIntegration: false,
@@ -131,6 +132,26 @@ async function createWindow() {
 
   // Hide default menu bar for clean, professional POS screen
   mainWindow.setMenuBarVisibility(false);
+
+  // Keyboard shortcuts: F12 / Ctrl+Shift+I (DevTools), F5 / Ctrl+R (Reload), Ctrl+Shift+R (Hard Reload)
+  mainWindow.webContents.on("before-input-event", (event, input) => {
+    if (input.type !== "keyDown") return;
+    if (input.key === "F12" || (input.control && input.shift && input.key.toLowerCase() === "i")) {
+      mainWindow.webContents.toggleDevTools();
+      event.preventDefault();
+    } else if (input.key === "F5" || (input.control && input.key.toLowerCase() === "r" && !input.shift)) {
+      mainWindow.webContents.reload();
+      event.preventDefault();
+    } else if (input.control && input.shift && input.key.toLowerCase() === "r") {
+      mainWindow.webContents.reloadIgnoringCache();
+      event.preventDefault();
+    }
+  });
+
+  // Capture all renderer console messages & errors to debug startup/blank screen issues
+  mainWindow.webContents.on("console-message", (event, level, message, line, sourceId) => {
+    console.log(`[Renderer Console][lvl ${level}] ${message} (${sourceId}:${line})`);
+  });
 
   // Intercept window.print() / iframe.contentWindow.print() and route through electronPOS.printSilent
   // while respecting the device's automatePrinting, printerName, and margin preferences!
@@ -208,32 +229,43 @@ async function createWindow() {
       .catch(() => {});
   });
 
-  // Ensure local Next.js engine on port 3142 is running first (instant speed + offline + cloud DB)
-  await ensureLocalServerRunning();
-  const isLocalReady = await checkUrlReady(LOCAL_URL, 1500);
+  // Connect to production cloud URL (https://classicworld-pos.web.app) by default
+  const preferLocal = process.env.POS_PREFER_LOCAL === "1";
+  let targetUrl = CLOUD_URL;
 
-  if (isLocalReady) {
-    console.log(`[Windows POS] Connected to Local Next.js Engine (${LOCAL_URL})!`);
-    mainWindow.loadURL(LOCAL_URL);
-  } else {
-    console.log(`[Windows POS] Local engine unavailable, connecting to cloud: ${CLOUD_URL}...`);
-    const isCloudOnline = await checkUrlReady(CLOUD_URL, 2500);
-    if (isCloudOnline) {
-      mainWindow.loadURL(CLOUD_URL);
-    } else {
-      mainWindow.loadFile(path.join(__dirname, "error.html"));
+  if (preferLocal) {
+    const isLocalReady = await checkUrlReady(LOCAL_URL, 1000);
+    if (isLocalReady) {
+      targetUrl = LOCAL_URL;
     }
   }
 
-  // Handle load failures gracefully (e.g. WiFi disconnected during load)
-  mainWindow.webContents.on("did-fail-load", async (event, errorCode, errorDescription, validatedURL) => {
-    console.warn(`[Windows POS] Failed to load ${validatedURL} [${errorCode}: ${errorDescription}]`);
-    if (validatedURL.startsWith("https://classicworld-pos.web.app")) {
-      console.log("[Windows POS] Cloud failed, switching to local offline POS server...");
-      await ensureLocalServerRunning();
+  console.log(`[Windows POS] Connecting to POS Terminal at: ${targetUrl}...`);
+  mainWindow.loadURL(targetUrl).catch(async (err) => {
+    console.warn(`[Windows POS] Direct load failed for ${targetUrl}:`, err);
+    const isLocalReady = await checkUrlReady(LOCAL_URL, 1000);
+    if (isLocalReady) {
+      console.log(`[Windows POS] Fallback to local server (${LOCAL_URL})...`);
       mainWindow.loadURL(LOCAL_URL).catch(() => {
         mainWindow.loadFile(path.join(__dirname, "error.html"));
       });
+    } else {
+      mainWindow.loadFile(path.join(__dirname, "error.html"));
+    }
+  });
+
+  // Handle load failures gracefully (e.g. WiFi disconnected during load)
+  mainWindow.webContents.on("did-fail-load", async (event, errorCode, errorDescription, validatedURL) => {
+    console.warn(`[Windows POS] Navigation failed: ${validatedURL} [${errorCode}: ${errorDescription}]`);
+    if (!validatedURL.includes("error.html")) {
+      const isLocalReady = await checkUrlReady(LOCAL_URL, 800);
+      if (isLocalReady) {
+        mainWindow.loadURL(LOCAL_URL).catch(() => {
+          mainWindow.loadFile(path.join(__dirname, "error.html"));
+        });
+      } else {
+        mainWindow.loadFile(path.join(__dirname, "error.html"));
+      }
     }
   });
 

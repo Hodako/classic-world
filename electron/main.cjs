@@ -303,6 +303,11 @@ async function performSilentPrint(html, printerName, options = {}) {
     const leftMm = margins.leftMm !== undefined ? Number(margins.leftMm) : 2;
     const rightMm = margins.rightMm !== undefined ? Number(margins.rightMm) : 2;
 
+    const rawPageSize = String(options.pageSize || "80mm").toLowerCase();
+    const is58mm = rawPageSize.includes("58");
+    const isA4 = rawPageSize.includes("a4");
+    const cssPageSize = is58mm ? "58mm auto" : isA4 ? "A4 portrait" : "80mm auto";
+
     // Prepare HTML: remove external font blocking that causes blank pages & enforce all-bold pure black thermal styling + margins
     let preparedHtml = String(html || "");
     preparedHtml = preparedHtml.replace(/display=swap/g, "display=optional");
@@ -310,6 +315,7 @@ async function performSilentPrint(html, printerName, options = {}) {
     const thermalOverrideStyle = `
       <style id="pos-thermal-override">
         @page {
+          size: ${cssPageSize} !important;
           margin: 0mm !important;
         }
         html, body {
@@ -319,11 +325,8 @@ async function performSilentPrint(html, printerName, options = {}) {
           -webkit-print-color-adjust: exact !important;
           print-color-adjust: exact !important;
           margin: 0 !important;
-          padding-top: ${topMm}mm !important;
-          padding-bottom: ${bottomMm}mm !important;
-          padding-left: ${leftMm}mm !important;
-          padding-right: ${rightMm}mm !important;
-          zoom: ${scaleFactor}% !important;
+          padding: 0 !important;
+          width: 100% !important;
         }
         *, body, div, span, p, td, th, tr, table, strong, b, h1, h2, h3, h4, small {
           font-weight: 800 !important;
@@ -335,6 +338,8 @@ async function performSilentPrint(html, printerName, options = {}) {
           padding-bottom: ${bottomMm}mm !important;
           padding-left: ${leftMm}mm !important;
           padding-right: ${rightMm}mm !important;
+          box-sizing: border-box !important;
+          width: 100% !important;
         }
       </style>
     `;
@@ -366,19 +371,28 @@ async function performSilentPrint(html, printerName, options = {}) {
     try {
       fs.writeFileSync(tempFilePath, preparedHtml, "utf8");
 
+      const isInteractive = !useSilent;
       printWin = new BrowserWindow({
-        show: !useSilent, // Show window when user wants the interactive Windows Print Preferences dialog
-        width: 420,
-        height: 760,
+        show: isInteractive,
+        x: isInteractive ? undefined : -20000,
+        y: isInteractive ? undefined : -20000,
+        width: 440,
+        height: 780,
         title: "POS Receipt Print",
         autoHideMenuBar: true,
+        focusable: isInteractive,
+        frame: isInteractive,
         webPreferences: {
           nodeIntegration: false,
           contextIsolation: true,
-          paintWhenInitiallyHidden: true, // CRITICAL: Prevents blank page when printing from hidden window!
           backgroundThrottling: false,
         },
       });
+
+      // Positioned offscreen but active so Windows GDI compositor fully renders all text and lines!
+      if (!isInteractive) {
+        printWin.showInactive();
+      }
 
       await printWin.loadFile(tempFilePath);
 
@@ -399,7 +413,7 @@ async function performSilentPrint(html, printerName, options = {}) {
         `)
         .catch(() => {});
 
-      await new Promise((r) => setTimeout(r, 300));
+      await new Promise((r) => setTimeout(r, 250));
 
       const printers = await printWin.webContents.getPrintersAsync();
       const defaultP = printers.find((p) => p.isDefault)?.name || printers[0]?.name || "";
@@ -420,7 +434,18 @@ async function performSilentPrint(html, printerName, options = {}) {
         silent: useSilent,
         printBackground: true,
         copies,
+        scaleFactor,
+        margins: { marginType: "none" },
       };
+
+      if (is58mm) {
+        printConfig.pageSize = { width: 58000, height: 297000 };
+      } else if (isA4) {
+        printConfig.pageSize = "A4";
+      } else {
+        // 80mm thermal roll (76mm printable width)
+        printConfig.pageSize = { width: 76000, height: 297000 };
+      }
 
       if (useSilent && targetPrinter) {
         printConfig.deviceName = targetPrinter;

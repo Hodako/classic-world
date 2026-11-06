@@ -397,24 +397,48 @@ export async function activateLicenseFn(input: { data: { licenseKey: string } })
 export async function getBusinessSettingsFn() {
   const session = await requireSession();
   const db = await getDb();
-  let business = session.businessId
-    ? await db.collection("businesses").findOne({ _id: session.businessId as any })
-    : await db.collection("businesses").findOne({ owner_id: session.ownerId });
+  const isCustomProfile = session.profileId && session.profileId !== "default";
+  let business: any = null;
 
-  if (!business && session.role === "owner") {
-    const id = crypto.randomUUID();
-    business = {
-      _id: id as any,
-      owner_id: session.ownerId,
-      name: DEFAULT_COMPANY,
-      logo_url: "/logo.png",
-      business_type: "retail",
-      theme: "green",
-      employee_limit: 5,
-      created_at: new Date().toISOString(),
-    };
-    await db.collection("businesses").insertOne(business as any);
-    await db.collection("users").updateOne({ _id: session.userId as any }, { $set: { business_id: id } });
+  if (isCustomProfile) {
+    business = await db.collection("businesses").findOne({ owner_id: session.ownerId });
+    if (!business && session.role === "owner") {
+      const ownerIdBase = session.ownerId.split(":")[0];
+      const ownerDoc = await db.collection("users").findOne({ _id: ownerIdBase as any });
+      const profObj = (ownerDoc?.profiles || []).find((p: any) => p.id === session.profileId);
+      const id = crypto.randomUUID();
+      business = {
+        _id: id as any,
+        owner_id: session.ownerId,
+        name: profObj?.name || DEFAULT_COMPANY,
+        logo_url: "",
+        business_type: "retail",
+        theme: "green",
+        employee_limit: 5,
+        created_at: new Date().toISOString(),
+      };
+      await db.collection("businesses").insertOne(business as any);
+    }
+  } else {
+    business = session.businessId
+      ? await db.collection("businesses").findOne({ _id: session.businessId as any })
+      : await db.collection("businesses").findOne({ owner_id: session.ownerId });
+
+    if (!business && session.role === "owner") {
+      const id = crypto.randomUUID();
+      business = {
+        _id: id as any,
+        owner_id: session.ownerId,
+        name: DEFAULT_COMPANY,
+        logo_url: "",
+        business_type: "retail",
+        theme: "green",
+        employee_limit: 5,
+        created_at: new Date().toISOString(),
+      };
+      await db.collection("businesses").insertOne(business as any);
+      await db.collection("users").updateOne({ _id: session.userId as any }, { $set: { business_id: id } });
+    }
   }
 
   const employees = await db.collection("users")
@@ -428,10 +452,15 @@ export async function getBusinessSettingsFn() {
     .limit(50)
     .toArray();
 
+  const bizName = (business?.name as string) || DEFAULT_COMPANY;
+  const isDefaultBrandName = /^(dream\s*fashion|classic\s*world)$/i.test(bizName.trim());
+  const rawBizLogo = (business?.logo_url as string) || "";
+  const resolvedLogoUrl = rawBizLogo && rawBizLogo !== "/logo.png" ? rawBizLogo : (isDefaultBrandName ? "/logo.png" : "");
+
   return {
     business: business ? {
       id: business._id as any as string,
-      name: business.name as string,
+      name: bizName,
       tagline: (business.tagline as string) || "",
       address: (business.address as string) || "",
       phone_numbers: (business.phone_numbers as string) || (business.phone as string) || "",
@@ -440,7 +469,7 @@ export async function getBusinessSettingsFn() {
       invoice_page_size: (business.invoice_page_size as string) || "80mm",
       invoice_page_width: (business.invoice_page_width as string) || "",
       invoice_page_height: (business.invoice_page_height as string) || "",
-      logo_url: (business.logo_url as string) || "/logo.png",
+      logo_url: resolvedLogoUrl,
       business_type: (business.business_type as string) || "retail",
       theme: (business.theme as string) || "green",
       employee_limit: (business.employee_limit as number) || 5,
@@ -503,45 +532,86 @@ export async function updateBusinessSettingsFn(input: {
   const session = await requireSession();
   if (session.role !== "owner") throw new Error("Only business owner can change settings");
   const db = await getDb();
-  let business = (session.businessId ? await db.collection("businesses").findOne({ _id: session.businessId as any }) : null)
-    || await db.collection("businesses").findOne({ owner_id: session.ownerId })
-    || await db.collection("businesses").findOne({ owner_id: session.userId });
+  const isCustomProfile = session.profileId && session.profileId !== "default";
+  let business: any = null;
 
-  if (!business) {
-    const newBizId = crypto.randomUUID();
-    business = {
-      _id: newBizId as any,
-      owner_id: session.userId,
-      name: data.name || "Classic World",
-      logo_url: data.logo_url || "/logo.png",
-      business_type: data.business_type || "retail",
-      theme: data.theme || "green",
-      status: "active",
-      sms_credits: 0,
-      max_products: 500,
-      max_invoices: 10000,
-      employee_limit: 5,
-      created_at: new Date().toISOString(),
-    };
-    await db.collection("businesses").insertOne(business as any);
-    await db.collection("users").updateOne({ _id: session.userId as any }, { $set: { business_id: newBizId } });
+  if (isCustomProfile) {
+    business = await db.collection("businesses").findOne({ owner_id: session.ownerId });
+    if (!business) {
+      const newBizId = crypto.randomUUID();
+      business = {
+        _id: newBizId as any,
+        owner_id: session.ownerId,
+        name: data.name || "New Business",
+        logo_url: data.logo_url || "",
+        business_type: data.business_type || "retail",
+        theme: data.theme || "green",
+        status: "active",
+        sms_credits: 0,
+        max_products: 500,
+        max_invoices: 10000,
+        employee_limit: 5,
+        created_at: new Date().toISOString(),
+      };
+      await db.collection("businesses").insertOne(business as any);
+    }
+  } else {
+    business = (session.businessId ? await db.collection("businesses").findOne({ _id: session.businessId as any }) : null)
+      || await db.collection("businesses").findOne({ owner_id: session.ownerId })
+      || await db.collection("businesses").findOne({ owner_id: session.userId });
+
+    if (!business) {
+      const newBizId = crypto.randomUUID();
+      business = {
+        _id: newBizId as any,
+        owner_id: session.userId,
+        name: data.name || "Classic World",
+        logo_url: data.logo_url || "",
+        business_type: data.business_type || "retail",
+        theme: data.theme || "green",
+        status: "active",
+        sms_credits: 0,
+        max_products: 500,
+        max_invoices: 10000,
+        employee_limit: 5,
+        created_at: new Date().toISOString(),
+      };
+      await db.collection("businesses").insertOne(business as any);
+      await db.collection("users").updateOne({ _id: session.userId as any }, { $set: { business_id: newBizId } });
+    }
   }
 
   await db.collection("businesses").updateOne({ _id: business._id as any }, { $set: data });
 
-  const userUpdates: Record<string, any> = {};
-  if (data.name) userUpdates.business_name = data.name;
-  if (data.logo_url) userUpdates.logo_url = data.logo_url;
-  if (Object.keys(userUpdates).length > 0) {
-    await db.collection("users").updateOne(
-      { _id: session.userId as any },
-      { $set: userUpdates }
-    );
-    if (session.ownerId !== session.userId) {
+  if (isCustomProfile) {
+    if (data.name) {
+      const ownerIdBase = session.ownerId.split(":")[0];
+      const ownerDoc = await db.collection("users").findOne({ _id: ownerIdBase as any });
+      if (ownerDoc && Array.isArray(ownerDoc.profiles)) {
+        const updatedProfiles = ownerDoc.profiles.map((p: any) =>
+          p.id === session.profileId ? { ...p, name: data.name } : p
+        );
+        await db.collection("users").updateOne(
+          { _id: ownerIdBase as any },
+          { $set: { profiles: updatedProfiles } }
+        );
+      }
+    }
+  } else {
+    const userUpdates: Record<string, any> = {};
+    if (data.name) userUpdates.business_name = data.name;
+    if (data.logo_url !== undefined) userUpdates.logo_url = data.logo_url;
+    if (Object.keys(userUpdates).length > 0) {
       await db.collection("users").updateOne(
-        { _id: session.ownerId as any },
+        { _id: session.userId as any },
         { $set: userUpdates }
       );
+      if (session.ownerId !== session.userId) {
+        await db.collection("users").updateOne(
+          { _id: session.ownerId as any },
+          { $set: userUpdates }
+        );
+      }
     }
   }
   return { success: true, business: { ...business, ...data } };

@@ -65,8 +65,15 @@ export function EditSaleDialog({
   const buyPrice = selectedProduct ? selectedProduct.buy_price : (sale?.buy_price || 0);
   const profit = (sellPriceNum - buyPrice) * qtyNum;
 
-  const paidNum = (type === "cash" || type === "bkash" || type === "bank" || type === "online") ? lineSell : Number(paid) || 0;
-  const due = Math.max(lineSell - paidNum, 0);
+  const isOnlineCollected = (sale as any)?.courier_status === "collected";
+  const paidNum = (type === "cash" || type === "bkash" || type === "bank")
+    ? lineSell
+    : type === "online"
+      ? (isOnlineCollected ? lineSell : 0)
+      : Math.min(Math.max(0, Number(paid) || 0), lineSell);
+  const due = type === "online"
+    ? (isOnlineCollected ? 0 : lineSell)
+    : Math.max(lineSell - paidNum, 0);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();

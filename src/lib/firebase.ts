@@ -1,6 +1,13 @@
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { getAuth, GoogleAuthProvider } from "firebase/auth";
-import { getFirestore } from "firebase/firestore";
+import {
+  initializeFirestore,
+  persistentLocalCache,
+  persistentMultipleTabManager,
+  memoryLocalCache,
+  getFirestore,
+  Firestore,
+} from "firebase/firestore";
 import { getStorage } from "firebase/storage";
 import { getAnalytics, isSupported } from "firebase/analytics";
 
@@ -17,7 +24,27 @@ const firebaseConfig = {
 // Initialize Firebase safely for SSR & Client
 export const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
 export const auth = getAuth(app);
-export const db = getFirestore(app);
+
+// Initialize Firestore with persistent IndexedDB multi-tab cache in browser for instant zero-lag offline accounting,
+// falling back to memory cache in SSR or restricted environments.
+let dbInstance: Firestore;
+try {
+  if (typeof window !== "undefined" && typeof indexedDB !== "undefined") {
+    dbInstance = initializeFirestore(app, {
+      localCache: persistentLocalCache({
+        tabManager: persistentMultipleTabManager(),
+      }),
+    });
+  } else {
+    dbInstance = initializeFirestore(app, {
+      localCache: memoryLocalCache(),
+    });
+  }
+} catch (_) {
+  dbInstance = getFirestore(app);
+}
+export const db = dbInstance;
+
 export const storage = getStorage(app);
 export const googleProvider = new GoogleAuthProvider();
 

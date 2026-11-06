@@ -73,7 +73,7 @@ function RangePill({ label, active, onClick }: { label: string; active: boolean;
 }
 
 export default function CashManagementPage() {
-  const { t } = useT();
+  const { t, lang } = useT();
   const sales = useCachedQuery(["sales"], getSales);
   const expenses = useCachedQuery(["expenses"], getExpenses);
   const withdrawals = useCachedQuery(["withdrawals"], getWithdrawals);
@@ -147,6 +147,9 @@ export default function CashManagementPage() {
   const getSaleCash = (s: any) => {
     const tot = getSaleTotal(s);
     const p = Number(s.paid_amount);
+    if (s.type === "split") {
+      return Number(s.split_cash) || 0;
+    }
     if (s.type === "cash" || s.type === "pos" || s.type === "nagad" || s.type === "card" || !s.type) {
       return (!isNaN(p) && p >= 0 ? p : tot);
     }
@@ -165,8 +168,24 @@ export default function CashManagementPage() {
   };
 
   const cashSales = filtSales.reduce((a, s) => a + getSaleCash(s), 0);
+  const digitalSales = filtSales.reduce((a, s) => {
+    const isAccepted = (s as any).payment_status === "accepted" || (s as any).payment_accepted;
+    if (!isAccepted) return a;
+    if (s.type === "bkash" || (s.type as string) === "bank") {
+      const p = Number(s.paid_amount);
+      return a + (!isNaN(p) && p > 0 ? p : getSaleTotal(s));
+    }
+    if (s.type === "split") {
+      return a + (Number(s.split_bkash) || 0) + (Number(s.split_bank) || 0);
+    }
+    return a;
+  }, 0);
   const onlineSales = filtSales.filter(s => s.type === "online").reduce((a, s) => a + getSaleTotal(s), 0);
-  const creditSales = filtSales.filter(s => s.type === "credit").reduce((a, s) => a + (!isNaN(Number(s.due_amount)) ? Number(s.due_amount) : getSaleTotal(s)), 0);
+  const creditSales = filtSales.reduce((a, s) => {
+    if (s.type === "credit") return a + (!isNaN(Number(s.due_amount)) ? Number(s.due_amount) : getSaleTotal(s));
+    if (s.type === "split") return a + (Number(s.due_amount) || 0);
+    return a;
+  }, 0);
   const totalSales = filtSales.reduce((a, s) => a + getSaleTotal(s), 0);
   const totalExp = filtExp.reduce((a, e) => a + Number(e.amount), 0);
   const totalWith = filtWith.reduce((a, w) => a + Number(w.amount), 0);
@@ -174,11 +193,11 @@ export default function CashManagementPage() {
 
   const dayCount = range === "today" ? 1 : range === "week" ? 7 : range === "month" ? 30 : 14;
   const dailyData = useMemo(() => {
-    const map: Record<string, { cash: number; online: number; credit: number; expense: number }> = {};
+    const map: Record<string, { cash: number; digital: number; online: number; credit: number; expense: number }> = {};
     for (let i = dayCount - 1; i >= 0; i--) {
       const d = new Date(); d.setDate(d.getDate() - i);
       const k = d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-      map[k] = { cash: 0, online: 0, credit: 0, expense: 0 };
+      map[k] = { cash: 0, digital: 0, online: 0, credit: 0, expense: 0 };
     }
     filtSales.forEach(s => {
       const k = new Date(s.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" });
@@ -188,6 +207,12 @@ export default function CashManagementPage() {
         map[k].online += getSaleTotal(s);
       } else if (type === "credit") {
         map[k].credit += (!isNaN(Number(s.due_amount)) ? Number(s.due_amount) : getSaleTotal(s));
+      } else if (type === "split") {
+        map[k].cash += Number(s.split_cash) || 0;
+        map[k].digital += (Number(s.split_bkash) || 0) + (Number(s.split_bank) || 0);
+        map[k].credit += Number(s.due_amount) || 0;
+      } else if (type === "bkash" || type === "bank") {
+        map[k].digital += getSaleTotal(s);
       } else {
         map[k].cash += getSaleCash(s);
       }
@@ -201,11 +226,12 @@ export default function CashManagementPage() {
 
   const pieData = [
     { name: t("cash"), value: cashSales, color: "#6366f1" },
+    { name: "bKash / Bank", value: digitalSales, color: "#e11d48" },
     { name: t("online_sell"), value: onlineSales, color: "#10b981" },
     { name: t("credit_sale"), value: creditSales, color: "#f59e0b" },
   ].filter(d => d.value > 0);
 
-  const flowData = dailyData.map(d => ({ date: d.date, আয়: d.cash + d.online, খরচ: -(d.expense) }));
+  const flowData = dailyData.map(d => ({ date: d.date, আয়: d.cash + d.digital + d.online, খরচ: -(d.expense) }));
 
   function exportCSV(langCode: "en" | "bn") {
     const rows = langCode === "bn"
@@ -251,7 +277,7 @@ export default function CashManagementPage() {
       ]);
     });
 
-    const csv = rows.map(r => r.map(c => `"${c}"`).join(",")).join("\n");
+    const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n");
     const a = document.createElement("a");
     a.href = URL.createObjectURL(new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" }));
     a.download = `cash-${new Date().toISOString().slice(0, 10)}.csv`;
@@ -267,7 +293,7 @@ export default function CashManagementPage() {
     a.click();
   }
 
-  const rangeLabel = range === "today" ? (useT().lang === "bn" ? "আজ" : "Today") : range === "yesterday" ? (useT().lang === "bn" ? "গতকাল" : "Yesterday") : range === "week" ? (useT().lang === "bn" ? "এই সপ্তাহ" : "This Week") : (useT().lang === "bn" ? "এই মাস" : "This Month");
+  const rangeLabel = range === "today" ? (lang === "bn" ? "আজ" : "Today") : range === "yesterday" ? (lang === "bn" ? "গতকাল" : "Yesterday") : range === "week" ? (lang === "bn" ? "এই সপ্তাহ" : "This Week") : (lang === "bn" ? "এই মাস" : "This Month");
 
   return (
     <div className="space-y-6 pb-4">

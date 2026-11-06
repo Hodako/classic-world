@@ -85,7 +85,9 @@ export default function OnlineSellsPage() {
         const first = items[0];
         const totalQty = items.reduce((sum, x) => sum + x.qty, 0);
         const totalSellPrice = items.reduce((sum, x) => sum + Number(x.sell_price) * x.qty, 0);
-        const totalProfit = items.reduce((sum, x) => sum + x.profit, 0);
+        const totalProfit = items.reduce((sum, x) => sum + (Number(x.profit) || 0), 0);
+        const totalPaid = items.reduce((sum, x) => sum + (Number(x.paid_amount) || 0), 0);
+        const totalDue = items.reduce((sum, x) => sum + (Number(x.due_amount) || 0), 0);
         const names = items.map((x) => `${x.product_name} (×${x.qty})`).join(", ");
 
         return {
@@ -96,8 +98,8 @@ export default function OnlineSellsPage() {
           qty: totalQty,
           sell_price: totalSellPrice,
           profit: totalProfit,
-          paid_amount: first.paid_amount,
-          due_amount: first.due_amount,
+          paid_amount: totalPaid,
+          due_amount: totalDue,
           courier_status: (first as any).courier_status || "pending",
           courier_name: (first as any).courier_name || "Courier Delivery",
           tracking_code: (first as any).tracking_code || null,
@@ -217,11 +219,11 @@ export default function OnlineSellsPage() {
           qty: Number(it.qty) || 1,
           sellPrice: Number(it.sell_price) || 0,
         })),
-        subtotal: item.sell_price,
-        discountAmount: 0,
+        subtotal: item.sell_price + item.items.reduce((acc: number, it: any) => acc + (Number(it.discount) || 0), 0),
+        discountAmount: item.items.reduce((acc: number, it: any) => acc + (Number(it.discount) || 0), 0),
         total: item.sell_price,
-        paidAmount: item.courier_status === "collected" ? item.sell_price : 0,
-        due: item.courier_status === "collected" ? 0 : item.sell_price,
+        paidAmount: item.courier_status === "collected" ? item.sell_price : (Number(item.paid_amount) || 0),
+        due: item.courier_status === "collected" ? 0 : (Number(item.due_amount) || item.sell_price),
       });
       toast.success(lang === "bn" ? "ইনভয়েস প্রিন্ট প্রস্তুত হচ্ছে!" : "Opening invoice print view!");
     } catch (err: any) {

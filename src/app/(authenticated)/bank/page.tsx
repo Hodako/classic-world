@@ -217,7 +217,7 @@ export default function BankPage() {
   // Loan Handlers
   const handleSaveLoan = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!loanForm.bank_name.trim() || !Number(loanForm.principal_amount)) {
+    if (!loanForm.bank_name.trim() || !Number.isFinite(Number(loanForm.principal_amount)) || Number(loanForm.principal_amount) <= 0) {
       return toast.error(lang === "bn" ? "ব্যাংকের নাম এবং ঋণের পরিমাণ লিখুন" : "Enter bank name and principal loan amount");
     }
     setBusy(true);
@@ -227,6 +227,9 @@ export default function BankPage() {
       const hasInst = loanForm.has_installments;
       const installments = hasInst ? (Number(loanForm.total_installments) || 1) : 0;
       const perInstallment = hasInst ? (Number(loanForm.installment_amount) || Math.round(repayable / (installments || 1))) : 0;
+      if (!Number.isFinite(repayable) || repayable <= 0 || (hasInst && (!Number.isInteger(installments) || installments <= 0 || !Number.isFinite(perInstallment) || perInstallment <= 0))) {
+        throw new Error(lang === "bn" ? "ঋণ ও কিস্তির সঠিক পরিমাণ দিন" : "Enter valid repayment and installment amounts");
+      }
 
       await createBankLoanFn({
         data: {
@@ -561,6 +564,10 @@ export default function BankPage() {
                       </div>
                     </div>
 
+                    <Button type="button" variant="outline" size="sm" className="w-full gap-1.5" onClick={() => {
+                      setLoanForm({ bank_name: loan.bank_name || "", loan_title: "", principal_amount: "", total_repayable: "", has_installments: true, total_installments: "12", installment_amount: "", receive_to_cashbox: true, note: "" });
+                      setLoanDialogOpen(true);
+                    }}><Plus className="size-3.5" />{lang === "bn" ? "এই প্রতিষ্ঠান থেকে আরও ঋণ নিন" : "Add another loan from this lender"}</Button>
                     {!isComplete && (
                       <Button
                         onClick={() => {
@@ -914,10 +921,12 @@ export default function BankPage() {
               <Label>{lang === "bn" ? "ব্যাংক বা ঋণদাতা প্রতিষ্ঠানের নাম *" : "Bank / Lender Name *"}</Label>
               <Input
                 required
+                list="loan-lenders"
                 placeholder={lang === "bn" ? "যেমন: সোনালী ব্যাংক / ব্র্যাক ব্যাংক" : "e.g. BRAC Bank"}
                 value={loanForm.bank_name}
                 onChange={e => setLoanForm({ ...loanForm, bank_name: e.target.value })}
               />
+              <datalist id="loan-lenders">{Array.from(new Set([...accounts, ...loans].map(item => String(item.bank_name || "").trim()).filter(Boolean))).map(name => <option key={name} value={name} />)}</datalist>
             </div>
 
             <div className="space-y-1">

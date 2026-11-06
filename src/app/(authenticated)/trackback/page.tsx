@@ -73,11 +73,9 @@ export default function TrackbackPage() {
   const pageSize = 15;
 
   // Check if an employee session is active
-  const [activeEmpSession, setActiveEmpSession] = useState<any>(() => {
-    if (typeof window === "undefined") return null;
-    try { return JSON.parse(localStorage.getItem("cw_active_employee_session") || "null"); } catch { return null; }
-  });
+  const [activeEmpSession, setActiveEmpSession] = useState<any>(null);
   useEffect(() => {
+    try { setActiveEmpSession(JSON.parse(localStorage.getItem("cw_active_employee_session") || "null")); } catch {}
     const h = () => {
       try { setActiveEmpSession(JSON.parse(localStorage.getItem("cw_active_employee_session") || "null")); } catch {}
     };
@@ -87,28 +85,6 @@ export default function TrackbackPage() {
   }, []);
 
   const isEmployee = activeEmpSession != null || user?.role === "employee";
-
-  // If employee: show access denied, no redirect needed (keeps URL clean)
-  if (isEmployee) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4 text-center p-6">
-        <div className="p-5 rounded-2xl bg-rose-500/10 border border-rose-500/20">
-          <Lock className="size-10 text-rose-500" />
-        </div>
-        <h2 className="text-xl font-bold text-foreground">
-          {lang === "bn" ? "এই পেজে প্রবেশাধিকার নেই" : "Access Restricted"}
-        </h2>
-        <p className="text-sm text-muted-foreground max-w-xs">
-          {lang === "bn"
-            ? "ট্র্যাকব্যাক রিপোর্ট শুধুমাত্র ব্যবসার মালিক দেখতে পারবেন। কর্মচারীরা এই পেজ অ্যাক্সেস করতে পারবেন না।"
-            : "The Trackback report is restricted to business owners only. Employees cannot access this page."}
-        </p>
-        <Button variant="outline" className="rounded-xl" onClick={() => router.replace("/dashboard")}>
-          {lang === "bn" ? "ড্যাশবোর্ডে ফিরুন" : "Return to Dashboard"}
-        </Button>
-      </div>
-    );
-  }
 
   const [deleteTarget, setDeleteTarget] = useState<{
     id: string;
@@ -179,12 +155,12 @@ export default function TrackbackPage() {
   const [showSpends, setShowSpends] = useState(true);
   const [showProfit, setShowProfit] = useState(true);
 
-  const sales = useCachedQuery(["sales"], getSales);
-  const purchases = useCachedQuery(["purchases"], getPurchases);
-  const expenses = useCachedQuery(["expenses"], getExpenses);
-  const returns = useCachedQuery(["returns"], getReturns);
-  const parties = useCachedQuery(["parties"], getParties);
-  const ownerWallet = useCachedQuery(["owner_wallet"], getOwnerWallet);
+  const sales = useCachedQuery(["sales"], getSales, { enabled: !isEmployee });
+  const purchases = useCachedQuery(["purchases"], getPurchases, { enabled: !isEmployee });
+  const expenses = useCachedQuery(["expenses"], getExpenses, { enabled: !isEmployee });
+  const returns = useCachedQuery(["returns"], getReturns, { enabled: !isEmployee });
+  const parties = useCachedQuery(["parties"], getParties, { enabled: !isEmployee });
+  const ownerWallet = useCachedQuery(["owner_wallet"], getOwnerWallet, { enabled: !isEmployee });
 
   const filteredSales = useMemo(
     () => (sales.data ?? []).filter(s => !s.returned && inRange(s.created_at, range, from, to)),
@@ -265,38 +241,60 @@ export default function TrackbackPage() {
     return ownerExpensesToDeduct.reduce((sum, w) => sum + w.amount, 0);
   }, [ownerExpensesToDeduct]);
 
+  const getSaleRev = (s: any) => {
+    const p = Number(s.paid_amount);
+    const d = Number(s.due_amount);
+    if (!isNaN(p) && !isNaN(d) && (p + d > 0)) return p + d;
+    const q = Number(s.qty) || 1;
+    const sp = Number(s.sell_price) || 0;
+    const disc = Number((s as any).discount) || 0;
+    return Math.max(0, sp * q - disc);
+  };
+
+  const getSaleProf = (s: any) => {
+    if (s.profit !== undefined && s.profit !== null && !isNaN(Number(s.profit))) {
+      return Number(s.profit);
+    }
+    const q = Number(s.qty) || 1;
+    const sp = Number(s.sell_price) || 0;
+    const bp = Number(s.buy_price) || 0;
+    const disc = Number((s as any).discount) || 0;
+    return (sp - bp) * q - disc;
+  };
+
   const chartData = useMemo(() => {
     const map: Record<string, { date: string; dateObj: Date; sales: number; buys: number; spends: number; profit: number }> = {};
     
     for (const s of filteredSales) {
+      if (s.returned) continue;
       const date = new Date(s.created_at);
       const key = date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
       if (!map[key]) map[key] = { date: key, dateObj: date, sales: 0, buys: 0, spends: 0, profit: 0 };
-      map[key].sales += Number(s.sell_price) * s.qty;
-      map[key].profit += Number(s.profit);
+      map[key].sales += getSaleRev(s);
+      map[key].profit += getSaleProf(s);
     }
     
     for (const p of filteredPurchases) {
       const date = new Date(p.created_at);
       const key = date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
       if (!map[key]) map[key] = { date: key, dateObj: date, sales: 0, buys: 0, spends: 0, profit: 0 };
-      map[key].buys += p.total;
+      map[key].buys += Number(p.total || 0);
     }
     
     for (const e of overheadExpenses) {
       const date = new Date(e.created_at);
       const key = date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
       if (!map[key]) map[key] = { date: key, dateObj: date, sales: 0, buys: 0, spends: 0, profit: 0 };
-      map[key].spends += e.amount;
-      map[key].profit -= e.amount;
+      map[key].spends += Number(e.amount || 0);
+      map[key].profit -= Number(e.amount || 0);
     }
 
     for (const w of ownerExpensesToDeduct) {
       const date = new Date(w.created_at);
       const key = date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
       if (!map[key]) map[key] = { date: key, dateObj: date, sales: 0, buys: 0, spends: 0, profit: 0 };
-      map[key].spends += w.amount;
-      map[key].profit -= w.amount;
+      map[key].spends += Number(w.amount || 0);
+      map[key].profit -= Number(w.amount || 0);
     }
     
     return Object.values(map)
@@ -305,10 +303,10 @@ export default function TrackbackPage() {
   }, [filteredSales, filteredPurchases, overheadExpenses, ownerExpensesToDeduct]);
 
   const totals = useMemo(() => {
-    const totalSales = filteredSales.reduce((a, s) => a + Number(s.sell_price) * s.qty, 0);
-    const totalProfit = filteredSales.reduce((a, s) => a + Number(s.profit), 0);
-    const totalBuys = filteredPurchases.reduce((a, p) => a + p.total, 0);
-    const totalOverheadSpends = overheadExpenses.reduce((a, e) => a + e.amount, 0);
+    const totalSales = filteredSales.reduce((a, s) => a + (s.returned ? 0 : getSaleRev(s)), 0);
+    const totalProfit = filteredSales.reduce((a, s) => a + (s.returned ? 0 : getSaleProf(s)), 0);
+    const totalBuys = filteredPurchases.reduce((a, p) => a + Number(p.total || 0), 0);
+    const totalOverheadSpends = overheadExpenses.reduce((a, e) => a + Number(e.amount || 0), 0);
     const totalSpends = totalOverheadSpends + totalOwnerExpenseCut;
     const netProfit = totalProfit - totalSpends;
 
@@ -343,6 +341,28 @@ export default function TrackbackPage() {
     ]);
     downloadCsv(`sales-${exportDateStamp()}.csv`, headers, rows);
     toast.success(langCode === "bn" ? "CSV ফাইল ডাউনলোড সফল হয়েছে!" : "CSV exported successfully!");
+  }
+
+  // If employee: show access denied, no redirect needed (keeps URL clean)
+  if (isEmployee) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4 text-center p-6">
+        <div className="p-5 rounded-2xl bg-rose-500/10 border border-rose-500/20">
+          <Lock className="size-10 text-rose-500" />
+        </div>
+        <h2 className="text-xl font-bold text-foreground">
+          {lang === "bn" ? "এই পেজে প্রবেশাধিকার নেই" : "Access Restricted"}
+        </h2>
+        <p className="text-sm text-muted-foreground max-w-xs">
+          {lang === "bn"
+            ? "ট্র্যাকব্যাক রিপোর্ট শুধুমাত্র ব্যবসার মালিক দেখতে পারবেন। কর্মচারীরা এই পেজ অ্যাক্সেস করতে পারবেন না।"
+            : "The Trackback report is restricted to business owners only. Employees cannot access this page."}
+        </p>
+        <Button variant="outline" className="rounded-xl" onClick={() => router.replace("/dashboard")}>
+          {lang === "bn" ? "ড্যাশবোর্ডে ফিরুন" : "Return to Dashboard"}
+        </Button>
+      </div>
+    );
   }
 
   return (

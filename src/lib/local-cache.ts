@@ -53,12 +53,17 @@ const PROFILE_TTL = 30 * 24 * 60 * 60 * 1000; // 30 days
 const BRAND_TTL = 30 * 24 * 60 * 60 * 1000;
 
 export function readAuthProfile(): AuthProfileCache | null {
-  return read<AuthProfileCache>(AUTH_KEY, PROFILE_TTL) || read<AuthProfileCache>(LEGACY_AUTH_KEY, PROFILE_TTL);
+  return (
+    read<AuthProfileCache>(AUTH_KEY, PROFILE_TTL) ||
+    read<AuthProfileCache>(LEGACY_AUTH_KEY, PROFILE_TTL) ||
+    read<AuthProfileCache>("user", PROFILE_TTL)
+  );
 }
 
 export function writeAuthProfile(profile: Omit<AuthProfileCache, "updatedAt">) {
   write(AUTH_KEY, profile);
   write(LEGACY_AUTH_KEY, profile);
+  write("user", profile);
 }
 
 export function clearAuthProfile() {
@@ -70,6 +75,7 @@ export function clearAuthProfile() {
     localStorage.removeItem("classicworld_auth_profile");
     localStorage.removeItem("auth_token");
     localStorage.removeItem("active_profile");
+    localStorage.removeItem("cw_employee_device_link_id");
     localStorage.removeItem("app_pin_unlocked");
     sessionStorage.clear();
     try {

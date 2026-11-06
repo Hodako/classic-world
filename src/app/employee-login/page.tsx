@@ -19,6 +19,7 @@ import {
   updateProfile,
 } from "firebase/auth";
 import Link from "next/link";
+import { EmployeeDeviceCodeForm } from "@/components/employee-device-link";
 
 function EmployeeLoginForm() {
   const { lang, setLang } = useT();
@@ -41,30 +42,57 @@ function EmployeeLoginForm() {
   const [busy, setBusy] = useState(false);
   const [googleBusy, setGoogleBusy] = useState(false);
 
-  function afterAuth(u: AuthUser | null) {
-    if (!u) return;
-    login(u);
+  function afterAuth(u: AuthUser | null, token?: string) {
+    if (!u) {
+      toast.error(lang === "bn" ? "লগইন ব্যর্থ হয়েছে" : "Authentication failed");
+      return;
+    }
+    if (typeof window !== "undefined") {
+      sessionStorage.setItem("app_pin_unlocked", "true");
+    }
+    login(u, token);
     router.push("/dashboard");
   }
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
-    if (!identifier.trim() || !password) {
-      toast.error(lang === "bn" ? "ইউজারনেম/মোবাইল নম্বর ও পাসওয়ার্ড দিন" : "Please enter your username/phone and password");
+    const cleanId = identifier.trim();
+    const cleanPwd = password.trim();
+    if (!cleanId && !cleanPwd) {
+      toast.error(lang === "bn" ? "ইউজারনেম/মোবাইল নম্বর ও পিন কোড দিন" : "Please enter username/phone and PIN");
       return;
     }
 
     setBusy(true);
     try {
-      const res = await employeeLoginFn({
-        data: {
-          username: identifier.trim(),
-          password,
-        },
-      });
+      let res: any = null;
+      // 1. Direct Firestore employee authentication (handles default PIN & shop employees)
+      try {
+        const { fsEmployeeLogin } = await import("@/lib/firestore-service");
+        res = await fsEmployeeLogin({
+          username: cleanId || cleanPwd,
+          password: cleanPwd || cleanId,
+        });
+      } catch (fsErr: any) {
+        // 2. Fallback to remote RPC
+        try {
+          res = await employeeLoginFn({
+            data: {
+              username: cleanId,
+              password: cleanPwd,
+            },
+          });
+        } catch (rpcErr) {
+          throw fsErr || rpcErr;
+        }
+      }
 
-      toast.success(lang === "bn" ? "কর্মচারী পোর্টালে সফলভাবে লগইন হয়েছে!" : "Employee signed in successfully!");
-      afterAuth(res.user as AuthUser);
+      if (!res?.user) {
+        throw new Error("Invalid employee credentials");
+      }
+
+      toast.success(lang === "bn" ? "কর্মচারী হিসেবে সফলভাবে লগইন হয়েছে!" : "Logged in as shop employee!");
+      afterAuth(res.user as AuthUser, res.token);
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Employee login failed. Check credentials.");
     } finally {
@@ -104,8 +132,12 @@ function EmployeeLoginForm() {
         },
       });
 
+      if (!res?.user) {
+        throw new Error("Registration failed");
+      }
+
       toast.success(lang === "bn" ? "কর্মচারী একাউন্ট সফলভাবে তৈরি হয়েছে!" : "Employee account created successfully!");
-      afterAuth(res.user as AuthUser);
+      afterAuth(res.user as AuthUser, res.token);
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Registration failed");
     } finally {
@@ -131,8 +163,12 @@ function EmployeeLoginForm() {
         },
       });
 
+      if (!data?.user) {
+        throw new Error("Failed to synchronize Google account");
+      }
+
       toast.success(lang === "bn" ? "গুগল দিয়ে সফলভাবে লগইন হয়েছে!" : "Google sign-in successful!");
-      afterAuth(data.user as AuthUser);
+      afterAuth(data.user as AuthUser, data.token);
     } catch (err: any) {
       if (err.code === "auth/popup-closed-by-user" || err.code === "auth/cancelled-popup-request") {
         return;
@@ -192,12 +228,13 @@ function EmployeeLoginForm() {
           </h1>
           <p className="text-xs text-slate-400 max-w-xs mx-auto">
             {mode === "signin"
-              ? (lang === "bn" ? "দোকান মালিক কর্তৃক প্রদত্ত ইউজারনেম/মোবাইল দিয়ে লগইন করুন" : "Sign in with the employee credentials assigned by your shop owner")
+              ? (lang === "bn" ? "দোকান মালিক কর্তৃক প্রদত্ত পিন অথবা পাসওয়ার্ড দিয়ে লগইন করুন" : "Sign in with the 4-digit PIN or password assigned by your shop owner")
               : (lang === "bn" ? "কর্মচারী হিসেবে নতুন অ্যাকাউন্ট তৈরি করুন" : "Register a new employee account")}
           </p>
         </div>
 
         <Card className="p-5 sm:p-7 rounded-3xl bg-slate-900/85 border-slate-800 backdrop-blur-xl shadow-2xl space-y-4 text-slate-200">
+          <EmployeeDeviceCodeForm onLinked={afterAuth} />
           {/* Sub-tab: Sign In vs Sign Up */}
           <div className="flex rounded-xl bg-slate-800/80 p-0.5 border border-slate-700 text-xs font-medium">
             <button
@@ -222,6 +259,11 @@ function EmployeeLoginForm() {
 
           {mode === "signin" ? (
             <form onSubmit={handleLogin} className="space-y-3.5">
+              <div className="rounded-xl bg-indigo-500/10 border border-indigo-500/20 p-2.5 text-xs text-indigo-300 flex items-center gap-2">
+                <Lock className="size-4 shrink-0 text-indigo-400" />
+                <span>{lang === "bn" ? "দোকান মালিকের দেওয়া ৪-সংখ্যার পিন অথবা পাসওয়ার্ড দিয়ে সরাসরি লগইন করুন।" : "Log in using the 4-digit PIN or password set by your store owner."}</span>
+              </div>
+
               <div className="space-y-1.5">
                 <Label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
                   <Smartphone className="size-3.5 text-indigo-400" />
@@ -231,7 +273,7 @@ function EmployeeLoginForm() {
                   type="text"
                   value={identifier}
                   onChange={(e) => setIdentifier(e.target.value)}
-                  placeholder={lang === "bn" ? "মোবাইল নম্বর বা ইমেইল" : "Phone or Email"}
+                  placeholder={lang === "bn" ? "মোবাইল নম্বর বা ইউজারনেম" : "Phone or Username"}
                   required
                   className="h-11 sm:h-12 rounded-xl bg-slate-800/90 border-slate-700 text-xs sm:text-sm text-white placeholder:text-slate-500 focus-visible:ring-indigo-500 w-full"
                 />
@@ -241,7 +283,7 @@ function EmployeeLoginForm() {
                 <div className="flex items-center justify-between">
                   <Label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
                     <Lock className="size-3.5 text-indigo-400" />
-                    {lang === "bn" ? "পাসওয়ার্ড" : "Password"}
+                    {lang === "bn" ? "পিন বা পাসওয়ার্ড" : "PIN or Password"}
                   </Label>
                   <button
                     type="button"
@@ -256,7 +298,7 @@ function EmployeeLoginForm() {
                   type={showPassword ? "text" : "password"}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
+                  placeholder={lang === "bn" ? "৪-সংখ্যার পিন অথবা পাসওয়ার্ড" : "4-digit PIN or password"}
                   required
                   className="h-11 sm:h-12 rounded-xl bg-slate-800/90 border-slate-700 text-xs sm:text-sm text-white placeholder:text-slate-500 focus-visible:ring-indigo-500 w-full"
                 />
@@ -313,7 +355,7 @@ function EmployeeLoginForm() {
                 <div className="flex items-center justify-between">
                   <Label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
                     <Lock className="size-3.5 text-indigo-400" />
-                    {lang === "bn" ? "পাসওয়ার্ড" : "Password"}
+                    {lang === "bn" ? "পিন বা পাসওয়ার্ড" : "PIN or Password"}
                   </Label>
                   <button
                     type="button"
@@ -328,9 +370,9 @@ function EmployeeLoginForm() {
                   type={showNewPassword ? "text" : "password"}
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
-                  placeholder="••••••••"
+                  placeholder={lang === "bn" ? "৪-সংখ্যার পিন বা পাসওয়ার্ড" : "4-digit PIN or password"}
                   required
-                  minLength={6}
+                  minLength={4}
                   className="h-11 sm:h-12 rounded-xl bg-slate-800/90 border-slate-700 text-xs sm:text-sm text-white placeholder:text-slate-500 focus-visible:ring-indigo-500 w-full"
                 />
               </div>

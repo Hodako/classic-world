@@ -152,11 +152,29 @@ export default function ReportsGeneratorPage() {
   const filteredOwnerWallet = useMemo(() => (ownerWalletQuery.data ?? []).filter(w => inDateRange(w.created_at)), [ownerWalletQuery.data, from, to]);
 
   // Totals calculations
-  const totalSalesVal = useMemo(() => filteredSales.reduce((a, s) => {
-    const lineTotal = (Number(s.sell_price) || 0) * (Number(s.qty) || 1);
-    return a + Math.max(lineTotal, 0);
-  }, 0), [filteredSales]);
-  const totalSalesProfitVal = useMemo(() => filteredSales.reduce((a, s) => a + Number(s.profit || 0), 0), [filteredSales]);
+  const getSaleEffectiveTotal = (s: any) => {
+    const p = Number(s.paid_amount);
+    const d = Number(s.due_amount);
+    if (!isNaN(p) && !isNaN(d) && (p + d > 0)) return p + d;
+    const q = Number(s.qty) || 1;
+    const sp = Number(s.sell_price) || 0;
+    const disc = Number((s as any).discount) || 0;
+    return Math.max(0, sp * q - disc);
+  };
+
+  const getSaleEffectiveProfit = (s: any) => {
+    if (s.profit !== undefined && s.profit !== null && !isNaN(Number(s.profit))) {
+      return Number(s.profit);
+    }
+    const q = Number(s.qty) || 1;
+    const sp = Number(s.sell_price) || 0;
+    const bp = Number(s.buy_price) || 0;
+    const disc = Number((s as any).discount) || 0;
+    return (sp - bp) * q - disc;
+  };
+
+  const totalSalesVal = useMemo(() => filteredSales.reduce((a, s) => a + getSaleEffectiveTotal(s), 0), [filteredSales]);
+  const totalSalesProfitVal = useMemo(() => filteredSales.reduce((a, s) => a + getSaleEffectiveProfit(s), 0), [filteredSales]);
   const totalSalesDueVal = useMemo(() => filteredSales.reduce((a, s) => a + Number(s.due_amount || 0), 0), [filteredSales]);
   const totalSalesItemsCount = useMemo(() => filteredSales.reduce((a, s) => a + Number(s.qty || 0), 0), [filteredSales]);
 
@@ -167,13 +185,18 @@ export default function ReportsGeneratorPage() {
   const onlineSales = useMemo(() => filteredSales.filter(s => s.type === "online"), [filteredSales]);
 
   const cashSalesTotal = useMemo(() => cashSales.reduce((a, s) => {
-    const lineTotal = (Number(s.sell_price) || 0) * (Number(s.qty) || 1);
-    return a + Math.max(lineTotal, 0);
+    const p = Number(s.paid_amount);
+    if (!isNaN(p) && p >= 0 && !s.due_amount) return a + p;
+    return a + getSaleEffectiveTotal(s);
   }, 0), [cashSales]);
-  const bkashSalesTotal = useMemo(() => bkashSales.reduce((a, s) => a + ((Number(s.sell_price) || 0) * (Number(s.qty) || 1)), 0), [bkashSales]);
-  const creditSalesTotal = useMemo(() => creditSales.reduce((a, s) => a + ((Number(s.sell_price) || 0) * (Number(s.qty) || 1)), 0), [creditSales]);
+  const bkashSalesTotal = useMemo(() => bkashSales.reduce((a, s) => {
+    const p = Number(s.paid_amount);
+    if (!isNaN(p) && p >= 0 && !s.due_amount) return a + p;
+    return a + getSaleEffectiveTotal(s);
+  }, 0), [bkashSales]);
+  const creditSalesTotal = useMemo(() => creditSales.reduce((a, s) => a + getSaleEffectiveTotal(s), 0), [creditSales]);
   const creditSalesDueTotal = useMemo(() => creditSales.reduce((a, s) => a + Number(s.due_amount || 0), 0), [creditSales]);
-  const onlineSalesTotal = useMemo(() => onlineSales.reduce((a, s) => a + ((Number(s.sell_price) || 0) * (Number(s.qty) || 1)), 0), [onlineSales]);
+  const onlineSalesTotal = useMemo(() => onlineSales.reduce((a, s) => a + getSaleEffectiveTotal(s), 0), [onlineSales]);
 
   // Purchases totals
   const totalPurchaseVal = useMemo(() => filteredPurchases.reduce((a, p) => a + Number(p.total || 0), 0), [filteredPurchases]);

@@ -80,10 +80,15 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className="antialiased site-bg text-foreground min-h-screen relative overflow-x-hidden" suppressHydrationWarning>
+      <head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link
+          href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700;900&family=Hind+Siliguri:wght@400;500;600;700&display=swap"
+          rel="stylesheet"
+        />
         <script
           id="theme-initializer"
-          suppressHydrationWarning
           dangerouslySetInnerHTML={{
             __html: `
               (function() {
@@ -107,19 +112,12 @@ export default function RootLayout({
                   root.style.setProperty('--loader-color', val);
                   root.style.setProperty('--sidebar-primary', val);
                 } catch (e) {}
-
-                // Register PWA Service Worker with cache-busting for phone browsers & standalone mode
-                if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
-                  window.addEventListener('load', function() {
-                    navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' }).then(function(reg) {
-                      reg.update().catch(function() {});
-                    }).catch(function() {});
-                  });
-                }
               })();
             `,
           }}
         />
+      </head>
+      <body className="antialiased site-bg text-foreground min-h-screen relative overflow-x-hidden" suppressHydrationWarning>
         <div className="content relative z-10 w-full min-h-screen" suppressHydrationWarning>
           <Providers>
             {children}

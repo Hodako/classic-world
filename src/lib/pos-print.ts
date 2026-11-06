@@ -24,7 +24,7 @@ export function getPosPaperConfig(): PosPaperSettings {
         widthMm: Number(parsed.widthMm) || 58,
         heightMm: parsed.heightMm === "auto" ? "auto" : (Number(parsed.heightMm) || 40),
         canvasWidthMm: Number(parsed.canvasWidthMm) || 82,
-        marginMm: Number(parsed.marginMm) ?? 1,
+        marginMm: parsed.marginMm != null && Number.isFinite(Number(parsed.marginMm)) && Number(parsed.marginMm) >= 0 ? Number(parsed.marginMm) : 1,
       };
     }
   } catch (e) {}

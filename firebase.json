@@ -1,8 +1,10 @@
 {
+  "functions": { "source": "functions", "codebase": "employee-device-link" },
   "firestore": {
     "rules": "firestore.rules"
   },
   "hosting": {
+    "site": "classicworld-pos",
     "public": "out",
     "cleanUrls": true,
     "trailingSlash": false,
@@ -102,6 +104,10 @@
           {
             "key": "Permissions-Policy",
             "value": "camera=*, microphone=(), geolocation=()"
+          },
+          {
+            "key": "Cross-Origin-Opener-Policy",
+            "value": "same-origin-allow-popups"
           }
         ]
       }

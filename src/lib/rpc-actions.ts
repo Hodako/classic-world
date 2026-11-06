@@ -102,46 +102,78 @@ function saleCashboxAmount(data: {
     : lineTotal;
 }
 
-async function mapUser(db: Awaited<ReturnType<typeof getDb>>, userId: string) {
-  const user = await db.collection("users").findOne({ _id: userId as any });
+async function mapUser(db: Awaited<ReturnType<typeof getDb>>, userId: string, overrideActiveProfile?: string) {
+  const user = await db.collection("users").findOne({
+    $or: [{ _id: userId as any }, { firebase_uid: userId }],
+  } as any);
   if (!user) return null;
-  let business = user.business_id
-    ? await db.collection("businesses").findOne({ _id: user.business_id as any })
-    : await db.collection("businesses").findOne({ owner_id: user.owner_id || user._id });
-
-  // If owner has no business record yet, initialize one automatically
-  if (!business && user.role === "owner") {
-    const newBizId = crypto.randomUUID();
-    business = {
-      _id: newBizId as any,
-      owner_id: user._id,
-      name: user.full_name || "My Fashion Store",
-      logo_url: "/logo.png",
-      business_type: "retail",
-      theme: "green",
-      status: "active",
-      sms_credits: 0,
-      max_products: 500,
-      max_invoices: 10000,
-      employee_limit: 5,
-      created_at: new Date().toISOString(),
-    };
-    await db.collection("businesses").insertOne(business as any);
-    await db.collection("users").updateOne({ _id: user._id as any }, { $set: { business_id: newBizId } });
-  }
 
   const cookieStore = await cookies();
   const store = requestStore.getStore();
-  const activeProfile = store?.activeProfile || cookieStore.get("active_profile")?.value || "default";
-  
+  const activeProfile = overrideActiveProfile || store?.activeProfile || cookieStore.get("active_profile")?.value || "default";
+
   const ownerId = user.role === "employee" ? (user.owner_id as string) : (user._id as any as string);
   const ownerUser = ownerId === (user._id as any as string) ? user : await db.collection("users").findOne({ _id: ownerId as any });
   const profiles = ownerUser?.profiles || [
     { id: "default", name: "Default Profile", created_at: new Date().toISOString() }
   ];
+  const currentProfileObj = profiles.find((p: any) => p.id === activeProfile);
+  const profileOwnerId = activeProfile === "default" ? ownerId : `${ownerId}:${activeProfile}`;
+
+  let business: any = null;
+  if (activeProfile !== "default") {
+    business = await db.collection("businesses").findOne({ owner_id: profileOwnerId });
+    if (!business && user.role === "owner") {
+      const newBizId = crypto.randomUUID();
+      business = {
+        _id: newBizId as any,
+        owner_id: profileOwnerId,
+        name: currentProfileObj?.name || "New Business",
+        logo_url: "",
+        business_type: "retail",
+        theme: "green",
+        status: "active",
+        sms_credits: 0,
+        max_products: 500,
+        max_invoices: 10000,
+        employee_limit: 5,
+        created_at: new Date().toISOString(),
+      };
+      await db.collection("businesses").insertOne(business as any);
+    }
+  } else {
+    business = user.business_id
+      ? await db.collection("businesses").findOne({ _id: user.business_id as any })
+      : await db.collection("businesses").findOne({ owner_id: user.owner_id || user._id });
+
+    // If owner has no business record yet, initialize one automatically
+    if (!business && user.role === "owner") {
+      const newBizId = crypto.randomUUID();
+      business = {
+        _id: newBizId as any,
+        owner_id: user._id,
+        name: user.full_name || "My Fashion Store",
+        logo_url: "",
+        business_type: "retail",
+        theme: "green",
+        status: "active",
+        sms_credits: 0,
+        max_products: 500,
+        max_invoices: 10000,
+        employee_limit: 5,
+        created_at: new Date().toISOString(),
+      };
+      await db.collection("businesses").insertOne(business as any);
+      await db.collection("users").updateOne({ _id: user._id as any }, { $set: { business_id: newBizId } });
+    }
+  }
 
   const platform = await db.collection("platform_settings").findOne({ _id: "global" as any });
   const adminWhatsapp = (platform?.admin_whatsapp as string) || "8801700000000";
+  const resolvedBizName = (business?.name as string) || (activeProfile !== "default" && currentProfileObj?.name ? currentProfileObj.name : "Classic World");
+  const isDefaultBrandName = /^(dream\s*fashion|classic\s*world)$/i.test(resolvedBizName.trim());
+  const rawBizLogo = (business?.logo_url as string) || "";
+  const resolvedLogoUrl = rawBizLogo && rawBizLogo !== "/logo.png" ? rawBizLogo : (isDefaultBrandName ? "/logo.png" : "");
 
   return {
     id: user._id as any as string,
@@ -150,14 +182,14 @@ async function mapUser(db: Awaited<ReturnType<typeof getDb>>, userId: string) {
     activated: true,
     role: (user.role as string) || "owner",
     business_id: (business?._id as any as string) || (user.business_id as string) || null,
-    business_name: (business?.name as string) || "Dream Fashion",
+    business_name: resolvedBizName,
     business_address: (business?.address as string) || "",
     business_phone_numbers: (business?.phone_numbers as string) || (business?.phone as string) || "",
     business_emails: (business?.emails as string) || (business?.email as string) || "",
     invoice_page_size: (business?.invoice_page_size as string) || "80mm",
     invoice_page_width: (business?.invoice_page_width as string) || "",
     invoice_page_height: (business?.invoice_page_height as string) || "",
-    logo_url: (business?.logo_url as string) || "/logo.png",
+    logo_url: resolvedLogoUrl,
     avatar_url: (user.avatar_url as string) || "",
     permissions: (user.role === "owner" ? OWNER_PERMISSIONS : (user.permissions as PermissionSet)) || DEFAULT_EMPLOYEE_PERMISSIONS,
     profiles,
@@ -1226,28 +1258,51 @@ export async function createReturnFn(input: { data: { sale_id: string; qty: numb
     );
   }
  
-  if (returnQty >= (sale.qty as number)) {
+  const originalQty = Number(sale.qty) || 1;
+  const ratio = returnQty / originalQty;
+
+  if (returnQty >= originalQty) {
     await db.collection("sales").updateOne({ _id: data.sale_id as any }, { $set: { returned: true, return_qty: returnQty } });
   } else {
-    const remaining = (sale.qty as number) - returnQty;
+    const remaining = originalQty - returnQty;
+    const remainingPaid = Math.max(0, Math.round((Number(sale.paid_amount) || 0) * (1 - ratio)));
+    const remainingDue = Math.max(0, Math.round((Number(sale.due_amount) || 0) * (1 - ratio)));
+    const remainingSplitCash = sale.split_cash !== undefined ? Math.max(0, Math.round((Number(sale.split_cash) || 0) * (1 - ratio))) : undefined;
+    const remainingSplitBkash = sale.split_bkash !== undefined ? Math.max(0, Math.round((Number(sale.split_bkash) || 0) * (1 - ratio))) : undefined;
+    const remainingSplitBank = sale.split_bank !== undefined ? Math.max(0, Math.round((Number(sale.split_bank) || 0) * (1 - ratio))) : undefined;
+
     await db.collection("sales").updateOne(
       { _id: data.sale_id as any },
-      { $set: { qty: remaining, profit: profitPerUnit * remaining, return_qty: returnQty } },
+      {
+        $set: {
+          qty: remaining,
+          profit: profitPerUnit * remaining,
+          return_qty: returnQty,
+          paid_amount: remainingPaid,
+          due_amount: remainingDue,
+          ...(remainingSplitCash !== undefined ? { split_cash: remainingSplitCash } : {}),
+          ...(remainingSplitBkash !== undefined ? { split_bkash: remainingSplitBkash } : {}),
+          ...(remainingSplitBank !== undefined ? { split_bank: remainingSplitBank } : {}),
+        }
+      },
     );
   }
 
   // Cash sales added money to the cashbox — returning them must withdraw it back.
   // Credit sales only created cashbox entries for the paid_amount portion (not the full amount),
   // so we refund proportionally based on what was actually collected.
+  // Split sales created cashbox entries for the split_cash portion, so refund split_cash portion.
   // Online sales: admin does not receive money immediately, so no cashbox impact on return either.
   const saleType: string = (sale.type as string) || "cash";
   let refundAmt = 0;
   if (saleType === "cash") {
     refundAmt = Number(sale.sell_price) * returnQty;
   } else if (saleType === "credit") {
-    // Proportional refund of what was already paid in cash
-    const paidPerUnit = Number(sale.qty) > 0 ? Number(sale.paid_amount) / Number(sale.qty) : 0;
+    const paidPerUnit = originalQty > 0 ? (Number(sale.paid_amount) || 0) / originalQty : 0;
     refundAmt = paidPerUnit * returnQty;
+  } else if (saleType === "split") {
+    const cashPerUnit = originalQty > 0 ? (Number(sale.split_cash) || 0) / originalQty : 0;
+    refundAmt = cashPerUnit * returnQty;
   }
 
   if (refundAmt > 0) {
@@ -1952,7 +2007,7 @@ export async function createSomitiFn(input: { data: { kind: string; amount: numb
   return { ...doc, id };
 }
 
-export async function updateSomitiFn(input: { data: { id: string; kind: string; amount: number; note?: string | null } }) {
+export async function updateSomitiFn(input: { data: { id: string; kind: string; amount: number; note?: string | null; skipCashbox?: boolean } }) {
   const { data = {} }: any = input ?? {};
   const session = await requireSession();
   const db = await getDb();
@@ -1964,15 +2019,30 @@ export async function updateSomitiFn(input: { data: { id: string; kind: string; 
   );
 
   const cashboxKind = data.kind === "withdraw" ? "deposit" : "withdraw";
-  await db.collection("cashbox_entries").updateOne(
-    { owner_id: session.ownerId, ref_id: id },
-    { $set: {
+  const cashboxNote = data.note ? `Samity (${data.kind}): ${data.note}` : `Samity ${data.kind}`;
+  if (data.skipCashbox === true) {
+    await db.collection("cashbox_entries").deleteMany({ owner_id: session.ownerId, ref_id: id });
+  } else if (data.skipCashbox === false) {
+    const existingCb = await db.collection("cashbox_entries").findOne({ owner_id: session.ownerId, ref_id: id });
+    if (existingCb) {
+      await db.collection("cashbox_entries").updateOne(
+        { owner_id: session.ownerId, ref_id: id },
+        { $set: { kind: cashboxKind, amount: safeAmount, note: cashboxNote } }
+      );
+    } else if (safeAmount > 0) {
+      await insertCashboxEntry(db, session.ownerId, {
         kind: cashboxKind,
         amount: safeAmount,
-        note: data.note ? `Samity (${data.kind}): ${data.note}` : `Samity ${data.kind}`,
-      }
+        note: cashboxNote,
+        ref_id: id,
+      });
     }
-  );
+  } else {
+    await db.collection("cashbox_entries").updateOne(
+      { owner_id: session.ownerId, ref_id: id },
+      { $set: { kind: cashboxKind, amount: safeAmount, note: cashboxNote } }
+    );
+  }
 
   const updated = await db.collection("somiti_entries").findOne({ _id: id as any });
   return { ...updated, id };
@@ -1992,22 +2062,30 @@ export async function renameSomitiFn(input: { data: { oldName: string; newName: 
   const { data = {} }: any = input ?? {};
   const session = await requireSession();
   const db = await getDb();
+  const oldNameTrim = (data.oldName || "").trim().toLowerCase();
+  const newNameTrim = (data.newName || "").trim();
+  const isGeneralOld = oldNameTrim === "general samity" || oldNameTrim === "সাধারণ সমিতি";
   const entries = await db.collection("somiti_entries").find({ owner_id: session.ownerId }).toArray();
   for (const entry of entries) {
     const note = entry.note || "";
-    const match = note.match(/^\[(.*?)\](?:\s*(.*))?$/);
+    const match = note.match(/^\[(.*?)\](?:\s*([\s\S]*))?$/);
     if (match) {
       const parsedName = match[1].trim();
-      if (parsedName.toLowerCase() === data.oldName.trim().toLowerCase()) {
+      if (parsedName.toLowerCase() === oldNameTrim) {
         const actualNote = match[2]?.trim() || "";
-        const newNote = actualNote 
-          ? `[${data.newName.trim()}] ${actualNote}` 
-          : `[${data.newName.trim()}]`;
+        const newNote = actualNote ? `[${newNameTrim}] ${actualNote}` : `[${newNameTrim}]`;
         await db.collection("somiti_entries").updateOne(
           { _id: entry._id },
           { $set: { note: newNote } }
         );
       }
+    } else if (isGeneralOld) {
+      const actualNote = note.trim();
+      const newNote = actualNote ? `[${newNameTrim}] ${actualNote}` : `[${newNameTrim}]`;
+      await db.collection("somiti_entries").updateOne(
+        { _id: entry._id },
+        { $set: { note: newNote } }
+      );
     }
   }
   return { success: true };
@@ -2017,17 +2095,19 @@ export async function deleteSomitiFnByName(input: { data: { name: string } }) {
   const { data = {} }: any = input ?? {};
   const session = await requireSession();
   const db = await getDb();
+  const targetName = (data.name || "").trim().toLowerCase();
+  const isGeneralTarget = targetName === "general samity" || targetName === "সাধারণ সমিতি";
   const entries = await db.collection("somiti_entries").find({ owner_id: session.ownerId }).toArray();
   for (const entry of entries) {
     const note = entry.note || "";
-    const match = note.match(/^\[(.*?)\](?:\s*(.*))?$/);
-    if (match) {
-      const parsedName = match[1].trim();
-      if (parsedName.toLowerCase() === data.name.trim().toLowerCase()) {
-        // Clean up linked cashbox entry before deleting
-        await db.collection("cashbox_entries").deleteMany({ owner_id: session.ownerId, ref_id: entry._id as any });
-        await db.collection("somiti_entries").deleteOne({ _id: entry._id });
-      }
+    const match = note.match(/^\[(.*?)\](?:\s*([\s\S]*))?$/);
+    const isMatch = match
+      ? match[1].trim().toLowerCase() === targetName
+      : isGeneralTarget;
+    if (isMatch) {
+      // Clean up linked cashbox entry before deleting
+      await db.collection("cashbox_entries").deleteMany({ owner_id: session.ownerId, ref_id: entry._id as any });
+      await db.collection("somiti_entries").deleteOne({ _id: entry._id });
     }
   }
   return { success: true };
@@ -2555,16 +2635,18 @@ export async function createProfileFn(input: { data: { name: string } }) {
   const db = await getDb();
   
   const profileId = crypto.randomUUID();
+  const profileName = data.name.trim() || "New Profile";
+  const now = new Date().toISOString();
   const newProfile = {
     id: profileId,
-    name: data.name.trim() || "New Profile",
-    created_at: new Date().toISOString()
+    name: profileName,
+    created_at: now
   };
 
   const ownerIdBase = session.ownerId.split(":")[0];
   const owner = await db.collection("users").findOne({ _id: ownerIdBase as any });
   let profiles = owner?.profiles || [
-    { id: "default", name: "Default Profile", created_at: new Date().toISOString() }
+    { id: "default", name: "Default Profile", created_at: now }
   ];
   profiles.push(newProfile);
 
@@ -2573,10 +2655,27 @@ export async function createProfileFn(input: { data: { name: string } }) {
     { $set: { profiles } }
   );
 
+  const profileOwnerId = `${ownerIdBase}:${profileId}`;
+  await db.collection("businesses").insertOne({
+    _id: crypto.randomUUID() as any,
+    owner_id: profileOwnerId,
+    name: profileName,
+    logo_url: "",
+    business_type: "retail",
+    theme: "green",
+    status: "active",
+    sms_credits: 0,
+    max_products: 500,
+    max_invoices: 10000,
+    employee_limit: 5,
+    created_at: now,
+    updated_at: now,
+  });
+
   const cookieStore = await cookies();
   cookieStore.set("active_profile", profileId, { maxAge: 365 * 24 * 60 * 60, path: "/" });
 
-  const mapped = await mapUser(db, session.userId);
+  const mapped = await mapUser(db, session.userId, profileId);
   return { user: mapped };
 }
 
@@ -2599,7 +2698,7 @@ export async function switchProfileFn(input: { data: { profileId: string } }) {
   const cookieStore = await cookies();
   cookieStore.set("active_profile", data.profileId, { maxAge: 365 * 24 * 60 * 60, path: "/" });
 
-  const mapped = await mapUser(db, session.userId);
+  const mapped = await mapUser(db, session.userId, data.profileId);
   return { user: mapped };
 }
 
@@ -3289,11 +3388,16 @@ export async function getBankLoansFn() {
   return loans.map(l => ({ ...l, id: l._id.toString() }));
 }
 
-export async function createBankLoanFn(input: { data: { bank_name: string; loan_title: string; principal_amount: number; total_repayable: number; total_installments: number; installment_amount: number; receive_to_cashbox?: boolean; note?: string | null } }) {
+export async function createBankLoanFn(input: { data: { bank_name: string; loan_title: string; principal_amount: number; total_repayable: number; total_installments: number; installment_amount: number; has_installments?: boolean; receive_to_cashbox?: boolean; note?: string | null } }) {
   const { data = {} }: any = input ?? {};
   const session = await requireSession();
   const db = await getDb();
   const loanId = crypto.randomUUID();
+  const principal = Number(data.principal_amount);
+  const repayable = Number(data.total_repayable) || principal;
+  const hasInstallments = data.has_installments !== false && Number(data.total_installments) > 0;
+  const installments = hasInstallments ? Number(data.total_installments) : 0;
+  if (!data.bank_name?.trim() || !Number.isFinite(principal) || principal <= 0 || !Number.isFinite(repayable) || repayable <= 0 || (hasInstallments && (!Number.isInteger(installments) || installments <= 0))) throw new Error("Enter valid loan and installment amounts");
 
   const doc = {
     _id: loanId,
@@ -3302,8 +3406,9 @@ export async function createBankLoanFn(input: { data: { bank_name: string; loan_
     loan_title: data.loan_title,
     principal_amount: Number(data.principal_amount) || 0,
     total_repayable: Number(data.total_repayable) || Number(data.principal_amount) || 0,
-    total_installments: Number(data.total_installments) || 1,
-    installment_amount: Number(data.installment_amount) || 0,
+    total_installments: installments,
+    installment_amount: hasInstallments ? (Number(data.installment_amount) || repayable / installments) : 0,
+    has_installments: hasInstallments,
     paid_amount: 0,
     paid_installments: 0,
     status: "active",

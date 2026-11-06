@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { cn } from "@/lib/utils";
 
 export function CustomHomeIcon({ className = "size-5" }: { className?: string }) {
   return (
@@ -9,7 +10,7 @@ export function CustomHomeIcon({ className = "size-5" }: { className?: string })
       x="0px"
       y="0px"
       viewBox="0 0 48 48"
-      className={`${className} shrink-0 inline-block align-middle`}
+      className={cn("shrink-0 inline-block align-middle", className)}
     >
       <path
         fill="#9fa8da"

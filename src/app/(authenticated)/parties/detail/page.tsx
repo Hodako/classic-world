@@ -5,10 +5,11 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { ArrowLeft, ArrowDownToLine, Trash2, Pencil, Plus, Download, Printer, Loader2, FileSpreadsheet, ChevronDown } from "lucide-react";
 import {
-  getPaymentsForParty, getSalesForParty, getParty,
+  getPaymentsForParty, getSalesForParty, getParty, getPurchases,
   getPartyReceivables, getPartyPayables, getPayableSettlements,
 } from "@/lib/queries";
-import type { Party, PartyLedger, Payment, Sale } from "@/lib/queries";
+import type { Party, PartyLedger, Payment, Sale, Purchase } from "@/lib/queries";
+import { readQueryCache } from "@/lib/query-cache";
 import { useT } from "@/lib/i18n";
 import { fmtMoney, fmtDateTime } from "@/lib/format";
 import { Card } from "@/components/ui/card";
@@ -51,6 +52,7 @@ export default function PartyDetail() {
   const qc = useQueryClient();
 
   const partyQuery = useCachedQuery(["party", id], () => getParty(id));
+  const purchases = useCachedQuery(["purchases"], getPurchases);
   const sales = useCachedQuery(["party-detail", "sales", id], () => getSalesForParty(id));
   const payments = useCachedQuery(["payments", id], () => getPaymentsForParty(id));
   const receivables = useCachedQuery(["party-receivables", id], () => getPartyReceivables(id));
@@ -80,16 +82,32 @@ export default function PartyDetail() {
   const [returnOpen, setReturnOpen] = useState(false);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
 
-  const party = partyQuery.data;
+  // Fallback party lookup from cached list to prevent "No results" during offline/slow network
+  const fallbackParty = (
+    qc.getQueryData<Party[]>(["parties"]) ??
+    readQueryCache<Party[]>(["parties"]) ??
+    []
+  ).find(p => p.id === id);
+
+  const party = partyQuery.data || fallbackParty;
   const isLoading = partyQuery.isLoading && !party;
 
-  const saleDue = (sales.data ?? []).filter(s => !s.returned).reduce((a, s) => a + Number(s.due_amount), 0);
-  const extraReceivable = (receivables.data ?? []).reduce((a, r) => a + Number(r.amount), 0);
-  const paidTotal = (payments.data ?? []).reduce((a, p) => a + Number(p.amount), 0);
+  const partyPurchases = (purchases.data ?? []).filter(p => p.party_id === id);
+
+  const saleDue = (sales.data ?? []).filter(s => !s.returned).reduce((a, s) => a + Number(s.due_amount || 0), 0);
+  const extraReceivable = (receivables.data ?? []).filter(r => !r.ref_id).reduce((a, r) => a + Number(r.amount || 0), 0);
+  const paidTotal = (payments.data ?? []).reduce((a, p) => a + Number(p.amount || 0), 0);
   const outstanding = Math.max(saleDue + extraReceivable - paidTotal, 0);
 
-  const payableTotal = (payables.data ?? []).reduce((a, p) => a + Number(p.amount), 0);
-  const settledTotal = (settlements.data ?? []).reduce((a, s) => a + Number(s.amount), 0);
+  const partyPayablesList = (payables.data ?? []);
+  const linkedRefIds = new Set(partyPayablesList.map(p => (p as any).ref_id).filter(Boolean));
+  const unmirroredCreditPurchases = partyPurchases.filter(
+    p => p.payment_type === "credit" && !linkedRefIds.has(p.id)
+  );
+
+  const payableTotal = partyPayablesList.reduce((a, p) => a + Number(p.amount || 0), 0) +
+                       unmirroredCreditPurchases.reduce((a, p) => a + Number(p.total || 0), 0);
+  const settledTotal = (settlements.data ?? []).reduce((a, s) => a + Number(s.amount || 0), 0);
   const payableOutstanding = Math.max(payableTotal - settledTotal, 0);
 
   type Entry = {
@@ -110,7 +128,7 @@ export default function PartyDetail() {
       label: s.product_id ? `${s.product_name} ×${s.qty}` : s.product_name,
       amount: Number(s.due_amount), kind: "sale" as const, deletable: !s.product_id,
     })) : []),
-    ...(showReceivable ? (receivables.data ?? []).map(r => ({
+    ...(showReceivable ? (receivables.data ?? []).filter(r => !r.ref_id).map(r => ({
       id: "r" + r.id, rawId: r.id, date: r.created_at || (r as any).date || "",
       label: r.note || t("money_owed"), amount: Number(r.amount),
       kind: "receivable" as const, deletable: true,
@@ -120,11 +138,16 @@ export default function PartyDetail() {
       label: p.note || t("collect_payment"), amount: -Number(p.amount),
       kind: "payment" as const, deletable: true,
     })) : []),
-    ...(showPayable ? (payables.data ?? []).map(p => ({
+    ...(showPayable ? (partyPayablesList).map(p => ({
       id: "pb" + p.id, rawId: p.id, date: p.created_at || (p as any).date || "",
       label: p.note || t("money_payable"), amount: Number(p.amount),
       kind: "payable" as const, deletable: true,
     })) : []),
+    ...unmirroredCreditPurchases.map(p => ({
+      id: "pr" + p.id, rawId: p.id, date: p.created_at || "",
+      label: `${lang === "bn" ? "বাকীতে ক্রয়" : "Credit Purchase"}: ${p.product_name} ×${p.qty}`,
+      amount: Number(p.total || 0), kind: "payable" as const, deletable: false,
+    })),
     ...(showPayable ? (settlements.data ?? []).map(s => ({
       id: "st" + s.id, rawId: s.id, date: s.created_at || (s as any).date || "",
       label: s.note || t("pay_party"), amount: -Number(s.amount),
@@ -390,9 +413,18 @@ export default function PartyDetail() {
       </div>
 
       <Tabs defaultValue="ledger" className="w-full">
-        <TabsList className="grid grid-cols-2 w-full max-w-xs mx-auto mb-3">
-          <TabsTrigger value="ledger" className="text-xs">{lang === "bn" ? "লেনদেন খাতা" : "Ledger"}</TabsTrigger>
-          <TabsTrigger value="purchases" className="text-xs">{lang === "bn" ? "ক্রয়সমূহ" : "Purchases"}</TabsTrigger>
+        <TabsList className={`grid ${(sales.data ?? []).length > 0 ? "grid-cols-3 max-w-md" : "grid-cols-2 max-w-xs"} w-full mx-auto mb-3`}>
+          <TabsTrigger value="ledger" className="text-xs">
+            {lang === "bn" ? "লেনদেন খাতা" : "Ledger"}
+          </TabsTrigger>
+          <TabsTrigger value="purchases" className="text-xs">
+            {lang === "bn" ? `ক্রয়সমূহ (${partyPurchases.length})` : `Purchases (${partyPurchases.length})`}
+          </TabsTrigger>
+          {(sales.data ?? []).length > 0 && (
+            <TabsTrigger value="sales" className="text-xs">
+              {lang === "bn" ? `বিক্রয় (${(sales.data ?? []).length})` : `Sales (${(sales.data ?? []).length})`}
+            </TabsTrigger>
+          )}
         </TabsList>
 
         <TabsContent value="ledger">
@@ -419,12 +451,66 @@ export default function PartyDetail() {
 
         <TabsContent value="purchases">
           <Card className="divide-y divide-border overflow-hidden">
-            {(!sales.data || sales.data.length === 0) ? (
-              <div className="p-6 text-center text-sm text-muted-foreground">
-                {lang === "bn" ? "কোন ক্রয়ের বিবরণ নেই" : "No purchase records"}
+            {partyPurchases.length === 0 ? (
+              <div className="p-8 text-center text-sm text-muted-foreground space-y-2">
+                <p>{lang === "bn" ? "কোন ক্রয়ের বিবরণ নেই" : "No purchase records"}</p>
+                <Button
+                  size="sm"
+                  onClick={() => setBuyOpen(true)}
+                  className="bg-[#228B22] hover:bg-[#1C741C] text-white font-bold"
+                  style={{ backgroundColor: "#228B22", color: "#FFFFFF" }}
+                >
+                  <Plus className="size-4 mr-1 text-white" />
+                  {lang === "bn" ? "নতুন পণ্য ক্রয় করুন" : "Record Purchase"}
+                </Button>
               </div>
             ) : (
-              (sales.data ?? []).map(s => (
+              partyPurchases.map(p => {
+                const totalCost = Number(p.total) || (Number(p.unit_cost || 0) * Number(p.qty || 1));
+                const isCredit = p.payment_type === "credit";
+                return (
+                  <div key={p.id} className="p-3 flex items-center justify-between gap-3 text-xs">
+                    <div className="min-w-0 flex-1 space-y-0.5">
+                      <div className="font-medium text-sm text-foreground truncate">{p.product_name}</div>
+                      <div className="text-muted-foreground flex gap-1.5 flex-wrap items-center">
+                        <span>{fmtDateTime(p.created_at)}</span>
+                        <span>·</span>
+                        <span className={`capitalize px-1.5 py-0.5 rounded font-medium text-[10px] ${
+                          isCredit
+                            ? "bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300"
+                            : "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
+                        }`}>
+                          {isCredit
+                            ? (lang === "bn" ? "বাকী ক্রয়" : "Credit Purchase")
+                            : (lang === "bn" ? "নগদ ক্রয়" : "Cash Purchase")}
+                        </span>
+                        {p.note && (
+                          <>
+                            <span>·</span>
+                            <span className="truncate max-w-[150px] text-zinc-500 italic">{p.note}</span>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <div className={`font-semibold text-sm font-serif ${isCredit ? "text-rose-600" : "text-foreground"}`}>
+                        {fmtMoney(totalCost)}
+                      </div>
+                      <div className="text-[10px] text-muted-foreground font-balooda">
+                        ৳{p.unit_cost} × {p.qty}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </Card>
+        </TabsContent>
+
+        {(sales.data ?? []).length > 0 && (
+          <TabsContent value="sales">
+            <Card className="divide-y divide-border overflow-hidden">
+              {(sales.data ?? []).map(s => (
                 <div key={s.id} className="p-3 flex items-center justify-between gap-3 text-xs">
                   <div className="min-w-0 flex-1 space-y-0.5">
                     <div className="font-medium text-sm text-foreground truncate">{s.product_name}</div>
@@ -446,10 +532,10 @@ export default function PartyDetail() {
                     </div>
                   </div>
                 </div>
-              ))
-            )}
-          </Card>
-        </TabsContent>
+              ))}
+            </Card>
+          </TabsContent>
+        )}
       </Tabs>
 
       <CollectDialog partyId={id} open={collectOpen} onOpenChange={setCollectOpen} />

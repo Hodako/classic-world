@@ -75,6 +75,7 @@ function applyOptimisticUpdate(actionName: string, args: any) {
       party_id: args.data.party_id ?? null,
       paid_amount: Number(args.data.paid_amount) || 0,
       due_amount: Number(args.data.due_amount) || 0,
+      discount: Number(args.data.discount) || 0,
       split_cash: args.data.split_cash !== undefined ? Number(args.data.split_cash) : undefined,
       split_bkash: args.data.split_bkash !== undefined ? Number(args.data.split_bkash) : undefined,
       split_bank: args.data.split_bank !== undefined ? Number(args.data.split_bank) : undefined,
@@ -122,6 +123,33 @@ function applyOptimisticUpdate(actionName: string, args: any) {
       };
       writeQueryCache(["cashbox"], [newCashbox, ...cashbox]);
     }
+  }
+
+  else if (actionName === "editSaleFn") {
+    const sales = readQueryCache<any[]>(["sales"]) ?? [];
+    const updatedSales = sales.map((s) => {
+      if (s.id === args.data.id || s._id === args.data.id) {
+        return {
+          ...s,
+          ...args.data,
+          qty: args.data.qty !== undefined ? Number(args.data.qty) : s.qty,
+          buy_price: args.data.buy_price !== undefined ? Number(args.data.buy_price) : s.buy_price,
+          sell_price: args.data.sell_price !== undefined ? Number(args.data.sell_price) : s.sell_price,
+          profit: args.data.profit !== undefined ? Number(args.data.profit) : s.profit,
+          paid_amount: args.data.paid_amount !== undefined ? Number(args.data.paid_amount) : s.paid_amount,
+          due_amount: args.data.due_amount !== undefined ? Number(args.data.due_amount) : s.due_amount,
+          updated_at: now,
+        };
+      }
+      return s;
+    });
+    writeQueryCache(["sales"], updatedSales);
+  }
+
+  else if (actionName === "deleteSaleFn") {
+    const sales = readQueryCache<any[]>(["sales"]) ?? [];
+    const filtered = sales.filter((s) => s.id !== args.data.id && s._id !== args.data.id);
+    writeQueryCache(["sales"], filtered);
   }
 
   else if (actionName === "createPaymentFn") {
@@ -252,11 +280,73 @@ function applyOptimisticUpdate(actionName: string, args: any) {
     }
   }
 
+  else if (actionName === "updateSomitiFn") {
+    const somiti = readQueryCache<any[]>(["somiti"]) ?? [];
+    writeQueryCache(
+      ["somiti"],
+      somiti.map((s) =>
+        s.id === args.data.id
+          ? {
+              ...s,
+              kind: args.data.kind ?? s.kind,
+              amount: args.data.amount !== undefined ? Number(args.data.amount) || 0 : s.amount,
+              note: args.data.note !== undefined ? args.data.note : s.note,
+            }
+          : s
+      )
+    );
+  }
+
   else if (actionName === "deleteSomitiFn") {
     const somiti = readQueryCache<any[]>(["somiti"]) ?? [];
     writeQueryCache(["somiti"], somiti.filter((s) => s.id !== args.data.id));
     const cashbox = readQueryCache<any[]>(["cashbox"]) ?? [];
     writeQueryCache(["cashbox"], cashbox.filter((c) => c.ref_id !== args.data.id));
+  }
+
+  else if (actionName === "renameSomitiFn") {
+    const somiti = readQueryCache<any[]>(["somiti"]) ?? [];
+    const oldNameTrim = (args.data.oldName || "").trim().toLowerCase();
+    const newNameTrim = (args.data.newName || "").trim();
+    const isGeneralOld = oldNameTrim === "general samity" || oldNameTrim === "সাধারণ সমিতি";
+    writeQueryCache(
+      ["somiti"],
+      somiti.map((s) => {
+        const rawNote = s.note || "";
+        const match = rawNote.match(/^\[(.*?)\](?:\s*([\s\S]*))?$/);
+        if (match && match[1].trim().toLowerCase() === oldNameTrim) {
+          const actualNote = match[2]?.trim() || "";
+          return { ...s, note: actualNote ? `[${newNameTrim}] ${actualNote}` : `[${newNameTrim}]` };
+        }
+        if (!match && isGeneralOld) {
+          const actualNote = rawNote.trim();
+          return { ...s, note: actualNote ? `[${newNameTrim}] ${actualNote}` : `[${newNameTrim}]` };
+        }
+        return s;
+      })
+    );
+  }
+
+  else if (actionName === "deleteSomitiFnByName") {
+    const somiti = readQueryCache<any[]>(["somiti"]) ?? [];
+    const targetName = (args.data.name || "").trim().toLowerCase();
+    const isGeneralTarget = targetName === "general samity" || targetName === "সাধারণ সমিতি";
+    const removedIds = new Set<string>();
+    const remaining = somiti.filter((s) => {
+      const rawNote = s.note || "";
+      const match = rawNote.match(/^\[(.*?)\](?:\s*([\s\S]*))?$/);
+      const isMatch = match ? match[1].trim().toLowerCase() === targetName : isGeneralTarget;
+      if (isMatch) {
+        if (s.id) removedIds.add(s.id);
+        return false;
+      }
+      return true;
+    });
+    writeQueryCache(["somiti"], remaining);
+    if (removedIds.size > 0) {
+      const cashbox = readQueryCache<any[]>(["cashbox"]) ?? [];
+      writeQueryCache(["cashbox"], cashbox.filter((c) => !removedIds.has(c.ref_id)));
+    }
   }
 
   else if (actionName === "createOwnerWalletEntryFn") {
@@ -366,7 +456,7 @@ function applyOptimisticUpdate(actionName: string, args: any) {
       ref_id: null,
       created_at: args.data.created_at || now,
     };
-    writeQueryCache(["cashbox"], [newEntry, ...cashbox]);
+    writeQueryCache(["cashbox"], [newEntry, ...cashbox].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()));
   }
 
   else if (actionName === "updateCashboxFn") {

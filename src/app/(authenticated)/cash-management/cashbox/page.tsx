@@ -16,7 +16,7 @@ import { useT } from "@/lib/i18n";
 import { fmtMoney, fmtDateTime } from "@/lib/format";
 import { cashboxBalance, cashboxDelta } from "@/lib/cashbox-utils";
 import { PaginationBar, paginate } from "@/components/ui/pagination-bar";
-import { ArrowLeft, Plus, Minus, Download, Banknote, TrendingUp, TrendingDown, Pencil, Trash2, MoreVertical, Wrench } from "lucide-react";
+import { ArrowLeft, Plus, Minus, Download, Banknote, TrendingUp, TrendingDown, ArrowUpDown, Pencil, Trash2, MoreVertical, Wrench } from "lucide-react";
 import { createCashboxFn, updateCashboxFn, deleteCashboxFn, repairCashboxDbFn } from "@/lib/rpc";
 import { toast } from "sonner";
 import { refreshQueries } from "@/lib/optimistic-cache";
@@ -133,6 +133,17 @@ export default function CashboxDetailsPage() {
 
   useEffect(() => { setPage(1); }, [range, startDate, endDate, filterKind]);
 
+  function handleEntrySaved(savedDate: Date) {
+    if (savedDate < from || savedDate > to) {
+      setRange("all");
+      toast.info(
+        lang === "bn"
+          ? "পূর্ববর্তী তারিখের এন্ট্রি দেখার জন্য ফিল্টার 'সব'-এ পরিবর্তন করা হয়েছে"
+          : "Switched filter to 'All' to show your past date entry"
+      );
+    }
+  }
+
   async function handleDelete(entry: CashboxEntry) {
     setDeleteTarget(entry);
     setDeleteConfirmOpen(true);
@@ -247,21 +258,13 @@ export default function CashboxDetailsPage() {
             </div>
             <div>
               <div className="text-xs text-muted-foreground font-medium">
-                {range === "today"
-                  ? (lang === "bn" ? "আজকের নিট ক্যাশ স্থিতি" : "Today's Net Cash in Drawer")
-                  : range === "yesterday"
-                  ? (lang === "bn" ? "গতকালের নিট ক্যাশ স্থিতি" : "Yesterday's Net Cash in Drawer")
-                  : range === "all"
-                  ? (lang === "bn" ? "সর্বমোট ক্যাশবক্স ব্যালেন্স" : "All-Time Cashbox Balance")
-                  : `${rangeLabel} ${lang === "bn" ? "নিট ক্যাশ স্থিতি" : "Net Cash Flow"}`}
+                {lang === "bn" ? "মোট ক্যাশবক্স ব্যালেন্স (ড্রয়ারের নগদ টাকা)" : "Total Cashbox Balance (Cash in Drawer)"}
               </div>
               {balance === null ? (
                 <div className="h-9 w-32 rounded-md bg-indigo-200/60 dark:bg-indigo-800/40 animate-pulse mt-1" />
               ) : (
                 <div className="text-2xl sm:text-3xl font-bold text-indigo-600 font-serif">
-                  {range === "all"
-                    ? fmtMoney(balance)
-                    : (periodNet < 0 ? "−" : "") + fmtMoney(Math.abs(periodNet))}
+                  {fmtMoney(balance)}
                 </div>
               )}
             </div>
@@ -269,10 +272,18 @@ export default function CashboxDetailsPage() {
           {balance !== null && (
             <div className="flex flex-col sm:items-end bg-background/60 backdrop-blur-xs px-3 py-1.5 rounded-xl border border-border/60">
               <span className="text-[10px] text-muted-foreground font-medium">
-                {lang === "bn" ? "সর্বমোট ক্যাশবক্স ব্যালেন্স" : "Total Cashbox Balance"}
+                {range === "today"
+                  ? (lang === "bn" ? "আজকের নিট ক্যাশ স্থিতি" : "Today's Net Flow")
+                  : range === "yesterday"
+                  ? (lang === "bn" ? "গতকালের নিট ক্যাশ স্থিতি" : "Yesterday's Net Flow")
+                  : range === "all"
+                  ? (lang === "bn" ? "মোট এন্ট্রি সংখ্যা" : "Total Entries")
+                  : `${rangeLabel} ${lang === "bn" ? "নিট পরিবর্তন" : "Net Flow"}`}
               </span>
-              <span className="text-sm sm:text-base font-bold text-foreground font-serif">
-                {fmtMoney(balance)}
+              <span className={`text-sm sm:text-base font-bold font-serif ${range === "all" ? "text-foreground" : (periodNet >= 0 ? "text-emerald-600" : "text-rose-600")}`}>
+                {range === "all"
+                  ? `${filtered.length} ${lang === "bn" ? "টি লেনদেন" : "entries"}`
+                  : `${periodNet >= 0 ? "+" : "−"}${fmtMoney(Math.abs(periodNet))}`}
               </span>
             </div>
           )}
@@ -293,8 +304,9 @@ export default function CashboxDetailsPage() {
           <div className="text-[9px] text-muted-foreground mt-0.5">{rangeLabel}</div>
         </Card>
         <Card className="p-3 sm:p-4 text-center">
-          <div className="text-[10px] text-muted-foreground mt-5 sm:mt-0">{t("net_change")}</div>
-          <div className={`text-sm sm:text-base font-bold mt-1 ${periodNet >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
+          <ArrowUpDown className="size-4 text-indigo-500 mx-auto mb-1" />
+          <div className="text-[10px] text-muted-foreground">{t("net_change")}</div>
+          <div className={`text-sm sm:text-base font-bold ${periodNet >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
             {periodNet >= 0 ? "+" : "−"}{fmtMoney(Math.abs(periodNet))}
           </div>
           <div className="text-[9px] text-muted-foreground mt-0.5">{rangeLabel}</div>
@@ -415,6 +427,7 @@ export default function CashboxDetailsPage() {
         onOpenChange={(v) => { setDialogOpen(v); if (!v) setEditEntry(null); }}
         initialKind={editEntry ? editEntry.kind : dialogKind}
         editEntry={editEntry}
+        onSaved={handleEntrySaved}
       />
 
       {/* Delete Confirmation Dialog */}
@@ -452,12 +465,17 @@ export default function CashboxDetailsPage() {
 }
 
 function CashboxDialog({
-  open, onOpenChange, initialKind, editEntry,
+  open,
+  onOpenChange,
+  initialKind,
+  editEntry,
+  onSaved,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   initialKind: CashboxEntry["kind"];
   editEntry: CashboxEntry | null;
+  onSaved?: (savedDate: Date) => void;
 }) {
   const { t, lang } = useT();
   const qc = useQueryClient();
@@ -495,6 +513,9 @@ function CashboxDialog({
     setBusy(true);
     try {
       let entryId: string;
+      const targetDate = dateVal ? new Date(dateVal) : new Date();
+      const isoDate = !isNaN(targetDate.getTime()) ? targetDate.toISOString() : new Date().toISOString();
+
       if (isEdit && editEntry) {
         entryId = editEntry.id;
         try {
@@ -504,7 +525,7 @@ function CashboxDialog({
               kind,
               amount: amt,
               note: note.trim() || null,
-              created_at: dateVal ? new Date(dateVal).toISOString() : undefined,
+              created_at: isoDate,
             },
           });
         } catch (rpcErr) {
@@ -515,6 +536,7 @@ function CashboxDialog({
               kind,
               amount: amt,
               note: note.trim() || null,
+              created_at: isoDate,
             });
           } catch (_) {}
         }
@@ -526,7 +548,7 @@ function CashboxDialog({
               kind,
               amount: amt,
               note: note.trim() || null,
-              created_at: dateVal ? new Date(dateVal).toISOString() : undefined,
+              created_at: isoDate,
             },
           });
           entryId = res?.id || crypto.randomUUID();
@@ -538,6 +560,7 @@ function CashboxDialog({
               kind,
               amount: amt,
               note: note.trim() || null,
+              created_at: isoDate,
             });
             entryId = fsRes?.id || crypto.randomUUID();
           } catch {
@@ -547,7 +570,6 @@ function CashboxDialog({
         toast.success(lang === "bn" ? "ক্যাশ এন্ট্রি সফল হয়েছে" : "Entry recorded");
       }
 
-      const isoDate = dateVal ? new Date(dateVal).toISOString() : new Date().toISOString();
       const updatedEntry: CashboxEntry = {
         id: entryId,
         kind,
@@ -558,13 +580,17 @@ function CashboxDialog({
       };
 
       qc.setQueryData<CashboxEntry[]>(["cashbox"], (old = []) => {
+        let list: CashboxEntry[];
         if (isEdit) {
-          return old.map(e => e.id === entryId ? updatedEntry : e);
+          list = old.map(e => (e.id === entryId ? updatedEntry : e));
+        } else {
+          list = [updatedEntry, ...old.filter(e => e.id !== entryId)];
         }
-        return [updatedEntry, ...old];
+        return list.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
       });
 
       onOpenChange(false);
+      onSaved?.(targetDate);
       await refreshQueries(qc, ["cashbox"]);
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : String(err));

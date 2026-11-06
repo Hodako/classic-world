@@ -1,10 +1,10 @@
 import {
   collection,
   doc,
-  getDocs,
+  getDocs as fbGetDocs,
   getDoc,
-  setDoc,
-  addDoc,
+  setDoc as fbSetDoc,
+  addDoc as fbAddDoc,
   updateDoc,
   deleteDoc,
   query,
@@ -19,6 +19,191 @@ import { clearAuthProfile } from "./local-cache";
 import { clearQueryCache } from "./query-cache";
 import * as jose from "jose";
 
+// ── Multi-Tenant & Multi-Profile Isolation Layer ──────────────────────────────
+const TENANT_COLLECTIONS = new Set([
+  "products",
+  "sales",
+  "purchases",
+  "expenses",
+  "cashbox_logs",
+  "withdrawals",
+  "owner_wallet",
+  "somiti",
+  "somiti_entries",
+  "parties",
+  "customers",
+  "payments",
+  "party_receivables",
+  "party_payables",
+  "payable_settlements",
+  "party_payable_settlements",
+  "returns",
+  "reminders",
+  "bank_accounts",
+  "bank_transactions",
+  "bank_loans",
+  "bank_loan_payments",
+  "employee_invitations",
+  "employees",
+  "employee_salaries",
+  "employee_expenses",
+  "employee_shoppings",
+  "sms_logs",
+  "recycle_bin",
+]);
+
+export function getTenantScope() {
+  const user = fsGetCurrentUser();
+  if (!user) {
+    return {
+      user: null as any,
+      rootOwnerId: null as string | null,
+      activeProfile: "default",
+      isIsolatedTenant: false,
+      effectiveOwnerId: null as string | null,
+    };
+  }
+  const activeProfile =
+    (typeof window !== "undefined" ? localStorage.getItem("active_profile") : null) ||
+    user.activeProfile ||
+    "default";
+  const rawOwner = String(user.owner_id || user.owner_uid || user.id || "default");
+  const rootOwnerId = rawOwner.split(":")[0];
+  const isIsolatedTenant = Boolean(
+    user.is_isolated_tenant === true ||
+      (user.business_id &&
+        user.business_id !== "classic-world-default" &&
+        user.business_id !== "classic-world-settings")
+  );
+  const effectiveOwnerId =
+    activeProfile !== "default"
+      ? `${rootOwnerId}:${activeProfile}`
+      : isIsolatedTenant
+      ? rootOwnerId
+      : null;
+
+  return {
+    user,
+    rootOwnerId,
+    activeProfile,
+    isIsolatedTenant,
+    effectiveOwnerId,
+  };
+}
+
+export function getBusinessDocIdForScope(
+  rootOwnerId?: string | null,
+  activeProfile: string = "default",
+  isIsolatedTenant: boolean = false,
+  userBusinessId?: string | null
+): string {
+  const cleanRoot = (rootOwnerId || "default").replace(/[^a-zA-Z0-9_-]/g, "_");
+  if (activeProfile && activeProfile !== "default") {
+    const cleanProf = activeProfile.replace(/[^a-zA-Z0-9_-]/g, "_");
+    return `biz_${cleanRoot}_${cleanProf}`;
+  }
+  if (isIsolatedTenant) {
+    if (
+      userBusinessId &&
+      userBusinessId !== "classic-world-default" &&
+      userBusinessId !== "classic-world-settings"
+    ) {
+      return userBusinessId;
+    }
+    return `biz_${cleanRoot}`;
+  }
+  return "classic-world-settings";
+}
+
+export function belongsToCurrentTenant(docData: any, _colName?: string): boolean {
+  const scope = getTenantScope();
+  if (!scope.user) return true;
+
+  const docOwner = docData?.owner_id || docData?.owner_uid || null;
+  const docProfile = docData?.profile_id || "default";
+
+  // 1. Secondary profile (e.g., "roki"): strictly show ONLY items created in this profile
+  if (scope.activeProfile !== "default") {
+    return (
+      docOwner === scope.effectiveOwnerId ||
+      (docProfile === scope.activeProfile && (!docOwner || docOwner === scope.rootOwnerId))
+    );
+  }
+
+  // 2. Isolated tenant account on "default" profile: strictly show ONLY items owned by this business
+  if (scope.isIsolatedTenant) {
+    return (
+      (docOwner === scope.rootOwnerId ||
+        (scope.user.business_id && docData?.business_id === scope.user.business_id)) &&
+      docProfile === "default"
+    );
+  }
+
+  // 3. Original Classic World root account on "default" profile:
+  // Exclude any secondary profile items and exclude any isolated tenant items
+  if (docProfile !== "default") return false;
+  if (docData?.is_isolated_tenant === true) return false;
+  if (docOwner && typeof docOwner === "string" && docOwner.includes(":")) return false;
+  if (
+    docOwner &&
+    docOwner !== scope.rootOwnerId &&
+    docOwner !== scope.user.id &&
+    docOwner !== "classic-world-default"
+  ) {
+    return false;
+  }
+  return true;
+}
+
+function withTenantScope<T extends Record<string, any>>(data: T): T {
+  if (!data || typeof data !== "object" || Array.isArray(data)) return data;
+  const scope = getTenantScope();
+  if (!scope.user || !scope.effectiveOwnerId) return data;
+  const enriched: Record<string, any> = {
+    ...data,
+    owner_id: data.owner_id || scope.effectiveOwnerId,
+    profile_id: data.profile_id || scope.activeProfile,
+  };
+  if (scope.isIsolatedTenant) {
+    enriched.is_isolated_tenant = true;
+  }
+  return enriched as T;
+}
+
+async function getDocs(
+  q: any
+): Promise<{ docs: any[]; empty: boolean; size: number; forEach: (cb: (doc: any) => void) => void }> {
+  const snap = await fbGetDocs(q);
+  const colName =
+    q?.id ||
+    q?._query?.path?.segments?.[0] ||
+    snap.docs?.[0]?.ref?.parent?.id ||
+    "";
+  if (!colName || !TENANT_COLLECTIONS.has(colName)) {
+    return snap as any;
+  }
+  const filteredDocs: any[] = snap.docs.filter((d: any) => belongsToCurrentTenant(d.data(), colName));
+  return {
+    ...snap,
+    docs: filteredDocs,
+    empty: filteredDocs.length === 0,
+    size: filteredDocs.length,
+    forEach: (cb: (doc: any) => void) => filteredDocs.forEach(cb),
+  };
+}
+
+async function addDoc(colRef: any, data: any): Promise<any> {
+  const colName = colRef?.id || "";
+  const payload = TENANT_COLLECTIONS.has(colName) ? withTenantScope(data) : data;
+  return await fbAddDoc(colRef, payload);
+}
+
+async function setDoc(docRef: any, data: any, options?: any): Promise<any> {
+  const colName = docRef?.parent?.id || "";
+  const payload = TENANT_COLLECTIONS.has(colName) ? withTenantScope(data) : data;
+  return options !== undefined ? await fbSetDoc(docRef, payload, options) : await fbSetDoc(docRef, payload);
+}
+
 // Helper to convert Firestore documents into clean JSON objects
 function docToData<T = any>(docSnap: any): T {
   const data = docSnap.data() || {};
@@ -26,6 +211,8 @@ function docToData<T = any>(docSnap: any): T {
 
   if (data?.created_at?.toDate && typeof data.created_at.toDate === "function") {
     createdAtStr = data.created_at.toDate().toISOString();
+  } else if (data?.created_at instanceof Date) {
+    createdAtStr = data.created_at.toISOString();
   } else if (typeof data?.created_at?.seconds === "number") {
     createdAtStr = new Date(data.created_at.seconds * 1000).toISOString();
   } else if (typeof data?.created_at?._seconds === "number") {
@@ -40,6 +227,41 @@ function docToData<T = any>(docSnap: any): T {
     ...data,
     created_at: createdAtStr,
   } as T;
+}
+
+/** Helper to convert any Date, ISO string, or Timestamp representation into a Firestore Timestamp */
+export function toFirestoreTimestamp(val: any): Timestamp {
+  if (!val) return Timestamp.now();
+  if (val instanceof Timestamp) return val;
+  if (val instanceof Date) return isNaN(val.getTime()) ? Timestamp.now() : Timestamp.fromDate(val);
+  if (typeof val?.toDate === "function") return Timestamp.fromDate(val.toDate());
+  if (typeof val?.seconds === "number") return new Timestamp(val.seconds, val.nanoseconds || 0);
+  if (typeof val === "string") {
+    const d = new Date(val);
+    if (!isNaN(d.getTime())) return Timestamp.fromDate(d);
+  }
+  return Timestamp.now();
+}
+
+// Helper to recursively strip undefined values and reserved id fields from Firestore payloads
+export function cleanFirestoreData<T extends Record<string, any>>(obj: T): T {
+  if (!obj || typeof obj !== "object") return obj;
+  const result: any = Array.isArray(obj) ? [] : {};
+  for (const [key, value] of Object.entries(obj)) {
+    if (value === undefined) continue;
+    if (key === "id" || key === "_id") continue;
+    if (
+      value !== null &&
+      typeof value === "object" &&
+      !(value instanceof Timestamp) &&
+      !(value instanceof Date)
+    ) {
+      result[key] = cleanFirestoreData(value);
+    } else {
+      result[key] = value;
+    }
+  }
+  return result;
 }
 
 // ── 7-Day Recycle Bin System ──────────────────────────────────────────────────
@@ -174,10 +396,17 @@ export async function fsDeleteProduct(id: string) {
 // ── Sales ────────────────────────────────────────────────────────────────────
 export async function fsGetSales() {
   try {
-    const colRef = collection(db, "sales");
-    const q = query(colRef, orderBy("created_at", "desc"));
-    const snap = await getDocs(q);
-    const sales = snap.docs.map(docToData);
+    let sales: any[] = [];
+    try {
+      const colRef = collection(db, "sales");
+      const q = query(colRef, orderBy("created_at", "desc"));
+      const snap = await getDocs(q);
+      sales = snap.docs.map(docToData);
+    } catch {
+      const snap = await getDocs(collection(db, "sales"));
+      sales = snap.docs.map(docToData);
+      sales.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    }
 
     try {
       const custSnap = await getDocs(collection(db, "customers"));
@@ -198,12 +427,18 @@ export async function fsGetSales() {
       return sales;
     }
   } catch (err) {
-    try {
-      const snap = await getDocs(collection(db, "sales"));
-      return snap.docs.map(docToData);
-    } catch (_) {
-      return [];
-    }
+    return [];
+  }
+}
+
+// Safe stock modifier that checks document existence before updating to prevent No Document To Update errors
+async function fsSafeAdjustProductStock(productId: string | null | undefined, delta: number) {
+  if (!productId || delta === 0) return;
+  try {
+    const prodRef = doc(db, "products", productId);
+    await updateDoc(prodRef, { stock: increment(delta) });
+  } catch (err) {
+    console.warn("Product stock adjustment skipped:", err);
   }
 }
 
@@ -217,13 +452,29 @@ export async function fsCreateSale(data: any) {
   const dueAmount = Number(data.due_amount) || 0;
   const calculatedProfit = (sellPrice - buyPrice) * qty - discount;
 
-  const saleDoc = {
+  const createdTimestamp = toFirestoreTimestamp(data.created_at);
+
+  const isDirectPayment = data.type === "cash" || data.type === "nagad" || data.type === "card" || data.type === "pos";
+  const hasDigitalSplit = data.type === "split" && ((Number(data.split_bkash) || 0) > 0 || (Number(data.split_bank) || 0) > 0);
+  const isDigitalPending = data.type === "bkash" || data.type === "bank" || hasDigitalSplit;
+  const isOnline = data.type === "online";
+  const cashReceived = isOnline
+    ? 0
+    : data.type === "split"
+    ? Number(data.split_cash) || 0
+    : isDigitalPending
+    ? 0
+    : isDirectPayment || data.type === "credit"
+    ? paidAmount
+    : paidAmount;
+
+  const rawDoc: Record<string, any> = {
     product_id: data.product_id || null,
     product_name: data.product_name || "Custom Item",
     qty,
     buy_price: buyPrice,
     sell_price: sellPrice,
-    profit: data.profit !== undefined ? Number(data.profit) : calculatedProfit,
+    profit: data.profit !== undefined && !isNaN(Number(data.profit)) ? Number(data.profit) : calculatedProfit,
     type: data.type || "cash",
     party_id: data.party_id || null,
     paid_amount: paidAmount,
@@ -233,73 +484,49 @@ export async function fsCreateSale(data: any) {
     return_qty: 0,
     note: data.note || null,
     cart_id: data.cart_id || null,
-    split_cash: data.split_cash !== undefined ? Number(data.split_cash) : undefined,
-    split_bkash: data.split_bkash !== undefined ? Number(data.split_bkash) : undefined,
-    split_bank: data.split_bank !== undefined ? Number(data.split_bank) : undefined,
-    created_at: Timestamp.now(),
+    payment_status: isDigitalPending ? "pending" : "accepted",
+    payment_accepted: !isDigitalPending,
+    created_at: createdTimestamp,
   };
 
-  const docRef = await addDoc(colRef, saleDoc);
-  const saleId = docRef.id;
+  if (data.split_cash !== undefined && data.split_cash !== null) rawDoc.split_cash = Number(data.split_cash) || 0;
+  if (data.split_bkash !== undefined && data.split_bkash !== null) rawDoc.split_bkash = Number(data.split_bkash) || 0;
+  if (data.split_bank !== undefined && data.split_bank !== null) rawDoc.split_bank = Number(data.split_bank) || 0;
+  if (data.courier_name) rawDoc.courier_name = data.courier_name;
+  if (data.courier_status) rawDoc.courier_status = data.courier_status;
+  if (data.tracking_code) rawDoc.tracking_code = data.tracking_code;
 
-  // 1. Decrement product stock if product_id exists
-  if (data.product_id) {
-    try {
-      const productRef = doc(db, "products", data.product_id);
-      await updateDoc(productRef, {
-        stock: increment(-qty),
-      });
-    } catch (err) {
-      console.warn("Product stock adjustment skipped:", err);
-    }
+  const saleDoc = cleanFirestoreData(rawDoc);
+  let saleId: string;
+  if (data?.id) {
+    saleId = String(data.id);
+    await setDoc(doc(db, "sales", saleId), saleDoc, { merge: true });
+  } else {
+    const docRef = await addDoc(colRef, saleDoc);
+    saleId = docRef.id;
   }
 
-  // 2. Cashbox log if cash payment
-  const isDirectPayment = data.type === "cash" || data.type === "nagad" || data.type === "card" || data.type === "pos";
-  const hasDigitalSplit = data.type === "split" && ((Number(data.split_bkash) || 0) > 0 || (Number(data.split_bank) || 0) > 0);
-  const isDigitalPending = data.type === "bkash" || data.type === "bank" || hasDigitalSplit;
-  const isOnline = data.type === "online";
-  const cashReceived = isOnline
-    ? 0
-    : data.type === "split"
-    ? (Number(data.split_cash) || 0)
-    : isDigitalPending
-    ? 0
-    : isDirectPayment
-    ? (paidAmount || (sellPrice * qty - discount))
-    : paidAmount;
-
+  const postTasks: Promise<any>[] = [];
+  if (data.product_id) {
+    postTasks.push(fsSafeAdjustProductStock(data.product_id, -qty));
+  }
   if (cashReceived > 0) {
-    try {
-      let methodTag = data.type ? ` [Paid by ${data.type.toUpperCase()}]` : "";
-      if (data.type === "split") {
-        methodTag = ` [Split Cash: ৳${Number(data.split_cash) || 0}, bKash: ৳${Number(data.split_bkash) || 0}]`;
-      }
-      await addDoc(collection(db, "cashbox_logs"), {
+    let methodTag = rawDoc.type ? ` [Paid by ${rawDoc.type.toUpperCase()}]` : "";
+    if (rawDoc.type === "split") {
+      methodTag = ` [Split Cash: ৳${Number(rawDoc.split_cash) || 0}, bKash: ৳${Number(rawDoc.split_bkash) || 0}]`;
+    }
+    postTasks.push(
+      addDoc(collection(db, "cashbox_logs"), {
         kind: "sale",
         amount: cashReceived,
-        note: `Sale${methodTag}: ${data.product_name || "Item"} (x${qty})${data.note ? ` - ${data.note}` : ""}`,
+        note: `Sale${methodTag}: ${rawDoc.product_name || "Item"} (x${qty})${rawDoc.note ? ` - ${rawDoc.note}` : ""}`,
         ref_id: saleId,
-        created_at: Timestamp.now(),
-      });
-    } catch (err) {
-      console.warn("Cashbox sale log skipped:", err);
-    }
+        created_at: createdTimestamp,
+      }).catch(err => console.warn("Cashbox sale log skipped:", err))
+    );
   }
-
-  // 3. If credit sale with party, record receivable
-  if (data.type === "credit" && data.party_id && dueAmount > 0) {
-    try {
-      await addDoc(collection(db, "party_receivables"), {
-        party_id: data.party_id,
-        amount: dueAmount,
-        note: `Credit sale: ${data.product_name || "Item"}`,
-        ref_id: saleId,
-        created_at: Timestamp.now(),
-      });
-    } catch (err) {
-      console.warn("Party receivable log skipped:", err);
-    }
+  if (postTasks.length > 0) {
+    await Promise.all(postTasks);
   }
 
   return {
@@ -307,28 +534,46 @@ export async function fsCreateSale(data: any) {
     id: saleId,
     _id: saleId,
     ...saleDoc,
-    payment_status: isDigitalPending ? "pending" : "accepted",
-    payment_accepted: !isDigitalPending,
-    created_at: new Date().toISOString()
+    created_at: createdTimestamp.toDate().toISOString(),
   };
 }
 
 export async function fsAcceptDigitalPayment(id: string) {
+  if (!id) return { success: false, error: "No sale ID provided" };
   const docRef = doc(db, "sales", id);
-  const snap = await getDoc(docRef);
-  if (!snap.exists()) throw new Error("Sale not found");
-  const s = snap.data();
-  if (s.payment_status === "accepted" || s.payment_accepted) return { success: true, id };
+  let snap = await getDoc(docRef);
+  let targetRef = docRef;
+  let targetData = snap.exists() ? snap.data() : null;
+
+  if (!snap.exists()) {
+    try {
+      const q = query(collection(db, "sales"), where("cart_id", "==", id));
+      const qSnap = await getDocs(q);
+      if (!qSnap.empty) {
+        targetRef = qSnap.docs[0].ref;
+        targetData = qSnap.docs[0].data();
+      } else {
+        return { success: true, skipped: true, message: "Sale not found in Firestore mirror (skipped)" };
+      }
+    } catch (_) {
+      return { success: true, skipped: true, message: "Sale not found in Firestore mirror (skipped)" };
+    }
+  }
+
+  const s = targetData;
+  if (!s) return { success: true, id };
+  if (!s.cart_id && (s.payment_status === "accepted" || s.payment_accepted)) return { success: true, id };
 
   const cartId = s.cart_id;
-  const docsToUpdate: Array<{ ref: any; data: any; id: string }> = [{ ref: docRef, data: s, id }];
+  const targetId = targetRef.id;
+  const docsToUpdate: Array<{ ref: any; data: any; id: string }> = [{ ref: targetRef, data: s, id: targetId }];
 
   if (cartId) {
     try {
       const q = query(collection(db, "sales"), where("cart_id", "==", cartId));
       const qSnap = await getDocs(q);
       qSnap.forEach(d => {
-        if (d.id !== id) {
+        if (d.id !== targetId) {
           docsToUpdate.push({ ref: d.ref, data: d.data(), id: d.id });
         }
       });
@@ -351,7 +596,9 @@ export async function fsAcceptDigitalPayment(id: string) {
         stuckAmount = Math.max(0, (Number(it.paid_amount) || Number(it.sell_price) || 0) - (Number(it.split_cash) || 0));
       }
     } else {
-      stuckAmount = Number(it.paid_amount) || Number(it.sell_price) || (Number(it.qty) * Number(it.buy_price) + Number(it.profit)) || 0;
+      stuckAmount = it.paid_amount != null && Number.isFinite(Number(it.paid_amount))
+        ? Math.max(0, Number(it.paid_amount))
+        : Math.max(0, Number(it.sell_price || 0) * Number(it.qty || 1) - Number(it.discount || 0));
     }
     totalStuck += stuckAmount;
 
@@ -384,13 +631,17 @@ export async function fsAcceptDigitalPayment(id: string) {
   return { success: true, id };
 }
 
-
 export async function fsApproveCourierPayment(id: string) {
+  if (!id) return { success: false, error: "No sale ID provided" };
   const docRef = doc(db, "sales", id);
   const snap = await getDoc(docRef);
-  if (!snap.exists()) throw new Error("Sale not found");
+  if (!snap.exists()) {
+    return { success: true, skipped: true, message: "Sale not found in Firestore mirror (skipped)" };
+  }
   const s = snap.data();
-  const total = Number(s.sell_price) || (Number(s.qty) * Number(s.buy_price) + Number(s.profit));
+  if (s.courier_status === "collected") return { success: true, id };
+  if (s.courier_status === "cancelled" || s.returned) throw new Error("Cannot collect a cancelled or returned order");
+  const total = Math.max(0, Number(s.sell_price || 0) * Number(s.qty || 1) - Number(s.discount || 0));
 
   await updateDoc(docRef, {
     courier_status: "collected",
@@ -416,21 +667,17 @@ export async function fsApproveCourierPayment(id: string) {
 }
 
 export async function fsCancelCourierOrder(id: string) {
+  if (!id) return { success: false, error: "No sale ID provided" };
   const docRef = doc(db, "sales", id);
   const snap = await getDoc(docRef);
-  if (!snap.exists()) throw new Error("Sale not found");
+  if (!snap.exists()) {
+    return { success: true, skipped: true, message: "Sale not found in Firestore mirror (skipped)" };
+  }
   const s = snap.data();
 
-  // Restore inventory stock
+  // Restore inventory stock safely
   if (s.product_id && !s.returned) {
-    try {
-      const productRef = doc(db, "products", s.product_id);
-      await updateDoc(productRef, {
-        stock: increment(Number(s.qty) || 1),
-      });
-    } catch (err) {
-      console.warn("Product restore stock skipped:", err);
-    }
+    await fsSafeAdjustProductStock(s.product_id, Number(s.qty) || 1);
   }
 
   await updateDoc(docRef, {
@@ -443,16 +690,85 @@ export async function fsCancelCourierOrder(id: string) {
 }
 
 export async function fsDeleteSale(id: string) {
+  if (!id) throw new Error("Sale ID is required for delete");
   await fsMoveToRecycleBin("sales", id, "Sale #" + id);
   const docRef = doc(db, "sales", id);
+  const snap = await getDoc(docRef);
+  if (snap.exists()) {
+    const sale = snap.data();
+    // 1. Restore product stock if not already returned
+    if (sale.product_id && !sale.returned) {
+      const qty = Number(sale.qty) || 0;
+      if (qty > 0) {
+        await fsSafeAdjustProductStock(sale.product_id, qty);
+      }
+    }
+  }
   await deleteDoc(docRef);
   return { success: true, id };
 }
 
 export async function fsEditSale(id: string, data: any) {
+  if (!id) throw new Error("Sale ID is required for edit");
   const docRef = doc(db, "sales", id);
-  await updateDoc(docRef, data);
-  return { success: true, id };
+  const snap = await getDoc(docRef);
+  if (!snap.exists()) {
+    throw new Error("Sale not found");
+  }
+  const oldSale = snap.data();
+
+  const newQty = Number(data.qty) || Number(oldSale.qty) || 1;
+  const oldQty = Number(oldSale.qty) || 0;
+  const newProductId = data.product_id !== undefined ? (data.product_id || null) : (oldSale.product_id || null);
+  const oldProductId = oldSale.product_id || null;
+
+  // 1. Revert old stock and apply new stock safely
+  if (!oldSale.returned) {
+    if (oldProductId && oldProductId === newProductId) {
+      const diff = oldQty - newQty;
+      if (diff !== 0) {
+        await fsSafeAdjustProductStock(oldProductId, diff);
+      }
+    } else {
+      if (oldProductId && oldQty > 0) {
+        await fsSafeAdjustProductStock(oldProductId, oldQty);
+      }
+      if (newProductId && newQty > 0) {
+        await fsSafeAdjustProductStock(newProductId, -newQty);
+      }
+    }
+  }
+
+  const buyPrice = data.buy_price != null && Number.isFinite(Number(data.buy_price)) ? Number(data.buy_price) : (Number(oldSale.buy_price) || 0);
+  const sellPrice = data.sell_price != null && Number.isFinite(Number(data.sell_price)) ? Number(data.sell_price) : (Number(oldSale.sell_price) || 0);
+  const discount = data.discount != null && Number.isFinite(Number(data.discount)) ? Number(data.discount) : (Number(oldSale.discount) || 0);
+  const calculatedProfit = (sellPrice - buyPrice) * newQty - discount;
+  const profit = data.profit !== undefined && !isNaN(Number(data.profit)) ? Number(data.profit) : (oldSale.profit !== undefined ? Number(oldSale.profit) : calculatedProfit);
+
+  const rawUpdate: Record<string, any> = {
+    product_id: newProductId,
+    product_name: data.product_name || oldSale.product_name || "Custom Item",
+    qty: newQty,
+    buy_price: buyPrice,
+    sell_price: sellPrice,
+    profit,
+    type: data.type || oldSale.type || "cash",
+    party_id: data.party_id !== undefined ? (data.party_id || null) : (oldSale.party_id || null),
+    paid_amount: data.paid_amount != null && Number.isFinite(Number(data.paid_amount)) ? Number(data.paid_amount) : (Number(oldSale.paid_amount) || 0),
+    due_amount: data.due_amount != null && Number.isFinite(Number(data.due_amount)) ? Number(data.due_amount) : (Number(oldSale.due_amount) || 0),
+    discount,
+    note: data.note !== undefined ? (data.note || null) : (oldSale.note || null),
+    updated_at: Timestamp.now(),
+  };
+
+  if (data.split_cash !== undefined && data.split_cash !== null) rawUpdate.split_cash = Number(data.split_cash) || 0;
+  if (data.split_bkash !== undefined && data.split_bkash !== null) rawUpdate.split_bkash = Number(data.split_bkash) || 0;
+  if (data.split_bank !== undefined && data.split_bank !== null) rawUpdate.split_bank = Number(data.split_bank) || 0;
+
+  const updateDocData = cleanFirestoreData(rawUpdate);
+  await updateDoc(docRef, updateDocData);
+
+  return { success: true, id, ...oldSale, ...updateDocData };
 }
 
 // ── Purchases ────────────────────────────────────────────────────────────────
@@ -476,8 +792,9 @@ export async function fsCreatePurchase(data: any) {
   const qty = Number(data.qty) || 1;
   const unitCost = Number(data.unit_cost) || 0;
   const total = Number(data.total) || (qty * unitCost);
+  const createdAtTs = toFirestoreTimestamp(data.created_at);
 
-  const purchaseDoc = {
+  const purchaseDoc = cleanFirestoreData({
     product_id: data.product_id || null,
     product_name: data.product_name || "Purchased Item",
     qty,
@@ -486,34 +803,46 @@ export async function fsCreatePurchase(data: any) {
     note: data.note || null,
     payment_type: data.payment_type || "cash",
     party_id: data.party_id || null,
-    created_at: Timestamp.now(),
-  };
+    created_at: createdAtTs,
+  });
 
-  const docRef = await addDoc(collection(db, "purchases"), purchaseDoc);
-  const purchaseId = docRef.id;
+  let purchaseId: string;
+  if (data?.id) {
+    purchaseId = String(data.id);
+    await setDoc(doc(db, "purchases", purchaseId), purchaseDoc, { merge: true });
+  } else {
+    const docRef = await addDoc(collection(db, "purchases"), purchaseDoc);
+    purchaseId = docRef.id;
+  }
 
   // 1. Increment product stock
   if (data.product_id) {
     try {
       const productRef = doc(db, "products", data.product_id);
-      await updateDoc(productRef, {
-        stock: increment(qty),
-        buy_price: unitCost > 0 ? unitCost : undefined,
-      });
+      const updates: any = { stock: increment(qty) };
+      if (unitCost > 0) updates.buy_price = unitCost;
+      await updateDoc(productRef, updates);
     } catch (err) {
       console.warn("Product stock increment skipped:", err);
     }
   }
 
-  // 2. Cashbox expense if cash purchase
+  // 2. Cashbox expense & expenses collection log if cash purchase
   if (data.payment_type !== "credit" && total > 0) {
     try {
-      await addDoc(collection(db, "cashbox_logs"), {
-        kind: "withdraw",
+      await addDoc(collection(db, "expenses"), {
+        title: `Product Purchase: ${data.product_name || "Stock"}`,
         amount: total,
-        note: `Purchase: ${data.product_name || "Item"} (x${qty})`,
+        category: "purchase",
+        note: `Purchased ${qty} units. Purchase ID: ${purchaseId}`,
+        created_at: createdAtTs,
+      });
+      await addDoc(collection(db, "cashbox_logs"), {
+        kind: "expense",
+        amount: total,
+        note: `Product Purchase: ${data.product_name || "Stock"} (x${qty})`,
         ref_id: purchaseId,
-        created_at: Timestamp.now(),
+        created_at: createdAtTs,
       });
     } catch (err) {
       console.warn("Cashbox purchase log skipped:", err);
@@ -526,16 +855,16 @@ export async function fsCreatePurchase(data: any) {
       await addDoc(collection(db, "party_payables"), {
         party_id: data.party_id,
         amount: total,
-        note: `Credit purchase: ${data.product_name || "Item"}`,
+        note: `Credit purchase: ${data.product_name || "Item"}. Purchase ID: ${purchaseId}`,
         ref_id: purchaseId,
-        created_at: Timestamp.now(),
+        created_at: createdAtTs,
       });
     } catch (err) {
       console.warn("Party payable log skipped:", err);
     }
   }
 
-  return { success: true, id: purchaseId };
+  return { success: true, id: purchaseId, ...purchaseDoc, created_at: createdAtTs.toDate().toISOString() };
 }
 
 export async function fsDeletePurchase(id: string) {
@@ -574,6 +903,17 @@ export async function fsDeletePurchase(id: string) {
         }
       } catch (err) {
         console.warn("Party payable rollback warning:", err);
+      }
+      // 4. Delete auto-created linked expense
+      try {
+        const expSnap = await getDocs(collection(db, "expenses"));
+        for (const eDoc of expSnap.docs) {
+          if (eDoc.data().note?.includes(`Purchase ID: ${id}`)) {
+            await deleteDoc(eDoc.ref);
+          }
+        }
+      } catch (err) {
+        console.warn("Linked expense rollback warning:", err);
       }
       await deleteDoc(docRef);
     }
@@ -661,13 +1001,23 @@ export async function fsGetExpenses() {
 
 export async function fsCreateExpense(data: any) {
   const amount = Number(data.amount) || 0;
-  const docRef = await addDoc(collection(db, "expenses"), {
+  const createdAtTs = toFirestoreTimestamp(data.created_at);
+  const expenseDoc = cleanFirestoreData({
     title: data.title || "Expense",
     amount,
     category: data.category || "General",
     note: data.note || null,
-    created_at: Timestamp.now(),
+    created_at: createdAtTs,
   });
+
+  let expenseId: string;
+  if (data?.id) {
+    expenseId = String(data.id);
+    await setDoc(doc(db, "expenses", expenseId), expenseDoc, { merge: true });
+  } else {
+    const docRef = await addDoc(collection(db, "expenses"), expenseDoc);
+    expenseId = docRef.id;
+  }
 
   if (amount > 0) {
     try {
@@ -675,15 +1025,15 @@ export async function fsCreateExpense(data: any) {
         kind: "expense",
         amount,
         note: `Expense: ${data.title || "General"}`,
-        ref_id: docRef.id,
-        created_at: Timestamp.now(),
+        ref_id: expenseId,
+        created_at: createdAtTs,
       });
     } catch (err) {
       console.warn("Cashbox expense log skipped:", err);
     }
   }
 
-  return { success: true, id: docRef.id };
+  return { success: true, id: expenseId, ...expenseDoc, created_at: createdAtTs.toDate().toISOString() };
 }
 
 export async function fsDeleteExpense(id: string) {
@@ -696,37 +1046,59 @@ export async function fsDeleteExpense(id: string) {
 export async function fsGetCashbox() {
   try {
     const colRef = collection(db, "cashbox_logs");
-    const q = query(colRef, orderBy("created_at", "desc"));
-    const snap = await getDocs(q);
-    return snap.docs.map(docToData);
-  } catch (err) {
+    let snap;
     try {
-      const snap = await getDocs(collection(db, "cashbox_logs"));
-      return snap.docs.map(docToData);
+      const q = query(colRef, orderBy("created_at", "desc"));
+      snap = await getDocs(q);
     } catch (_) {
-      return [];
+      snap = await getDocs(colRef);
     }
+    const items = snap.docs.map(docToData);
+    return items.sort((a, b) => {
+      const tb = new Date(b.created_at).getTime() || 0;
+      const ta = new Date(a.created_at).getTime() || 0;
+      return tb - ta;
+    });
+  } catch (err) {
+    console.warn("fsGetCashbox error:", err);
+    return [];
   }
 }
 
 export async function fsCreateCashbox(data: any) {
-  const docRef = await addDoc(collection(db, "cashbox_logs"), {
-    kind: data.kind || "deposit",
+  const createdAtTs = toFirestoreTimestamp(data?.created_at);
+  const kindVal = data.kind || (data.type === "cash_out" ? "withdraw" : "deposit");
+  const payload = {
+    kind: kindVal,
     amount: Number(data.amount) || 0,
     note: data.note || null,
     ref_id: data.ref_id || null,
-    created_at: Timestamp.now(),
-  });
-  return { success: true, id: docRef.id };
+    created_at: createdAtTs,
+  };
+
+  if (data?.id) {
+    await setDoc(doc(db, "cashbox_logs", String(data.id)), payload, { merge: true });
+    return { success: true, id: String(data.id) };
+  } else {
+    const docRef = await addDoc(collection(db, "cashbox_logs"), payload);
+    return { success: true, id: docRef.id };
+  }
 }
 
 export async function fsUpdateCashbox(id: string, data: any) {
-  await updateDoc(doc(db, "cashbox_logs", id), data);
+  const updateData: any = { ...data };
+  if (updateData.created_at !== undefined) {
+    updateData.created_at = toFirestoreTimestamp(updateData.created_at);
+  }
+  if (updateData.amount !== undefined) {
+    updateData.amount = Number(updateData.amount) || 0;
+  }
+  await updateDoc(doc(db, "cashbox_logs", String(id)), cleanFirestoreData(updateData));
   return { success: true, id };
 }
 
 export async function fsDeleteCashbox(id: string) {
-  await deleteDoc(doc(db, "cashbox_logs", id));
+  await deleteDoc(doc(db, "cashbox_logs", String(id)));
   return { success: true, id };
 }
 
@@ -742,11 +1114,21 @@ export async function fsGetWithdrawals() {
 
 export async function fsCreateWithdrawal(data: any) {
   const amount = Number(data.amount) || 0;
-  const docRef = await addDoc(collection(db, "withdrawals"), {
+  const createdAtTs = toFirestoreTimestamp(data.created_at);
+  const withdrawalDoc = cleanFirestoreData({
     amount,
     note: data.note || "Owner Withdrawal",
-    created_at: Timestamp.now(),
+    created_at: createdAtTs,
   });
+
+  let withdrawalId: string;
+  if (data?.id) {
+    withdrawalId = String(data.id);
+    await setDoc(doc(db, "withdrawals", withdrawalId), withdrawalDoc, { merge: true });
+  } else {
+    const docRef = await addDoc(collection(db, "withdrawals"), withdrawalDoc);
+    withdrawalId = docRef.id;
+  }
 
   if (amount > 0) {
     try {
@@ -754,15 +1136,21 @@ export async function fsCreateWithdrawal(data: any) {
         kind: "withdraw",
         amount,
         note: `Withdrawal: ${data.note || "Owner"}`,
-        ref_id: docRef.id,
-        created_at: Timestamp.now(),
+        ref_id: withdrawalId,
+        created_at: createdAtTs,
       });
     } catch (err) {
       console.warn("Cashbox withdrawal log skipped:", err);
     }
   }
 
-  return { success: true, id: docRef.id };
+  return { success: true, id: withdrawalId, ...withdrawalDoc, created_at: createdAtTs.toDate().toISOString() };
+}
+
+export async function fsDeleteWithdrawal(id: string) {
+  if (!id) return { success: false };
+  await deleteDoc(doc(db, "withdrawals", id));
+  return { success: true, id };
 }
 
 // ── Owners Wallet (Personal & Family Expenses) ──────────────────────────────
@@ -912,7 +1300,10 @@ export async function fsUpdateOwnerWalletEntry(id: string, data: any) {
 export async function fsGetSomiti() {
   try {
     const snap = await getDocs(collection(db, "somiti"));
-    return snap.docs.map(docToData);
+    const items = snap.docs.map(docToData);
+    return items.sort(
+      (a: any, b: any) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()
+    );
   } catch (err) {
     return [];
   }
@@ -921,14 +1312,27 @@ export async function fsGetSomiti() {
 export async function fsCreateSomiti(data: any) {
   const amount = Number(data.amount) || 0;
   const kind = data.kind || "deposit";
-  const docRef = await addDoc(collection(db, "somiti"), {
+  const shouldSkipCashbox = Boolean(data.skipCashbox || data.is_initial);
+  const explicitId = data.id || data._id ? String(data.id || data._id) : null;
+  const createdAtTs = toFirestoreTimestamp(data.created_at);
+
+  const payload = {
     kind,
     amount,
     note: data.note || null,
-    created_at: Timestamp.now(),
-  });
+    skipCashbox: shouldSkipCashbox,
+    is_initial: Boolean(data.is_initial),
+    created_at: createdAtTs,
+  };
 
-  const shouldSkipCashbox = Boolean(data.skipCashbox || data.is_initial);
+  let finalId: string;
+  if (explicitId) {
+    await setDoc(doc(db, "somiti", explicitId), payload, { merge: true });
+    finalId = explicitId;
+  } else {
+    const docRef = await addDoc(collection(db, "somiti"), payload);
+    finalId = docRef.id;
+  }
 
   if (amount > 0 && !shouldSkipCashbox) {
     try {
@@ -939,30 +1343,72 @@ export async function fsCreateSomiti(data: any) {
         kind: cashboxKind,
         amount,
         note: `Samity ${kind}: ${data.note || ""}`,
-        ref_id: docRef.id,
-        created_at: Timestamp.now(),
+        ref_id: finalId,
+        created_at: createdAtTs,
       });
     } catch (err) {
       console.warn("Cashbox samity log skipped:", err);
     }
   }
 
-  return { success: true, id: docRef.id };
+  return {
+    success: true,
+    id: finalId,
+    kind,
+    amount,
+    note: data.note || null,
+    skipCashbox: shouldSkipCashbox,
+    is_initial: Boolean(data.is_initial),
+    created_at: createdAtTs.toDate().toISOString(),
+  };
 }
 
 export async function fsUpdateSomiti(id: string, data: any) {
-  await updateDoc(doc(db, "somiti", id), data);
-  if (data.amount !== undefined || data.kind !== undefined) {
+  if (!id) return { success: false };
+  const { id: _ignoreId, _id: _ignoreMongoId, ...rest } = data || {};
+  const updates: any = { ...rest };
+  if (updates.amount !== undefined) {
+    updates.amount = Math.abs(Number(updates.amount) || 0);
+  }
+  if (updates.created_at) {
+    updates.created_at = toFirestoreTimestamp(updates.created_at);
+  }
+  await setDoc(doc(db, "somiti", id), updates, { merge: true });
+  if (
+    data.amount !== undefined ||
+    data.kind !== undefined ||
+    data.note !== undefined ||
+    data.created_at !== undefined ||
+    data.skipCashbox !== undefined
+  ) {
     try {
       const q = query(collection(db, "cashbox_logs"), where("ref_id", "==", id));
       const snap = await getDocs(q);
       const cashboxKind = data.kind === "withdraw" ? "deposit" : "withdraw";
-      for (const logDoc of snap.docs) {
-        await updateDoc(doc(db, "cashbox_logs", logDoc.id), {
+      if (data.skipCashbox === true) {
+        for (const logDoc of snap.docs) {
+          await deleteDoc(doc(db, "cashbox_logs", logDoc.id));
+        }
+      } else if (data.skipCashbox === false && snap.empty && (Number(data.amount) || 0) > 0) {
+        await addDoc(collection(db, "cashbox_logs"), {
           kind: cashboxKind,
-          amount: Number(data.amount) || 0,
+          amount: Math.abs(Number(data.amount) || 0),
           note: `Samity ${data.kind || "deposit"}: ${data.note || ""}`,
+          ref_id: id,
+          created_at: updates.created_at || Timestamp.now(),
         });
+      } else {
+        for (const logDoc of snap.docs) {
+          const logUpdates: any = {
+            kind: cashboxKind,
+            amount: Math.abs(Number(data.amount) || 0),
+            note: `Samity ${data.kind || "deposit"}: ${data.note || ""}`,
+          };
+          if (updates.created_at) {
+            logUpdates.created_at = updates.created_at;
+          }
+          await updateDoc(doc(db, "cashbox_logs", logDoc.id), logUpdates);
+        }
       }
     } catch (_) {}
   }
@@ -970,6 +1416,7 @@ export async function fsUpdateSomiti(id: string, data: any) {
 }
 
 export async function fsDeleteSomiti(id: string) {
+  if (!id) return { success: false };
   try {
     await fsMoveToRecycleBin("somiti", id, "Somiti #" + id);
     const q = query(collection(db, "cashbox_logs"), where("ref_id", "==", id));
@@ -978,7 +1425,12 @@ export async function fsDeleteSomiti(id: string) {
       await deleteDoc(doc(db, "cashbox_logs", logDoc.id));
     }
   } catch (_) {}
-  await deleteDoc(doc(db, "somiti", id));
+  try {
+    await deleteDoc(doc(db, "somiti", id));
+  } catch (_) {}
+  try {
+    await deleteDoc(doc(db, "somiti_entries", id));
+  } catch (_) {}
   return { success: true, id };
 }
 
@@ -991,8 +1443,33 @@ export async function fsGetParties() {
       .filter((p: any) => p.type !== "customer" && !p.is_customer)
       .map((p: any) => ({ ...p, type: "supplier", is_supplier: true }));
   } catch (err) {
-    return [];
+    console.warn("fsGetParties error:", err);
+    throw err;
   }
+}
+
+export async function fsGetParty(id: string) {
+  if (!id) return null;
+  try {
+    const snap = await getDoc(doc(db, "parties", id));
+    if (snap.exists()) {
+      return { ...docToData(snap), type: "supplier", is_supplier: true };
+    }
+    const custSnap = await getDoc(doc(db, "customers", id));
+    if (custSnap.exists()) {
+      return { ...docToData(custSnap), type: "supplier", is_supplier: true };
+    }
+    return null;
+  } catch (err) {
+    console.warn(`fsGetParty error for ${id}:`, err);
+    throw err;
+  }
+}
+
+export async function fsGetPurchasesForParty(partyId: string) {
+  if (!partyId) return [];
+  const allPurchases = await fsGetPurchases();
+  return allPurchases.filter((p: any) => p.party_id === partyId);
 }
 
 export async function fsCreateParty(data: any) {
@@ -1017,6 +1494,10 @@ export async function fsDeleteParty(id: string) {
   await fsMoveToRecycleBin("parties", id, "Party #" + id);
   await deleteDoc(doc(db, "parties", id));
   return { success: true, id };
+}
+
+export async function fsArchiveParty(id: string, archived: boolean = true) {
+  return await fsUpdateParty(id, { archived });
 }
 
 // ── Customers ────────────────────────────────────────────────────────────────
@@ -1056,6 +1537,10 @@ export async function fsDeleteCustomer(id: string) {
   return { success: true, id };
 }
 
+export async function fsArchiveCustomer(id: string, archived: boolean = true) {
+  return await fsUpdateCustomer(id, { archived });
+}
+
 // ── Payments & Ledgers ───────────────────────────────────────────────────────
 export async function fsGetAllPayments() {
   try {
@@ -1066,31 +1551,61 @@ export async function fsGetAllPayments() {
   }
 }
 
+export async function fsGetPaymentsForParty(partyId: string) {
+  try {
+    const snap = await getDocs(collection(db, "payments"));
+    return snap.docs.map(docToData).filter((p: any) => p.party_id === partyId);
+  } catch (err) {
+    return [];
+  }
+}
+
 export async function fsCreatePayment(data: any) {
   const amount = Number(data.amount) || 0;
-  const docRef = await addDoc(collection(db, "payments"), {
+  const isSplit = data.payment_method === "split";
+  const cashAmt = isSplit
+    ? (Number(data.split_cash) || 0)
+    : (data.payment_method === "bkash" || data.payment_method === "bank" ? 0 : amount);
+  const createdAtTs = toFirestoreTimestamp(data.created_at);
+
+  const paymentDoc = cleanFirestoreData({
     party_id: data.party_id,
     amount,
-    note: data.note || "Party Payment",
-    created_at: Timestamp.now(),
+    payment_method: data.payment_method || "cash",
+    split_cash: data.split_cash || 0,
+    split_bkash: data.split_bkash || 0,
+    split_bank: data.split_bank || 0,
+    note: data.note || "Customer Due Payment",
+    created_at: createdAtTs,
   });
 
-  if (amount > 0) {
+  let paymentId: string;
+  if (data?.id) {
+    paymentId = String(data.id);
+    await setDoc(doc(db, "payments", paymentId), paymentDoc, { merge: true });
+  } else {
+    const docRef = await addDoc(collection(db, "payments"), paymentDoc);
+    paymentId = docRef.id;
+  }
+
+  if (cashAmt > 0) {
     try {
       await addDoc(collection(db, "cashbox_logs"), {
         kind: "deposit",
-        amount,
-        note: `Payment from Party: ${data.note || ""}`,
-        ref_id: docRef.id,
-        created_at: Timestamp.now(),
+        amount: cashAmt,
+        note: `[বকেয়া আদায়] ${data.note || "Customer Due Payment"}`,
+        ref_id: paymentId,
+        created_at: createdAtTs,
       });
     } catch (err) {
-      console.warn("Cashbox payment log skipped:", err);
+      console.warn("Cashbox party payment log skipped:", err);
     }
   }
 
-  return { success: true, id: docRef.id };
+  return { success: true, id: paymentId, ...paymentDoc, created_at: createdAtTs.toDate().toISOString() };
 }
+
+export const fsCreatePartyPayment = fsCreatePayment;
 
 export async function fsDeletePayment(id: string) {
   await deleteDoc(doc(db, "payments", id));
@@ -1102,18 +1617,29 @@ export async function fsGetAllPartyReceivables() {
     const snap = await getDocs(collection(db, "party_receivables"));
     return snap.docs.map(docToData);
   } catch (err) {
-    return [];
+    console.warn("fsGetAllPartyReceivables error:", err);
+    throw err;
   }
 }
 
 export async function fsCreatePartyReceivable(data: any) {
-  const docRef = await addDoc(collection(db, "party_receivables"), {
+  const createdAtTs = toFirestoreTimestamp(data.created_at);
+  const receivableDoc = cleanFirestoreData({
     party_id: data.party_id,
     amount: Number(data.amount) || 0,
     note: data.note || null,
-    created_at: Timestamp.now(),
+    created_at: createdAtTs,
   });
-  return { success: true, id: docRef.id };
+
+  let recId: string;
+  if (data?.id) {
+    recId = String(data.id);
+    await setDoc(doc(db, "party_receivables", recId), receivableDoc, { merge: true });
+  } else {
+    const docRef = await addDoc(collection(db, "party_receivables"), receivableDoc);
+    recId = docRef.id;
+  }
+  return { success: true, id: recId, ...receivableDoc, created_at: createdAtTs.toDate().toISOString() };
 }
 
 export async function fsGetAllPartyPayables() {
@@ -1121,18 +1647,29 @@ export async function fsGetAllPartyPayables() {
     const snap = await getDocs(collection(db, "party_payables"));
     return snap.docs.map(docToData);
   } catch (err) {
-    return [];
+    console.warn("fsGetAllPartyPayables error:", err);
+    throw err;
   }
 }
 
 export async function fsCreatePartyPayable(data: any) {
-  const docRef = await addDoc(collection(db, "party_payables"), {
+  const createdAtTs = toFirestoreTimestamp(data.created_at);
+  const payableDoc = cleanFirestoreData({
     party_id: data.party_id,
     amount: Number(data.amount) || 0,
     note: data.note || null,
-    created_at: Timestamp.now(),
+    created_at: createdAtTs,
   });
-  return { success: true, id: docRef.id };
+
+  let payId: string;
+  if (data?.id) {
+    payId = String(data.id);
+    await setDoc(doc(db, "party_payables", payId), payableDoc, { merge: true });
+  } else {
+    const docRef = await addDoc(collection(db, "party_payables"), payableDoc);
+    payId = docRef.id;
+  }
+  return { success: true, id: payId, ...payableDoc, created_at: createdAtTs.toDate().toISOString() };
 }
 
 export async function fsGetAllPayableSettlements() {
@@ -1140,18 +1677,29 @@ export async function fsGetAllPayableSettlements() {
     const snap = await getDocs(collection(db, "payable_settlements"));
     return snap.docs.map(docToData);
   } catch (err) {
-    return [];
+    console.warn("fsGetAllPayableSettlements error:", err);
+    throw err;
   }
 }
 
 export async function fsCreatePayableSettlement(data: any) {
   const amount = Number(data.amount) || 0;
-  const docRef = await addDoc(collection(db, "payable_settlements"), {
+  const createdAtTs = toFirestoreTimestamp(data.created_at);
+  const settlementDoc = cleanFirestoreData({
     party_id: data.party_id,
     amount,
     note: data.note || "Payable Settlement",
-    created_at: Timestamp.now(),
+    created_at: createdAtTs,
   });
+
+  let settlementId: string;
+  if (data?.id) {
+    settlementId = String(data.id);
+    await setDoc(doc(db, "payable_settlements", settlementId), settlementDoc, { merge: true });
+  } else {
+    const docRef = await addDoc(collection(db, "payable_settlements"), settlementDoc);
+    settlementId = docRef.id;
+  }
 
   if (amount > 0) {
     try {
@@ -1159,15 +1707,15 @@ export async function fsCreatePayableSettlement(data: any) {
         kind: "withdraw",
         amount,
         note: `Payable Settlement: ${data.note || ""}`,
-        ref_id: docRef.id,
-        created_at: Timestamp.now(),
+        ref_id: settlementId,
+        created_at: createdAtTs,
       });
     } catch (err) {
       console.warn("Cashbox settlement log skipped:", err);
     }
   }
 
-  return { success: true, id: docRef.id };
+  return { success: true, id: settlementId, ...settlementDoc, created_at: createdAtTs.toDate().toISOString() };
 }
 
 export async function fsDeletePartyReceivable(id: string) {
@@ -1196,12 +1744,70 @@ export async function fsGetReturns() {
 }
 
 export async function fsCreateReturn(data: any) {
-  const qty = Number(data.qty) || 1;
-  const returnPrice = Number(data.return_price) || 0;
-  const profitAdj = Number(data.profit_adjustment) || 0;
+  const qty = Math.max(1, Number(data.qty) || 1);
+  let returnPrice = Number(data.return_price) || 0;
+  if (!returnPrice && data.refund_amount) {
+    returnPrice = (Number(data.refund_amount) || 0) / qty;
+  }
+  let profitAdj = Number(data.profit_adjustment) || 0;
   const returnDate = data.return_date || new Date().toISOString().slice(0, 10);
+  let deductCashbox = data.deduct_cashbox ?? true;
 
-  const docRef = await addDoc(collection(db, "returns"), {
+  // 1. If linked to a sale doc in Firestore, update the sale document
+  if (data.sale_id) {
+    try {
+      const saleRef = doc(db, "sales", data.sale_id);
+      const saleSnap = await getDoc(saleRef);
+      if (saleSnap.exists()) {
+        const s = saleSnap.data();
+        const origQty = Number(s.qty) || 1;
+        const origSell = Number(s.sell_price) || 0;
+        const origBuy = Number(s.buy_price) || 0;
+        const origProfit = Number(s.profit);
+        const profitPerUnit = !isNaN(origProfit) ? origProfit / origQty : (origSell - origBuy);
+
+        if (!returnPrice) returnPrice = origSell;
+        if (!profitAdj) profitAdj = -Math.round(profitPerUnit * qty);
+
+        // Only deduct from cashbox if the sale was cash/split-cash
+        const sType = String(s.type || "cash").toLowerCase();
+        if (sType !== "cash" && sType !== "pos" && sType !== "split" && sType !== "nagad" && sType !== "card") {
+          deductCashbox = false;
+        }
+
+        if (qty >= origQty) {
+          await updateDoc(saleRef, {
+            returned: true,
+            return_qty: qty,
+            return_date: returnDate,
+            updated_at: Timestamp.now(),
+          });
+        } else {
+          const remainingQty = origQty - qty;
+          const ratio = qty / origQty;
+          const remainingPaid = Math.max(0, Math.round((Number(s.paid_amount) || 0) * (1 - ratio)));
+          const remainingDue = Math.max(0, Math.round((Number(s.due_amount) || 0) * (1 - ratio)));
+          const remainingProfit = Math.round(profitPerUnit * remainingQty);
+
+          await updateDoc(saleRef, {
+            qty: remainingQty,
+            profit: remainingProfit,
+            paid_amount: remainingPaid,
+            due_amount: remainingDue,
+            return_qty: qty,
+            updated_at: Timestamp.now(),
+          });
+        }
+      }
+    } catch (err) {
+      console.warn("Could not update sale on return:", err);
+    }
+  }
+
+  const createdAtTs = toFirestoreTimestamp(data.created_at || data.return_date);
+
+  // 2. Insert return record
+  const returnDoc = cleanFirestoreData({
     sale_id: data.sale_id || null,
     product_id: data.product_id || null,
     product_name: data.product_name || "Returned Item",
@@ -1211,10 +1817,19 @@ export async function fsCreateReturn(data: any) {
     profit_adjustment: profitAdj,
     return_date: returnDate,
     note: data.note || null,
-    created_at: Timestamp.now(),
+    created_at: createdAtTs,
   });
 
-  // Restore product stock
+  let returnId: string;
+  if (data?.id) {
+    returnId = String(data.id);
+    await setDoc(doc(db, "returns", returnId), returnDoc, { merge: true });
+  } else {
+    const docRef = await addDoc(collection(db, "returns"), returnDoc);
+    returnId = docRef.id;
+  }
+
+  // 3. Restore product stock safely
   if (data.product_id) {
     try {
       await updateDoc(doc(db, "products", data.product_id), {
@@ -1225,24 +1840,23 @@ export async function fsCreateReturn(data: any) {
     }
   }
 
-  // Deduct refund amount from cashbox
-  if (data.deduct_cashbox && returnPrice > 0) {
+  // 4. Deduct refund amount from cashbox logs
+  const refundTotal = (Number(data.refund_amount) || (returnPrice * qty)) || 0;
+  if (deductCashbox && refundTotal > 0) {
     try {
-      const refundTotal = returnPrice * qty;
-      await addDoc(collection(db, "cashbox"), {
-        type: "return_deduction",
-        amount: -refundTotal,
-        note: `Product return: ${data.product_name || "item"} ×${qty}`,
-        return_id: docRef.id,
-        return_date: returnDate,
-        created_at: Timestamp.now(),
+      await addDoc(collection(db, "cashbox_logs"), {
+        kind: "withdraw",
+        amount: refundTotal,
+        note: `[পণ্য ফেরত রিফান্ড] ${data.product_name || "Returned Item"} ×${qty}`,
+        ref_id: returnId,
+        created_at: createdAtTs,
       });
     } catch (err) {
       console.warn("Cashbox deduction on return skipped:", err);
     }
   }
 
-  return { success: true, id: docRef.id };
+  return { success: true, id: returnId, ...returnDoc, created_at: createdAtTs.toDate().toISOString() };
 }
 
 export async function fsDeleteReturn(id: string) {
@@ -1569,8 +2183,10 @@ export async function fsGetBankLoans() {
 export async function fsCreateBankLoan(data: any) {
   const principal = Number(data.principal_amount) || 0;
   const repayable = Number(data.total_repayable) || principal;
-  const installments = Number(data.total_installments) || 1;
-  const installmentAmount = Number(data.installment_amount) || (repayable / installments);
+  const hasInstallments = data.has_installments !== false && Number(data.total_installments) > 0;
+  const installments = hasInstallments ? Number(data.total_installments) : 0;
+  const installmentAmount = hasInstallments ? (Number(data.installment_amount) || repayable / installments) : 0;
+  if (!Number.isFinite(principal) || principal <= 0 || !Number.isFinite(repayable) || repayable <= 0 || (hasInstallments && (!Number.isInteger(installments) || installments <= 0 || !Number.isFinite(installmentAmount) || installmentAmount <= 0))) throw new Error("Enter valid loan and installment amounts");
 
   const docRef = await addDoc(collection(db, "bank_loans"), {
     bank_name: data.bank_name || "",
@@ -1578,6 +2194,7 @@ export async function fsCreateBankLoan(data: any) {
     principal_amount: principal,
     total_repayable: repayable,
     total_installments: installments,
+    has_installments: hasInstallments,
     installment_amount: installmentAmount,
     paid_amount: 0,
     paid_installments: 0,
@@ -1741,9 +2358,40 @@ export async function fsVerifyOwnerPassword(args?: { password?: string; googleVe
   }
 
   if (args?.password) {
-    if (user.password && user.password === args.password) return { success: true, method: "password" };
-    if (user.plain_password && user.plain_password === args.password) return { success: true, method: "password" };
-    if (!user.password && !user.plain_password) {
+    const pwd = args.password.trim();
+    if (user.password && user.password === pwd) return { success: true, method: "password" };
+    if (user.plain_password && user.plain_password === pwd) return { success: true, method: "password" };
+
+    // Also check Firestore users collection in case password wasn't cached in localStorage
+    let fsUser: any = null;
+    try {
+      if (user.id) {
+        const snap = await getDoc(doc(db, "users", user.id));
+        if (snap.exists()) fsUser = snap.data();
+      }
+      if (!fsUser && user.email) {
+        const q = query(collection(db, "users"), where("email", "==", user.email.toLowerCase().trim()), limit(1));
+        const qSnap = await getDocs(q);
+        if (!qSnap.empty) fsUser = qSnap.docs[0].data();
+      }
+    } catch (_) {}
+
+    if (fsUser) {
+      if (fsUser.password === pwd || fsUser.plain_password === pwd) {
+        return { success: true, method: "password" };
+      }
+    }
+
+    // Also try verifying via Firebase Auth if user has an email
+    if (user.email && user.email.includes("@")) {
+      try {
+        const { signInWithEmailAndPassword } = await import("firebase/auth");
+        await signInWithEmailAndPassword(auth, user.email.toLowerCase().trim(), pwd);
+        return { success: true, method: "password" };
+      } catch (_) {}
+    }
+
+    if (!user.password && !user.plain_password && !fsUser?.password && !fsUser?.plain_password) {
       throw new Error("No password set for this Google account. Please use 'Continue with Google' to unlock Danger Zone.");
     }
     throw new Error("Incorrect password");
@@ -1760,37 +2408,85 @@ export async function fsChangeMyPassword(args: { currentPassword?: string; newPa
   const user = fsGetCurrentUser();
   if (!user) throw new Error("Not logged in");
 
-  if (!args.newPassword || args.newPassword.trim().length < 6) {
+  const cleanNew = (args.newPassword || "").trim();
+  if (!cleanNew || cleanNew.length < 6) {
     throw new Error("New password must be at least 6 characters long");
   }
 
-  if (args.currentPassword && (user.password || user.plain_password)) {
-    const matches = user.password === args.currentPassword || user.plain_password === args.currentPassword;
+  // Look up Firestore user doc to verify currentPassword if set
+  let fsUserDocId = user.id;
+  let fsUserData: any = null;
+  try {
+    if (user.id) {
+      const snap = await getDoc(doc(db, "users", user.id));
+      if (snap.exists()) {
+        fsUserData = snap.data();
+        fsUserDocId = snap.id;
+      }
+    }
+    if (!fsUserData && user.email) {
+      const q = query(collection(db, "users"), where("email", "==", user.email.toLowerCase().trim()), limit(1));
+      const qSnap = await getDocs(q);
+      if (!qSnap.empty) {
+        fsUserData = qSnap.docs[0].data();
+        fsUserDocId = qSnap.docs[0].id;
+      }
+    }
+  } catch (_) {}
+
+  const storedPwd = user.password || user.plain_password || fsUserData?.password || fsUserData?.plain_password;
+  if (args.currentPassword && storedPwd) {
+    const cleanCurr = args.currentPassword.trim();
+    const matches =
+      user.password === cleanCurr ||
+      user.plain_password === cleanCurr ||
+      fsUserData?.password === cleanCurr ||
+      fsUserData?.plain_password === cleanCurr;
     if (!matches) throw new Error("Current password is incorrect");
   }
 
   const updated = {
+    ...(fsUserData || {}),
     ...user,
-    password: args.newPassword.trim(),
-    plain_password: args.newPassword.trim(),
+    password: cleanNew,
+    plain_password: cleanNew,
   };
 
   try {
-    await setDoc(doc(db, "users", user.id), updated, { merge: true });
-  } catch (e) {}
-  
-  localStorage.setItem("user", JSON.stringify(updated));
+    if (fsUserDocId) {
+      await setDoc(doc(db, "users", fsUserDocId), { password: cleanNew, plain_password: cleanNew }, { merge: true });
+    }
+  } catch (_) {}
+
+  // Also update Firebase Auth password if signed in
+  try {
+    if (auth.currentUser && !auth.currentUser.isAnonymous) {
+      const { updatePassword } = await import("firebase/auth");
+      await updatePassword(auth.currentUser, cleanNew);
+    }
+  } catch (_) {}
+
+  if (typeof window !== "undefined") {
+    localStorage.setItem("user", JSON.stringify(updated));
+    localStorage.setItem("classicworld_auth_profile", JSON.stringify(updated));
+    localStorage.setItem("cw-auth-profile", JSON.stringify(updated));
+  }
   return { success: true };
 }
 
 export function fsGetCurrentUser() {
   if (typeof window === "undefined") return null;
   try {
-    const raw = localStorage.getItem("user") || localStorage.getItem("auth_profile");
+    const raw =
+      localStorage.getItem("cw_active_employee_session") ||
+      localStorage.getItem("user") ||
+      localStorage.getItem("classicworld_auth_profile") ||
+      localStorage.getItem("cw-auth-profile") ||
+      localStorage.getItem("auth_profile");
     if (raw) return JSON.parse(raw);
   } catch (_) {}
   const authUser = auth.currentUser;
-  if (authUser) {
+  if (authUser && !authUser.isAnonymous) {
     return {
       id: authUser.uid,
       email: authUser.email || "user@classicworld.com",
@@ -1815,24 +2511,52 @@ export async function fsGetMe() {
   return { user };
 }
 
-export async function fsGetBusinessSettings() {
-  const user = fsGetCurrentUser();
+export async function fsGetBusinessSettings(): Promise<any> {
+  const scope = getTenantScope();
+  const user = scope.user;
+  const bizDocId = getBusinessDocIdForScope(
+    scope.rootOwnerId,
+    scope.activeProfile,
+    scope.isIsolatedTenant,
+    user?.business_id
+  );
   let bizData: any = null;
   try {
-    const docSnap = await getDoc(doc(db, "businesses", "classic-world-settings"));
+    const docSnap = await getDoc(doc(db, "businesses", bizDocId));
     if (docSnap.exists()) {
       bizData = docSnap.data();
     }
   } catch (_) {}
 
+  const isCustomOrIsolated = scope.activeProfile !== "default" || scope.isIsolatedTenant;
+  const activeProfObj =
+    scope.activeProfile !== "default" && Array.isArray(user?.profiles)
+      ? user.profiles.find((p: any) => p.id === scope.activeProfile)
+      : null;
+
+  const resolvedName =
+    bizData?.name ||
+    (scope.activeProfile !== "default" ? activeProfObj?.name : null) ||
+    user?.business_name ||
+    (isCustomOrIsolated ? "My Business" : "Classic World");
+
+  const resolvedLogo =
+    bizData?.logo_url ??
+    (scope.activeProfile !== "default" ? "" : user?.logo_url) ??
+    (isCustomOrIsolated ? "" : "/logo.png");
+
   return {
+    ...(bizData || {}),
     business: {
-      id: bizData?.id || user?.business_id || "classic-world-default",
-      name: bizData?.name || user?.business_name || "Classic World",
-      logo_url: bizData?.logo_url || user?.logo_url || "/logo.png",
+      ...(bizData || {}),
+      id: bizData?.id || (scope.activeProfile !== "default" ? bizDocId : user?.business_id) || "classic-world-default",
+      name: resolvedName,
+      shop_name: resolvedName,
+      logo_url: resolvedLogo,
       address: bizData?.address || user?.business_address || "Dhaka, Bangladesh",
+      phone: bizData?.phone || bizData?.phone_numbers || user?.business_phone_numbers || "01700000000",
       phone_numbers: bizData?.phone_numbers || user?.business_phone_numbers || "01700000000",
-      emails: bizData?.emails || user?.business_emails || "info@classicworld.com",
+      emails: bizData?.emails || user?.business_emails || user?.email || "info@classicworld.com",
       invoice_font_size: bizData?.invoice_font_size || user?.invoice_font_size || "22px",
       invoice_scale: bizData?.invoice_scale || user?.invoice_scale || "100%",
       invoice_line_spacing: bizData?.invoice_line_spacing || user?.invoice_line_spacing || "6px",
@@ -1862,9 +2586,24 @@ export async function fsGetBusinessSettings() {
 }
 
 export async function fsUpdateBusinessSettings(data: any) {
+  const scope = getTenantScope();
+  const user = scope.user;
+  const bizDocId = getBusinessDocIdForScope(
+    scope.rootOwnerId,
+    scope.activeProfile,
+    scope.isIsolatedTenant,
+    user?.business_id
+  );
   try {
-    const bizDocId = (typeof window !== "undefined" && window.location.pathname.includes("classic")) ? "classic-world-settings" : "classic-world-settings";
-    await setDoc(doc(db, "businesses", bizDocId), data, { merge: true });
+    await setDoc(
+      doc(db, "businesses", bizDocId),
+      {
+        ...data,
+        owner_id: scope.effectiveOwnerId || scope.rootOwnerId || "classic-world-default",
+        profile_id: scope.activeProfile,
+      },
+      { merge: true }
+    );
   } catch (_) {}
   // Cloud persistence sync
   if (typeof window !== "undefined") {
@@ -1872,15 +2611,229 @@ export async function fsUpdateBusinessSettings(data: any) {
     if (data.employee_accounts) localStorage.setItem("cw_employee_accounts", JSON.stringify(data.employee_accounts));
     if (data.owner_pin) localStorage.setItem("app_pin_code_val", String(data.owner_pin));
   }
-  const user = fsGetCurrentUser();
   if (user) {
-    const updatedUser = { ...user, ...data };
+    const updatedProfiles = Array.isArray(user.profiles)
+      ? user.profiles.map((p: any) =>
+          p.id === scope.activeProfile && data.name ? { ...p, name: data.name } : p
+        )
+      : user.profiles;
+    const updatedUser = {
+      ...user,
+      ...data,
+      business_name: data.name || user.business_name,
+      logo_url: data.logo_url !== undefined ? data.logo_url : user.logo_url,
+      profiles: updatedProfiles,
+    };
+    try {
+      if (scope.rootOwnerId) {
+        const userUpdates: Record<string, any> = { profiles: updatedProfiles };
+        if (scope.activeProfile === "default") {
+          if (data.name) userUpdates.business_name = data.name;
+          if (data.logo_url !== undefined) userUpdates.logo_url = data.logo_url;
+        }
+        await setDoc(doc(db, "users", scope.rootOwnerId), userUpdates, { merge: true });
+      }
+    } catch (_) {}
     if (typeof window !== "undefined") {
       localStorage.setItem("user", JSON.stringify(updatedUser));
       localStorage.setItem("auth_profile", JSON.stringify(updatedUser));
+      localStorage.setItem("classicworld_auth_profile", JSON.stringify(updatedUser));
+      localStorage.setItem("cw-auth-profile", JSON.stringify(updatedUser));
     }
   }
   return { success: true };
+}
+
+export async function fsCreateProfile(data: { name: string }) {
+  const scope = getTenantScope();
+  const user = scope.user;
+  if (!user) throw new Error("Not logged in");
+  const cleanName = (data?.name || "").trim();
+  if (!cleanName) throw new Error("Profile name is required");
+
+  const profileId = "prof_" + Math.random().toString(36).substring(2, 9);
+  const newProfile = {
+    id: profileId,
+    name: cleanName,
+    created_at: new Date().toISOString(),
+  };
+
+  const existingProfiles =
+    Array.isArray(user.profiles) && user.profiles.length > 0
+      ? user.profiles
+      : [{ id: "default", name: "Default", created_at: new Date().toISOString() }];
+  const updatedProfiles = [...existingProfiles, newProfile];
+  const rootOwnerId = scope.rootOwnerId || user.id;
+  const bizDocId = getBusinessDocIdForScope(rootOwnerId, profileId, scope.isIsolatedTenant, user.business_id);
+
+  try {
+    await setDoc(
+      doc(db, "businesses", bizDocId),
+      {
+        id: bizDocId,
+        owner_id: `${rootOwnerId}:${profileId}`,
+        profile_id: profileId,
+        name: cleanName,
+        logo_url: "",
+        status: "active",
+        sms_credits: 100,
+        created_at: new Date().toISOString(),
+      },
+      { merge: true }
+    );
+    await setDoc(
+      doc(db, "users", rootOwnerId),
+      {
+        profiles: updatedProfiles,
+        activeProfile: profileId,
+      },
+      { merge: true }
+    );
+  } catch (e) {
+    console.warn("fsCreateProfile Firestore sync warning:", e);
+  }
+
+  const updatedUser = {
+    ...user,
+    profiles: updatedProfiles,
+    activeProfile: profileId,
+    business_id: bizDocId,
+    business_name: cleanName,
+    logo_url: "",
+  };
+
+  if (typeof window !== "undefined") {
+    localStorage.setItem("active_profile", profileId);
+    localStorage.setItem("user", JSON.stringify(updatedUser));
+    localStorage.setItem("auth_profile", JSON.stringify(updatedUser));
+    localStorage.setItem("classicworld_auth_profile", JSON.stringify(updatedUser));
+    localStorage.setItem("cw-auth-profile", JSON.stringify(updatedUser));
+  }
+
+  return { success: true, profileId, profiles: updatedProfiles, user: updatedUser };
+}
+
+export async function fsSwitchProfile(data: { profileId: string }) {
+  const scope = getTenantScope();
+  const user = scope.user;
+  if (!user) throw new Error("Not logged in");
+  const targetId = data?.profileId || "default";
+  const rootOwnerId = scope.rootOwnerId || user.id;
+  const profiles =
+    Array.isArray(user.profiles) && user.profiles.length > 0
+      ? user.profiles
+      : [{ id: "default", name: "Default", created_at: new Date().toISOString() }];
+  const targetProf = profiles.find((p: any) => p.id === targetId);
+
+  const bizDocId = getBusinessDocIdForScope(rootOwnerId, targetId, scope.isIsolatedTenant, user.root_business_id || user.business_id);
+  let bizData: any = null;
+  try {
+    const snap = await getDoc(doc(db, "businesses", bizDocId));
+    if (snap.exists()) {
+      bizData = snap.data();
+    } else if (targetId !== "default") {
+      bizData = {
+        id: bizDocId,
+        owner_id: `${rootOwnerId}:${targetId}`,
+        profile_id: targetId,
+        name: targetProf?.name || "New Business",
+        logo_url: "",
+        status: "active",
+      };
+      await setDoc(doc(db, "businesses", bizDocId), bizData, { merge: true });
+    }
+  } catch (_) {}
+
+  let rootUserDoc: any = null;
+  if (targetId === "default") {
+    try {
+      const uSnap = await getDoc(doc(db, "users", rootOwnerId));
+      if (uSnap.exists()) rootUserDoc = uSnap.data();
+    } catch (_) {}
+  }
+
+  const isCustomOrIsolated = targetId !== "default" || scope.isIsolatedTenant;
+  const resolvedBusinessName =
+    targetId !== "default"
+      ? bizData?.name || targetProf?.name || "My Business"
+      : bizData?.name || rootUserDoc?.business_name || (scope.isIsolatedTenant ? "My Business" : "Classic World");
+
+  const resolvedLogoUrl =
+    targetId !== "default"
+      ? bizData?.logo_url || ""
+      : bizData?.logo_url ?? rootUserDoc?.logo_url ?? (isCustomOrIsolated ? "" : "/logo.png");
+
+  try {
+    await setDoc(doc(db, "users", rootOwnerId), { activeProfile: targetId }, { merge: true });
+  } catch (_) {}
+
+  const updatedUser = {
+    ...user,
+    activeProfile: targetId,
+    business_id: targetId === "default" ? (rootUserDoc?.business_id || (scope.isIsolatedTenant ? bizDocId : "classic-world-default")) : bizDocId,
+    business_name: resolvedBusinessName,
+    logo_url: resolvedLogoUrl,
+  };
+
+  if (typeof window !== "undefined") {
+    localStorage.setItem("active_profile", targetId);
+    localStorage.setItem("user", JSON.stringify(updatedUser));
+    localStorage.setItem("auth_profile", JSON.stringify(updatedUser));
+    localStorage.setItem("classicworld_auth_profile", JSON.stringify(updatedUser));
+    localStorage.setItem("cw-auth-profile", JSON.stringify(updatedUser));
+  }
+
+  return { success: true, activeProfile: targetId, user: updatedUser };
+}
+
+export async function fsImportProfileModule(data: { sourceProfileId: string; module: string }) {
+  const scope = getTenantScope();
+  if (!scope.user) throw new Error("Not logged in");
+  const rootOwnerId = scope.rootOwnerId || scope.user.id;
+  const srcProf = data?.sourceProfileId || "default";
+  const dstProf = scope.activeProfile || "default";
+  if (srcProf === dstProf) throw new Error("Source and destination profiles are the same");
+
+  const srcOwner = srcProf === "default" ? (scope.isIsolatedTenant ? rootOwnerId : null) : `${rootOwnerId}:${srcProf}`;
+  const dstOwner = dstProf === "default" ? (scope.isIsolatedTenant ? rootOwnerId : null) : `${rootOwnerId}:${dstProf}`;
+
+  const moduleCollections: Record<string, string[]> = {
+    products: ["products"],
+    customers: ["customers"],
+    parties: ["parties", "party_receivables", "party_payables"],
+    somiti: ["somiti"],
+    employees: ["employees"],
+    bank: ["bank_accounts", "bank_loans"],
+  };
+  const cols = moduleCollections[data.module] || [];
+  let importedCount = 0;
+
+  for (const colName of cols) {
+    const snap = await fbGetDocs(collection(db, colName));
+    for (const d of snap.docs) {
+      const item = d.data();
+      const itemOwner = item.owner_id || item.owner_uid || null;
+      const itemProf = item.profile_id || "default";
+      const matchesSrc =
+        srcProf !== "default"
+          ? itemOwner === srcOwner || (itemProf === srcProf && (!itemOwner || itemOwner === rootOwnerId))
+          : scope.isIsolatedTenant
+          ? itemOwner === rootOwnerId && itemProf === "default"
+          : !itemOwner || itemOwner === rootOwnerId || itemOwner === "classic-world-default";
+      if (matchesSrc) {
+        const cloned: Record<string, any> = {
+          ...item,
+          owner_id: dstOwner || rootOwnerId,
+          profile_id: dstProf,
+        };
+        if (scope.isIsolatedTenant) cloned.is_isolated_tenant = true;
+        await fbAddDoc(collection(db, colName), cloned);
+        importedCount++;
+      }
+    }
+  }
+
+  return { success: true, importedCount };
 }
 
 export async function fsGetActiveAdminPopups() {
@@ -1897,19 +2850,24 @@ export async function fsDismissAdminPopup(popupId: string) {
   return { success: true };
 }
 
-export async function fsFirebaseAuthSync(data: { email: string; fullName?: string; photoUrl?: string; firebaseUid?: string }) {
+export async function fsFirebaseAuthSync(data: { email: string; fullName?: string; displayName?: string; photoUrl?: string; firebaseUid?: string; uid?: string }) {
   const cleanEmail = (data.email || "").toLowerCase().trim();
-  const userId = data.firebaseUid || crypto.randomUUID();
+  const resolvedUid = data.firebaseUid || data.uid;
+  const resolvedName = data.fullName || data.displayName;
+  const userId = resolvedUid || crypto.randomUUID();
 
   let existingUser: any = null;
   try {
-    const userDocRef = doc(db, "users", userId);
-    const userDocSnap = await getDoc(userDocRef);
-    if (userDocSnap.exists()) {
-      existingUser = { id: userDocSnap.id, ...userDocSnap.data() };
-    } else {
+    if (resolvedUid) {
+      const userDocRef = doc(db, "users", resolvedUid);
+      const userDocSnap = await getDoc(userDocRef);
+      if (userDocSnap.exists()) {
+        existingUser = { id: userDocSnap.id, ...userDocSnap.data() };
+      }
+    }
+    if (!existingUser && cleanEmail) {
       const q = query(collection(db, "users"), where("email", "==", cleanEmail), limit(1));
-      const qSnap = await getDocs(q);
+      const qSnap = await fbGetDocs(q);
       if (!qSnap.empty) {
         existingUser = { id: qSnap.docs[0].id, ...qSnap.docs[0].data() };
       }
@@ -1918,50 +2876,90 @@ export async function fsFirebaseAuthSync(data: { email: string; fullName?: strin
     console.warn("Error querying Firestore for existing user:", e);
   }
 
+  // Check if email or phone is registered in employees collection (only if not already an owner)
+  let matchedEmp: any = null;
+  if (!existingUser || existingUser.role === "employee") {
+    try {
+      const empQ = query(collection(db, "employees"), where("email", "==", cleanEmail), limit(1));
+      const empSnap = await fbGetDocs(empQ);
+      if (!empSnap.empty) {
+        matchedEmp = { id: empSnap.docs[0].id, ...empSnap.docs[0].data() };
+      }
+    } catch (_) {}
+  }
+
+  const isExistingIsolated = Boolean(
+    existingUser &&
+      (existingUser.is_isolated_tenant === true ||
+        (existingUser.business_id &&
+          existingUser.business_id !== "classic-world-default" &&
+          existingUser.business_id !== "classic-world-settings"))
+  );
+  const isNewOwnerAccount = !existingUser && !matchedEmp;
+  const isIsolated = isExistingIsolated || isNewOwnerAccount;
+
+  const activeProfile = existingUser?.activeProfile || "default";
+  const rootOwnerId = existingUser?.id || userId;
+  const bizDocId = getBusinessDocIdForScope(rootOwnerId, activeProfile, isIsolated, existingUser?.business_id);
+
   let bizSettings: any = null;
   try {
-    const bizSnap = await getDoc(doc(db, "businesses", "classic-world-settings"));
+    const bizSnap = await getDoc(doc(db, "businesses", bizDocId));
     if (bizSnap.exists()) {
       bizSettings = bizSnap.data();
     }
   } catch (_) {}
 
-  // Check if email or phone is registered in employees collection
-  let matchedEmp: any = null;
-  try {
-    const empQ = query(collection(db, "employees"), where("email", "==", cleanEmail), limit(1));
-    const empSnap = await getDocs(empQ);
-    if (!empSnap.empty) {
-      matchedEmp = { id: empSnap.docs[0].id, ...empSnap.docs[0].data() };
-    }
-  } catch (_) {}
+  const activeProfObj =
+    activeProfile !== "default" && Array.isArray(existingUser?.profiles)
+      ? existingUser.profiles.find((p: any) => p.id === activeProfile)
+      : null;
+
+  const defaultShopName = resolvedName ? `${resolvedName}'s Shop` : `${cleanEmail.split("@")[0]}'s Shop`;
 
   const userObj = existingUser
     ? {
         ...existingUser,
         id: existingUser.id || userId,
+        owner_id: existingUser.owner_id || existingUser.id || userId,
+        is_isolated_tenant: isIsolated,
         email: cleanEmail,
-        full_name: existingUser.full_name || data.fullName || cleanEmail.split("@")[0],
-        business_name: existingUser.business_name || bizSettings?.name || "Classic World",
-        logo_url: existingUser.logo_url || bizSettings?.logo_url || data.photoUrl || "/logo.png",
+        full_name: existingUser.full_name || existingUser.fullName || resolvedName || cleanEmail.split("@")[0],
+        role: existingUser.role || "owner",
+        business_id:
+          activeProfile !== "default"
+            ? bizDocId
+            : existingUser.business_id || (isIsolated ? `biz_${rootOwnerId}` : "classic-world-default"),
+        business_name:
+          activeProfile !== "default"
+            ? bizSettings?.name || activeProfObj?.name || "My Business"
+            : bizSettings?.name || existingUser.business_name || existingUser.businessName || (isIsolated ? defaultShopName : "Classic World"),
+        logo_url:
+          activeProfile !== "default"
+            ? bizSettings?.logo_url || ""
+            : bizSettings?.logo_url ?? existingUser.logo_url ?? (isIsolated ? "" : "/logo.png"),
         avatar_url: data.photoUrl || existingUser.avatar_url || undefined,
-        firebase_uid: data.firebaseUid || existingUser.firebase_uid,
+        firebase_uid: resolvedUid || existingUser.firebase_uid,
         activated: true,
         status: existingUser.status || "active",
+        profiles: existingUser.profiles || [{ id: "default", name: "Default", created_at: new Date().toISOString() }],
+        activeProfile,
       }
     : {
         id: userId,
+        owner_id: matchedEmp ? (matchedEmp.owner_id || matchedEmp.owner_uid || "classic-world-default") : userId,
+        is_isolated_tenant: !matchedEmp ? true : Boolean(matchedEmp.is_isolated_tenant),
         email: cleanEmail,
-        full_name: data.fullName || cleanEmail.split("@")[0],
+        full_name: resolvedName || cleanEmail.split("@")[0],
         role: matchedEmp ? "employee" : "owner",
         employee_id: matchedEmp?.id || undefined,
         permissions: matchedEmp?.permissions || undefined,
         activated: true,
-        business_id: "classic-world-default",
-        business_name: bizSettings?.name || "Classic World",
-        logo_url: data.photoUrl || bizSettings?.logo_url || "/logo.png",
+        business_id: matchedEmp ? (matchedEmp.business_id || "classic-world-default") : `biz_${userId}`,
+        business_name: matchedEmp ? (bizSettings?.name || "Classic World") : defaultShopName,
+        logo_url: matchedEmp ? (bizSettings?.logo_url || "/logo.png") : "",
         avatar_url: data.photoUrl || undefined,
-        firebase_uid: data.firebaseUid,
+        firebase_uid: resolvedUid,
         status: "active",
         sms_credits: 100,
         profiles: [{ id: "default", name: "Default", created_at: new Date().toISOString() }],
@@ -1970,20 +2968,47 @@ export async function fsFirebaseAuthSync(data: { email: string; fullName?: strin
 
   try {
     await setDoc(doc(db, "users", userObj.id), userObj, { merge: true });
+    if (isNewOwnerAccount) {
+      await setDoc(
+        doc(db, "businesses", `biz_${userObj.id}`),
+        {
+          id: `biz_${userObj.id}`,
+          owner_id: userObj.id,
+          profile_id: "default",
+          name: userObj.business_name,
+          logo_url: "",
+          status: "active",
+          sms_credits: 100,
+          created_at: new Date().toISOString(),
+        },
+        { merge: true }
+      );
+    }
   } catch (e) {
     console.warn("Error saving user doc:", e);
   }
 
+  let finalToken = `token_${userObj.id}`;
   if (typeof window !== "undefined") {
+    const existingToken = localStorage.getItem("auth_token");
+    if (existingToken && existingToken.includes(".")) {
+      finalToken = existingToken;
+    }
     clearAuthProfile();
     clearQueryCache();
+    sessionStorage.setItem("app_pin_unlocked", "true");
+    if (userObj.role !== "employee") {
+      localStorage.removeItem("cw_active_employee_session");
+      localStorage.removeItem("cw_active_session_role");
+    }
     localStorage.setItem("user", JSON.stringify(userObj));
     localStorage.setItem("classicworld_auth_profile", JSON.stringify(userObj));
-    localStorage.setItem("auth_token", `token_${userObj.id}`);
+    localStorage.setItem("cw-auth-profile", JSON.stringify(userObj));
+    localStorage.setItem("auth_token", finalToken);
     localStorage.setItem("active_profile", userObj.activeProfile || "default");
   }
 
-  return { user: userObj, token: `token_${userObj.id}` };
+  return { user: userObj, token: finalToken };
 }
 
 export async function fsLogin(data: { identifier?: string; email?: string; phone?: string; password?: string }) {
@@ -1993,17 +3018,32 @@ export async function fsLogin(data: { identifier?: string; email?: string; phone
     throw new Error("Please enter mobile/email and password");
   }
 
-    let userDoc: any = null;
+  const cleanDigits = ident.replace(/[^0-9]/g, "");
+  let userDoc: any = null;
   try {
     const qEmail = query(collection(db, "users"), where("email", "==", ident), limit(1));
-    const snapEmail = await getDocs(qEmail);
+    const snapEmail = await fbGetDocs(qEmail);
     if (!snapEmail.empty) {
       userDoc = { id: snapEmail.docs[0].id, ...snapEmail.docs[0].data() };
     } else {
       const qPhone = query(collection(db, "users"), where("phone", "==", ident), limit(1));
-      const snapPhone = await getDocs(qPhone);
+      const snapPhone = await fbGetDocs(qPhone);
       if (!snapPhone.empty) {
         userDoc = { id: snapPhone.docs[0].id, ...snapPhone.docs[0].data() };
+      } else if (cleanDigits.length >= 10) {
+        const localPhone = cleanDigits.startsWith("880") ? cleanDigits.slice(2) : cleanDigits;
+        const qLocalPhone = query(collection(db, "users"), where("phone", "==", localPhone), limit(1));
+        const snapLocalPhone = await fbGetDocs(qLocalPhone);
+        if (!snapLocalPhone.empty) {
+          userDoc = { id: snapLocalPhone.docs[0].id, ...snapLocalPhone.docs[0].data() };
+        } else {
+          const synthEmail = `${localPhone}@classicworld.com`;
+          const qSynth = query(collection(db, "users"), where("email", "==", synthEmail), limit(1));
+          const snapSynth = await fbGetDocs(qSynth);
+          if (!snapSynth.empty) {
+            userDoc = { id: snapSynth.docs[0].id, ...snapSynth.docs[0].data() };
+          }
+        }
       }
     }
   } catch (e) {
@@ -2027,54 +3067,140 @@ export async function fsLogin(data: { identifier?: string; email?: string; phone
     }
   }
 
+  const fbVerified =
+    !!auth.currentUser &&
+    !auth.currentUser.isAnonymous &&
+    auth.currentUser.email?.toLowerCase().trim() === ident;
+
   if (!userDoc) {
-    const newId = crypto.randomUUID();
+    if (!fbVerified) {
+      throw new Error("Invalid email/phone number or password");
+    }
+    const newId = auth.currentUser?.uid || crypto.randomUUID();
+    const displayName = auth.currentUser?.displayName || ident.split("@")[0];
+    const shopName = `${displayName}'s Shop`;
     userDoc = {
       id: newId,
+      owner_id: newId,
+      is_isolated_tenant: true,
       email: ident.includes("@") ? ident : `${ident}@classicworld.com`,
       phone: !ident.includes("@") ? ident : undefined,
-      full_name: ident.split("@")[0],
+      full_name: displayName,
       password: pwd,
       plain_password: pwd,
       role: "owner",
       activated: true,
-      business_id: "classic-world-default",
-      business_name: "Classic World",
-      logo_url: "/logo.png",
+      business_id: `biz_${newId}`,
+      business_name: shopName,
+      logo_url: "",
+      avatar_url: auth.currentUser?.photoURL || undefined,
+      firebase_uid: auth.currentUser?.uid,
       status: "active",
       sms_credits: 100,
       profiles: [{ id: "default", name: "Default", created_at: new Date().toISOString() }],
       activeProfile: "default",
     };
     try {
-      await setDoc(doc(db, "users", newId), userDoc);
+      await setDoc(doc(db, "users", newId), userDoc, { merge: true });
+      await setDoc(
+        doc(db, "businesses", `biz_${newId}`),
+        {
+          id: `biz_${newId}`,
+          owner_id: newId,
+          profile_id: "default",
+          name: shopName,
+          logo_url: "",
+          status: "active",
+          sms_credits: 100,
+          created_at: new Date().toISOString(),
+        },
+        { merge: true }
+      );
     } catch (_) {}
   } else {
-    if (userDoc.password && userDoc.password !== pwd && userDoc.plain_password !== pwd) {
+    if (fbVerified) {
+      // Firebase Auth verified the password (e.g. after password reset); sync to Firestore
+      if (userDoc.password !== pwd || userDoc.plain_password !== pwd) {
+        userDoc.password = pwd;
+        userDoc.plain_password = pwd;
+        try {
+          await setDoc(doc(db, "users", userDoc.id), { password: pwd, plain_password: pwd }, { merge: true });
+        } catch (_) {}
+      }
+    } else if (userDoc.password && userDoc.password !== pwd && userDoc.plain_password !== pwd) {
       throw new Error("Incorrect password. Please try again.");
     }
   }
 
+  const isIsolated = Boolean(
+    userDoc.is_isolated_tenant === true ||
+      (userDoc.business_id &&
+        userDoc.business_id !== "classic-world-default" &&
+        userDoc.business_id !== "classic-world-settings")
+  );
+  const activeProfile = userDoc.activeProfile || "default";
+  const activeProfObj =
+    activeProfile !== "default" && Array.isArray(userDoc.profiles)
+      ? userDoc.profiles.find((p: any) => p.id === activeProfile)
+      : null;
+
+  // Normalize userDoc fields to match AuthUser shape
+  userDoc = {
+    ...userDoc,
+    owner_id: userDoc.owner_id || userDoc.id,
+    is_isolated_tenant: isIsolated,
+    full_name: userDoc.full_name || userDoc.fullName || userDoc.name || ident.split("@")[0],
+    business_name:
+      activeProfile !== "default"
+        ? activeProfObj?.name || userDoc.business_name || "My Business"
+        : userDoc.business_name || userDoc.businessName || (isIsolated ? "My Business" : "Classic World"),
+    business_id: userDoc.business_id || (isIsolated ? `biz_${userDoc.id}` : "classic-world-default"),
+    logo_url:
+      activeProfile !== "default"
+        ? ""
+        : userDoc.logo_url ?? (isIsolated ? "" : "/logo.png"),
+    activated: true,
+    role: userDoc.role || "owner",
+    status: userDoc.status || "active",
+    profiles: userDoc.profiles || [{ id: "default", name: "Default", created_at: new Date().toISOString() }],
+    activeProfile,
+  };
+
+  let finalToken = `token_${userDoc.id}`;
   if (typeof window !== "undefined") {
+    const existingToken = localStorage.getItem("auth_token");
+    if (existingToken && existingToken.includes(".")) {
+      finalToken = existingToken;
+    }
     clearAuthProfile();
     clearQueryCache();
+    sessionStorage.setItem("app_pin_unlocked", "true");
+    if (userDoc.role !== "employee") {
+      localStorage.removeItem("cw_active_employee_session");
+      localStorage.removeItem("cw_active_session_role");
+    }
     localStorage.setItem("user", JSON.stringify(userDoc));
     localStorage.setItem("classicworld_auth_profile", JSON.stringify(userDoc));
-    localStorage.setItem("auth_token", `token_${userDoc.id}`);
+    localStorage.setItem("cw-auth-profile", JSON.stringify(userDoc));
+    localStorage.setItem("auth_token", finalToken);
     localStorage.setItem("active_profile", userDoc.activeProfile || "default");
   }
 
-  return { user: userDoc, token: `token_${userDoc.id}` };
+  return { user: userDoc, token: finalToken };
 }
 
-export async function fsRegister(data: { identifier?: string; email?: string; phone?: string; password?: string; fullName?: string; role?: string }) {
+export async function fsRegister(data: { identifier?: string; email?: string; phone?: string; password?: string; fullName?: string; businessName?: string; role?: string }) {
   const ident = (data.identifier || data.email || data.phone || "").trim().toLowerCase();
   const pwd = (data.password || "").trim();
   const fullName = (data.fullName || "").trim() || ident.split("@")[0];
-  const newId = crypto.randomUUID();
+  const newId = auth.currentUser?.uid || crypto.randomUUID();
+  const shopName = (data.businessName || "").trim() || (fullName ? `${fullName}'s Shop` : "My Store");
+  const bizId = `biz_${newId}`;
 
-  const userDoc = {
+  const userDoc: any = {
     id: newId,
+    owner_id: newId,
+    is_isolated_tenant: true,
     email: ident.includes("@") ? ident : `${ident}@classicworld.com`,
     phone: !ident.includes("@") ? ident : undefined,
     full_name: fullName,
@@ -2082,9 +3208,9 @@ export async function fsRegister(data: { identifier?: string; email?: string; ph
     plain_password: pwd,
     role: data.role || "owner",
     activated: true,
-    business_id: "classic-world-default",
-    business_name: "Classic World",
-    logo_url: "/logo.png",
+    business_id: bizId,
+    business_name: shopName,
+    logo_url: "",
     status: "active",
     sms_credits: 100,
     profiles: [{ id: "default", name: "Default", created_at: new Date().toISOString() }],
@@ -2092,7 +3218,21 @@ export async function fsRegister(data: { identifier?: string; email?: string; ph
   };
 
   try {
-    await setDoc(doc(db, "users", newId), userDoc);
+    await setDoc(doc(db, "users", newId), userDoc, { merge: true });
+    await setDoc(
+      doc(db, "businesses", bizId),
+      {
+        id: bizId,
+        owner_id: newId,
+        profile_id: "default",
+        name: shopName,
+        logo_url: "",
+        status: "active",
+        sms_credits: 100,
+        created_at: new Date().toISOString(),
+      },
+      { merge: true }
+    );
   } catch (e) {
     console.warn("Register doc write error:", e);
   }
@@ -2100,8 +3240,10 @@ export async function fsRegister(data: { identifier?: string; email?: string; ph
   if (typeof window !== "undefined") {
     clearAuthProfile();
     clearQueryCache();
+    sessionStorage.setItem("app_pin_unlocked", "true");
     localStorage.setItem("user", JSON.stringify(userDoc));
     localStorage.setItem("classicworld_auth_profile", JSON.stringify(userDoc));
+    localStorage.setItem("cw-auth-profile", JSON.stringify(userDoc));
     localStorage.setItem("auth_token", `token_${newId}`);
     localStorage.setItem("active_profile", "default");
   }
@@ -2111,43 +3253,62 @@ export async function fsRegister(data: { identifier?: string; email?: string; ph
 
 // ── Somiti Management ────────────────────────────────────────────────────────
 export async function fsRenameSomiti(data: { oldName: string; newName: string }) {
-  try {
-    const snap = await getDocs(collection(db, "somiti_entries"));
-    const oldNameTrim = (data.oldName || "").trim().toLowerCase();
-    const newNameTrim = (data.newName || "").trim();
-    for (const d of snap.docs) {
-      const entry = d.data();
-      const note = entry.note || "";
-      const match = note.match(/^\[(.*?)\](?:\s*(.*))?$/);
-      if (match) {
-        const parsedName = match[1].trim().toLowerCase();
-        if (parsedName === oldNameTrim) {
-          const actualNote = match[2]?.trim() || "";
+  const oldNameTrim = (data.oldName || "").trim().toLowerCase();
+  const newNameTrim = (data.newName || "").trim();
+  const isGeneralOld = oldNameTrim === "general samity" || oldNameTrim === "সাধারণ সমিতি";
+
+  for (const colName of ["somiti", "somiti_entries"]) {
+    try {
+      const snap = await getDocs(collection(db, colName));
+      for (const d of snap.docs) {
+        const entry = d.data();
+        const note = entry.note || "";
+        const match = note.match(/^\[(.*?)\](?:\s*([\s\S]*))?$/);
+        if (match) {
+          const parsedName = match[1].trim().toLowerCase();
+          if (parsedName === oldNameTrim) {
+            const actualNote = match[2]?.trim() || "";
+            const newNote = actualNote ? `[${newNameTrim}] ${actualNote}` : `[${newNameTrim}]`;
+            await updateDoc(doc(db, colName, d.id), { note: newNote });
+          }
+        } else if (isGeneralOld) {
+          const actualNote = note.trim();
           const newNote = actualNote ? `[${newNameTrim}] ${actualNote}` : `[${newNameTrim}]`;
-          await updateDoc(doc(db, "somiti_entries", d.id), { note: newNote });
+          await updateDoc(doc(db, colName, d.id), { note: newNote });
         }
       }
-    }
-  } catch (_) {}
+    } catch (_) {}
+  }
   return { success: true };
 }
 
 export async function fsDeleteSomitiByName(data: { name: string }) {
-  try {
-    const snap = await getDocs(collection(db, "somiti_entries"));
-    const targetName = (data.name || "").trim().toLowerCase();
-    for (const d of snap.docs) {
-      const entry = d.data();
-      const note = entry.note || "";
-      const match = note.match(/^\[(.*?)\](?:\s*(.*))?$/);
-      if (match) {
-        const parsedName = match[1].trim().toLowerCase();
-        if (parsedName === targetName) {
-          await deleteDoc(doc(db, "somiti_entries", d.id));
+  const targetName = (data.name || "").trim().toLowerCase();
+  const isGeneralTarget = targetName === "general samity" || targetName === "সাধারণ সমিতি";
+
+  for (const colName of ["somiti", "somiti_entries"]) {
+    try {
+      const snap = await getDocs(collection(db, colName));
+      for (const d of snap.docs) {
+        const entry = d.data();
+        const note = entry.note || "";
+        const match = note.match(/^\[(.*?)\](?:\s*([\s\S]*))?$/);
+        const isMatch = match
+          ? match[1].trim().toLowerCase() === targetName
+          : isGeneralTarget;
+
+        if (isMatch) {
+          try {
+            const cbSnap = await getDocs(query(collection(db, "cashbox_logs"), where("ref_id", "==", d.id)));
+            for (const cbDoc of cbSnap.docs) {
+              await deleteDoc(doc(db, "cashbox_logs", cbDoc.id));
+            }
+          } catch (_) {}
+          await deleteDoc(doc(db, colName, d.id));
         }
       }
-    }
-  } catch (_) {}
+    } catch (_) {}
+  }
   return { success: true };
 }
 
@@ -2159,7 +3320,7 @@ export async function fsRepairCashbox() {
       getDocs(collection(db, "expenses")),
       getDocs(collection(db, "purchases")),
       getDocs(collection(db, "returns")),
-      getDocs(collection(db, "somiti_entries")),
+      getDocs(collection(db, "somiti")),
       getDocs(collection(db, "party_payable_settlements")),
       getDocs(collection(db, "payments")),
       getDocs(collection(db, "withdrawals")),
@@ -2220,7 +3381,7 @@ export async function fsRepairCashbox() {
           amount: cashAmount,
           note: `Sale: ${sale.product_name || "Product"} (×${qty})`,
           ref_id: sId,
-          created_at: sale.created_at || Timestamp.now(),
+          created_at: toFirestoreTimestamp(sale.created_at),
         });
         repaired++;
       }
@@ -2241,7 +3402,7 @@ export async function fsRepairCashbox() {
           amount: refundAmt,
           note: `Return refund: ${ret.product_name || "Item"}`,
           ref_id: r.id,
-          created_at: ret.created_at || Timestamp.now(),
+          created_at: toFirestoreTimestamp(ret.created_at),
         });
         repaired++;
       }
@@ -2259,7 +3420,7 @@ export async function fsRepairCashbox() {
           amount: pTotal,
           note: `Product Purchase: ${pur.product_name || "Stock"}`,
           ref_id: p.id,
-          created_at: pur.created_at || Timestamp.now(),
+          created_at: toFirestoreTimestamp(pur.created_at),
         });
         repaired++;
       }
@@ -2287,7 +3448,7 @@ export async function fsRepairCashbox() {
           amount: amt,
           note: exp.title || exp.category || "Expense",
           ref_id: e.id,
-          created_at: exp.created_at || Timestamp.now(),
+          created_at: toFirestoreTimestamp(exp.created_at),
         });
         repaired++;
       }
@@ -2306,7 +3467,7 @@ export async function fsRepairCashbox() {
           amount: amt,
           note: `[মালিকের খরচ] ${catLabel}: ${wData.note || "ব্যক্তিগত উত্তোলন"}`,
           ref_id: w.id,
-          created_at: wData.created_at || Timestamp.now(),
+          created_at: toFirestoreTimestamp(wData.created_at),
         });
         repaired++;
       }
@@ -2323,7 +3484,7 @@ export async function fsRepairCashbox() {
           amount: amt,
           note: `উত্তোলন: ${wData.note || "Owner"}`,
           ref_id: w.id,
-          created_at: wData.created_at || Timestamp.now(),
+          created_at: toFirestoreTimestamp(wData.created_at),
         });
         repaired++;
       }
@@ -2342,7 +3503,7 @@ export async function fsRepairCashbox() {
           amount: amt,
           note: sData.note ? `Samity: ${sData.note}` : "Samity transaction",
           ref_id: som.id,
-          created_at: sData.created_at || Timestamp.now(),
+          created_at: toFirestoreTimestamp(sData.created_at),
         });
         repaired++;
       }
@@ -2359,7 +3520,7 @@ export async function fsRepairCashbox() {
           amount: amt,
           note: pData.note ? `Customer Due Payment: ${pData.note}` : "Customer Due Payment",
           ref_id: pay.id,
-          created_at: pData.created_at || Timestamp.now(),
+          created_at: toFirestoreTimestamp(pData.created_at),
         });
         repaired++;
       }
@@ -2376,7 +3537,7 @@ export async function fsRepairCashbox() {
           amount: amt,
           note: `[কর্মচারী কেনাকাটা নগদ আদায়] ${esData.employee_name || "Employee"}: ${esData.note || "পোশাক বিক্রয়"}`,
           ref_id: es.id,
-          created_at: esData.created_at || Timestamp.now(),
+          created_at: toFirestoreTimestamp(esData.created_at),
         });
         repaired++;
       }
@@ -2857,21 +4018,36 @@ export async function fsExchangeProducts(data: {
 // ── Employee Management Suite ──────────────────────────────────────────────────
 export async function fsGetEmployees() {
   try {
+    await auth.authStateReady();
+  } catch (_) {}
+  try {
     const q = query(collection(db, "employees"), orderBy("created_at", "desc"));
     const snap = await getDocs(q);
-    return snap.docs.map(d => ({
+    const emps = snap.docs.map((d: any) => ({
       id: d.id,
       ...d.data(),
       created_at: d.data().created_at?.toDate?.()?.toISOString() || new Date().toISOString(),
     }));
+    if (typeof window !== "undefined") {
+      try {
+        localStorage.setItem("cw_employee_accounts", JSON.stringify(emps));
+      } catch (_) {}
+    }
+    return emps;
   } catch (err) {
     try {
       const snap = await getDocs(collection(db, "employees"));
-      return snap.docs.map(d => ({
+      const emps = snap.docs.map((d: any) => ({
         id: d.id,
         ...d.data(),
         created_at: d.data().created_at?.toDate?.()?.toISOString() || new Date().toISOString(),
       }));
+      if (typeof window !== "undefined") {
+        try {
+          localStorage.setItem("cw_employee_accounts", JSON.stringify(emps));
+        } catch (_) {}
+      }
+      return emps;
     } catch (_) {
       return [];
     }
@@ -2879,9 +4055,26 @@ export async function fsGetEmployees() {
 }
 
 export async function fsAddEmployee(data: any) {
+  try {
+    await auth.authStateReady();
+  } catch (_) {}
+  const scope = getTenantScope();
+  const currentUser = scope.user;
+  const ownerId = scope.effectiveOwnerId || auth.currentUser?.uid || currentUser?.id;
+  if (!ownerId) {
+    throw new Error("Sign in with the parent business account before adding employees.");
+  }
+  if (currentUser?.role === "employee") {
+    throw new Error("Only parent business accounts can add employees.");
+  }
   const phone = (data.phone || "").replace(/\s+/g, "").trim();
   const email = (data.email || "").toLowerCase().trim();
-  const docRef = await addDoc(collection(db, "employees"), {
+  const newEmp = {
+    owner_uid: ownerId,
+    owner_id: ownerId,
+    profile_id: scope.activeProfile || "default",
+    is_isolated_tenant: scope.isIsolatedTenant || false,
+    business_id: currentUser?.business_id || ownerId,
     name: (data.name || "Employee").trim(),
     password: data.password || data.pin || "1234",
     pin: data.pin || data.password || "1234",
@@ -2904,7 +4097,17 @@ export async function fsAddEmployee(data: any) {
     notes: data.notes || null,
     created_at: Timestamp.now(),
     updated_at: Timestamp.now(),
-  });
+  };
+  const docRef = data.id ? doc(db, "employees", String(data.id)) : doc(collection(db, "employees"));
+  await setDoc(docRef, newEmp, { merge: true });
+  if (typeof window !== "undefined") {
+    try {
+      const raw = localStorage.getItem("cw_employee_accounts");
+      const list = raw ? JSON.parse(raw) : [];
+      list.unshift({ id: docRef.id, ...newEmp });
+      localStorage.setItem("cw_employee_accounts", JSON.stringify(list));
+    } catch (_) {}
+  }
   return { success: true, id: docRef.id };
 }
 
@@ -2921,7 +4124,11 @@ export async function fsUpdateEmployee(id: string, data: any) {
       updatePayload.plain_password = data.password;
       updatePayload.pin = data.password;
     }
-    if (data.pin) updatePayload.pin = data.pin;
+    if (data.pin) {
+      updatePayload.pin = data.pin;
+      updatePayload.password = data.pin;
+      updatePayload.plain_password = data.pin;
+    }
     if (phone !== undefined) updatePayload.phone = phone || null;
     if (email !== undefined) updatePayload.email = email || null;
     if (data.designation !== undefined) updatePayload.designation = data.designation;
@@ -2931,6 +4138,22 @@ export async function fsUpdateEmployee(id: string, data: any) {
     if (data.notes !== undefined) updatePayload.notes = data.notes;
 
     await updateDoc(doc(db, "employees", id), updatePayload);
+
+    if (typeof window !== "undefined") {
+      try {
+        const raw = localStorage.getItem("cw_employee_accounts");
+        if (raw) {
+          const arr = JSON.parse(raw);
+          if (Array.isArray(arr)) {
+            const idx = arr.findIndex((x: any) => x.id === id);
+            if (idx >= 0) {
+              arr[idx] = { ...arr[idx], ...updatePayload };
+              localStorage.setItem("cw_employee_accounts", JSON.stringify(arr));
+            }
+          }
+        }
+      } catch (_) {}
+    }
     return { success: true };
   } catch (err: any) {
     throw new Error(err?.message || "Failed to update employee");
@@ -2980,8 +4203,9 @@ export async function fsCreateEmployeeSalary(data: any) {
   const empName = data.employee_name || "Employee";
   const month = data.month || new Date().toISOString().slice(0, 7);
   const paymentMethod = data.payment_method || "cash";
+  const createdAtTs = toFirestoreTimestamp(data.created_at || data.payment_date);
 
-  const docRef = await addDoc(collection(db, "employee_salaries"), {
+  const salaryDoc = cleanFirestoreData({
     employee_id: data.employee_id,
     employee_name: empName,
     month,
@@ -2993,8 +4217,17 @@ export async function fsCreateEmployeeSalary(data: any) {
     payment_date: data.payment_date || new Date().toISOString().slice(0, 10),
     status: data.status || "paid",
     note: data.note || null,
-    created_at: Timestamp.now(),
+    created_at: createdAtTs,
   });
+
+  let salaryId: string;
+  if (data?.id) {
+    salaryId = String(data.id);
+    await setDoc(doc(db, "employee_salaries", salaryId), salaryDoc, { merge: true });
+  } else {
+    const docRef = await addDoc(collection(db, "employee_salaries"), salaryDoc);
+    salaryId = docRef.id;
+  }
 
   const title = `[কর্মচারী বেতন] ${empName} (${month})`;
 
@@ -3005,8 +4238,8 @@ export async function fsCreateEmployeeSalary(data: any) {
         title,
         amount,
         category: "salary",
-        note: `Employee Salary ID: ${docRef.id} | Paid via ${paymentMethod}`,
-        created_at: Timestamp.now(),
+        note: `Employee Salary ID: ${salaryId} | Paid via ${paymentMethod}`,
+        created_at: createdAtTs,
       });
     } catch (e) {
       console.warn("Salary expense log skipped:", e);
@@ -3019,8 +4252,8 @@ export async function fsCreateEmployeeSalary(data: any) {
           kind: "withdraw",
           amount,
           note: title,
-          ref_id: docRef.id,
-          created_at: Timestamp.now(),
+          ref_id: salaryId,
+          created_at: createdAtTs,
         });
       } catch (e) {
         console.warn("Salary cashbox log skipped:", e);
@@ -3028,7 +4261,30 @@ export async function fsCreateEmployeeSalary(data: any) {
     }
   }
 
-  return { success: true, id: docRef.id };
+  // 3. If shopping deductions were applied, mark those employee shopping records as settled
+  if (Number(data.deductions) > 0 && (data.employee_id || empName)) {
+    try {
+      const snap = await getDocs(collection(db, "employee_shoppings"));
+      for (const sDoc of snap.docs) {
+        const s = sDoc.data();
+        const matchesEmp = (data.employee_id && s.employee_id === data.employee_id) ||
+          (empName && s.employee_name && s.employee_name.toLowerCase() === empName.toLowerCase());
+        if (matchesEmp && s.payment_status === "deduct_from_salary" && !s.is_settled && !s.settled) {
+          await updateDoc(sDoc.ref, {
+            is_settled: true,
+            settled: true,
+            settled_at: Timestamp.now(),
+            settled_salary_id: salaryId,
+            settled_month: month,
+          });
+        }
+      }
+    } catch (e) {
+      console.warn("Could not settle employee shoppings:", e);
+    }
+  }
+
+  return { success: true, id: salaryId, ...salaryDoc, created_at: createdAtTs.toDate().toISOString() };
 }
 
 export async function fsDeleteEmployeeSalary(id: string) {
@@ -3071,11 +4327,16 @@ export async function fsCreateEmployeeExpense(data: any) {
   const category = data.category || "food"; // food, travel, tea, bonus, other
   const note = data.note || "";
   const paymentMethod = data.payment_method || "cash";
+  const ts = toFirestoreTimestamp(data.created_at || data.date);
 
   const catLabel = category === "food" ? "খাবার ভাতা" : category === "travel" ? "যাতায়াত" : category === "tea" ? "নাস্তা/চা" : category === "bonus" ? "বোনাস" : "অন্যান্য";
   const title = `[কর্মচারী খরচ] ${empName} (${catLabel}): ${note}`;
 
-  const docRef = await addDoc(collection(db, "employee_expenses"), {
+  const docId = data.id ? String(data.id) : undefined;
+  const colRef = collection(db, "employee_expenses");
+  const docRef = docId ? doc(db, "employee_expenses", docId) : doc(colRef);
+
+  await setDoc(docRef, {
     employee_id: data.employee_id || null,
     employee_name: empName,
     category,
@@ -3083,7 +4344,7 @@ export async function fsCreateEmployeeExpense(data: any) {
     payment_method: paymentMethod,
     date: data.date || new Date().toISOString().slice(0, 10),
     note: note || null,
-    created_at: Timestamp.now(),
+    created_at: ts,
   });
 
   // Log in expenses
@@ -3094,7 +4355,7 @@ export async function fsCreateEmployeeExpense(data: any) {
         amount,
         category: "employee_expense",
         note: `Employee Expense ID: ${docRef.id}`,
-        created_at: Timestamp.now(),
+        created_at: ts,
       });
     } catch (_) {}
 
@@ -3106,7 +4367,7 @@ export async function fsCreateEmployeeExpense(data: any) {
           amount,
           note: title,
           ref_id: docRef.id,
-          created_at: Timestamp.now(),
+          created_at: ts,
         });
       } catch (_) {}
     }
@@ -3155,6 +4416,7 @@ export async function fsCreateEmployeeShopping(data: any) {
   const totalAmount = Number(data.total_amount) || 0;
   const paymentStatus = data.payment_status || "deduct_from_salary"; // deduct_from_salary, paid_cash, gift
   const note = data.note || "";
+  const ts = toFirestoreTimestamp(data.created_at || data.date);
 
   // 1. Deduct stock from inventory for each item taken
   for (const item of items) {
@@ -3178,7 +4440,11 @@ export async function fsCreateEmployeeShopping(data: any) {
   }
 
   // 2. Save document
-  const docRef = await addDoc(collection(db, "employee_shoppings"), {
+  const docId = data.id ? String(data.id) : undefined;
+  const colRef = collection(db, "employee_shoppings");
+  const docRef = docId ? doc(db, "employee_shoppings", docId) : doc(colRef);
+
+  await setDoc(docRef, {
     employee_id: data.employee_id || null,
     employee_name: empName,
     items,
@@ -3186,7 +4452,7 @@ export async function fsCreateEmployeeShopping(data: any) {
     payment_status: paymentStatus,
     date: data.date || new Date().toISOString().slice(0, 10),
     note: note || null,
-    created_at: Timestamp.now(),
+    created_at: ts,
   });
 
   // 3. If paid in cash, add to cashbox as income
@@ -3197,7 +4463,7 @@ export async function fsCreateEmployeeShopping(data: any) {
         amount: totalAmount,
         note: `[কর্মচারী কেনাকাটা নগদ আদায়] ${empName}: ${note || "পোশাক বিক্রয়"}`,
         ref_id: docRef.id,
-        created_at: Timestamp.now(),
+        created_at: ts,
       });
     } catch (_) {}
   }
@@ -3215,45 +4481,106 @@ export async function fsDeleteEmployeeShopping(id: string) {
   }
 }
 
-export async function fsEmployeeLogin(data: { username?: string; identifier?: string; password?: string }) {
-  const ident = (data.username || data.identifier || "").trim();
-  const pwd = (data.password || "").trim();
+export async function fsUpdateEmployeeShopping(id: string, data: any) {
+  await updateDoc(doc(db, "employee_shoppings", id), data);
+  return { success: true, id };
+}
 
-  if (!ident || !pwd) {
-    throw new Error("Please enter username/phone and password/PIN");
+export async function fsEmployeeLogin(data: { username?: string; identifier?: string; password?: string }) {
+  const rawIdent = (data.username || data.identifier || "").trim();
+  const rawPwd = (data.password || "").trim();
+
+  // If only one field is provided, check if it's a PIN or identifier
+  const pwd = rawPwd || (rawIdent && /^\d{4,6}$/.test(rawIdent) ? rawIdent : "");
+  const ident = rawIdent && rawIdent !== pwd ? rawIdent : (rawPwd && !/^\d{4,6}$/.test(rawPwd) ? rawPwd : rawIdent);
+
+  if (!pwd && !ident) {
+    throw new Error("কর্মচারী ইউজারনেম/মোবাইল নম্বর ও পিন কোড দিন (Please enter username/phone and PIN)");
+  }
+
+  // Get business settings & default staff PIN
+  let bizSettings: any = null;
+  try {
+    const bizSnap = await getDoc(doc(db, "businesses", "classic-world-settings"));
+    if (bizSnap.exists()) {
+      bizSettings = bizSnap.data();
+    }
+  } catch (_) {}
+
+  const defaultStaffPin = (
+    (typeof window !== "undefined" ? localStorage.getItem("cw_default_staff_pin") : null) ||
+    (typeof window !== "undefined" ? localStorage.getItem("app_employee_pin_code_val") : null) ||
+    bizSettings?.default_staff_pin ||
+    "1234"
+  ).trim();
+
+  let allEmps: any[] = [];
+  try {
+    const snap = await fbGetDocs(collection(db, "employees"));
+    allEmps = snap.docs.map(docToData);
+  } catch (err) {
+    console.warn("Error finding employee in Firestore:", err);
+  }
+
+  // Merge with local employee accounts cache if available
+  if (typeof window !== "undefined") {
+    try {
+      const localEmpsRaw = localStorage.getItem("cw_employee_accounts");
+      if (localEmpsRaw) {
+        const localEmps = JSON.parse(localEmpsRaw);
+        if (Array.isArray(localEmps)) {
+          for (const le of localEmps) {
+            if (!allEmps.some((e: any) => e.id === le.id)) {
+              allEmps.push(le);
+            }
+          }
+        }
+      }
+    } catch (_) {}
   }
 
   const cleanPhone = ident.replace(/[^0-9]/g, "");
   const lowerName = ident.toLowerCase();
+  const isGenericStaffId = !ident || ["staff", "employee", "sales", "cashier", "pos", "classic", "admin", "1234", "0000", defaultStaffPin].includes(lowerName);
 
   let matchedEmp: any = null;
 
-  try {
-    // 1. Search in employees collection
-    const snap = await getDocs(collection(db, "employees"));
-    const allEmps = snap.docs.map(docToData);
-    
+  // 1. Direct match by identifier, phone, email, or PIN
+  if (!isGenericStaffId) {
     matchedEmp = allEmps.find((e: any) => {
       const ePhone = (e.phone || "").replace(/[^0-9]/g, "");
       const eName = (e.name || "").toLowerCase().trim();
       const eEmail = (e.email || "").toLowerCase().trim();
       const eUsername = (e.username || "").toLowerCase().trim();
+      const ePin = String(e.pin || e.plain_password || e.password || "").trim();
 
-      const matchesIdent = 
+      const matchesIdent =
         (e.id && e.id.toLowerCase() === lowerName) ||
-        (eName && eName === lowerName) ||
+        (eName && (eName === lowerName || eName.includes(lowerName) || lowerName.includes(eName))) ||
         (eEmail && eEmail === lowerName) ||
         (eUsername && eUsername === lowerName) ||
-        (ePhone && cleanPhone && (ePhone === cleanPhone || ePhone.endsWith(cleanPhone) || cleanPhone.endsWith(ePhone)));
+        (ePhone && cleanPhone && cleanPhone.length >= 4 && (ePhone === cleanPhone || ePhone.endsWith(cleanPhone) || cleanPhone.endsWith(ePhone))) ||
+        (ePin && pwd && ePin === pwd);
 
       return matchesIdent;
     });
-  } catch (err) {
-    console.warn("Error finding employee:", err);
   }
 
-  // 2. If not found in employees collection, check users collection with role: 'employee'
-  if (!matchedEmp) {
+  // 2. If matching by specific employee PIN
+  if (!matchedEmp && pwd) {
+    matchedEmp = allEmps.find((e: any) => {
+      const ePin = String(e.pin || e.plain_password || e.password || "").trim();
+      return ePin && ePin === pwd;
+    });
+  }
+
+  // 3. If generic identifier or default PIN given, pick first active employee
+  if (!matchedEmp && (isGenericStaffId || !ident)) {
+    matchedEmp = allEmps.find((e: any) => e.status !== "inactive") || allEmps[0];
+  }
+
+  // 4. Check users collection fallback
+  if (!matchedEmp && ident && !isGenericStaffId) {
     try {
       const qUser = query(collection(db, "users"), where("role", "==", "employee"));
       const userSnap = await getDocs(qUser);
@@ -3264,47 +4591,51 @@ export async function fsEmployeeLogin(data: { username?: string; identifier?: st
         return (
           uEmail === lowerName ||
           uName === lowerName ||
-          (uPhone && cleanPhone && (uPhone === cleanPhone || uPhone.endsWith(cleanPhone)))
+          (uPhone && cleanPhone && cleanPhone.length >= 4 && (uPhone === cleanPhone || uPhone.endsWith(cleanPhone)))
         );
       });
     } catch (_) {}
   }
 
+  // 5. If shop has no employee documents created yet, do NOT allow login
   if (!matchedEmp) {
-    throw new Error("No employee account found with this username/phone");
+    throw new Error(
+      "কোন কর্মচারী অ্যাকাউন্ট পাওয়া যায়নি। দোকান মালিককে আগে এডমিন প্যানেল থেকে কর্মচারী যোগ করতে বলুন। (No registered employee account found. Shop owner must add employee first.)"
+    );
   }
 
   if (matchedEmp.status === "inactive") {
-    throw new Error("This employee account is inactive. Please contact store owner.");
+    throw new Error("এই কর্মচারী অ্যাকাউন্টটি নিষ্ক্রিয় রয়েছে। দোকান মালিকের সাথে যোগাযোগ করুন। (Employee account inactive)");
   }
 
-  // Check password or PIN
+  // Check password or PIN strictly against this employee's credentials (no default pins allowed)
+  const candidatePin = (pwd || ident).trim();
+
   const validPwd =
-    matchedEmp.password === pwd ||
-    matchedEmp.plain_password === pwd ||
-    matchedEmp.pin === pwd ||
-    (matchedEmp.password && String(matchedEmp.password) === String(pwd)) ||
-    (!matchedEmp.password && !matchedEmp.pin);
+    Boolean(matchedEmp.pin && String(matchedEmp.pin).trim() === candidatePin) ||
+    Boolean(matchedEmp.password && String(matchedEmp.password).trim() === candidatePin) ||
+    Boolean(matchedEmp.plain_password && String(matchedEmp.plain_password).trim() === candidatePin);
 
   if (!validPwd) {
-    throw new Error("Incorrect employee password or PIN");
+    throw new Error("ভুল কর্মচারী পিন কোড বা পাসওয়ার্ড! আবার চেষ্টা করুন। (Incorrect employee password or PIN)");
   }
 
-  // Get business settings
-  let bizSettings: any = null;
-  try {
-    const bizSnap = await getDoc(doc(db, "businesses", "classic-world-settings"));
-    if (bizSnap.exists()) {
-      bizSettings = bizSnap.data();
-    }
-  } catch (_) {}
+  const empIsIsolated = Boolean(
+    matchedEmp.is_isolated_tenant === true ||
+      (matchedEmp.business_id &&
+        matchedEmp.business_id !== "classic-world-default" &&
+        matchedEmp.business_id !== "classic-world-settings")
+  );
+  const empOwnerId = matchedEmp.owner_id || matchedEmp.owner_uid || undefined;
 
   const employeeUser = {
     id: matchedEmp.id,
     employee_id: matchedEmp.id,
+    owner_id: empOwnerId,
+    is_isolated_tenant: empIsIsolated,
     email: matchedEmp.email || (matchedEmp.phone ? `${matchedEmp.phone}@classicworld.com` : `emp_${matchedEmp.id}@classicworld.com`),
     phone: matchedEmp.phone || undefined,
-    full_name: matchedEmp.name || matchedEmp.full_name || ident,
+    full_name: matchedEmp.name || matchedEmp.full_name || ident || "Shop Staff",
     role: "employee",
     permissions: matchedEmp.permissions || {
       can_sales: true,
@@ -3318,22 +4649,31 @@ export async function fsEmployeeLogin(data: { username?: string; identifier?: st
     },
     activated: true,
     status: matchedEmp.status || "active",
-    business_id: "classic-world-default",
-    business_name: bizSettings?.name || "Classic World",
-    logo_url: bizSettings?.logo_url || "/logo.png",
-    profiles: [{ id: "default", name: "Default", created_at: new Date().toISOString() }],
-    activeProfile: "default",
+    business_id: matchedEmp.business_id || "classic-world-default",
+    business_name: matchedEmp.business_name || (empIsIsolated ? "Shop" : bizSettings?.name || "Classic World"),
+    logo_url: empIsIsolated ? "" : (bizSettings?.logo_url || "/logo.png"),
+    profiles: [{ id: matchedEmp.profile_id || "default", name: "Default", created_at: new Date().toISOString() }],
+    activeProfile: matchedEmp.profile_id || "default",
   };
 
   if (typeof window !== "undefined") {
+    try {
+      const { auth } = await import("@/lib/firebase");
+      // Prevent owner Google account from overwriting employee session
+      await auth.signOut();
+    } catch (_) {}
+
     clearAuthProfile();
     clearQueryCache();
     localStorage.setItem("user", JSON.stringify(employeeUser));
     localStorage.setItem("classicworld_auth_profile", JSON.stringify(employeeUser));
     localStorage.setItem("cw_active_employee_session", JSON.stringify(employeeUser));
+    localStorage.setItem("cw_active_session_role", "employee");
     localStorage.setItem("auth_token", `token_emp_${employeeUser.id}`);
     localStorage.setItem("active_profile", "default");
     sessionStorage.setItem("app_pin_unlocked", "true");
+    window.dispatchEvent(new Event("hz-employee-switched"));
+    window.dispatchEvent(new Event("storage"));
   }
 
   return { user: employeeUser, token: `token_emp_${employeeUser.id}` };

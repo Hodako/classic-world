@@ -84,6 +84,42 @@ interface GroupedSale {
   items: Sale[];
 }
 
+function isPartialOrSplitSale(s: Sale | GroupedSale): boolean {
+  if (!s) return false;
+  // 1. Explicit type check
+  if (s.type === "split" || (s.type as string) === "partial") return true;
+
+  // 2. Split amounts check
+  const splitCash = Number((s as any).split_cash) || 0;
+  const splitBkash = Number((s as any).split_bkash) || 0;
+  const splitBank = Number((s as any).split_bank) || 0;
+  if (splitCash > 0 || splitBkash > 0 || splitBank > 0) return true;
+
+  // 3. Partial payment check: customer has paid some money and still has remaining due
+  const paid = Number(s.paid_amount) || 0;
+  const due = Number(s.due_amount) || 0;
+  if (paid > 0 && due > 0) return true;
+
+  // 4. Credit sale with partial payment
+  if (s.type === "credit" && paid > 0) return true;
+
+  // 5. If grouped sale, check child items
+  if (Array.isArray((s as any).items)) {
+    return (s as any).items.some((it: any) => {
+      if (it.type === "split" || it.type === "partial") return true;
+      const itCash = Number(it.split_cash) || 0;
+      const itBkash = Number(it.split_bkash) || 0;
+      const itBank = Number(it.split_bank) || 0;
+      if (itCash > 0 || itBkash > 0 || itBank > 0) return true;
+      const itPaid = Number(it.paid_amount) || 0;
+      const itDue = Number(it.due_amount) || 0;
+      return (itPaid > 0 && itDue > 0) || (it.type === "credit" && itPaid > 0);
+    });
+  }
+
+  return false;
+}
+
 function groupSales(sales: Sale[]): GroupedSale[] {
   const grouped: GroupedSale[] = [];
   const cartGroups: Record<string, Sale[]> = {};
@@ -104,6 +140,11 @@ function groupSales(sales: Sale[]): GroupedSale[] {
         ? Number(s.profit)
         : (unitSell - Number(s.buy_price || 0)) * qty;
 
+      const splitCash = Number((s as any).split_cash) || 0;
+      const splitBkash = Number((s as any).split_bkash) || 0;
+      const splitBank = Number((s as any).split_bank) || 0;
+      const isSplitNonCart = s.type === "split" || (s.type as string) === "partial" || (splitCash > 0 || splitBkash > 0 || splitBank > 0);
+
       grouped.push({
         id: s.id,
         isGroup: false,
@@ -114,10 +155,10 @@ function groupSales(sales: Sale[]): GroupedSale[] {
         profit: profit,
         due_amount: Number(s.due_amount) || 0,
         paid_amount: Number(s.paid_amount) || 0,
-        type: s.type || "cash",
-        split_cash: (s as any).split_cash,
-        split_bkash: (s as any).split_bkash,
-        split_bank: (s as any).split_bank,
+        type: isSplitNonCart ? "split" : (s.type || "cash"),
+        split_cash: splitCash > 0 ? splitCash : undefined,
+        split_bkash: splitBkash > 0 ? splitBkash : undefined,
+        split_bank: splitBank > 0 ? splitBank : undefined,
         payment_status: (s as any).payment_status || ((s as any).payment_accepted ? "accepted" : undefined),
         payment_accepted: Boolean((s as any).payment_accepted || (s as any).payment_status === "accepted"),
         courier_status: (s as any).courier_status || (s.type === "online" ? "pending" : null),
@@ -160,6 +201,8 @@ function groupSales(sales: Sale[]): GroupedSale[] {
     const paymentStatus = isAnyAccepted ? "accepted" : (firstItem as any).payment_status;
 
     const names = items.map(x => `${x.product_name} (×${x.qty})`).join(", ");
+    const isSplitGroup = (totalSplitCash > 0 || totalSplitBkash > 0 || totalSplitBank > 0) ||
+      items.some(x => x.type === "split" || (x.type as string) === "partial");
 
     grouped.push({
       id: firstItem.id,
@@ -171,7 +214,7 @@ function groupSales(sales: Sale[]): GroupedSale[] {
       profit: totalProfit,
       due_amount: totalDue,
       paid_amount: totalPaid,
-      type: firstItem.type || "cash",
+      type: isSplitGroup ? "split" : (firstItem.type || "cash"),
       split_cash: totalSplitCash > 0 ? totalSplitCash : undefined,
       split_bkash: totalSplitBkash > 0 ? totalSplitBkash : undefined,
       split_bank: totalSplitBank > 0 ? totalSplitBank : undefined,
@@ -338,7 +381,7 @@ export default function SalesPage() {
           if (!isBkashDirect && !isBkashSplit && !isBkashPartial) return false;
         }
         if (activeTab === "bank" && s.type !== "bank" && !(s.type === "split" && (Number(s.split_bank) > 0))) return false;
-        if (activeTab === "partial" && !((s.due_amount > 0 && s.paid_amount > 0) || (s.type === "split" && s.due_amount > 0))) return false;
+        if (activeTab === "partial" && !isPartialOrSplitSale(s)) return false;
         if (activeTab === "credit" && s.type !== "credit" && s.due_amount <= 0) return false;
         if (activeTab === "courier_pending" && (s.type !== "online" || s.courier_status === "collected" || s.courier_status === "cancelled" || s.returned)) return false;
         if (activeTab === "online" && s.type !== "online") return false;
@@ -388,6 +431,26 @@ export default function SalesPage() {
     }, 0);
   }, [filteredSales]);
 
+  // Partial / Split sales summary
+  const partialSummary = useMemo(() => {
+    let count = 0;
+    let totalSales = 0;
+    let totalPaid = 0;
+    let totalDue = 0;
+    for (const s of filteredSales) {
+      if (s.returned) continue;
+      count++;
+      totalSales += Number(s.sell_price || 0);
+      totalPaid += Number(s.paid_amount || 0);
+      totalDue += Number(s.due_amount || 0);
+    }
+    return { count, totalSales, totalPaid, totalDue };
+  }, [filteredSales]);
+
+  const allTimePartialCount = useMemo(() => {
+    return allSalesGrouped.filter(s => !s.returned && isPartialOrSplitSale(s)).length;
+  }, [allSalesGrouped]);
+
   // CSV Exporter
   const exportSalesCsv = (langCode: "en" | "bn") => {
     const isBn = langCode === "bn";
@@ -397,6 +460,7 @@ export default function SalesPage() {
 
     const rows = filteredSales.map(s => {
       const methodStr =
+        s.type === "split" ? (isBn ? "স্প্লিট" : "Split") :
         s.type === "bkash" ? (isBn ? "বিকাশ" : "bKash") :
         s.type === "bank" ? (isBn ? "ব্যাংক" : "Bank") :
         s.type === "credit" ? (isBn ? "বাকী" : "Credit") :
@@ -456,6 +520,7 @@ export default function SalesPage() {
 
     const rowsHtml = filteredSales.map((s, idx) => {
       const methodStr =
+        s.type === "split" ? (isBn ? "স্প্লিট" : "Split") :
         s.type === "bkash" ? (isBn ? "বিকাশ" : "bKash") :
         s.type === "bank" ? (isBn ? "ব্যাংক" : "Bank") :
         s.type === "credit" ? (isBn ? "বাকী" : "Credit") :
@@ -685,17 +750,17 @@ export default function SalesPage() {
       </div>
 
       <Card className="p-3 rounded-2xl border-[0.5px] border-black/75 dark:border-white/30 bg-card/60 backdrop-blur-sm space-y-2.5">
-        <div className="flex items-center justify-between flex-wrap gap-2">
-          <div className="flex items-center gap-1.5 text-xs font-bold text-foreground">
-            <Calendar className="size-4 text-primary" />
-            <span className="font-balooda font-bold text-xs sm:text-sm">{lang === "bn" ? "তারিখ ফিল্টার:" : "Date Filter:"}</span>
+        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar scrollbar-none flex-nowrap py-0.5 max-w-full">
+          <div className="flex items-center gap-1 text-[11px] sm:text-xs font-bold text-foreground shrink-0 pr-0.5">
+            <Calendar className="size-3.5 text-primary shrink-0" />
+            <span className="font-balooda text-[11px] sm:text-xs whitespace-nowrap">{lang === "bn" ? "তারিখ:" : "Date:"}</span>
           </div>
 
-          <div className="flex items-center gap-1.5 flex-wrap font-balooda">
+          <div className="flex items-center gap-1 flex-nowrap font-balooda shrink-0">
             <button
               type="button"
               onClick={() => { setDateRange("today"); setPage(1); }}
-              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+              className={`px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-md sm:rounded-lg text-[10px] sm:text-xs font-bold transition-colors cursor-pointer shrink-0 whitespace-nowrap ${
                 dateRange === "today" ? "bg-primary text-primary-foreground shadow-xs" : "bg-muted hover:bg-muted/80 text-muted-foreground"
               }`}
             >
@@ -704,7 +769,7 @@ export default function SalesPage() {
             <button
               type="button"
               onClick={() => { setDateRange("yesterday"); setPage(1); }}
-              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+              className={`px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-md sm:rounded-lg text-[10px] sm:text-xs font-bold transition-colors cursor-pointer shrink-0 whitespace-nowrap ${
                 dateRange === "yesterday" ? "bg-primary text-primary-foreground shadow-xs" : "bg-muted hover:bg-muted/80 text-muted-foreground"
               }`}
             >
@@ -713,29 +778,29 @@ export default function SalesPage() {
             <button
               type="button"
               onClick={() => { setDateRange("week"); setPage(1); }}
-              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+              className={`px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-md sm:rounded-lg text-[10px] sm:text-xs font-bold transition-colors cursor-pointer shrink-0 whitespace-nowrap ${
                 dateRange === "week" ? "bg-primary text-primary-foreground shadow-xs" : "bg-muted hover:bg-muted/80 text-muted-foreground"
               }`}
             >
-              {lang === "bn" ? "গত ৭ দিন" : "Last 7 Days"}
+              {lang === "bn" ? "৭ দিন" : "7 Days"}
             </button>
             <button
               type="button"
               onClick={() => { setDateRange("month"); setPage(1); }}
-              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+              className={`px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-md sm:rounded-lg text-[10px] sm:text-xs font-bold transition-colors cursor-pointer shrink-0 whitespace-nowrap ${
                 dateRange === "month" ? "bg-primary text-primary-foreground shadow-xs" : "bg-muted hover:bg-muted/80 text-muted-foreground"
               }`}
             >
-              {lang === "bn" ? "চলতি মাস" : "This Month"}
+              {lang === "bn" ? "চলতি মাস" : "Month"}
             </button>
             <button
               type="button"
               onClick={() => { setDateRange("all"); setPage(1); }}
-              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+              className={`px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-md sm:rounded-lg text-[10px] sm:text-xs font-bold transition-colors cursor-pointer shrink-0 whitespace-nowrap ${
                 dateRange === "all" ? "bg-primary text-primary-foreground shadow-xs" : "bg-muted hover:bg-muted/80 text-muted-foreground"
               }`}
             >
-              {lang === "bn" ? "সকল সময়" : "All Time"}
+              {lang === "bn" ? "সকল সময়" : "All"}
             </button>
 
             <button
@@ -745,14 +810,14 @@ export default function SalesPage() {
                 setPage(1);
               }}
               title={lang === "bn" ? "কাস্টম তারিখ নির্বাচন" : "Custom Date Picker"}
-              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 border ${
+              className={`px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-md sm:rounded-lg text-[10px] sm:text-xs font-bold transition-all cursor-pointer flex items-center gap-1 border shrink-0 whitespace-nowrap ${
                 dateRange === "custom"
                   ? "bg-primary text-primary-foreground border-primary shadow-xs"
                   : "bg-muted hover:bg-muted/80 text-muted-foreground border-border/70"
               }`}
             >
-              <Calendar className="size-3.5" />
-              <span>{lang === "bn" ? "কাস্টম তারিখ" : "Custom"}</span>
+              <Calendar className="size-2.5 sm:size-3" />
+              <span>{lang === "bn" ? "কাস্টম" : "Custom"}</span>
             </button>
           </div>
         </div>
@@ -760,21 +825,21 @@ export default function SalesPage() {
         {dateRange === "custom" && (
           <div className="grid grid-cols-2 gap-2 pt-1.5 border-t border-border/50 font-balooda">
             <div className="space-y-1">
-              <Label className="text-[11px] text-muted-foreground font-semibold">{lang === "bn" ? "হতে" : "From"}</Label>
+              <Label className="text-[10px] text-muted-foreground font-semibold">{lang === "bn" ? "হতে" : "From"}</Label>
               <Input
                 type="date"
                 value={customFrom}
                 onChange={e => { setCustomFrom(e.target.value); setPage(1); }}
-                className="h-8 text-xs rounded-xl"
+                className="h-7.5 text-xs rounded-lg"
               />
             </div>
             <div className="space-y-1">
-              <Label className="text-[11px] text-muted-foreground font-semibold">{lang === "bn" ? "পর্যন্ত" : "To"}</Label>
+              <Label className="text-[10px] text-muted-foreground font-semibold">{lang === "bn" ? "পর্যন্ত" : "To"}</Label>
               <Input
                 type="date"
                 value={customTo}
                 onChange={e => { setCustomTo(e.target.value); setPage(1); }}
-                className="h-8 text-xs rounded-xl"
+                className="h-7.5 text-xs rounded-lg"
               />
             </div>
           </div>
@@ -854,7 +919,7 @@ export default function SalesPage() {
             <option value="cash">{lang === "bn" ? "নগদ" : "Cash"}</option>
             <option value="bkash">{lang === "bn" ? "বিকাশ (আংশিক ও পেন্ডিং সহ)" : "bKash (Inc. Partial & Due)"}</option>
             <option value="bank">{lang === "bn" ? "ব্যাংক" : "Bank"}</option>
-            <option value="partial">{lang === "bn" ? "আংশিক পেমেন্ট (Partial)" : "Partial Payments"}</option>
+            <option value="partial">{lang === "bn" ? "স্প্লিট" : "Split"}</option>
             <option value="credit">{lang === "bn" ? "বাকী" : "Credit"}</option>
             <option value="courier_pending">{lang === "bn" ? "⏳ কুরিয়ার পেন্ডিং" : "⏳ Pending Courier"}</option>
             <option value="online">{lang === "bn" ? "অনলাইন সব" : "All Online"}</option>
@@ -876,7 +941,7 @@ export default function SalesPage() {
             {lang === "bn" ? "ব্যাংক" : "Bank"}
           </TabsTrigger>
           <TabsTrigger value="partial" className="rounded-lg text-xs font-bold text-purple-700 dark:text-purple-300">
-            {lang === "bn" ? "আংশিক" : "Partial"}
+            {lang === "bn" ? "স্প্লিট" : "Split"}
           </TabsTrigger>
           <TabsTrigger value="credit" className="rounded-lg text-xs font-bold text-amber-700 dark:text-amber-300">
             {lang === "bn" ? "বাকী" : "Credit"}
@@ -915,6 +980,42 @@ export default function SalesPage() {
           </div>
         )}
 
+        {/* Partial & Split Payment Notice Strip */}
+        {activeTab === "partial" && (
+          <div className="mt-2 p-2.5 sm:p-3 rounded-xl bg-gradient-to-r from-purple-500/15 via-indigo-500/10 to-transparent border border-purple-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 font-balooda">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="font-bold text-xs sm:text-sm text-purple-700 dark:text-purple-300 flex items-center gap-1.5">
+                <span className="size-2 rounded-full bg-purple-600 animate-pulse" />
+                {lang === "bn" ? "স্প্লিট পেমেন্ট হিসাব:" : "Split Payment Ledger:"}
+              </span>
+              <span className="text-[11px] text-muted-foreground">
+                ({filteredSales.length} {lang === "bn" ? "টি রেকর্ড" : "records"})
+              </span>
+              {dateRange !== "all" && allTimePartialCount > filteredSales.length && (
+                <button
+                  type="button"
+                  onClick={() => { setDateRange("all"); setPage(1); }}
+                  className="text-[11px] font-bold text-primary underline hover:text-primary/80 cursor-pointer ml-1"
+                >
+                  {lang === "bn"
+                    ? `(সকল সময়ে মোট ${allTimePartialCount}টি রেকর্ড রয়েছে, দেখতে ক্লিক করুন)`
+                    : `(${allTimePartialCount} total in all time, click to view)`}
+                </button>
+              )}
+            </div>
+            <div className="flex items-center gap-2 flex-wrap text-xs font-bold font-serif">
+              <span className="bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-lg">
+                {lang === "bn" ? "পরিশোধিত:" : "Paid:"} ৳{partialSummary.totalPaid}
+              </span>
+              {partialSummary.totalDue > 0 && (
+                <span className="bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30 px-2 py-0.5 rounded-lg">
+                  {lang === "bn" ? "বকেয়া:" : "Due:"} ৳{partialSummary.totalDue}
+                </span>
+              )}
+            </div>
+          </div>
+        )}
+
         <div className="pt-3 space-y-2">
           <SalesTab
             items={filteredSales}
@@ -923,6 +1024,7 @@ export default function SalesPage() {
             onPageChange={setPage}
             onEdit={setEditSale}
             productCategoryMap={productCategoryMap}
+            onResetDateRange={dateRange !== "all" ? () => { setDateRange("all"); setPage(1); } : undefined}
           />
         </div>
       </Tabs>
@@ -946,6 +1048,7 @@ function SalesTab({
   onPageChange,
   onEdit,
   productCategoryMap,
+  onResetDateRange,
 }: {
   items: GroupedSale[];
   page: number;
@@ -953,6 +1056,7 @@ function SalesTab({
   onPageChange: (p: number) => void;
   onEdit: (sale: Sale) => void;
   productCategoryMap: Map<string, string>;
+  onResetDateRange?: () => void;
 }) {
   const { lang, t } = useT();
   const qc = useQueryClient();
@@ -1068,10 +1172,11 @@ function SalesTab({
   async function handlePrintSale(s: GroupedSale) {
     const custName = s.parties?.name || (lang === "bn" ? "সাধারণ কাস্টমার" : "Walk-in Customer");
     const invNo = s.cart_id ? `INV-${s.cart_id.slice(-6).toUpperCase()}` : `INV-${s.id.slice(-6).toUpperCase()}`;
-    const discTotal = s.items.reduce((acc, x) => acc + (Number(x.discount) || 0) * (Number(x.qty) || 1), 0);
+    const discTotal = s.items.reduce((acc, x) => acc + (Number(x.discount) || 0), 0);
     const sub = s.sell_price + discTotal;
 
     const paymentModeLabel =
+      s.type === "split" ? "SPLIT (স্প্লিট)" :
       s.type === "bkash" ? "BKASH (বিকাশ)" :
       s.type === "bank" ? "BANK (ব্যাংক)" :
       s.type === "credit" ? "CREDIT (বাকী)" :
@@ -1090,6 +1195,9 @@ function SalesTab({
         invoiceDate: fmtDateTime(s.created_at),
         customerName: custName,
         paymentMode: paymentModeLabel,
+        splitCash: s.split_cash,
+        splitBkash: s.split_bkash,
+        splitBank: s.split_bank,
         items: s.items.map(item => ({
           product: { id: item.product_id || undefined, name: item.product_name },
           qty: Number(item.qty) || 1,
@@ -1109,10 +1217,21 @@ function SalesTab({
 
   if (items.length === 0) {
     return (
-      <Card className="p-8 text-center rounded-2xl border-dashed border-border text-muted-foreground">
+      <Card className="p-8 text-center rounded-2xl border-dashed border-border text-muted-foreground flex flex-col items-center justify-center gap-2.5">
         <p className="text-xs font-medium">
           {lang === "bn" ? "নির্বাচিত ফিল্টারে কোন বিক্রয় রেকর্ড পাওয়া যায়নি।" : "No sales found for the selected filters."}
         </p>
+        {onResetDateRange && (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={onResetDateRange}
+            className="rounded-lg text-xs font-balooda font-bold border-primary/40 text-primary hover:bg-primary/10 cursor-pointer"
+          >
+            {lang === "bn" ? "সকল সময়ের রেকর্ড দেখুন (All Time)" : "View All Time Records"}
+          </Button>
+        )}
       </Card>
     );
   }
@@ -1127,17 +1246,22 @@ function SalesTab({
         const isPendingCourier = s.type === "online" && s.courier_status !== "collected" && s.courier_status !== "cancelled" && !s.returned;
         const isCollectedCourier = s.type === "online" && s.courier_status === "collected";
         const isCancelled = s.returned || s.courier_status === "cancelled";
-        const isSplit = s.type === "split";
-        const hasDue = s.due_amount > 0;
-        const hasPaid = s.paid_amount > 0;
-        const isPartial = (hasDue && hasPaid) || (isSplit && hasDue);
+        const isSplit = s.type === "split" || (Number(s.split_cash) > 0 && (Number(s.split_bkash) > 0 || Number(s.split_bank) > 0)) || (Number(s.split_bkash) > 0 && Number(s.split_bank) > 0);
+        const hasDue = Number(s.due_amount) > 0;
+        const hasPaid = Number(s.paid_amount) > 0;
+        const isPartial = isPartialOrSplitSale(s);
 
         // Calculate payment methods used
         const methodsUsed: string[] = [];
-        if (isSplit) {
+        if (isSplit || Number(s.split_cash) > 0 || Number(s.split_bkash) > 0 || Number(s.split_bank) > 0) {
           if (Number(s.split_cash) > 0) methodsUsed.push(`${lang === "bn" ? "নগদ" : "Cash"} ৳${s.split_cash}`);
           if (Number(s.split_bkash) > 0) methodsUsed.push(`${lang === "bn" ? "বিকাশ" : "bKash"} ৳${s.split_bkash}`);
           if (Number(s.split_bank) > 0) methodsUsed.push(`${lang === "bn" ? "ব্যাংক" : "Bank"} ৳${s.split_bank}`);
+        } else if (hasPaid && hasDue) {
+          const methodTitle = s.type === "bkash" ? (lang === "bn" ? "বিকাশ" : "bKash")
+            : s.type === "bank" ? (lang === "bn" ? "ব্যাংক" : "Bank")
+            : (lang === "bn" ? "নগদ" : "Cash");
+          methodsUsed.push(`${methodTitle} ৳${s.paid_amount}`);
         } else if (hasPaid) {
           const methodTitle = s.type === "bkash" ? (lang === "bn" ? "বিকাশ" : "bKash")
             : s.type === "bank" ? (lang === "bn" ? "ব্যাংক" : "Bank")
@@ -1156,8 +1280,8 @@ function SalesTab({
           isCancelled ? "bg-rose-500/15 text-rose-700 dark:text-rose-300 border-rose-500/30 line-through" :
           isPendingCourier ? "bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30" :
           isCollectedCourier ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30" :
-          isPartial ? "bg-purple-500/15 text-purple-700 dark:text-purple-300 border-purple-500/40" :
           isSplit ? "bg-purple-500/15 text-purple-700 dark:text-purple-300 border-purple-500/30" :
+          (hasDue && hasPaid) ? "bg-purple-500/15 text-purple-700 dark:text-purple-300 border-purple-500/40" :
           s.type === "bkash" ? "bg-[#E2136E]/15 text-[#E2136E] border-[#E2136E]/30" :
           s.type === "bank" ? "bg-sky-500/15 text-sky-700 dark:text-sky-300 border-sky-500/30" :
           s.type === "credit" ? "bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30" :
@@ -1167,8 +1291,8 @@ function SalesTab({
           isCancelled ? (lang === "bn" ? "বাতিল" : "Cancelled") :
           isPendingCourier ? (lang === "bn" ? "⏳ কুরিয়ার" : "⏳ Courier") :
           isCollectedCourier ? (lang === "bn" ? "✓ কুরিয়ার" : "✓ Courier") :
-          isPartial ? (lang === "bn" ? "আংশিক পেমেন্ট (Partial)" : "Partial Payment") :
-          isSplit ? (lang === "bn" ? "মিক্সড পেমেন্ট" : "Split Payment") :
+          isSplit ? (lang === "bn" ? "স্প্লিট" : "Split") :
+          (hasDue && hasPaid) ? (lang === "bn" ? "আংশিক পেমেন্ট" : "Partial Payment") :
           s.type === "bkash" ? (lang === "bn" ? "বিকাশ" : "bKash") :
           s.type === "bank" ? (lang === "bn" ? "ব্যাংক" : "Bank") :
           s.type === "credit" ? (lang === "bn" ? "বাকী" : "Credit") :
@@ -1371,7 +1495,7 @@ function SalesTab({
                     <div className="flex items-center justify-between">
                       <span className="font-bold text-purple-950 dark:text-purple-200 flex items-center gap-1.5">
                         <Split className="size-3.5 text-purple-600" />
-                        {lang === "bn" ? "আংশিক / মিক্সড পেমেন্ট হিসাব বিবরণ:" : "Partial / Split Payment Details:"}
+                        {lang === "bn" ? "স্প্লিট পেমেন্ট হিসাব বিবরণ:" : "Split Payment Details:"}
                       </span>
                       <span className="text-[10.5px] font-serif font-bold text-muted-foreground">
                         {lang === "bn" ? "মোট বিল:" : "Total Bill:"} ৳{s.sell_price}
@@ -1516,18 +1640,26 @@ function ReturnDialog({
     e.preventDefault();
     setBusy(true);
     try {
+      const q = Math.max(1, Math.min(Number(returnQty) || 1, Number(sale.qty) || 1));
+      const unitSell = Number(sale.sell_price) || 0;
+      const refund = unitSell * q;
       await createReturnFn({
         data: {
           sale_id: sale.id,
           product_id: sale.product_id,
-          qty: Number(returnQty) || 1,
-          refund_amount: (Number(sale.sell_price) || 0) * (Number(returnQty) || 1),
+          product_name: sale.product_name,
+          qty: q,
+          return_price: unitSell,
+          refund_amount: refund,
+          buy_price: Number(sale.buy_price) || 0,
+          deduct_cashbox: sale.type === "cash" || sale.type === "pos" || sale.type === "split",
         },
       });
       toast.success(lang === "bn" ? "পণ্য রিটার্ন সফল হয়েছে" : "Return processed successfully");
       qc.invalidateQueries({ queryKey: ["sales"] });
       qc.invalidateQueries({ queryKey: ["products"] });
       qc.invalidateQueries({ queryKey: ["cashbox"] });
+      qc.invalidateQueries({ queryKey: ["returns"] });
       onOpenChange(false);
     } catch (err: any) {
       toast.error(err?.message || "Return failed");

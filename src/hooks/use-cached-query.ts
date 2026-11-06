@@ -17,6 +17,20 @@ export function useCachedQuery<T>(
     queryFn: async () => {
       try {
         const data = await queryFn();
+        // Accounting data integrity safeguard:
+        // Never overwrite a valid cached list with an empty array if the device is offline
+        if (
+          typeof window !== "undefined" &&
+          !navigator.onLine &&
+          Array.isArray(data) &&
+          data.length === 0
+        ) {
+          const cachedData = readQueryCache<T>(queryKey as readonly unknown[]);
+          if (Array.isArray(cachedData) && cachedData.length > 0) {
+            console.warn("Device is offline, preserving existing non-empty cache for:", queryKey);
+            return cachedData;
+          }
+        }
         writeQueryCache(queryKey as readonly unknown[], data);
         return data;
       } catch (err) {
@@ -35,7 +49,7 @@ export function useCachedQuery<T>(
     gcTime: 60 * 60 * 1000,
     refetchOnWindowFocus: true,
     refetchOnMount: "always",
-    refetchInterval: 3000, // 3-second live heartbeat for real-time KPI & financial syncing
+    refetchInterval: 15000, // 15-second heartbeat for real-time syncing without overwhelming network
     refetchIntervalInBackground: false,
     ...options,
   });

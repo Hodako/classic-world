@@ -56,6 +56,7 @@ type NavItem = {
   labelKey: "home" | "products" | "sales" | "parties" | "settings" | "more" | "online_sell" | "cash_management" | "trackback" | "expenses" | "owner_expense" | "somiti" | "new_purchase" | "invoice_generator" | "due" | "profit" | "products_buy" | "losses" | "reports_generator" | "ai_audits" | "customers" | "theme_settings" | "sms" | "employees" | "bank_management";
   icon: React.ElementType;
   perm?: keyof PermissionSet;
+  customLabel?: string;
 };
 
 type NavGroup = { labelKey: "navigation" | "more" | "reports"; items: NavItem[] };
@@ -240,20 +241,23 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [router]);
 
-  if (loading && !user) return <SpeedLoader />;
-  if (!user) return null;
+  const [activeEmpSession, setActiveEmpSession] = useState<any>(null);
 
-  const perms = resolvePermissions(user.role, user.permissions);
-  const [activeEmpSession, setActiveEmpSession] = useState<any>(() => {
-    if (typeof window === "undefined") return null;
-    try {
-      return JSON.parse(localStorage.getItem("cw_active_employee_session") || "null");
-    } catch {
-      return null;
-    }
-  });
+  // Profile / ID Switcher State
+  const [modeSwitcherOpen, setModeSwitcherOpen] = useState(false);
+  const [createProfileOpen, setCreateProfileOpen] = useState(false);
+  const [newProfileName, setNewProfileName] = useState("");
+  const [isSwitchingProfile, setIsSwitchingProfile] = useState(false);
+
+  // Custom Entry Popup Widget State (PC & Global)
+  const [customEntryOpen, setCustomEntryOpen] = useState(false);
+  const [customEntryType, setCustomEntryType] = useState<CustomEntryType>("sale");
 
   useEffect(() => {
+    try {
+      setActiveEmpSession(JSON.parse(localStorage.getItem("cw_active_employee_session") || "null"));
+    } catch {}
+
     const handleEmpSwitch = () => {
       try {
         setActiveEmpSession(JSON.parse(localStorage.getItem("cw_active_employee_session") || "null"));
@@ -267,6 +271,21 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
+  useEffect(() => {
+    const handleOpenCustomEntry = (e: any) => {
+      if (e?.detail?.initialType) {
+        setCustomEntryType(e.detail.initialType);
+      }
+      setCustomEntryOpen(true);
+    };
+    window.addEventListener("open_custom_entry", handleOpenCustomEntry as EventListener);
+    return () => window.removeEventListener("open_custom_entry", handleOpenCustomEntry as EventListener);
+  }, []);
+
+  if (loading && !user) return <SpeedLoader />;
+  if (!user) return null;
+
+  const perms = resolvePermissions(user.role, user.permissions);
   const isEmployee = activeEmpSession ? true : user.role === "employee";
   const allowedPages = activeEmpSession?.allowedPages || (user as any).allowedPages;
 
@@ -302,27 +321,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   const brandName = user.business_name || "Classic World";
   const userInitials = user.email?.slice(0, 2).toUpperCase() ?? "CW";
-
-  // Profile / ID Switcher State
-  const [modeSwitcherOpen, setModeSwitcherOpen] = useState(false);
-  const [createProfileOpen, setCreateProfileOpen] = useState(false);
-  const [newProfileName, setNewProfileName] = useState("");
-  const [isSwitchingProfile, setIsSwitchingProfile] = useState(false);
-
-  // Custom Entry Popup Widget State (PC & Global)
-  const [customEntryOpen, setCustomEntryOpen] = useState(false);
-  const [customEntryType, setCustomEntryType] = useState<CustomEntryType>("sale");
-
-  useEffect(() => {
-    const handleOpenCustomEntry = (e: any) => {
-      if (e?.detail?.initialType) {
-        setCustomEntryType(e.detail.initialType);
-      }
-      setCustomEntryOpen(true);
-    };
-    window.addEventListener("open_custom_entry", handleOpenCustomEntry as EventListener);
-    return () => window.removeEventListener("open_custom_entry", handleOpenCustomEntry as EventListener);
-  }, []);
 
   const activeProfileId = user.activeProfile || "default";
   const profiles = user.profiles && user.profiles.length > 0
@@ -377,74 +375,72 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen min-h-dvh bg-transparent flex w-full app-shell">
-      {!isMobile && (
-        <Sidebar collapsible="icon" style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}>
-          <SidebarHeader className="border-b border-sidebar-border px-3 py-3 space-y-2">
-            <div className="flex items-center overflow-hidden group-data-[collapsible=icon]:justify-center">
-              <AppLogo size="md" className="h-11 max-w-[210px]" />
-            </div>
-            
-          </SidebarHeader>
+      <Sidebar collapsible="icon" className="hidden md:flex" style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}>
+        <SidebarHeader className="border-b border-sidebar-border px-3 py-3 space-y-2">
+          <div className="flex items-center overflow-hidden group-data-[collapsible=icon]:justify-center">
+            <AppLogo size="md" className="h-11 max-w-[210px]" />
+          </div>
+          
+        </SidebarHeader>
 
-          <SidebarContent>
-            {sidebarGroups.map(group => (
-              <SidebarGroup key={group.labelKey}>
-                <SidebarGroupLabel>{t(group.labelKey)}</SidebarGroupLabel>
-                <SidebarGroupContent>
-                  <SidebarMenu>
-                    {group.items.map(({ to, labelKey, icon: Icon }) => (
-                      <SidebarMenuItem key={`${to}-${labelKey}`}>
-                        <SidebarMenuButton
-                          isActive={isActive(to)}
-                          tooltip={t(labelKey)}
-                          asChild
-                        >
-                          <Link href={to} prefetch={true} className="flex items-center gap-2 w-full">
-                            <Icon className="icon-sm" />
-                            <span className="truncate text-left">{t(labelKey)}</span>
-                          </Link>
-                        </SidebarMenuButton>
-                      </SidebarMenuItem>
-                    ))}
-                  </SidebarMenu>
-                </SidebarGroupContent>
-              </SidebarGroup>
-            ))}
-          </SidebarContent>
+        <SidebarContent>
+          {sidebarGroups.map(group => (
+            <SidebarGroup key={group.labelKey}>
+              <SidebarGroupLabel>{t(group.labelKey)}</SidebarGroupLabel>
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  {group.items.map(({ to, labelKey, customLabel, icon: Icon }: any) => (
+                    <SidebarMenuItem key={`${to}-${labelKey}`}>
+                      <SidebarMenuButton
+                        isActive={isActive(to)}
+                        tooltip={customLabel || (labelKey ? t(labelKey) : to)}
+                        asChild
+                      >
+                        <Link href={to} prefetch={true} className="flex items-center gap-2 w-full">
+                          <Icon className="icon-sm hidden md:inline-flex" />
+                          <span className="truncate text-left">{customLabel || (labelKey ? t(labelKey) : to)}</span>
+                        </Link>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  ))}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+          ))}
+        </SidebarContent>
 
-          <SidebarFooter className="border-t border-sidebar-border">
-            <SidebarMenu>
-              <SidebarMenuItem>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <SidebarMenuButton size="lg" tooltip={user.email ?? "Account"}>
-                      <Avatar className="size-6 shrink-0">
-                        {user?.avatar_url ? (
-                          <img src={user.avatar_url} className="aspect-square h-full w-full object-cover rounded-full" alt="Profile" />
-                        ) : (
-                          <AvatarFallback className="text-[10px] bg-primary text-primary-foreground">{userInitials}</AvatarFallback>
-                        )}
-                      </Avatar>
-                      <span className="truncate text-sm">{user.email}</span>
-                    </SidebarMenuButton>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent side="top" align="start" className="w-52">
-                    <DropdownMenuLabel>{user.email}</DropdownMenuLabel>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem onClick={() => setLang("bn")}>বাংলা {lang === "bn" && "✓"}</DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => setLang("en")}>English {lang === "en" && "✓"}</DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem onClick={handleSignOut} className="text-destructive focus:text-destructive">
-                      <LogOut className="icon-sm mr-2" />
-                      {t("sign_out")}
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </SidebarMenuItem>
-            </SidebarMenu>
-          </SidebarFooter>
-        </Sidebar>
-      )}
+        <SidebarFooter className="border-t border-sidebar-border">
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <SidebarMenuButton size="lg" tooltip={user.email ?? "Account"}>
+                    <Avatar className="size-6 shrink-0">
+                      {user?.avatar_url ? (
+                        <img src={user.avatar_url} className="aspect-square h-full w-full object-cover rounded-full" alt="Profile" />
+                      ) : (
+                        <AvatarFallback className="text-[10px] bg-primary text-primary-foreground">{userInitials}</AvatarFallback>
+                      )}
+                    </Avatar>
+                    <span className="truncate text-sm">{user.email}</span>
+                  </SidebarMenuButton>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent side="top" align="start" className="w-52">
+                  <DropdownMenuLabel>{user.email}</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => setLang("bn")}>বাংলা {lang === "bn" && "✓"}</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setLang("en")}>English {lang === "en" && "✓"}</DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={handleSignOut} className="text-destructive focus:text-destructive">
+                    <LogOut className="icon-sm mr-2" />
+                    {t("sign_out")}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        </SidebarFooter>
+      </Sidebar>
 
       <div className="flex-1 flex flex-col min-w-0 min-h-screen relative">
         <header className="sticky top-0 inset-x-0 z-40 bg-card/98 backdrop-blur-md border-b border-border/50 shrink-0 shadow-xs" style={{ paddingTop: "max(env(safe-area-inset-top, 0px), 0px)" }}>
@@ -458,20 +454,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           )}
           <div className="flex items-center h-12 px-3 gap-2">
             <div className="flex items-center gap-2 min-w-0 flex-1">
-              {isMobile ? (
-                <div className="flex items-center gap-2 min-w-0 flex-1">
-                  <AppLogo size="sm" className="h-8 max-h-8 w-auto" />
-                  <span className="font-serif font-bold text-sm truncate text-foreground">{brandName}</span>
-                </div>
-              ) : (
-                <>
-                  <SidebarTrigger className="size-7 shrink-0" />
-                  <div className="min-w-0 flex items-center gap-2">
-                    <AppLogo size="sm" className="h-8 max-h-8 w-auto" />
-                    <h1 className="font-serif font-semibold text-base truncate leading-none text-foreground">{brandName}</h1>
-                  </div>
-                </>
-              )}
+              <SidebarTrigger className="hidden md:inline-flex size-7 shrink-0 cursor-pointer" />
+              <div className="min-w-0 flex items-center gap-2">
+                <AppLogo size="sm" className="h-8 max-h-8 w-auto" />
+                <h1 className="font-serif font-semibold text-sm sm:text-base truncate leading-none text-foreground">{brandName}</h1>
+              </div>
             </div>
 
             <div className="flex items-center gap-1 shrink-0">

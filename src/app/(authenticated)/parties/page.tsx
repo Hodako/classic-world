@@ -2,8 +2,16 @@
 
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { ChevronRight, UserPlus, Search, Users, Archive, Download } from "lucide-react";
-import { getParties, getSales, getAllPayments, getAllPartyReceivables, getAllPartyPayables, getAllPayableSettlements } from "@/lib/queries";
+import { ChevronRight, UserPlus, Search, Users, Archive, Download, ArrowDownLeft, ArrowUpRight } from "lucide-react";
+import {
+  getParties,
+  getSales,
+  getPurchases,
+  getAllPayments,
+  getAllPartyReceivables,
+  getAllPartyPayables,
+  getAllPayableSettlements,
+} from "@/lib/queries";
 import { useCachedQuery } from "@/hooks/use-cached-query";
 import { PaginationBar, paginate } from "@/components/ui/pagination-bar";
 import { useT } from "@/lib/i18n";
@@ -32,6 +40,7 @@ export default function PartiesPage() {
   const { lang, t } = useT();
   const parties = useCachedQuery(["parties"], getParties);
   const sales = useCachedQuery(["sales"], getSales);
+  const purchases = useCachedQuery(["purchases"], getPurchases);
   const allPayments = useCachedQuery(["all-payments"], getAllPayments);
   const allReceivables = useCachedQuery(["all-party-receivables"], getAllPartyReceivables);
   const allPayables = useCachedQuery(["all-party-payables"], getAllPartyPayables);
@@ -43,31 +52,43 @@ export default function PartiesPage() {
   const [activeTab, setActiveTab] = useState<"active" | "archived">("active");
   const pageSize = 10;
 
+  // Build sets of linked purchases in party_payables to avoid double counting
+  const linkedPurchaseRefIds = new Set(
+    (allPayables.data ?? []).map(p => (p as any).ref_id).filter(Boolean)
+  );
+
   const duesByParty: Record<string, number> = {};
   (sales.data ?? []).forEach(s => {
     if (s.party_id && !s.returned) {
-      duesByParty[s.party_id] = (duesByParty[s.party_id] ?? 0) + Number(s.due_amount);
+      duesByParty[s.party_id] = (duesByParty[s.party_id] ?? 0) + Number(s.due_amount || 0);
     }
   });
 
   const paidByParty: Record<string, number> = {};
   (allPayments.data ?? []).forEach(p => {
-    paidByParty[p.party_id] = (paidByParty[p.party_id] ?? 0) + Number(p.amount);
+    paidByParty[p.party_id] = (paidByParty[p.party_id] ?? 0) + Number(p.amount || 0);
   });
 
   const extraByParty: Record<string, number> = {};
   (allReceivables.data ?? []).forEach(r => {
-    extraByParty[r.party_id] = (extraByParty[r.party_id] ?? 0) + Number(r.amount);
+    extraByParty[r.party_id] = (extraByParty[r.party_id] ?? 0) + Number(r.amount || 0);
   });
 
   const payablesByParty: Record<string, number> = {};
   (allPayables.data ?? []).forEach(p => {
-    payablesByParty[p.party_id] = (payablesByParty[p.party_id] ?? 0) + Number(p.amount);
+    payablesByParty[p.party_id] = (payablesByParty[p.party_id] ?? 0) + Number(p.amount || 0);
+  });
+
+  // Reconcile credit purchases not already in party_payables
+  (purchases.data ?? []).forEach(p => {
+    if (p.party_id && p.payment_type === "credit" && !linkedPurchaseRefIds.has(p.id)) {
+      payablesByParty[p.party_id] = (payablesByParty[p.party_id] ?? 0) + Number(p.total || 0);
+    }
   });
 
   const settlementsByParty: Record<string, number> = {};
   (allSettlements.data ?? []).forEach(s => {
-    settlementsByParty[s.party_id] = (settlementsByParty[s.party_id] ?? 0) + Number(s.amount);
+    settlementsByParty[s.party_id] = (settlementsByParty[s.party_id] ?? 0) + Number(s.amount || 0);
   });
 
   const getPartyReceivable = (partyId: string) => {
@@ -89,6 +110,11 @@ export default function PartiesPage() {
   const totalPayable = onlySuppliers.reduce((sum, p) => {
     if (p.archived) return sum;
     return sum + getPartyPayable(p.id);
+  }, 0);
+
+  const totalReceivable = onlySuppliers.reduce((sum, p) => {
+    if (p.archived) return sum;
+    return sum + getPartyReceivable(p.id);
   }, 0);
 
   const filtered = onlySuppliers
@@ -122,12 +148,13 @@ export default function PartiesPage() {
 
   function exportParties(langCode: "en" | "bn") {
     const headers = langCode === "bn"
-      ? ["নাম", "ফোন নম্বর", "মোট বকেয়া", "আর্কাইভ করা"]
-      : ["Name", "Phone", "Total Payable (I Owe)", "Archived"];
+      ? ["নাম", "ফোন নম্বর", "আমাদের দেনা / বকেয়া", "আমাদের পাওনা", "আর্কাইভ করা"]
+      : ["Name", "Phone", "Total Payable (I Owe)", "Receivable (Party Owes)", "Archived"];
     const rows = filtered.map(p => [
       p.name,
       p.phone || "",
       getPartyPayable(p.id),
+      getPartyReceivable(p.id),
       p.archived
         ? (langCode === "bn" ? "হ্যাঁ" : "Yes")
         : (langCode === "bn" ? "না" : "No")
@@ -172,18 +199,34 @@ export default function PartiesPage() {
         </div>
       </div>
 
-      <Card className="p-3 beveled-kpi relative overflow-hidden">
-        <div className="absolute inset-x-0 top-0 h-[1.5px] bg-gradient-to-r from-transparent via-white/80 dark:via-white/20 to-transparent pointer-events-none z-10" />
-        <div className="flex items-center gap-3">
-          <div className="size-8 rounded-xl bg-primary grid place-items-center shrink-0 shadow-xs">
-            <Users className="icon-sm text-primary-foreground" />
+      <div className={`grid gap-3 ${totalReceivable > 0 ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-1"}`}>
+        <Card className="p-3 beveled-kpi relative overflow-hidden">
+          <div className="absolute inset-x-0 top-0 h-[1.5px] bg-gradient-to-r from-transparent via-rose-500/80 to-transparent pointer-events-none z-10" />
+          <div className="flex items-center gap-3">
+            <div className="size-9 rounded-xl bg-rose-500/15 text-rose-600 grid place-items-center shrink-0 shadow-xs">
+              <Users className="icon-sm text-rose-600" />
+            </div>
+            <div>
+              <div className="text-[10px] text-muted-foreground uppercase tracking-wide font-medium">{lang === "bn" ? "মোট বকেয়া (আমরা যা দেব)" : "Total Payable (I Owe)"}</div>
+              <div className="text-xl font-bold font-serif text-rose-600">{fmtMoney(totalPayable)}</div>
+            </div>
           </div>
-          <div>
-            <div className="text-[10px] text-muted-foreground uppercase tracking-wide font-medium">{lang === "bn" ? "মোট বকেয়া" : "Total Payable"}</div>
-            <div className="text-xl font-bold font-serif text-primary">{fmtMoney(totalPayable)}</div>
-          </div>
-        </div>
-      </Card>
+        </Card>
+        {totalReceivable > 0 && (
+          <Card className="p-3 beveled-kpi relative overflow-hidden">
+            <div className="absolute inset-x-0 top-0 h-[1.5px] bg-gradient-to-r from-transparent via-amber-500/80 to-transparent pointer-events-none z-10" />
+            <div className="flex items-center gap-3">
+              <div className="size-9 rounded-xl bg-amber-500/15 text-amber-600 grid place-items-center shrink-0 shadow-xs">
+                <ArrowDownLeft className="icon-sm text-amber-600" />
+              </div>
+              <div>
+                <div className="text-[10px] text-muted-foreground uppercase tracking-wide font-medium">{lang === "bn" ? "মোট পাওনা (পার্টি থেকে পাব)" : "Total Receivable (Party Owes)"}</div>
+                <div className="text-xl font-bold font-serif text-amber-600">{fmtMoney(totalReceivable)}</div>
+              </div>
+            </div>
+          </Card>
+        )}
+      </div>
 
       <div className="sticky top-0 z-10 bg-background border-b pb-2 pt-3 px-4">
         <div className="relative">
@@ -205,7 +248,15 @@ export default function PartiesPage() {
         </TabsList>
       </Tabs>
 
-      {parties.data && filtered.length === 0 && (
+      {parties.isLoading && (!parties.data || parties.data.length === 0) && (
+        <div className="space-y-2.5 py-4">
+          {[1, 2, 3, 4].map(i => (
+            <div key={i} className="h-16 rounded-xl border border-border/50 bg-muted/40 animate-pulse" />
+          ))}
+        </div>
+      )}
+
+      {!parties.isLoading && parties.data && filtered.length === 0 && (
         <Card className="p-10 text-center">
           <Users className="size-10 text-muted-foreground mx-auto mb-3" />
           <p className="text-sm text-muted-foreground">{t("no_parties")}</p>
@@ -258,9 +309,14 @@ export default function PartiesPage() {
                   <div className="text-right shrink-0 flex items-center gap-2">
                     <div className="flex flex-col items-end gap-0.5">
                       {payableOutstanding > 0 ? (
-                        <div>
-                          <span className="text-[9px] text-muted-foreground block">{lang === "bn" ? "বকেয়া" : "I owe"}</span>
+                        <div className="text-right">
+                          <span className="text-[9px] text-muted-foreground block">{lang === "bn" ? "দেনা / বকেয়া" : "Payable (I owe)"}</span>
                           <span className="text-xs font-bold text-rose-600 font-serif">{fmtMoney(payableOutstanding)}</span>
+                        </div>
+                      ) : outstanding > 0 ? (
+                        <div className="text-right">
+                          <span className="text-[9px] text-muted-foreground block">{lang === "bn" ? "পাওনা" : "Receivable"}</span>
+                          <span className="text-xs font-bold text-amber-600 font-serif">{fmtMoney(outstanding)}</span>
                         </div>
                       ) : (
                         <div>

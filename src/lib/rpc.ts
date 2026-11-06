@@ -19,10 +19,35 @@ export const API_BASE = (
 async function callRemoteRpc(actionName: string, args: any = {}): Promise<any> {
   const safeArgs = args ?? {};
   const url = `${API_BASE}/api/rpc`;
-  let token = typeof window !== "undefined" ? window.localStorage.getItem("auth_token") : null;
+  let token: string | null = typeof window !== "undefined" ? window.localStorage.getItem("auth_token") : null;
+  const isEmployeeSession = typeof window !== "undefined" && (
+    !!window.localStorage.getItem("cw_active_employee_session") ||
+    window.localStorage.getItem("cw_active_session_role") === "employee" ||
+    (token ? token.startsWith("token_emp_") : false)
+  );
 
-  // Auto-sync token with Firebase Auth or cached profile if token is missing
-  if (!token && typeof window !== "undefined" && actionName !== "firebaseAuthSyncFn" && actionName !== "loginFn" && actionName !== "registerFn") {
+  // Return local employee or mock session user immediately for getMeFn
+  if (actionName === "getMeFn") {
+    if (isEmployeeSession) {
+      const activeEmpRaw = window.localStorage.getItem("cw_active_employee_session") || window.localStorage.getItem("user");
+      if (activeEmpRaw) {
+        try {
+          return { user: JSON.parse(activeEmpRaw) };
+        } catch (_) {}
+      }
+    }
+    if (token && (token.startsWith("token_mock_") || !token.includes("."))) {
+      const profileRaw = window.localStorage.getItem("classicworld_auth_profile") || window.localStorage.getItem("cw-auth-profile");
+      if (profileRaw) {
+        try {
+          return { user: JSON.parse(profileRaw) };
+        } catch (_) {}
+      }
+    }
+  }
+
+  // Auto-sync token with Firebase Auth or cached profile if token is missing or non-JWT (only for store owner)
+  if (!isEmployeeSession && (!token || !token.includes(".")) && typeof window !== "undefined" && actionName !== "firebaseAuthSyncFn" && actionName !== "loginFn" && actionName !== "registerFn") {
     try {
       const { auth } = await import("@/lib/firebase");
       let syncEmail = auth.currentUser?.email;
@@ -98,7 +123,7 @@ async function callRemoteRpc(actionName: string, args: any = {}): Promise<any> {
   }
 
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 15000);
+  const timeoutId = setTimeout(() => controller.abort(), 4000);
 
   try {
     let res = await fetch(url, {
@@ -110,8 +135,8 @@ async function callRemoteRpc(actionName: string, args: any = {}): Promise<any> {
     });
     clearTimeout(timeoutId);
 
-    // Auto-refresh token and retry on 401 Unauthorized
-    if (res.status === 401 && typeof window !== "undefined" && actionName !== "firebaseAuthSyncFn" && actionName !== "loginFn") {
+    // Auto-refresh token and retry on 401 Unauthorized (only for store owner, never for employee session)
+    if (!isEmployeeSession && res.status === 401 && typeof window !== "undefined" && actionName !== "firebaseAuthSyncFn" && actionName !== "loginFn") {
       try {
         const { auth } = await import("@/lib/firebase");
         let syncEmail = auth.currentUser?.email;
@@ -206,149 +231,477 @@ async function callRemoteRpc(actionName: string, args: any = {}): Promise<any> {
   }
 }
 
+// Dispatcher for writing directly to Firestore (used offline, in employee sessions, and as mirror sync)
+async function executeFirestoreWriteAction(actionName: string, args: any): Promise<any> {
+  const safeArgs = args ?? {};
+  const data = safeArgs?.data ?? safeArgs;
+  const fs = await import("@/lib/firestore-service");
+
+  switch (actionName) {
+    case "createSaleFn":
+      return await fs.fsCreateSale(data);
+    case "editSaleFn":
+      return await fs.fsEditSale(data?.id, data);
+    case "deleteSaleFn":
+      return await fs.fsDeleteSale(data?.id);
+    case "approveCourierPaymentFn":
+      return await fs.fsApproveCourierPayment(data?.id);
+    case "cancelCourierOrderFn":
+      return await fs.fsCancelCourierOrder(data?.id);
+    case "acceptDigitalPaymentFn":
+      return await fs.fsAcceptDigitalPayment(data?.id);
+
+    case "createProductFn":
+      return await fs.fsCreateProduct(data);
+    case "updateProductFn":
+      return await fs.fsUpdateProduct(data?.id, data);
+    case "deleteProductFn":
+      return await fs.fsDeleteProduct(data?.id);
+    case "archiveProductFn":
+      return await fs.fsUpdateProduct(data?.id, { archived: data?.archived ?? true });
+    case "exchangeProductsFn":
+      return await fs.fsExchangeProducts(data);
+
+    case "createCustomerFn":
+      return await fs.fsCreateCustomer(data);
+    case "updateCustomerFn":
+      return await fs.fsUpdateCustomer(data?.id, data);
+    case "deleteCustomerFn":
+      return await fs.fsDeleteCustomer(data?.id);
+    case "archiveCustomerFn":
+      return await fs.fsArchiveCustomer(data?.id, data?.archived ?? true);
+
+    case "createPartyFn":
+      return await fs.fsCreateParty(data);
+    case "updatePartyFn":
+      return await fs.fsUpdateParty(data?.id, data);
+    case "deletePartyFn":
+      return await fs.fsDeleteParty(data?.id);
+    case "archivePartyFn":
+      return await fs.fsArchiveParty(data?.id, data?.archived ?? true);
+
+    case "createPurchaseFn":
+      return await fs.fsCreatePurchase(data);
+    case "editPurchaseFn":
+      return await fs.fsEditPurchase(data?.id, data);
+    case "deletePurchaseFn":
+      return await fs.fsDeletePurchase(data?.id);
+
+    case "createExpenseFn":
+      return await fs.fsCreateExpense(data);
+    case "deleteExpenseFn":
+      return await fs.fsDeleteExpense(data?.id);
+
+    case "createReturnFn":
+      return await fs.fsCreateReturn(data);
+    case "createDirectProductReturnFn":
+      return await fs.fsCreateReturn({ ...data, return_type: "direct" });
+    case "createPartyReturnFn":
+      return await fs.fsCreateReturn({ ...data, return_type: "party" });
+    case "deleteReturnFn":
+      return await fs.fsDeleteReturn(data?.id);
+
+    case "createPaymentFn":
+      return await fs.fsCreatePartyPayment(data);
+    case "deletePaymentFn":
+      return await fs.fsDeletePayment(data?.id);
+
+    case "createPartyReceivableFn":
+      return await fs.fsCreatePartyReceivable(data);
+    case "deletePartyReceivableFn":
+      return await fs.fsDeletePartyReceivable(data?.id);
+    case "createPartyPayableFn":
+      return await fs.fsCreatePartyPayable(data);
+    case "deletePartyPayableFn":
+      return await fs.fsDeletePartyPayable(data?.id);
+    case "createPayableSettlementFn":
+      return await fs.fsCreatePayableSettlement(data);
+    case "deletePayableSettlementFn":
+      return await fs.fsDeletePayableSettlement(data?.id);
+
+    case "createCashboxFn":
+      return await fs.fsCreateCashbox({
+        id: data?.id,
+        kind: data?.kind || "deposit",
+        amount: Number(data?.amount) || 0,
+        note: data?.note ?? null,
+        created_at: data?.created_at,
+        ref_id: data?.ref_id ?? null,
+      });
+    case "updateCashboxFn":
+      return await fs.fsUpdateCashbox(data?.id, data);
+    case "deleteCashboxFn":
+      return await fs.fsDeleteCashbox(data?.id);
+    case "repairCashboxDbFn":
+      return await fs.fsRepairCashbox();
+
+    case "createOwnerWalletEntryFn":
+      return await fs.fsCreateOwnerWalletEntry(data);
+    case "updateOwnerWalletEntryFn":
+      return await fs.fsUpdateOwnerWalletEntry(data?.id, data);
+    case "deleteOwnerWalletEntryFn":
+      return await fs.fsDeleteOwnerWalletEntry(data?.id);
+
+    case "createWithdrawalFn":
+      return await fs.fsCreateWithdrawal(data);
+    case "deleteWithdrawalFn":
+      return await fs.fsDeleteWithdrawal(data?.id);
+
+    case "createSomitiFn":
+      return await fs.fsCreateSomiti(data);
+    case "updateSomitiFn":
+      return await fs.fsUpdateSomiti(data?.id, data);
+    case "deleteSomitiFn":
+      return await fs.fsDeleteSomiti(data?.id);
+    case "renameSomitiFn":
+      return await fs.fsRenameSomiti(data);
+    case "deleteSomitiFnByName":
+      return await fs.fsDeleteSomitiByName(data);
+
+    case "createReminderFn":
+      return await fs.fsCreateReminder(data);
+    case "toggleReminderFn":
+      return await fs.fsToggleReminder(data?.id, data);
+    case "deleteReminderFn":
+      return await fs.fsDeleteReminder(data?.id);
+
+    case "createEmployeeFn":
+    case "addEmployeeFn":
+    case "createShopEmployeeFn":
+      return await fs.fsAddEmployee(data);
+    case "updateEmployeeFn":
+    case "updateShopEmployeeFn":
+      return await fs.fsUpdateEmployee(data?.id, data);
+    case "deleteEmployeeFn":
+    case "deleteShopEmployeeFn":
+      return await fs.fsDeleteEmployee(data?.id);
+    case "removeEmployeeFn":
+      return await fs.fsRemoveEmployee(data?.employeeId || data?.id);
+    case "inviteEmployeeByEmailFn":
+    case "sendEmployeeInvitationFn":
+      return await fs.fsSendEmployeeInvitation(data);
+    case "cancelEmployeeInvitationFn":
+      return await fs.fsCancelEmployeeInvitation(data?.id);
+
+    case "createEmployeeShoppingFn":
+      return await fs.fsCreateEmployeeShopping(data);
+    case "deleteEmployeeShoppingFn":
+      return await fs.fsDeleteEmployeeShopping(data?.id);
+
+    case "createEmployeeSalaryFn":
+      return await fs.fsCreateEmployeeSalary(data);
+    case "deleteEmployeeSalaryFn":
+      return await fs.fsDeleteEmployeeSalary(data?.id);
+
+    case "createEmployeeExpenseFn":
+      return await fs.fsCreateEmployeeExpense(data);
+    case "deleteEmployeeExpenseFn":
+      return await fs.fsDeleteEmployeeExpense(data?.id);
+
+    case "createBankAccountFn":
+      return await fs.fsCreateBankAccount(data);
+    case "updateBankAccountFn":
+      return await fs.fsUpdateBankAccount(data?.id, data);
+    case "deleteBankAccountFn":
+      return await fs.fsDeleteBankAccount(data?.id);
+    case "createBankTransactionFn":
+      return await fs.fsCreateBankTransaction(data);
+    case "createBankLoanFn":
+      return await fs.fsCreateBankLoan(data);
+    case "payBankLoanInstallmentFn":
+      return await fs.fsPayBankLoanInstallment(data);
+    case "deleteBankLoanFn":
+      return await fs.fsDeleteBankLoan(data?.id);
+
+    case "restoreRecycleItemFn":
+    case "restoreFromRecycleBinFn":
+      return await fs.fsRestoreFromRecycleBin(data?.id || data?.recycleDocId);
+    case "permanentDeleteRecycleItemFn":
+    case "permanentDeleteRecycleBinFn":
+      return await fs.fsPermanentDeleteRecycleBin(data?.id || data?.recycleDocId);
+
+    case "updateBusinessSettingsFn":
+      return await fs.fsUpdateBusinessSettings(data);
+    case "updateSmsSettingsFn":
+      return await fs.fsUpdateSmsSettings(data);
+    case "sendSmsCampaignFn":
+      return await fs.fsSendSmsCampaign(data);
+    case "deleteSmsLogFn":
+      return await fs.fsDeleteSmsLog(data?.id);
+    case "dismissAdminPopupFn":
+      return await fs.fsDismissAdminPopup(data?.popupId || data?.id);
+    case "toggleGoogleSheetsSyncFn":
+      return await fs.fsToggleGoogleSheetsSync(data);
+    case "generateOwnerLicenseKeyFn":
+      return await fs.fsGenerateOwnerLicenseKey(data);
+    case "generateEmployeeLicenseKeyFn":
+      return await fs.fsGenerateEmployeeLicenseKey(data);
+    case "revokeLicenseFn":
+      return await fs.fsRevokeLicense(data?.key || data?.licenseKey);
+    case "validateAndActivateLicenseFn":
+    case "activateLicenseFn":
+      return await fs.fsValidateAndActivateLicense(data?.licenseKey || data?.key, data?.userUid, data?.userEmail);
+    case "createProfileFn":
+      return await fs.fsCreateProfile(data);
+    case "switchProfileFn":
+      return await fs.fsSwitchProfile(data);
+    case "importProfileModuleFn":
+      return await fs.fsImportProfileModule(data);
+
+    default:
+      return { success: true, id: data?.id || crypto.randomUUID() };
+  }
+}
+
+// Dispatcher for reading directly from Firestore (used for employee sessions and offline fallback)
+async function executeFirestoreReadAction(name: string, args: any = {}): Promise<any> {
+  const safeArgs = args ?? {};
+  const data = safeArgs?.data || safeArgs;
+  const fs = await import("@/lib/firestore-service");
+
+  switch (name) {
+    case "loginFn":
+      return await fs.fsLogin(data);
+    case "registerFn":
+      return await fs.fsRegister(data);
+    case "firebaseAuthSyncFn":
+      return await fs.fsFirebaseAuthSync(data);
+    case "createProfileFn":
+      return await fs.fsCreateProfile(data);
+    case "switchProfileFn":
+      return await fs.fsSwitchProfile(data);
+    case "importProfileModuleFn":
+      return await fs.fsImportProfileModule(data);
+    case "logoutFn":
+      return { success: true };
+    case "changeMyPasswordFn":
+      return await fs.fsChangeMyPassword(data);
+    case "verifyOwnerPasswordFn":
+      return await fs.fsVerifyOwnerPassword(data);
+    case "uploadImageFn":
+      return await fs.fsUploadImage(data);
+    case "bulkExportToGoogleSheetsFn":
+      return await fs.fsBulkExportToGoogleSheets();
+    case "employeeLoginFn":
+      return await fs.fsEmployeeLogin(data);
+    case "getMeFn":
+      return await fs.fsGetMe();
+    case "getSalesFn":
+      return await fs.fsGetSales();
+    case "getProductsFn":
+      return await fs.fsGetProducts();
+    case "getCustomersFn":
+      return await fs.fsGetCustomers();
+    case "getCustomerFn": {
+      const allC = await fs.fsGetCustomers();
+      const targetId = data?.id;
+      return allC.find((c: any) => c.id === targetId) || null;
+    }
+    case "getPartiesFn":
+      return await fs.fsGetParties();
+    case "getPartyFn": {
+      const targetId = data?.id;
+      if (!targetId) return null;
+      try {
+        return await fs.fsGetParty(targetId);
+      } catch (err) {
+        const allP = await fs.fsGetParties();
+        return allP.find((p: any) => p.id === targetId) || null;
+      }
+    }
+    case "getPurchasesForPartyFn": {
+      const partyId = data?.partyId;
+      return await fs.fsGetPurchasesForParty(partyId);
+    }
+    case "getCashboxFn":
+      return await fs.fsGetCashbox();
+    case "getPurchasesFn":
+      return await fs.fsGetPurchases();
+    case "getExpensesFn":
+      return await fs.fsGetExpenses();
+    case "getOwnerWalletFn":
+      return await fs.fsGetOwnerWallet();
+    case "getWithdrawalsFn":
+      return await fs.fsGetWithdrawals();
+    case "getSomitiFn":
+      return await fs.fsGetSomiti();
+    case "getEmployeesFn":
+    case "listShopEmployeesFn":
+      return await fs.fsGetEmployees();
+    case "listEmployeeInvitationsFn":
+      return await fs.fsListEmployeeInvitations();
+    case "getMyPendingEmployeeInvitationsFn":
+      return [];
+    case "getReturnsFn":
+      return await fs.fsGetReturns();
+    case "getAllPaymentsFn":
+      return await fs.fsGetAllPayments();
+    case "getAllPartyReceivablesFn":
+      return await fs.fsGetAllPartyReceivables();
+    case "getAllPartyPayablesFn":
+      return await fs.fsGetAllPartyPayables();
+    case "getAllPayableSettlementsFn":
+      return await fs.fsGetAllPayableSettlements();
+    case "getPartyReceivablesFn": {
+      const partyId = data?.partyId;
+      const allRec = await fs.fsGetAllPartyReceivables();
+      return partyId ? allRec.filter((r: any) => r.party_id === partyId) : allRec;
+    }
+    case "getPartyPayablesFn": {
+      const partyId = data?.partyId;
+      const allPay = await fs.fsGetAllPartyPayables();
+      return partyId ? allPay.filter((p: any) => p.party_id === partyId) : allPay;
+    }
+    case "getPayableSettlementsFn": {
+      const partyId = data?.partyId;
+      const allSet = await fs.fsGetAllPayableSettlements();
+      return partyId ? allSet.filter((s: any) => s.party_id === partyId) : allSet;
+    }
+    case "getSalesForPartyFn": {
+      const partyId = data?.partyId;
+      const allSales = await fs.fsGetSales();
+      return partyId ? allSales.filter((s: any) => s.party_id === partyId) : allSales;
+    }
+    case "getPaymentsForPartyFn": {
+      const partyId = data?.partyId;
+      const allPayments = await fs.fsGetAllPayments();
+      return partyId ? allPayments.filter((p: any) => p.party_id === partyId) : allPayments;
+    }
+    case "getEmployeeSalariesFn":
+      return await fs.fsGetEmployeeSalaries();
+    case "getEmployeeExpensesFn":
+      return await fs.fsGetEmployeeExpenses();
+    case "getEmployeeShoppingsFn":
+      return await fs.fsGetEmployeeShoppings();
+    case "getBankAccountsFn":
+      return await fs.fsGetBankAccounts();
+    case "getBankLoansFn":
+      return await fs.fsGetBankLoans();
+    case "getRecycleBinFn":
+      return await fs.fsGetRecycleBin();
+    case "getRemindersFn":
+      return await fs.fsGetReminders();
+    case "getBusinessSettingsFn":
+      return await fs.fsGetBusinessSettings();
+    case "getSmsSettingsFn":
+      return await fs.fsGetSmsSettings();
+    case "checkSmsBalanceFn":
+      return await fs.fsCheckSmsBalance();
+    case "checkSmsDeliveryStatusFn":
+      return await fs.fsCheckSmsDeliveryStatus(data);
+    case "getSmsLogsFn":
+      return await fs.fsGetSmsLogs();
+    case "getActiveAdminPopupsFn":
+      return await fs.fsGetActiveAdminPopups();
+    case "listLicensesFn":
+      return await fs.fsListLicenses(data?.type);
+    case "emptyCashboxFn":
+      return await fs.fsEmptyCashbox();
+    case "resetProductsFn":
+      return await fs.fsResetProducts();
+    case "resetSalesFn":
+      return await fs.fsResetSales();
+    case "resetPurchasesFn":
+      return await fs.fsResetPurchases();
+    case "resetSomitiFn":
+      return await fs.fsResetSomiti();
+    case "resetExpensesFn":
+      return await fs.fsResetExpenses();
+    case "resetPartiesFn":
+      return await fs.fsResetParties();
+    case "resetAllDataFn":
+      return await fs.fsResetAllData();
+    case "getCommandHistoryFn":
+      return [];
+    default:
+      return [];
+  }
+}
+
 // Helper to determine if we are offline or if a network/auth error occurs
 async function runWriteAction<T>(actionName: string, args: any = {}): Promise<T | any> {
   const safeArgs = args ?? {};
+
+  // 1. Offline write: save to offline sync queue & local IndexedDB
   if (typeof window !== "undefined" && !navigator.onLine) {
     queueOfflineAction(actionName, safeArgs);
-    return { success: true, offline: true, id: crypto.randomUUID() };
-  }
-  try {
-    return await callRemoteRpc(actionName, safeArgs);
-  } catch (err: any) {
-    if (typeof window !== "undefined") {
-      const isFallbackable =
-        !navigator.onLine ||
-        err?.message?.includes("timed out") ||
-        err?.message?.includes("Failed to fetch") ||
-        err?.message?.includes("NetworkError") ||
-        err?.message?.includes("Unauthorized") ||
-        err?.message?.includes("401");
-
-      if (isFallbackable) {
-        console.warn(`Write action ${actionName} encountered error (${err?.message}), using local/Firestore fallback:`, err);
-        queueOfflineAction(actionName, safeArgs);
-        if (actionName === "createCashboxFn") {
-          try {
-            const { fsCreateCashbox } = await import("@/lib/firestore-service");
-            const fsRes = await fsCreateCashbox({
-              kind: safeArgs?.data?.kind || "deposit",
-              amount: Number(safeArgs?.data?.amount) || 0,
-              note: safeArgs?.data?.note ?? null,
-            });
-            return { success: true, offline: true, id: fsRes?.id || crypto.randomUUID() };
-          } catch (_) {}
-        }
-        if (actionName === "acceptDigitalPaymentFn") {
-          try {
-            const { fsAcceptDigitalPayment } = await import("@/lib/firestore-service");
-            const fsRes = await fsAcceptDigitalPayment(safeArgs?.data?.id);
-            return { success: true, offline: true, id: fsRes?.id || crypto.randomUUID() };
-          } catch (_) {}
-        }
-        if (actionName === "createOwnerWalletEntryFn") {
-          try {
-            const { fsCreateOwnerWalletEntry } = await import("@/lib/firestore-service");
-            const fsRes = await fsCreateOwnerWalletEntry(safeArgs?.data);
-            return { success: true, offline: true, id: fsRes?.id || crypto.randomUUID() };
-          } catch (_) {}
-        }
-        if (actionName === "updateOwnerWalletEntryFn") {
-          try {
-            const { fsUpdateOwnerWalletEntry } = await import("@/lib/firestore-service");
-            await fsUpdateOwnerWalletEntry(safeArgs?.data?.id, safeArgs?.data);
-            return { success: true, offline: true };
-          } catch (_) {}
-        }
-        if (actionName === "deleteOwnerWalletEntryFn") {
-          try {
-            const { fsDeleteOwnerWalletEntry } = await import("@/lib/firestore-service");
-            await fsDeleteOwnerWalletEntry(safeArgs?.data?.id);
-            return { success: true, offline: true };
-          } catch (_) {}
-        }
-        return { success: true, offline: true, id: crypto.randomUUID() };
-      }
+    try {
+      const fsRes = await executeFirestoreWriteAction(actionName, safeArgs);
+      return fsRes ?? { success: true, offline: true, id: safeArgs?.data?.id || crypto.randomUUID() };
+    } catch (_) {
+      return { success: true, offline: true, id: safeArgs?.data?.id || crypto.randomUUID() };
     }
+  }
+
+  // 2. Direct Firestore write — sub-100ms local IndexedDB commit and real-time cloud sync
+  try {
+    const fsRes = await executeFirestoreWriteAction(actionName, safeArgs);
+    return fsRes ?? { success: true, id: safeArgs?.data?.id || crypto.randomUUID() };
+  } catch (err: any) {
+    if (typeof window !== "undefined" && !navigator.onLine) {
+      queueOfflineAction(actionName, safeArgs);
+      return { success: true, offline: true, id: safeArgs?.data?.id || crypto.randomUUID() };
+    }
+    console.error(`Firestore write error for ${actionName}:`, err);
     throw err;
   }
 }
 
+const THROWING_READ_ACTIONS = new Set([
+  "loginFn",
+  "employeeLoginFn",
+  "registerFn",
+  "firebaseAuthSyncFn",
+  "createProfileFn",
+  "switchProfileFn",
+  "importProfileModuleFn",
+  "changeMyPasswordFn",
+  "verifyOwnerPasswordFn",
+  "uploadImageFn",
+  "emptyCashboxFn",
+  "resetProductsFn",
+  "resetSalesFn",
+  "resetPurchasesFn",
+  "resetSomitiFn",
+  "resetExpensesFn",
+  "resetPartiesFn",
+  "resetAllDataFn",
+]);
+
 async function runReadAction(name: string, args: any = {}): Promise<any> {
   const safeArgs = args ?? {};
-  try {
-    const res = await callRemoteRpc(name, safeArgs);
-    if (Array.isArray(res) && res.length === 0 && typeof window !== "undefined") {
-      if (name === "getOwnerWalletFn") {
-        try {
-          const { fsGetOwnerWallet } = await import("@/lib/firestore-service");
-          const fsData = await fsGetOwnerWallet();
-          if (Array.isArray(fsData) && fsData.length > 0) return fsData;
-        } catch (_) {}
-      }
-    }
-    return res;
-  } catch (err: any) {
-    if (typeof window !== "undefined") {
-      try {
-        if (name === "getOwnerWalletFn") {
-          const { fsGetOwnerWallet } = await import("@/lib/firestore-service");
-          return await fsGetOwnerWallet();
-        }
-        if (name === "getExpensesFn") {
-          const { fsGetExpenses } = await import("@/lib/firestore-service");
-          return await fsGetExpenses();
-        }
-        if (name === "getSalesFn") {
-          const { fsGetSales } = await import("@/lib/firestore-service");
-          return await fsGetSales();
-        }
-        if (name === "getPurchasesFn") {
-          const { fsGetPurchases } = await import("@/lib/firestore-service");
-          return await fsGetPurchases();
-        }
-        if (name === "getCashboxFn") {
-          const { fsGetCashbox } = await import("@/lib/firestore-service");
-          return await fsGetCashbox();
-        }
-        if (name === "getWithdrawalsFn") {
-          const { fsGetWithdrawals } = await import("@/lib/firestore-service");
-          return await fsGetWithdrawals();
-        }
-        if (name === "getSomitiFn") {
-          const { fsGetSomiti } = await import("@/lib/firestore-service");
-          return await fsGetSomiti();
-        }
-        if (name === "getPartiesFn") {
-          const { fsGetParties } = await import("@/lib/firestore-service");
-          return await fsGetParties();
-        }
-        if (name === "getCustomersFn") {
-          const { fsGetCustomers } = await import("@/lib/firestore-service");
-          return await fsGetCustomers();
-        }
-        if (name === "getAllPaymentsFn") {
-          const { fsGetAllPayments } = await import("@/lib/firestore-service");
-          return await fsGetAllPayments();
-        }
-        if (name === "getReturnsFn") {
-          const { fsGetReturns } = await import("@/lib/firestore-service");
-          return await fsGetReturns();
-        }
-        if (name === "getRemindersFn") {
-          const { fsGetReminders } = await import("@/lib/firestore-service");
-          return await fsGetReminders();
-        }
-        if (name === "getProductsFn") {
-          const { fsGetProducts } = await import("@/lib/firestore-service");
-          return await fsGetProducts();
-        }
-      } catch (fsErr) {
-        console.warn(`Firestore read fallback error for ${name}:`, fsErr);
-      }
-    }
-    throw err;
+  if (name === "getMeFn" && typeof window !== "undefined" && localStorage.getItem("cw_employee_device_link_id")) {
+    const { getLinkedEmployeeSession } = await import("./employee-device-link");
+    return getLinkedEmployeeSession();
   }
+
+  // Return local employee user immediately for getMeFn
+  if (name === "getMeFn" && typeof window !== "undefined") {
+    const activeEmpRaw = window.localStorage.getItem("cw_active_employee_session") || window.localStorage.getItem("user");
+    if (activeEmpRaw) {
+      try {
+        const u = JSON.parse(activeEmpRaw);
+        if (u?.role === "employee") {
+          return { user: u };
+        }
+      } catch (_) {}
+    }
+  }
+
+  // Direct Firestore read — instant local IndexedDB + background cloud sync (zero remote latency)
+  try {
+    const fsRes = await executeFirestoreReadAction(name, safeArgs);
+    if (fsRes !== undefined) return fsRes;
+  } catch (fsErr) {
+    console.warn(`Firestore read error for ${name}:`, fsErr);
+    if (THROWING_READ_ACTIONS.has(name)) {
+      throw fsErr;
+    }
+  }
+
+  // Return empty array for list queries rather than failing completely
+  if (name.endsWith("sFn") || name.startsWith("list")) return [];
+  return null;
 }
 
 // Action factories
@@ -373,6 +726,7 @@ export const getSalesFn = makeReadAction("getSalesFn");
 export const getSalesForPartyFn = makeReadAction("getSalesForPartyFn");
 export const getReturnsFn = makeReadAction("getReturnsFn");
 export const getPurchasesFn = makeReadAction("getPurchasesFn");
+export const getPurchasesForPartyFn = makeReadAction("getPurchasesForPartyFn");
 export const getExpensesFn = makeReadAction("getExpensesFn");
 export const getPaymentsForPartyFn = makeReadAction("getPaymentsForPartyFn");
 export const getAllPaymentsFn = makeReadAction("getAllPaymentsFn");

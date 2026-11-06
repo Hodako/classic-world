@@ -100,7 +100,10 @@ export default function DuesPage() {
 
   const receivablesByParty: Record<string, number> = {};
   (allReceivables.data ?? []).forEach(r => {
-    receivablesByParty[r.party_id] = (receivablesByParty[r.party_id] ?? 0) + Number(r.amount);
+    // Only count standalone receivables (not auto-created linked sale dues which are already in duesByParty)
+    if (!r.ref_id) {
+      receivablesByParty[r.party_id] = (receivablesByParty[r.party_id] ?? 0) + Number(r.amount);
+    }
   });
 
   const paidByParty: Record<string, number> = {};

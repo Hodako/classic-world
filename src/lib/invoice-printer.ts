@@ -46,13 +46,14 @@ export interface PrintInvoiceParams {
 /**
  * Clean Thermal POS Receipt Print Engine (Optimized for 58mm/80mm Thermal Printers & A4)
  */
-export function printPwaInvoice(data: PrintInvoiceParams) {
+export async function printPwaInvoice(data: PrintInvoiceParams) {
   const now = new Date();
   const dateStr = data.invoiceDate || fmtDateTime(now);
 
-  const is58mm = data.pageSize === "58mm" || !data.pageSize || data.pageSize === "80mm";
-  const targetWidth = is58mm ? "54mm" : "100%";
-  const pageSizeRule = is58mm ? "58mm auto" : `${data.pageSize || "A4"} portrait`;
+  const is58mm = data.pageSize === "58mm" || !data.pageSize;
+  const is80mm = data.pageSize === "80mm";
+  const targetWidth = is58mm ? "54mm" : is80mm ? "76mm" : "100%";
+  const pageSizeRule = is58mm ? "58mm auto" : is80mm ? "80mm auto" : `${data.pageSize || "A4"} portrait`;
 
   const itemsRowsHtml = data.items
     .map(
@@ -266,6 +267,32 @@ export function printPwaInvoice(data: PrintInvoiceParams) {
   </div>
 </body>
 </html>`;
+
+  // 1-Click Direct Silent Printing for Windows Desktop App & Local POS Bridge
+  if (typeof window !== "undefined") {
+    const win = window as any;
+    if (win.electronPOS && typeof win.electronPOS.printSilent === "function") {
+      try {
+        await win.electronPOS.printSilent({ html, pageSize: data.pageSize });
+        return;
+      } catch (err) {
+        console.warn("[POS Print] electronPOS.printSilent error:", err);
+      }
+    }
+
+    try {
+      const bridgeRes = await fetch("http://127.0.0.1:9123/print", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ html, pageSize: data.pageSize }),
+      });
+      if (bridgeRes.ok) {
+        return;
+      }
+    } catch (_) {
+      // Bridge not active
+    }
+  }
 
   const iframe = document.createElement("iframe");
   iframe.style.position = "fixed";
@@ -487,6 +514,12 @@ export async function downloadPwaInvoicePdf(data: PrintInvoiceParams, openInNewT
       currentY += 3.5;
     }
 
+    if ((data.changeAmount || 0) > 0) {
+      pdf.text("Change:", margin, currentY);
+      pdf.text(`Tk ${(data.changeAmount || 0).toLocaleString()}`, pageWidth - margin, currentY, { align: "right" });
+      currentY += 3.5;
+    }
+
     // Payment method
     pdf.setFont("helvetica", "normal");
     pdf.setFontSize(isThermal58 ? 6 : 7);
@@ -626,6 +659,14 @@ export async function downloadPwaInvoicePdf(data: PrintInvoiceParams, openInNewT
       pdf.setTextColor(225, 29, 72);
       pdf.text("Due Amount:", labelCol, currentY);
       pdf.text(`Tk ${data.due.toLocaleString()}`, rightCol, currentY, { align: "right" });
+      currentY += 5;
+    }
+
+    if ((data.changeAmount || 0) > 0) {
+      pdf.setFont("helvetica", "bold");
+      pdf.setTextColor(217, 119, 6);
+      pdf.text("Change Return:", labelCol, currentY);
+      pdf.text(`Tk ${(data.changeAmount || 0).toLocaleString()}`, rightCol, currentY, { align: "right" });
       currentY += 5;
     }
 

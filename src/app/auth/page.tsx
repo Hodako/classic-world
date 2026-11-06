@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { AppLogo } from "@/components/app-logo";
+import { EmployeeDeviceCodeForm } from "@/components/employee-device-link";
 import { SpeedLoader } from "@/components/speed-loader";
 import { useAuth } from "@/hooks/use-auth";
 import { useT } from "@/lib/i18n";
@@ -32,9 +33,7 @@ export default function AuthPage() {
   const [mounted, setMounted] = useState(false);
 
   // Active Main Tab: Owner vs Employee
-  const [mainRole, setMainRole] = useState<"owner" | "employee" | "pin">("owner");
-  const [quickPin, setQuickPin] = useState("");
-  const [quickPinShake, setQuickPinShake] = useState(false);
+  const [mainRole, setMainRole] = useState<"owner" | "employee">("owner");
 
   // Owner Auth State (Phone or Email)
   const [ownerMode, setOwnerMode] = useState<"signin" | "signup">("signin");
@@ -65,7 +64,7 @@ export default function AuthPage() {
     setMounted(true);
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
-      if (params.get("role") === "employee" || params.get("tab") === "employee") {
+      if (params.get("role") !== "owner" && (window.location.pathname === "/login" || params.get("role") === "employee" || params.get("tab") === "employee")) {
         setMainRole("employee");
       }
     }
@@ -83,73 +82,16 @@ export default function AuthPage() {
   if (user && !onboardingUser) return <SpeedLoader />;
 
   
-  const handlePinDigit = (digit: string) => {
-    if (quickPin.length < 6) {
-      const next = quickPin + digit;
-      setQuickPin(next);
-      if (next.length === 4) {
-        verifyQuickPinInput(next);
-      }
-    }
-  };
 
-  const verifyQuickPinInput = async (pinToTest: string) => {
-    const ownerPin = (typeof window !== "undefined" ? localStorage.getItem("app_pin_code_val") : null) || "1234";
-
-    if (pinToTest.trim() === ownerPin.trim()) {
-      sessionStorage.setItem("app_pin_unlocked", "true");
-      localStorage.removeItem("cw_active_employee_session");
-      localStorage.setItem("cw_active_session_role", "owner");
-      window.dispatchEvent(new Event("hz-employee-switched"));
-      toast.success(lang === "bn" ? "মালিক পিন সঠিক হয়েছে!" : "Owner PIN verified!");
-      router.replace("/dashboard");
+  function afterAuth(u: AuthUser | null, token?: string) {
+    if (!u) {
+      toast.error(lang === "bn" ? "লগইন ব্যর্থ হয়েছে, আবার চেষ্টা করুন" : "Authentication failed. Please try again.");
       return;
     }
-
-    try {
-      const empsRaw = localStorage.getItem("cw_employee_accounts");
-      if (empsRaw) {
-        const emps = JSON.parse(empsRaw);
-        if (Array.isArray(emps)) {
-          const matchedEmp = emps.find((e: any) => String(e.pin || e.password || "").trim() === pinToTest.trim());
-          if (matchedEmp) {
-            sessionStorage.setItem("app_pin_unlocked", "true");
-            localStorage.setItem("cw_active_employee_session", JSON.stringify(matchedEmp));
-            localStorage.setItem("cw_active_session_role", "employee");
-            window.dispatchEvent(new Event("hz-employee-switched"));
-            toast.success(lang === "bn" ? `পিন সঠিক হয়েছে! স্বাগতম (${matchedEmp.name})` : `PIN verified! Welcome ${matchedEmp.name}`);
-            router.replace("/dashboard");
-            return;
-          }
-        }
-      }
-    } catch (_) {}
-
-    try {
-      const res = await employeeLoginFn({
-        data: {
-          username: "employee",
-          password: pinToTest.trim(),
-        },
-      });
-      if (res && res.user) {
-        sessionStorage.setItem("app_pin_unlocked", "true");
-        afterAuth(res.user as AuthUser);
-        return;
-      }
-    } catch (_) {}
-
-    setQuickPinShake(true);
-    setTimeout(() => {
-      setQuickPinShake(false);
-      setQuickPin("");
-    }, 500);
-    toast.error(lang === "bn" ? "ভুল পিন কোড! ৪-সংখ্যার সঠিক পিন দিন।" : "Incorrect 4-digit PIN! Please try again.");
-  };
-
-  function afterAuth(u: AuthUser | null) {
-    if (!u) return;
-    login(u);
+    if (typeof window !== "undefined") {
+      sessionStorage.setItem("app_pin_unlocked", "true");
+    }
+    login(u, token);
     if (u.role === "owner" && !u.business_name) {
       setOnboardingUser(u);
     } else {
@@ -218,21 +160,56 @@ export default function AuthPage() {
 
     setBusy(true);
     try {
+      let fbVerified = false;
       // If user typed an email address, also sync with Firebase Auth if available
       if (cleanId.includes("@")) {
         try {
           await signInWithEmailAndPassword(auth, cleanId.toLowerCase(), password);
+          fbVerified = true;
         } catch (fbErr: any) {
-          if (fbErr.code === "auth/user-not-found" || fbErr.code === "auth/invalid-credential") {
+          if (fbErr.code === "auth/user-not-found") {
             try {
               await createUserWithEmailAndPassword(auth, cleanId.toLowerCase(), password);
+              fbVerified = true;
             } catch {}
           }
         }
       }
 
-      const data = await loginFn({ data: { identifier: cleanId, password } });
-      afterAuth(data.user as AuthUser);
+      let data: any = null;
+      try {
+        data = await loginFn({ data: { identifier: cleanId, password } });
+      } catch (loginErr: any) {
+        if (fbVerified && auth.currentUser?.email) {
+          data = await firebaseAuthSyncFn({
+            data: {
+              email: auth.currentUser.email,
+              fullName: auth.currentUser.displayName || undefined,
+              photoUrl: auth.currentUser.photoURL || undefined,
+              firebaseUid: auth.currentUser.uid,
+            },
+          });
+          try {
+            const { changeMyPasswordFn } = await import("@/lib/rpc");
+            await changeMyPasswordFn({ data: { newPassword: password } });
+          } catch {}
+        } else {
+          throw loginErr;
+        }
+      }
+
+      if (!data?.user) {
+        throw new Error(lang === "bn" ? "ভুল ইমেইল/মোবাইল নম্বর বা পাসওয়ার্ড" : "Invalid email/phone number or password");
+      }
+
+      // Ensure Firebase user exists if login succeeded with email
+      if (cleanId.includes("@") && !fbVerified) {
+        try {
+          await createUserWithEmailAndPassword(auth, cleanId.toLowerCase(), password);
+        } catch {}
+      }
+
+      afterAuth(data.user as AuthUser, data.token);
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Login failed. Please check your credentials.");
     } finally {
@@ -273,9 +250,13 @@ export default function AuthPage() {
         },
       });
 
+      if (!data?.user) {
+        throw new Error("Registration failed. Please try again.");
+      }
+
       toast.success(lang === "bn" ? "দোকান মালিক অ্যাকাউন্ট সফলভাবে তৈরি হয়েছে!" : "Shop Owner account created successfully!");
       const u = data.user as AuthUser;
-      login(u);
+      login(u, data.token);
       setOnboardingUser(u);
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Registration failed");
@@ -288,28 +269,48 @@ export default function AuthPage() {
   async function handleEmployeeSignIn(e: React.FormEvent) {
     e.preventDefault();
     const cleanId = empIdentifier.trim();
-    if (!cleanId || !empPassword) {
-      toast.error(lang === "bn" ? "ইউজারনেম/মোবাইল নম্বর ও পাসওয়ার্ড লিখুন" : "Please enter username/phone and password");
+    const cleanPwd = empPassword.trim();
+    if (!cleanId && !cleanPwd) {
+      toast.error(lang === "bn" ? "ইউজারনেম/মোবাইল নম্বর ও পিন লিখুন" : "Please enter username/phone and PIN");
       return;
     }
 
     setBusy(true);
     try {
-      // First try employee login
-      const data = await employeeLoginFn({
-        data: {
-          username: cleanId,
-          password: empPassword,
-        },
-      });
+      let data: any = null;
+      // 1. Direct Firestore employee authentication (handles default PIN & shop employees)
+      try {
+        const { fsEmployeeLogin } = await import("@/lib/firestore-service");
+        data = await fsEmployeeLogin({
+          username: cleanId || cleanPwd,
+          password: cleanPwd || cleanId,
+        });
+      } catch (fsErr: any) {
+        // 2. Fallback to remote RPC
+        try {
+          data = await employeeLoginFn({
+            data: {
+              username: cleanId,
+              password: cleanPwd,
+            },
+          });
+        } catch (rpcErr) {
+          throw fsErr || rpcErr;
+        }
+      }
+      if (!data?.user) {
+        throw new Error("Invalid employee credentials");
+      }
       toast.success(lang === "bn" ? "কর্মচারী হিসেবে সফলভাবে লগইন হয়েছে!" : "Employee signed in successfully!");
-      afterAuth(data.user as AuthUser);
+      afterAuth(data.user as AuthUser, data.token);
     } catch (err: unknown) {
       // Fallback to standard login if account is registered via general auth
       try {
         const data = await loginFn({ data: { identifier: cleanId, password: empPassword } });
-        afterAuth(data.user as AuthUser);
-        return;
+        if (data?.user) {
+          afterAuth(data.user as AuthUser, data.token);
+          return;
+        }
       } catch {}
       toast.error(err instanceof Error ? err.message : "Employee login failed. Please check credentials.");
     } finally {
@@ -350,8 +351,12 @@ export default function AuthPage() {
         },
       });
 
+      if (!data?.user) {
+        throw new Error("Employee registration failed");
+      }
+
       toast.success(lang === "bn" ? "কর্মচারী অ্যাকাউন্ট তৈরি হয়েছে! লগইন সফল।" : "Employee account created! Signed in successfully.");
-      afterAuth(data.user as AuthUser);
+      afterAuth(data.user as AuthUser, data.token);
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Employee registration failed");
     } finally {
@@ -378,8 +383,12 @@ export default function AuthPage() {
         },
       });
 
+      if (!data?.user) {
+        throw new Error("Failed to synchronize Google account");
+      }
+
       toast.success(lang === "bn" ? "গুগল দিয়ে সফলভাবে সাইন ইন হয়েছে!" : "Google sign-in successful!");
-      afterAuth(data.user as AuthUser);
+      afterAuth(data.user as AuthUser, data.token);
     } catch (err: any) {
       if (err.code === "auth/popup-closed-by-user" || err.code === "auth/cancelled-popup-request") {
         return;
@@ -483,11 +492,11 @@ export default function AuthPage() {
         <div className="w-full max-w-md mx-auto my-auto py-2 sm:py-4">
           <div className="p-5 sm:p-7 rounded-3xl bg-card border border-border shadow-xl space-y-5">
             {/* Top Primary Tab: Shop Owner vs Employee */}
-            <div className="grid grid-cols-3 p-1 bg-muted/80 rounded-2xl border border-border/80 text-[11px] sm:text-xs font-semibold gap-1">
+            <div className="grid grid-cols-2 p-1 bg-muted/80 rounded-2xl border border-border/80 text-[11px] sm:text-xs font-semibold gap-1">
               <button
                 type="button"
                 onClick={() => setMainRole("owner")}
-                className={`py-2 rounded-xl flex items-center justify-center gap-1 transition-all cursor-pointer ${
+                className={`py-2 rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
                   mainRole === "owner"
                     ? "bg-card text-[#F7931A] dark:text-[#F7931A] shadow-sm font-bold border border-[#F7931A]/35"
                     : "text-muted-foreground hover:text-foreground"
@@ -500,101 +509,23 @@ export default function AuthPage() {
               <button
                 type="button"
                 onClick={() => setMainRole("employee")}
-                className={`py-2 rounded-xl flex items-center justify-center gap-1 transition-all cursor-pointer ${
+                className={`py-2 rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
                   mainRole === "employee"
                     ? "bg-card text-emerald-600 dark:text-[#CCFF00] shadow-sm font-bold border border-emerald-500/30 dark:border-[#CCFF00]/40"
                     : "text-muted-foreground hover:text-foreground"
                 }`}
               >
                 <UserCheck className="size-3.5 text-emerald-500 dark:text-[#CCFF00] shrink-0" />
-                <span className="truncate">{lang === "bn" ? "কর্মচারী" : "Staff"}</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setMainRole("pin")}
-                className={`py-2 rounded-xl flex items-center justify-center gap-1 transition-all cursor-pointer ${
-                  mainRole === "pin"
-                    ? "bg-card text-[#F7931A] dark:text-[#F7931A] shadow-sm font-bold border border-[#F7931A]/35"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                <Lock className="size-3.5 text-[#F7931A] shrink-0" />
-                <span className="truncate">{lang === "bn" ? "পিন আনলক" : "Quick PIN"}</span>
+                <span className="truncate">{lang === "bn" ? "কর্মচারী / স্টাফ" : "Staff Member"}</span>
               </button>
             </div>
 
             {/* ══════════════════════════════════════════════════════════════════════ */}
             {/* 1. EMPLOYEE AUTHENTICATION VIEW                                      */}
             {/* ══════════════════════════════════════════════════════════════════════ */}
-            {mainRole === "pin" ? (
-              <div className={`space-y-4 text-center ${quickPinShake ? "animate-shake" : ""}`}>
-                <div className="space-y-1">
-                  <div className="mx-auto size-12 rounded-2xl bg-amber-500/10 border border-amber-500/25 flex items-center justify-center text-amber-600 shadow-sm">
-                    <Lock className="size-6 text-amber-600" />
-                  </div>
-                  <h1 className="text-lg sm:text-xl font-serif font-bold text-foreground">
-                    {lang === "bn" ? "৪-সংখ্যার সিকিউরিটি পিন দিন" : "Quick PIN Unlock"}
-                  </h1>
-                  <p className="text-xs text-muted-foreground">
-                    {lang === "bn" ? "মালিক বা কর্মচারীর পিন প্রবেশ করিয়ে সরাসরি আনলক করুন" : "Enter owner or staff 4-digit PIN to directly access POS"}
-                  </p>
-                </div>
-
-                {/* PIN Dots Indicator */}
-                <div className="flex items-center justify-center gap-3 py-1">
-                  {[0, 1, 2, 3].map((i) => (
-                    <div
-                      key={i}
-                      className={`size-4 rounded-full border-2 transition-all duration-150 ${
-                        i < quickPin.length
-                          ? "bg-amber-500 border-amber-500 scale-110 shadow-xs shadow-amber-500/50"
-                          : "border-muted-foreground/30 bg-muted/20"
-                      }`}
-                    />
-                  ))}
-                </div>
-
-                {/* Numeric Keypad */}
-                <div className="grid grid-cols-3 gap-2 w-full max-w-[260px] mx-auto pt-1">
-                  {["1", "2", "3", "4", "5", "6", "7", "8", "9"].map((digit) => (
-                    <button
-                      key={digit}
-                      type="button"
-                      onClick={() => handlePinDigit(digit)}
-                      className="h-12 rounded-xl bg-card border border-border/80 text-foreground font-bold text-lg hover:bg-amber-500/10 hover:border-amber-500/40 active:scale-95 transition-all shadow-2xs flex items-center justify-center cursor-pointer"
-                    >
-                      {digit}
-                    </button>
-                  ))}
-
-                  <button
-                    type="button"
-                    onClick={() => setQuickPin("")}
-                    className="h-12 rounded-xl bg-muted/40 text-muted-foreground font-semibold text-xs hover:bg-muted/80 active:scale-95 transition-all flex items-center justify-center cursor-pointer"
-                  >
-                    {lang === "bn" ? "মুছুন" : "Clear"}
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => handlePinDigit("0")}
-                    className="h-12 rounded-xl bg-card border border-border/80 text-foreground font-bold text-lg hover:bg-amber-500/10 hover:border-amber-500/40 active:scale-95 transition-all shadow-2xs flex items-center justify-center cursor-pointer"
-                    >
-                      0
-                    </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setQuickPin((p) => p.slice(0, -1))}
-                    className="h-12 rounded-xl bg-muted/40 text-muted-foreground font-semibold text-xs hover:bg-muted/80 active:scale-95 transition-all flex items-center justify-center cursor-pointer"
-                  >
-                    ⌫
-                  </button>
-                </div>
-              </div>
-            ) : mainRole === "employee" ? (
+            {mainRole === "employee" ? (
               <div className="space-y-4">
+                <EmployeeDeviceCodeForm onLinked={afterAuth} />
                 <div className="text-center space-y-1">
                   <h1 className="text-lg sm:text-xl font-serif font-bold text-foreground">
                     {empMode === "signin"
@@ -652,7 +583,7 @@ export default function AuthPage() {
                       <div className="flex items-center justify-between">
                         <Label className="text-xs font-semibold text-foreground flex items-center gap-1.5">
                           <Lock className="size-3.5 text-slate-400 dark:text-zinc-500" />
-                          <span>{t("password")}</span>
+                          <span>{lang === "bn" ? "পিন বা পাসওয়ার্ড" : "PIN or Password"}</span>
                         </Label>
                         <button
                           type="button"
@@ -668,7 +599,7 @@ export default function AuthPage() {
                         required
                         value={empPassword}
                         onChange={(e) => setEmpPassword(e.target.value)}
-                        placeholder="••••••••"
+                        placeholder={lang === "bn" ? "৪-সংখ্যার পিন বা পাসওয়ার্ড" : "4-digit PIN or password"}
                         className="h-11 sm:h-12 rounded-xl bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 text-slate-900 dark:text-slate-100 text-xs sm:text-sm px-3.5 placeholder:text-slate-400 dark:placeholder:text-zinc-500 focus-visible:ring-2 focus-visible:ring-slate-400 dark:focus-visible:ring-zinc-600 focus-visible:border-transparent w-full shadow-2xs"
                       />
                     </div>
@@ -738,7 +669,7 @@ export default function AuthPage() {
                       <div className="flex items-center justify-between">
                         <Label className="text-xs font-semibold text-foreground flex items-center gap-1.5">
                           <Lock className="size-3.5 text-slate-400 dark:text-zinc-500" />
-                          <span>{t("password")}</span>
+                          <span>{lang === "bn" ? "পিন বা পাসওয়ার্ড" : "PIN or Password"}</span>
                         </Label>
                         <button
                           type="button"
@@ -752,10 +683,10 @@ export default function AuthPage() {
                       <Input
                         type={showEmpPassword ? "text" : "password"}
                         required
-                        minLength={6}
+                        minLength={4}
                         value={empPassword}
                         onChange={(e) => setEmpPassword(e.target.value)}
-                        placeholder="••••••••"
+                        placeholder={lang === "bn" ? "৪-সংখ্যার পিন বা পাসওয়ার্ড" : "4-digit PIN or password"}
                         className="h-11 sm:h-12 rounded-xl bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 text-slate-900 dark:text-slate-100 text-xs sm:text-sm px-3.5 placeholder:text-slate-400 dark:placeholder:text-zinc-500 focus-visible:ring-2 focus-visible:ring-slate-400 dark:focus-visible:ring-zinc-600 focus-visible:border-transparent w-full shadow-2xs"
                       />
                     </div>

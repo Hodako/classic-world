@@ -42,6 +42,10 @@ export function readQueryCache<T>(queryKey: readonly unknown[]): T | undefined {
     const raw = localStorage.getItem(storageKey(queryKey));
     if (!raw) return undefined;
     const entry = JSON.parse(raw) as CacheEntry;
+    if (!Number.isFinite(entry?.updatedAt) || Date.now() - entry.updatedAt > MAX_AGE_MS) {
+      localStorage.removeItem(storageKey(queryKey));
+      return undefined;
+    }
     return entry.data as T;
   } catch {
     return undefined;

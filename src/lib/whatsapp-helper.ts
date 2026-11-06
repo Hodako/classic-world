@@ -29,6 +29,10 @@ export function generateWhatsAppInvoiceText(data: InvoiceShareData, lang: "bn" |
       itemsText += `\n${idx + 1}. ${it.name} (x${it.qty}) — ৳${(it.price * it.qty).toLocaleString()}`;
     });
 
+    const discountLines = data.discount && data.discount > 0
+      ? `💰 মোট মূল্য: ৳${data.subtotal.toLocaleString()}\n🎁 ছাড়: -৳${data.discount.toLocaleString()}\n`
+      : "";
+
     return `🧾 *${shop} — ক্যাশ মেমো / ইনভয়েস*
 ━━━━━━━━━━━━━━━━━━━
 👤 ক্রেতার নাম: ${data.customerName || "সম্মানিত ক্রেতা"}
@@ -37,7 +41,7 @@ export function generateWhatsAppInvoiceText(data: InvoiceShareData, lang: "bn" |
 
 *ক্রয়কৃত পণ্যসমূহ:*${itemsText}
 ━━━━━━━━━━━━━━━━━━━
-💵 সর্বমোট: ৳${data.total.toLocaleString()}
+${discountLines}💵 সর্বমোট: ৳${data.total.toLocaleString()}
 ✅ পরিশোধিত: ৳${data.paidAmount.toLocaleString()}
 ${data.dueAmount > 0 ? `⚠️ অবশিষ্ট বাকী: ৳${data.dueAmount.toLocaleString()}\n` : ""}${data.paymentMethod ? `💳 পেমেন্ট মাধ্যম: ${data.paymentMethod.toUpperCase()}\n` : ""}
 ধন্যবাদ! আমাদের সাথেই থাকুন।${phone}`;
@@ -49,6 +53,10 @@ ${data.dueAmount > 0 ? `⚠️ অবশিষ্ট বাকী: ৳${data.due
     itemsText += `\n${idx + 1}. ${it.name} (x${it.qty}) - ৳${(it.price * it.qty).toLocaleString()}`;
   });
 
+  const discountLinesEn = data.discount && data.discount > 0
+    ? `💰 Subtotal: ৳${data.subtotal.toLocaleString()}\n🎁 Discount: -৳${data.discount.toLocaleString()}\n`
+    : "";
+
   return `🧾 *${shop} — Digital Invoice*
 ━━━━━━━━━━━━━━━━━━━
 👤 Customer: ${data.customerName || "Valued Customer"}
@@ -57,7 +65,7 @@ ${data.dueAmount > 0 ? `⚠️ অবশিষ্ট বাকী: ৳${data.due
 
 *Purchased Items:*${itemsText}
 ━━━━━━━━━━━━━━━━━━━
-💵 Total Amount: ৳${data.total.toLocaleString()}
+${discountLinesEn}💵 Total Amount: ৳${data.total.toLocaleString()}
 ✅ Paid Amount: ৳${data.paidAmount.toLocaleString()}
 ${data.dueAmount > 0 ? `⚠️ Remaining Due: ৳${data.dueAmount.toLocaleString()}\n` : ""}${data.paymentMethod ? `💳 Payment Method: ${data.paymentMethod.toUpperCase()}\n` : ""}
 Thank you for shopping with us!${phone}`;

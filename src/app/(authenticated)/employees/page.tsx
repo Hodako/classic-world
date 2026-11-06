@@ -34,6 +34,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { useCachedQuery } from "@/hooks/use-cached-query";
 import {
   getEmployees,
@@ -60,6 +61,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { toast } from "sonner";
+import { OwnerEmployeeDeviceLink } from "@/components/employee-device-link";
 import {
   addEmployeeFn,
   updateEmployeeFn,
@@ -77,6 +79,7 @@ export default function EmployeesPage() {
   const { user } = useAuth();
   const qc = useQueryClient();
   const searchParams = useSearchParams();
+  const isMobile = useIsMobile();
 
   const paramTab = searchParams.get("tab");
   const [activeTab, setActiveTab] = useState<"accounts" | "salaries" | "expenses" | "shoppings">(
@@ -124,6 +127,15 @@ export default function EmployeesPage() {
   const [salAmount, setSalAmount] = useState("");
   const [salMethod, setSalMethod] = useState("cash");
   const [salNote, setSalNote] = useState("");
+  const [deductShopFromSalary, setDeductShopFromSalary] = useState(true);
+
+  // Dialog States: Give Bonus
+  const [addBonusOpen, setAddBonusOpen] = useState(false);
+  const [bonusEmpId, setBonusEmpId] = useState("");
+  const [bonusAmount, setBonusAmount] = useState("");
+  const [bonusMethod, setBonusMethod] = useState("cash");
+  const [bonusDate, setBonusDate] = useState(new Date().toISOString().slice(0, 10));
+  const [bonusNote, setBonusNote] = useState("");
 
   // Dialog States: Expense
   const [addExpOpen, setAddExpOpen] = useState(false);
@@ -158,6 +170,10 @@ export default function EmployeesPage() {
 
   const [shopFilter, setShopFilter] = useState<"all" | "my">(user?.role === "employee" ? "my" : "all");
 
+  const [customItemOpen, setCustomItemOpen] = useState(false);
+  const [customItemName, setCustomItemName] = useState("");
+  const [customItemPrice, setCustomItemPrice] = useState("");
+
   const handleOpenAddShop = () => {
     if (currentEmployee) {
       setShopEmpId(currentEmployee.id);
@@ -166,8 +182,199 @@ export default function EmployeesPage() {
     }
     setShopItems([]);
     setShopNote("");
+    setCustomItemName("");
+    setCustomItemPrice("");
+    setCustomItemOpen(false);
     setAddShopOpen(true);
   };
+
+  const handleAddProductToShop = (p: Product) => {
+    const defaultPrice = Number(
+      p.sell_price ??
+      (p as any).selling_price ??
+      (p as any).price ??
+      (p as any).unit_price ??
+      p.buy_price ??
+      0
+    );
+    const existingIdx = shopItems.findIndex(i => i.product_id === p.id);
+    let newItems = [...shopItems];
+    if (existingIdx >= 0) {
+      newItems[existingIdx].qty += 1;
+      newItems[existingIdx].total = newItems[existingIdx].qty * newItems[existingIdx].unit_price;
+    } else {
+      newItems.push({
+        product_id: p.id,
+        product_name: p.name,
+        qty: 1,
+        unit_price: defaultPrice,
+        total: defaultPrice,
+      });
+    }
+    setShopItems(newItems);
+    setShopProdSearch("");
+  };
+
+  const handleUpdateShopItemPrice = (index: number, newPriceVal: string) => {
+    const parsed = parseFloat(newPriceVal);
+    const unit_price = isNaN(parsed) || parsed < 0 ? 0 : parsed;
+    setShopItems(prev => {
+      const copy = [...prev];
+      if (copy[index]) {
+        copy[index] = {
+          ...copy[index],
+          unit_price,
+          total: copy[index].qty * unit_price,
+        };
+      }
+      return copy;
+    });
+  };
+
+  const handleUpdateShopItemQty = (index: number, delta: number) => {
+    setShopItems(prev => {
+      const copy = [...prev];
+      if (copy[index]) {
+        const newQty = Math.max(1, copy[index].qty + delta);
+        copy[index] = {
+          ...copy[index],
+          qty: newQty,
+          total: newQty * copy[index].unit_price,
+        };
+      }
+      return copy;
+    });
+  };
+
+  const handleAddCustomShopItem = () => {
+    if (!customItemName.trim()) {
+      toast.error(lang === "bn" ? "পণ্যের নাম লিখুন" : "Enter product name");
+      return;
+    }
+    const pr = parseFloat(customItemPrice) || 0;
+    setShopItems(prev => [
+      ...prev,
+      {
+        product_id: "custom_" + Date.now(),
+        product_name: customItemName.trim(),
+        qty: 1,
+        unit_price: pr,
+        total: pr,
+      },
+    ]);
+    setCustomItemName("");
+    setCustomItemPrice("");
+    setCustomItemOpen(false);
+  };
+
+  // Helper to compute salary, spends, owner-given money, bonus & remaining salary for any employee in a given month
+  const currentMonthStr = useMemo(() => new Date().toISOString().slice(0, 7), []);
+
+  const getEmployeeSalaryStats = (empId: string, monthStr: string, deductShop: boolean = true) => {
+    const emp = employees.find(x => x.id === empId);
+    const baseSal = Number(emp?.base_salary) || 0;
+    const matchEmp = (recEmpId?: string | null, recEmpName?: string | null) =>
+      recEmpId === empId || Boolean(emp && recEmpName && recEmpName.toLowerCase() === emp.name.toLowerCase());
+
+    const shopDed = shoppings
+      .filter(s =>
+        matchEmp(s.employee_id, s.employee_name) &&
+        s.payment_status === "deduct_from_salary" &&
+        !s.is_settled &&
+        !s.settled
+      )
+      .reduce((sum, s) => sum + (Number(s.total_amount) || 0), 0);
+
+    // Owner given salary records in this month (excluding bonus-only records)
+    const paidSalariesInMonth = salaries
+      .filter(s =>
+        matchEmp(s.employee_id, s.employee_name) &&
+        s.month === monthStr &&
+        !(s as any).is_bonus &&
+        s.status !== "bonus"
+      )
+      .reduce((sum, s) => sum + (Number(s.amount) || 0), 0);
+
+    // Owner given advances / early money in this month
+    const advancesInMonth = expenses
+      .filter(e =>
+        matchEmp(e.employee_id, e.employee_name) &&
+        e.category === "advance" &&
+        (e.date || "").startsWith(monthStr)
+      )
+      .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+
+    // Employee daily spends (food, travel, tea, other) in this month
+    const dailySpendsInMonth = expenses
+      .filter(e =>
+        matchEmp(e.employee_id, e.employee_name) &&
+        e.category !== "advance" &&
+        e.category !== "bonus" &&
+        (e.date || "").startsWith(monthStr)
+      )
+      .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+
+    // Bonuses given by owner in this month (does NOT reduce remaining salary)
+    const bonusFromExpenses = expenses
+      .filter(e =>
+        matchEmp(e.employee_id, e.employee_name) &&
+        e.category === "bonus" &&
+        (e.date || "").startsWith(monthStr)
+      )
+      .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+
+    const bonusFromSalaries = salaries
+      .filter(s =>
+        matchEmp(s.employee_id, s.employee_name) &&
+        s.month === monthStr &&
+        ((s as any).is_bonus || s.status === "bonus" || Number((s as any).bonus) > 0)
+      )
+      .reduce((sum, s) => {
+        if ((s as any).is_bonus || s.status === "bonus") return sum + (Number(s.amount) || 0);
+        return sum + (Number((s as any).bonus) || 0);
+      }, 0);
+
+    const totalBonus = bonusFromExpenses + bonusFromSalaries;
+    const givenByOwner = paidSalariesInMonth + advancesInMonth;
+    const totalSpends = dailySpendsInMonth + (deductShop ? shopDed : 0);
+    const alreadyPaid = paidSalariesInMonth + advancesInMonth + dailySpendsInMonth;
+    const effectiveDeductions = alreadyPaid + (deductShop ? shopDed : 0);
+    const remaining = Math.max(0, baseSal - effectiveDeductions);
+
+    return {
+      baseSal,
+      shopDed,
+      paidSalariesInMonth,
+      advancesInMonth,
+      dailySpendsInMonth,
+      givenByOwner,
+      totalSpends,
+      totalBonus,
+      alreadyPaid,
+      remaining,
+    };
+  };
+
+  // Shoppings with deduct_from_salary for selected salary employee
+  const selectedSalEmp = useMemo(() => employees.find(x => x.id === salEmpId), [employees, salEmpId]);
+  const selectedSalStats = useMemo(() => {
+    if (!salEmpId) {
+      return {
+        baseSal: 0,
+        shopDed: 0,
+        paidSalariesInMonth: 0,
+        advancesInMonth: 0,
+        dailySpendsInMonth: 0,
+        givenByOwner: 0,
+        totalSpends: 0,
+        totalBonus: 0,
+        alreadyPaid: 0,
+        remaining: 0,
+      };
+    }
+    return getEmployeeSalaryStats(salEmpId, salMonth, deductShopFromSalary);
+  }, [salEmpId, salMonth, deductShopFromSalary, employees, shoppings, salaries, expenses]);
+  const empShoppingDeductions = selectedSalStats.shopDed;
 
   // Filtered lists
   const filteredEmployees = useMemo(() => {
@@ -287,6 +494,7 @@ export default function EmployeesPage() {
       return;
     }
     const emp = employees.find(x => x.id === salEmpId);
+    const activeDed = deductShopFromSalary ? empShoppingDeductions : 0;
     setBusy(true);
     try {
       await createEmployeeSalaryFn({
@@ -294,14 +502,17 @@ export default function EmployeesPage() {
           employee_id: salEmpId,
           employee_name: emp?.name || "Employee",
           base_salary: emp?.base_salary || 0,
+          deductions: activeDed,
+          deduct_shoppings: deductShopFromSalary,
           month: salMonth,
           amount: val,
           payment_method: salMethod,
-          note: salNote.trim() || null,
+          note: salNote.trim() || (activeDed > 0 ? `পোশাক ও কেনাকাটা কর্তন: ${fmtMoney(activeDed)}` : null),
         },
       });
       toast.success(lang === "bn" ? "বেতন পরিশোধ রেকর্ড সংরক্ষিত হয়েছে" : "Salary payment recorded successfully");
       qc.invalidateQueries({ queryKey: ["employee_salaries"] });
+      qc.invalidateQueries({ queryKey: ["employee_shoppings"] });
       qc.invalidateQueries({ queryKey: ["expenses"] });
       qc.invalidateQueries({ queryKey: ["cashbox"] });
       setAddSalaryOpen(false);
@@ -309,6 +520,42 @@ export default function EmployeesPage() {
       setSalNote("");
     } catch (err: any) {
       toast.error(err.message || "Failed to record salary");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // Handle Give Bonus Submit
+  async function handleSaveBonus(e: React.FormEvent) {
+    e.preventDefault();
+    const val = parseFloat(bonusAmount);
+    if (!bonusEmpId || isNaN(val) || val <= 0) {
+      toast.error(lang === "bn" ? "কর্মচারী নির্বাচন করুন এবং সঠিক বোনাসের পরিমাণ লিখুন" : "Select employee and enter valid bonus amount");
+      return;
+    }
+    const emp = employees.find(x => x.id === bonusEmpId);
+    setBusy(true);
+    try {
+      await createEmployeeExpenseFn({
+        data: {
+          employee_id: bonusEmpId,
+          employee_name: emp?.name || "Employee",
+          category: "bonus",
+          amount: val,
+          payment_method: bonusMethod,
+          date: bonusDate,
+          note: bonusNote.trim() ? `🎁 বোনাস: ${bonusNote.trim()}` : "🎁 মালিক প্রদত্ত বোনাস (Owner Bonus)",
+        },
+      });
+      toast.success(lang === "bn" ? `${emp?.name || "কর্মচারী"}-কে বোনাস প্রদান করা হয়েছে!` : "Employee bonus recorded!");
+      qc.invalidateQueries({ queryKey: ["employee_expenses"] });
+      qc.invalidateQueries({ queryKey: ["expenses"] });
+      qc.invalidateQueries({ queryKey: ["cashbox"] });
+      setAddBonusOpen(false);
+      setBonusAmount("");
+      setBonusNote("");
+    } catch (err: any) {
+      toast.error(err.message || "Failed to give bonus");
     } finally {
       setBusy(false);
     }
@@ -391,8 +638,71 @@ export default function EmployeesPage() {
 
   return (
     <div className="space-y-4 max-w-7xl mx-auto">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-card border border-border/80 p-3 sm:p-4 rounded-2xl shadow-xs">
+      {/* Mobile Minimalist Header */}
+      <div className="flex sm:hidden items-center justify-between gap-2 bg-card border border-border/70 p-2.5 rounded-xl shadow-2xs">
+        <div className="flex items-center gap-2 min-w-0">
+          <Link href="/more">
+            <Button variant="ghost" size="icon" className="size-7 rounded-lg">
+              <ArrowLeft className="size-3.5 text-muted-foreground" />
+            </Button>
+          </Link>
+          <div className="min-w-0">
+            <h1 className="text-xs font-bold text-foreground truncate">
+              {activeTab === "shoppings"
+                ? (lang === "bn" ? "কর্মচারী কেনাকাটা" : "Staff Shopping")
+                : (lang === "bn" ? "কর্মচারী ব্যবস্থাপনা" : "Employee Management")}
+            </h1>
+            <span className="text-[10px] text-muted-foreground">{employees.length} {lang === "bn" ? "জন কর্মী" : "staff"}</span>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-1.5 shrink-0">
+          {activeTab === "accounts" && (
+            <Button
+              onClick={() => {
+                setEditingEmp(null);
+                setEmpName("");
+                setEmpPhone("");
+                setEmpEmail("");
+                setEmpSalary("");
+                setEmpPassword("1234");
+                setEmpPin("1234");
+                setAddEmpOpen(true);
+              }}
+              size="sm"
+              className="h-7 px-2 text-[11px] rounded-lg bg-primary font-bold shadow-2xs"
+            >
+              <UserPlus className="size-3 mr-1" />
+              <span>{lang === "bn" ? "যোগ" : "Add"}</span>
+            </Button>
+          )}
+
+          {activeTab === "salaries" && (
+            <Button
+              onClick={() => setAddSalaryOpen(true)}
+              size="sm"
+              className="h-7 px-2 text-[11px] rounded-lg bg-emerald-600 font-bold text-white shadow-2xs"
+            >
+              <DollarSign className="size-3 mr-1" />
+              <span>{lang === "bn" ? "বেতন" : "Pay"}</span>
+            </Button>
+          )}
+
+          {activeTab === "expenses" && (
+            <Button
+              onClick={() => setAddExpOpen(true)}
+              size="sm"
+              className="h-7 px-2 text-[11px] rounded-lg bg-orange-600 font-bold text-white shadow-2xs"
+            >
+              <Receipt className="size-3 mr-1" />
+              <span>{lang === "bn" ? "খরচ" : "Expense"}</span>
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {/* Desktop Header */}
+      <div className="hidden sm:flex sm:items-center justify-between gap-3 bg-card border border-border/80 p-3 sm:p-4 rounded-2xl shadow-xs">
         <div className="flex items-center gap-3">
           <Link href="/more">
             <Button variant="ghost" size="icon" className="size-8 rounded-xl">
@@ -417,8 +727,23 @@ export default function EmployeesPage() {
           </div>
         </div>
 
-        {/* Tab-Specific Action Button */}
+        {/* Tab-Specific Action Button (Desktop) */}
         <div className="flex items-center gap-2">
+          <Button
+            onClick={() => {
+              if (!bonusEmpId && employees.length > 0) setBonusEmpId(employees[0].id);
+              setBonusAmount("");
+              setBonusNote("");
+              setAddBonusOpen(true);
+            }}
+            size="sm"
+            variant="outline"
+            className="h-8.5 rounded-xl text-xs font-bold gap-1.5 border-amber-500/40 bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-300 shadow-sm cursor-pointer"
+          >
+            <span>🎁</span>
+            <span>{lang === "bn" ? "বোনাস দিন" : "Give Bonus"}</span>
+          </Button>
+
           {activeTab === "accounts" && (
             <Button
               onClick={() => {
@@ -427,8 +752,8 @@ export default function EmployeesPage() {
                 setEmpPhone("");
                 setEmpEmail("");
                 setEmpSalary("");
-      setEmpPassword("1234");
-      setEmpPin("1234");
+                setEmpPassword("1234");
+                setEmpPin("1234");
                 setAddEmpOpen(true);
               }}
               size="sm"
@@ -457,25 +782,14 @@ export default function EmployeesPage() {
               className="h-8.5 rounded-xl text-xs font-bold gap-1.5 bg-orange-600 hover:bg-orange-700 text-white shadow-sm cursor-pointer"
             >
               <Receipt className="size-3.5" />
-              <span>{lang === "bn" ? "কর্মচারী খরচ যোগ" : "Add Expense"}</span>
-            </Button>
-          )}
-
-          {activeTab === "shoppings" && (
-            <Button
-              onClick={handleOpenAddShop}
-              size="sm"
-              className="h-8.5 rounded-xl text-xs font-bold gap-1.5 bg-pink-600 hover:bg-pink-700 text-white shadow-sm cursor-pointer"
-            >
-              <Shirt className="size-3.5" />
-              <span>{lang === "bn" ? "পোশাক/পণ্য প্রদান" : "Record Shopping"}</span>
+              <span>{lang === "bn" ? "কর্মচারী খরচ / অগ্রিম যোগ" : "Add Expense / Advance"}</span>
             </Button>
           )}
         </div>
       </div>
 
-      {/* Auto-Link Informational Notice */}
-      <div className="p-3 bg-gradient-to-r from-primary/10 via-indigo-500/5 to-transparent border border-primary/20 rounded-2xl flex items-start gap-2.5">
+      {/* Auto-Link Informational Notice (Desktop only) */}
+      <div className="hidden sm:flex p-3 bg-gradient-to-r from-primary/10 via-indigo-500/5 to-transparent border border-primary/20 rounded-2xl items-start gap-2.5">
         <Info className="size-4 text-primary shrink-0 mt-0.5" />
         <div className="text-xs space-y-0.5">
           <span className="font-bold text-foreground">
@@ -489,42 +803,42 @@ export default function EmployeesPage() {
         </div>
       </div>
 
-      {/* Summary KPI Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <Card className="p-3 rounded-2xl bg-card border-border/80 space-y-1">
+      {/* Summary KPI Cards - Minimalist & responsive typography */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
+        <Card className="p-2 sm:p-3 rounded-xl sm:rounded-2xl bg-card border-border/80 space-y-0.5 sm:space-y-1">
           <div className="flex items-center justify-between text-muted-foreground">
-            <span className="text-[11px] font-semibold">{lang === "bn" ? "মোট কর্মচারী" : "Total Staff"}</span>
-            <Users className="size-3.5 text-primary" />
+            <span className="text-[10px] sm:text-[11px] font-semibold">{lang === "bn" ? "মোট কর্মচারী" : "Total Staff"}</span>
+            <Users className="size-3 sm:size-3.5 text-primary" />
           </div>
-          <p className="text-lg sm:text-xl font-bold font-charukola text-foreground">{employees.length} {lang === "bn" ? "জন" : ""}</p>
-          <span className="text-[10px] text-emerald-600">{employees.filter(e => e.status === "active").length} {lang === "bn" ? "সক্রিয়" : "Active"}</span>
+          <p className="text-xs sm:text-lg font-bold font-charukola text-foreground">{employees.length} {lang === "bn" ? "জন" : ""}</p>
+          <span className="text-[9px] sm:text-[10px] text-emerald-600 block">{employees.filter(e => e.status === "active").length} {lang === "bn" ? "সক্রিয়" : "Active"}</span>
         </Card>
 
-        <Card className="p-3 rounded-2xl bg-card border-border/80 space-y-1">
+        <Card className="p-2 sm:p-3 rounded-xl sm:rounded-2xl bg-card border-border/80 space-y-0.5 sm:space-y-1">
           <div className="flex items-center justify-between text-muted-foreground">
-            <span className="text-[11px] font-semibold">{lang === "bn" ? "মোট পরিশোধিত বেতন" : "Salaries Paid"}</span>
-            <DollarSign className="size-3.5 text-emerald-600" />
+            <span className="text-[10px] sm:text-[11px] font-semibold">{lang === "bn" ? "পরিশোধিত বেতন" : "Salaries Paid"}</span>
+            <DollarSign className="size-3 sm:size-3.5 text-emerald-600" />
           </div>
-          <p className="text-lg sm:text-xl font-bold font-charukola text-emerald-600">{fmtMoney(totalSalariesPaid)}</p>
-          <span className="text-[10px] text-muted-foreground">{salaries.length} {lang === "bn" ? "টি ট্রানজেকশন" : "Records"}</span>
+          <p className="text-xs sm:text-lg font-bold font-charukola text-emerald-600">{fmtMoney(totalSalariesPaid)}</p>
+          <span className="text-[9px] sm:text-[10px] text-muted-foreground block">{salaries.length} {lang === "bn" ? "টি রসিদ" : "Records"}</span>
         </Card>
 
-        <Card className="p-3 rounded-2xl bg-card border-border/80 space-y-1">
+        <Card className="p-2 sm:p-3 rounded-xl sm:rounded-2xl bg-card border-border/80 space-y-0.5 sm:space-y-1">
           <div className="flex items-center justify-between text-muted-foreground">
-            <span className="text-[11px] font-semibold">{lang === "bn" ? "কর্মচারী খরচ ও ভাতা" : "Staff Expenses"}</span>
-            <Receipt className="size-3.5 text-orange-600" />
+            <span className="text-[10px] sm:text-[11px] font-semibold">{lang === "bn" ? "খরচ ও ভাতা" : "Staff Expenses"}</span>
+            <Receipt className="size-3 sm:size-3.5 text-orange-600" />
           </div>
-          <p className="text-lg sm:text-xl font-bold font-charukola text-orange-600">{fmtMoney(totalEmployeeExpenses)}</p>
-          <span className="text-[10px] text-muted-foreground">{expenses.length} {lang === "bn" ? "টি ভাউচার" : "Vouchers"}</span>
+          <p className="text-xs sm:text-lg font-bold font-charukola text-orange-600">{fmtMoney(totalEmployeeExpenses)}</p>
+          <span className="text-[9px] sm:text-[10px] text-muted-foreground block">{expenses.length} {lang === "bn" ? "টি খরচ" : "Vouchers"}</span>
         </Card>
 
-        <Card className="p-3 rounded-2xl bg-card border-border/80 space-y-1">
+        <Card className="p-2 sm:p-3 rounded-xl sm:rounded-2xl bg-card border-border/80 space-y-0.5 sm:space-y-1">
           <div className="flex items-center justify-between text-muted-foreground">
-            <span className="text-[11px] font-semibold">{lang === "bn" ? "কর্মচারী কেনাকাটা" : "Staff Shopping"}</span>
-            <Shirt className="size-3.5 text-pink-600" />
+            <span className="text-[10px] sm:text-[11px] font-semibold">{lang === "bn" ? "কর্মচারী কেনাকাটা" : "Staff Shopping"}</span>
+            <Shirt className="size-3 sm:size-3.5 text-pink-600" />
           </div>
-          <p className="text-lg sm:text-xl font-bold font-charukola text-pink-600">{fmtMoney(totalEmployeeShoppings)}</p>
-          <span className="text-[10px] text-muted-foreground">{shoppings.length} {lang === "bn" ? "বার কেনাকাটা" : "Draws"}</span>
+          <p className="text-xs sm:text-lg font-bold font-charukola text-pink-600">{fmtMoney(totalEmployeeShoppings)}</p>
+          <span className="text-[9px] sm:text-[10px] text-muted-foreground block">{shoppings.length} {lang === "bn" ? "বার কেনাকাটা" : "Draws"}</span>
         </Card>
       </div>
 
@@ -581,90 +895,145 @@ export default function EmployeesPage() {
               </div>
             ) : (
               <div className="divide-y divide-border/60">
-                {filteredEmployees.map(e => (
-                  <div key={e.id} className="p-3 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-muted/30 transition-colors">
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className="size-10 rounded-2xl bg-primary/10 text-primary border border-primary/20 flex items-center justify-center font-bold font-charukola text-sm shrink-0">
-                        {e.name.slice(0, 2).toUpperCase()}
-                      </div>
-                      <div className="min-w-0 space-y-0.5">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-bold text-sm text-foreground">{e.name}</span>
-                          <Badge variant="outline" className={`text-[10px] ${e.status === "active" ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/20" : "bg-muted text-muted-foreground"}`}>
-                            {e.status === "active" ? (lang === "bn" ? "সক্রিয়" : "Active") : (lang === "bn" ? "নিষ্ক্রিয়" : "Inactive")}
-                          </Badge>
-                          <Badge variant="secondary" className="text-[10px] font-normal">
-                            {e.designation || "Staff"}
-                          </Badge>
+                {filteredEmployees.map(e => {
+                  const empStats = getEmployeeSalaryStats(e.id, currentMonthStr, true);
+                  return (
+                    <div key={e.id} className="p-3 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-muted/30 transition-colors">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="size-10 rounded-2xl bg-primary/10 text-primary border border-primary/20 flex items-center justify-center font-bold font-charukola text-sm shrink-0">
+                          {e.name.slice(0, 2).toUpperCase()}
                         </div>
-                        <div className="flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
-                          {e.phone && (
-                            <span className="flex items-center gap-1">
-                              <Phone className="size-3 text-muted-foreground" /> {e.phone}
+                        <div className="min-w-0 space-y-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-bold text-sm text-foreground">{e.name}</span>
+                            <Badge variant="outline" className={`text-[10px] ${e.status === "active" ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/20" : "bg-muted text-muted-foreground"}`}>
+                              {e.status === "active" ? (lang === "bn" ? "সক্রিয়" : "Active") : (lang === "bn" ? "নিষ্ক্রিয়" : "Inactive")}
+                            </Badge>
+                            <Badge variant="secondary" className="text-[10px] font-normal">
+                              {e.designation || "Staff"}
+                            </Badge>
+                            <span className="inline-flex items-center gap-1 font-mono font-bold text-amber-700 dark:text-amber-300 bg-amber-500/10 px-2 py-0.5 rounded-md border border-amber-500/20 text-[11px]">
+                              <KeyRound className="size-3 text-amber-500" />
+                              {lang === "bn" ? "লগইন পিন:" : "PIN:"} {(e as any).pin || (e as any).plain_password || (e as any).password || "1234"}
                             </span>
-                          )}
-                          {e.email && (
-                            <span className="flex items-center gap-1">
-                              <Mail className="size-3 text-muted-foreground" /> {e.email}
+                          </div>
+                          <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
+                            {e.phone && (
+                              <span className="flex items-center gap-1">
+                                <Phone className="size-3 text-muted-foreground" /> {e.phone}
+                              </span>
+                            )}
+                            {e.email && (
+                              <span className="flex items-center gap-1">
+                                <Mail className="size-3 text-muted-foreground" /> {e.email}
+                              </span>
+                            )}
+                            <span className="font-semibold text-foreground font-charukola bg-muted/60 px-2 py-0.5 rounded-md border border-border/60">
+                              {lang === "bn" ? "মাসিক বেতন:" : "Base Salary:"} {fmtMoney(empStats.baseSal)}
                             </span>
-                          )}
-                          {e.base_salary ? (
-                            <span className="font-semibold text-foreground font-charukola">
-                              {lang === "bn" ? "মাসিক বেতন:" : "Salary:"} {fmtMoney(e.base_salary)}
+                            <span className="text-[11px] font-bold text-orange-600 bg-orange-500/10 px-2 py-0.5 rounded-md border border-orange-500/20">
+                              {lang === "bn" ? "খরচ ও কেনাকাটা:" : "Spends:"} {fmtMoney(empStats.totalSpends)}
                             </span>
-                          ) : null}
+                            <span className="text-[11px] font-bold text-blue-600 bg-blue-500/10 px-2 py-0.5 rounded-md border border-blue-500/20">
+                              {lang === "bn" ? "মালিক প্রদত্ত:" : "Given by Owner:"} {fmtMoney(empStats.givenByOwner)}
+                            </span>
+                            <span className="text-[11px] font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-500/15 px-2.5 py-0.5 rounded-md border border-emerald-500/30 shadow-2xs">
+                              {lang === "bn" ? "অবশিষ্ট বেতন:" : "Remaining Salary:"} {fmtMoney(empStats.remaining)}
+                            </span>
+                            {empStats.totalBonus > 0 && (
+                              <span className="text-[11px] font-bold text-amber-700 dark:text-amber-300 bg-amber-500/15 px-2 py-0.5 rounded-md border border-amber-500/30">
+                                🎁 {lang === "bn" ? "বোনাস:" : "Bonus:"} {fmtMoney(empStats.totalBonus)}
+                              </span>
+                            )}
+                          </div>
                         </div>
                       </div>
-                    </div>
 
-                    <div className="flex items-center gap-1.5 self-end sm:self-center shrink-0">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-8 text-xs rounded-xl gap-1"
-                                                onClick={() => {
-                          setEditingEmp(e);
-                          setEmpName(e.name || "");
-                          setEmpPhone(e.phone || "");
-                          setEmpEmail(e.email || "");
-                          setEmpDesignation(e.designation || "Sales Staff");
-                          setEmpSalary(e.base_salary ? String(e.base_salary) : "");
-                          setEmpStatus(e.status || "active");
-                          setEmpPassword((e as any).plain_password || (e as any).password || (e as any).pin || "1234");
-                          setEmpPin((e as any).pin || (e as any).plain_password || (e as any).password || "1234");
-                          setEmpPermissions({
-                            can_sales: Boolean(e.permissions?.can_sales ?? true),
-                            can_customers: Boolean(e.permissions?.can_customers ?? true),
-                            can_returns: Boolean(e.permissions?.can_returns ?? true),
-                            can_products: Boolean(e.permissions?.can_products ?? false),
-                            can_expenses: Boolean(e.permissions?.can_expenses ?? false),
-                            can_reports: Boolean(e.permissions?.can_reports ?? false),
-                            can_delete: Boolean(e.permissions?.can_delete ?? false),
-                            can_discount: Boolean(e.permissions?.can_discount ?? false),
-                          });
-                          setAddEmpOpen(true);
-                        }}
-                      >
-                        <Pencil className="size-3" />
-                        <span>{lang === "bn" ? "সম্পাদনা ও পারমিশন" : "Edit & Permissions"}</span>
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="size-8 text-destructive hover:bg-destructive/10 rounded-xl"
-                        onClick={async () => {
-                          if (confirm(lang === "bn" ? "আপনি কি এই কর্মচারীকে মুছে ফেলতে চান?" : "Are you sure you want to delete this employee?")) {
-                            await deleteEmployeeFn({ data: { id: e.id } });
-                            qc.invalidateQueries({ queryKey: ["employees"] });
-                            toast.success(lang === "bn" ? "কর্মচারী মুছে ফেলা হয়েছে" : "Employee deleted");
-                          }
-                        }}
-                      >
-                        <Trash2 className="size-3.5" />
-                      </Button>
+                      <div className="flex items-center gap-1.5 self-end sm:self-center shrink-0 flex-wrap">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-8 text-xs rounded-xl gap-1 border-amber-500/40 bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-300 font-bold cursor-pointer"
+                          onClick={() => {
+                            setBonusEmpId(e.id);
+                            setBonusAmount("");
+                            setBonusNote("");
+                            setAddBonusOpen(true);
+                          }}
+                        >
+                          <span>🎁</span>
+                          <span>{lang === "bn" ? "বোনাস দিন" : "Bonus"}</span>
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-8 text-xs rounded-xl gap-1 border-emerald-500/40 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 font-bold cursor-pointer"
+                          onClick={() => {
+                            setSalEmpId(e.id);
+                            setDeductShopFromSalary(true);
+                            setSalAmount(String(empStats.remaining));
+                            setAddSalaryOpen(true);
+                          }}
+                        >
+                          <DollarSign className="size-3" />
+                          <span>{lang === "bn" ? "বেতন দিন" : "Pay Salary"}</span>
+                        </Button>
+                        {user?.role === "owner" && (
+                          <OwnerEmployeeDeviceLink
+                            employeeId={e.id}
+                            employeeName={e.name}
+                            employeePin={(e as any).pin || (e as any).plain_password || (e as any).password || "1234"}
+                            disabled={e.status === "inactive"}
+                          />
+                        )}
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-8 text-xs rounded-xl gap-1"
+                          onClick={() => {
+                            setEditingEmp(e);
+                            setEmpName(e.name || "");
+                            setEmpPhone(e.phone || "");
+                            setEmpEmail(e.email || "");
+                            setEmpDesignation(e.designation || "Sales Staff");
+                            setEmpSalary(e.base_salary ? String(e.base_salary) : "");
+                            setEmpStatus(e.status || "active");
+                            setEmpPassword((e as any).plain_password || (e as any).password || (e as any).pin || "1234");
+                            setEmpPin((e as any).pin || (e as any).plain_password || (e as any).password || "1234");
+                            setEmpPermissions({
+                              can_sales: Boolean(e.permissions?.can_sales ?? true),
+                              can_customers: Boolean(e.permissions?.can_customers ?? true),
+                              can_returns: Boolean(e.permissions?.can_returns ?? true),
+                              can_products: Boolean(e.permissions?.can_products ?? false),
+                              can_expenses: Boolean(e.permissions?.can_expenses ?? false),
+                              can_reports: Boolean(e.permissions?.can_reports ?? false),
+                              can_delete: Boolean(e.permissions?.can_delete ?? false),
+                              can_discount: Boolean(e.permissions?.can_discount ?? false),
+                            });
+                            setAddEmpOpen(true);
+                          }}
+                        >
+                          <Pencil className="size-3" />
+                          <span>{lang === "bn" ? "সম্পাদনা" : "Edit"}</span>
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="size-8 text-destructive hover:bg-destructive/10 rounded-xl"
+                          onClick={async () => {
+                            if (confirm(lang === "bn" ? "আপনি কি এই কর্মচারীকে মুছে ফেলতে চান?" : "Are you sure you want to delete this employee?")) {
+                              await deleteEmployeeFn({ data: { id: e.id } });
+                              qc.invalidateQueries({ queryKey: ["employees"] });
+                              toast.success(lang === "bn" ? "কর্মচারী মুছে ফেলা হয়েছে" : "Employee deleted");
+                            }
+                          }}
+                        >
+                          <Trash2 className="size-3.5" />
+                        </Button>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </Card>
@@ -672,6 +1041,74 @@ export default function EmployeesPage() {
 
         {/* ── TAB 2: SALARIES ── */}
         <TabsContent value="salaries" className="space-y-3">
+          {/* Employee Monthly Salary Status Cards (Spends, Given by Owner, Bonus & Remaining Salary) */}
+          {employees.length > 0 && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+              {employees.map(emp => {
+                const st = getEmployeeSalaryStats(emp.id, salMonth || currentMonthStr, true);
+                return (
+                  <Card key={emp.id} className="p-3 rounded-2xl border border-border/80 bg-card shadow-xs space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <div>
+                        <p className="font-bold text-xs sm:text-sm text-foreground">{emp.name}</p>
+                        <span className="text-[10px] text-muted-foreground">{emp.designation || "Staff"} • {salMonth || currentMonthStr}</span>
+                      </div>
+                      <Badge variant="outline" className="text-[11px] font-bold bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30">
+                        {lang === "bn" ? "অবশিষ্ট:" : "Rem:"} {fmtMoney(st.remaining)}
+                      </Badge>
+                    </div>
+                    <div className="grid grid-cols-2 gap-1.5 text-[11px] bg-muted/40 p-2 rounded-xl border border-border/60">
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">{lang === "bn" ? "মূল বেতন:" : "Base:"}</span>
+                        <span className="font-bold font-mono">{fmtMoney(st.baseSal)}</span>
+                      </div>
+                      <div className="flex justify-between text-orange-600">
+                        <span>{lang === "bn" ? "খরচ/কেনা:" : "Spends:"}</span>
+                        <span className="font-bold font-mono">-{fmtMoney(st.totalSpends)}</span>
+                      </div>
+                      <div className="flex justify-between text-blue-600">
+                        <span>{lang === "bn" ? "মালিক প্রদত্ত:" : "Given:"}</span>
+                        <span className="font-bold font-mono">-{fmtMoney(st.givenByOwner)}</span>
+                      </div>
+                      <div className="flex justify-between text-amber-600">
+                        <span>🎁 {lang === "bn" ? "বোনাস:" : "Bonus:"}</span>
+                        <span className="font-bold font-mono">{fmtMoney(st.totalBonus)}</span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1.5 pt-0.5">
+                      <Button
+                        size="sm"
+                        className="h-7 flex-1 text-[11px] rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold cursor-pointer"
+                        onClick={() => {
+                          setSalEmpId(emp.id);
+                          setDeductShopFromSalary(true);
+                          setSalAmount(String(st.remaining));
+                          setAddSalaryOpen(true);
+                        }}
+                      >
+                        <DollarSign className="size-3 mr-1" />
+                        {lang === "bn" ? "বেতন দিন" : "Pay Salary"}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 flex-1 text-[11px] rounded-lg border-amber-500/40 bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-300 font-bold cursor-pointer"
+                        onClick={() => {
+                          setBonusEmpId(emp.id);
+                          setBonusAmount("");
+                          setBonusNote("");
+                          setAddBonusOpen(true);
+                        }}
+                      >
+                        🎁 {lang === "bn" ? "বোনাস দিন" : "Give Bonus"}
+                      </Button>
+                    </div>
+                  </Card>
+                );
+              })}
+            </div>
+          )}
+
           <Card className="rounded-2xl border border-border/80 overflow-hidden bg-card shadow-xs">
             {filteredSalaries.length === 0 ? (
               <div className="p-8 text-center space-y-2">
@@ -760,8 +1197,24 @@ export default function EmployeesPage() {
                       <div className="min-w-0 space-y-0.5">
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="font-bold text-sm text-foreground">{e.employee_name}</span>
-                          <Badge variant="outline" className="text-[10px] bg-orange-500/10 text-orange-700 dark:text-orange-400 border-orange-500/20">
-                            {e.category === "food" ? (lang === "bn" ? "খাবার ভাতা" : "Food") : e.category === "travel" ? (lang === "bn" ? "যাতায়াত" : "Travel") : (lang === "bn" ? "অন্যান্য" : "Other")}
+                          <Badge variant="outline" className={`text-[10px] ${
+                            e.category === "bonus"
+                              ? "bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30 font-bold"
+                              : e.category === "advance"
+                              ? "bg-blue-500/15 text-blue-700 dark:text-blue-300 border-blue-500/30 font-bold"
+                              : "bg-orange-500/10 text-orange-700 dark:text-orange-400 border-orange-500/20"
+                          }`}>
+                            {e.category === "bonus"
+                              ? (lang === "bn" ? "🎁 বোনাস (মালিক প্রদত্ত)" : "🎁 Bonus")
+                              : e.category === "advance"
+                              ? (lang === "bn" ? "💵 মালিক প্রদত্ত টাকা / অগ্রিম" : "💵 Given by Owner / Advance")
+                              : e.category === "food"
+                              ? (lang === "bn" ? "খাবার ভাতা" : "Food")
+                              : e.category === "travel"
+                              ? (lang === "bn" ? "যাতায়াত" : "Travel")
+                              : e.category === "tea"
+                              ? (lang === "bn" ? "নাস্তা / চা" : "Tea / Snacks")
+                              : (lang === "bn" ? "অন্যান্য খরচ" : "Other Spend")}
                           </Badge>
                           <span className="text-[10px] text-muted-foreground">{e.date}</span>
                         </div>
@@ -863,59 +1316,65 @@ export default function EmployeesPage() {
             ) : (
               <div className="divide-y divide-border/60">
                 {filteredShoppings.map(s => (
-                  <div key={s.id} className="p-3 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-muted/30">
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className="p-2.5 rounded-xl bg-pink-500/10 text-pink-600 border border-pink-500/20 shrink-0">
-                        <Shirt className="size-4" />
+                  <div key={s.id} className="p-2.5 sm:p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 hover:bg-muted/25 transition-colors">
+                    <div className="flex items-start gap-2.5 min-w-0 flex-1">
+                      <div className="p-2 rounded-xl bg-pink-500/10 text-pink-600 border border-pink-500/20 shrink-0 mt-0.5">
+                        <Shirt className="size-3.5 sm:size-4" />
                       </div>
-                      <div className="min-w-0 space-y-1">
+                      <div className="min-w-0 flex-1 space-y-1">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-bold text-sm text-foreground">{s.employee_name}</span>
-                          <Badge variant="outline" className={`text-[10px] ${s.payment_status === "paid_cash" ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/20" : s.payment_status === "gift" ? "bg-purple-500/10 text-purple-600 border-purple-500/20" : "bg-amber-500/10 text-amber-600 border-amber-500/20"}`}>
-                            {s.payment_status === "paid_cash" ? (lang === "bn" ? "নগদ পরিশোধিত" : "Paid in Cash") : s.payment_status === "gift" ? (lang === "bn" ? "উপহার/বোনাস" : "Gift") : (lang === "bn" ? "বেতন থেকে কর্তন" : "Deduct from Salary")}
+                          <span className="font-bold text-xs sm:text-sm text-foreground">{s.employee_name}</span>
+                          <Badge variant="outline" className={`text-[9px] sm:text-[10px] px-2 py-0.2 rounded-full font-medium ${s.payment_status === "paid_cash" ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/20" : s.payment_status === "gift" ? "bg-purple-500/10 text-purple-600 border-purple-500/20" : (s.is_settled || s.settled) ? "bg-blue-500/10 text-blue-600 border-blue-500/20" : "bg-amber-500/10 text-amber-600 border-amber-500/20"}`}>
+                            {s.payment_status === "paid_cash" ? (lang === "bn" ? "নগদ পরিশোধ" : "Paid Cash") : s.payment_status === "gift" ? (lang === "bn" ? "উপহার / ফ্রি" : "Gift") : (s.is_settled || s.settled) ? (lang === "bn" ? "বেতন কর্তিত (পরিশোধিত)" : "Deducted & Settled") : (lang === "bn" ? "বেতন থেকে কর্তন (বকেয়া)" : "Deduct from Salary (Pending)")}
                           </Badge>
-                          <span className="text-[10px] text-muted-foreground">{s.date}</span>
+                          <span className="text-[10px] text-muted-foreground font-mono">{s.date}</span>
                         </div>
                         <div className="flex items-center gap-1.5 flex-wrap text-xs">
-                          {s.items?.map((item, idx) => (
-                            <span key={idx} className="bg-muted px-2 py-0.5 rounded-md font-medium text-foreground">
-                              {item.product_name} x{item.qty} (৳{item.unit_price})
-                            </span>
-                          ))}
+                          {s.items?.map((item, idx) => {
+                            const unitP = item.unit_price || (item.total && item.qty ? Math.round(item.total / item.qty) : 0);
+                            return (
+                              <span key={idx} className="bg-muted px-2 py-0.5 rounded-md font-medium text-foreground text-[11px]">
+                                {item.product_name} x{item.qty} {unitP > 0 ? `(৳${unitP})` : ""}
+                              </span>
+                            );
+                          })}
                         </div>
-                        {s.note && <p className="text-xs text-muted-foreground">{s.note}</p>}
+                        {s.note && <p className="text-[10px] sm:text-xs text-muted-foreground italic">{s.note}</p>}
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
-                      <div className="text-right">
-                        <p className="font-bold text-sm sm:text-base font-charukola text-pink-600">
+                    <div className="flex items-center justify-between sm:justify-end gap-3 self-stretch sm:self-center border-t sm:border-0 pt-2 sm:pt-0 border-border/50 shrink-0">
+                      <div className="text-left sm:text-right">
+                        <span className="text-[10px] text-muted-foreground sm:hidden block">{lang === "bn" ? "মোট মূল্য:" : "Total:"}</span>
+                        <p className="font-bold text-xs sm:text-sm font-charukola text-pink-600">
                           {fmtMoney(s.total_amount)}
                         </p>
                       </div>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="size-7 text-muted-foreground hover:text-primary cursor-pointer"
-                        title={lang === "bn" ? "রসিদ প্রিন্ট করুন" : "Print Voucher Slip"}
-                        onClick={() => setPrintSlipItem(s)}
-                      >
-                        <Printer className="size-3.5" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="size-7 text-muted-foreground hover:text-rose-600"
-                        onClick={async () => {
-                          if (confirm(lang === "bn" ? "এই কেনাকাটা রেকর্ড মুছে ফেলতে চান?" : "Delete this shopping record?")) {
-                            await deleteEmployeeShoppingFn({ data: { id: s.id } });
-                            qc.invalidateQueries({ queryKey: ["employee_shoppings"] });
-                            toast.success(lang === "bn" ? "মুছে ফেলা হয়েছে" : "Deleted");
-                          }
-                        }}
-                      >
-                        <Trash2 className="size-3.5" />
-                      </Button>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="size-7 rounded-lg text-muted-foreground hover:text-primary cursor-pointer"
+                          title={lang === "bn" ? "রসিদ প্রিন্ট করুন" : "Print Voucher Slip"}
+                          onClick={() => setPrintSlipItem(s)}
+                        >
+                          <Printer className="size-3.5" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="size-7 rounded-lg text-muted-foreground hover:text-rose-600 cursor-pointer"
+                          onClick={async () => {
+                            if (confirm(lang === "bn" ? "এই কেনাকাটা রেকর্ড মুছে ফেলতে চান?" : "Delete this shopping record?")) {
+                              await deleteEmployeeShoppingFn({ data: { id: s.id } });
+                              qc.invalidateQueries({ queryKey: ["employee_shoppings"] });
+                              toast.success(lang === "bn" ? "মুছে ফেলা হয়েছে" : "Deleted");
+                            }
+                          }}
+                        >
+                          <Trash2 className="size-3.5" />
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -1128,21 +1587,84 @@ export default function EmployeesPage() {
               <Label className="text-xs">{lang === "bn" ? "কর্মচারী নির্বাচন *" : "Select Employee *"}</Label>
               <Select value={salEmpId} onValueChange={v => {
                 setSalEmpId(v);
-                const emp = employees.find(x => x.id === v);
-                if (emp?.base_salary) setSalAmount(String(emp.base_salary));
+                setDeductShopFromSalary(true);
+                const stats = getEmployeeSalaryStats(v, salMonth, true);
+                setSalAmount(String(stats.remaining));
               }}>
                 <SelectTrigger className="h-9 text-xs">
                   <SelectValue placeholder={lang === "bn" ? "কর্মচারী বাছাই করুন" : "Select employee"} />
                 </SelectTrigger>
                 <SelectContent>
-                  {employees.map(e => (
-                    <SelectItem key={e.id} value={e.id}>
-                      {e.name} {e.base_salary ? `(৳${fmtMoney(e.base_salary)})` : ""}
-                    </SelectItem>
-                  ))}
+                  {employees.map(e => {
+                    const st = getEmployeeSalaryStats(e.id, salMonth, true);
+                    return (
+                      <SelectItem key={e.id} value={e.id}>
+                        {e.name} — {lang === "bn" ? "অবশিষ্ট:" : "Rem:"} {fmtMoney(st.remaining)}
+                      </SelectItem>
+                    );
+                  })}
                 </SelectContent>
               </Select>
             </div>
+
+            {salEmpId && (
+              <div className="p-2.5 rounded-xl bg-muted/40 border border-border/70 space-y-1.5 text-xs">
+                <div className="flex justify-between items-center text-muted-foreground">
+                  <span>{lang === "bn" ? "মাসিক মূল বেতন:" : "Base Monthly Salary:"}</span>
+                  <span className="font-bold text-foreground font-mono">{fmtMoney(selectedSalStats.baseSal)}</span>
+                </div>
+                {selectedSalStats.givenByOwner > 0 ? (
+                  <div className="flex justify-between items-center text-blue-600 font-semibold">
+                    <span>{lang === "bn" ? "মালিক প্রদত্ত (অগ্রিম ও বেতন):" : "Given by Owner (Salary + Advance):"}</span>
+                    <span className="font-mono font-bold">-{fmtMoney(selectedSalStats.givenByOwner)}</span>
+                  </div>
+                ) : null}
+                {selectedSalStats.dailySpendsInMonth > 0 ? (
+                  <div className="flex justify-between items-center text-orange-600 font-semibold">
+                    <span>{lang === "bn" ? "কর্মচারী দৈনিক খরচ:" : "Employee Daily Spends:"}</span>
+                    <span className="font-mono font-bold">-{fmtMoney(selectedSalStats.dailySpendsInMonth)}</span>
+                  </div>
+                ) : null}
+                {empShoppingDeductions > 0 ? (
+                  <div className="space-y-1 pt-0.5">
+                    <div className="flex justify-between items-center text-rose-600 font-semibold">
+                      <span>{lang === "bn" ? "পোশাক/পণ্য কেনাকাটা (বাকি):" : "Shopping Deductions:"}</span>
+                      <span className="font-mono font-bold">
+                        {deductShopFromSalary ? `-${fmtMoney(empShoppingDeductions)}` : fmtMoney(empShoppingDeductions)}
+                      </span>
+                    </div>
+                    <label className="flex items-center gap-2 cursor-pointer bg-rose-500/10 border border-rose-500/20 px-2 py-1.5 rounded-lg">
+                      <Checkbox
+                        checked={deductShopFromSalary}
+                        onCheckedChange={(checked) => {
+                          const nextVal = Boolean(checked);
+                          setDeductShopFromSalary(nextVal);
+                          const st = getEmployeeSalaryStats(salEmpId, salMonth, nextVal);
+                          setSalAmount(String(st.remaining));
+                        }}
+                      />
+                      <span className="text-[11px] font-bold text-rose-700 dark:text-rose-300">
+                        {lang === "bn"
+                          ? `বেতন থেকে পোশাক কেনাকাটা (${fmtMoney(empShoppingDeductions)}) কর্তন করুন`
+                          : `Deduct shopping (${fmtMoney(empShoppingDeductions)}) from salary`}
+                      </span>
+                    </label>
+                  </div>
+                ) : null}
+                {selectedSalStats.totalBonus > 0 ? (
+                  <div className="flex justify-between items-center text-amber-600 font-semibold">
+                    <span>🎁 {lang === "bn" ? "মালিক প্রদত্ত বোনাস (কর্তনযোগ্য নয়):" : "Owner Bonus (Not deducted):"}</span>
+                    <span className="font-mono font-bold">+{fmtMoney(selectedSalStats.totalBonus)}</span>
+                  </div>
+                ) : null}
+                <div className="flex justify-between items-center font-bold border-t border-border/50 pt-1 text-emerald-600">
+                  <span>{lang === "bn" ? "অবশিষ্ট পরিশোধযোগ্য বেতন:" : "Remaining Payable Salary:"}</span>
+                  <span className="font-mono font-bold">
+                    {fmtMoney(selectedSalStats.remaining)}
+                  </span>
+                </div>
+              </div>
+            )}
 
             <div className="grid grid-cols-2 gap-2">
               <div className="space-y-1">
@@ -1238,11 +1760,12 @@ export default function EmployeesPage() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="food">{lang === "bn" ? "খাবার / লাঞ্চ" : "Food / Lunch"}</SelectItem>
-                    <SelectItem value="travel">{lang === "bn" ? "যাতায়াত / ভাড়া" : "Travel"}</SelectItem>
-                    <SelectItem value="tea">{lang === "bn" ? "নাস্তা / চা" : "Tea / Snacks"}</SelectItem>
-                    <SelectItem value="bonus">{lang === "bn" ? "টিপস / বোনাস" : "Bonus / Tip"}</SelectItem>
-                    <SelectItem value="other">{lang === "bn" ? "অন্যান্য" : "Other"}</SelectItem>
+                    <SelectItem value="advance">{lang === "bn" ? "💵 মালিক প্রদত্ত টাকা / অগ্রিম (বেতন থেকে কর্তন)" : "💵 Given by Owner / Advance (Deducts from Salary)"}</SelectItem>
+                    <SelectItem value="food">{lang === "bn" ? "খাবার / লাঞ্চ (কর্মচারী খরচ)" : "Food / Lunch (Staff Spend)"}</SelectItem>
+                    <SelectItem value="travel">{lang === "bn" ? "যাতায়াত / ভাড়া (কর্মচারী খরচ)" : "Travel (Staff Spend)"}</SelectItem>
+                    <SelectItem value="tea">{lang === "bn" ? "নাস্তা / চা (কর্মচারী খরচ)" : "Tea / Snacks (Staff Spend)"}</SelectItem>
+                    <SelectItem value="bonus">{lang === "bn" ? "🎁 বোনাস / টিপস (কর্তনযোগ্য নয়)" : "🎁 Bonus / Tip (Not deducted)"}</SelectItem>
+                    <SelectItem value="other">{lang === "bn" ? "অন্যান্য খরচ" : "Other Spend"}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -1259,6 +1782,17 @@ export default function EmployeesPage() {
                 />
               </div>
             </div>
+
+            {expEmpId && (
+              <div className="p-2 rounded-xl bg-muted/40 border border-border/70 flex items-center justify-between text-xs">
+                <span className="text-muted-foreground">
+                  {lang === "bn" ? "বর্তমান অবশিষ্ট বেতন:" : "Current Remaining Salary:"}
+                </span>
+                <span className="font-mono font-bold text-emerald-600">
+                  {fmtMoney(getEmployeeSalaryStats(expEmpId, (expDate || "").slice(0, 7) || currentMonthStr, true).remaining)}
+                </span>
+              </div>
+            )}
 
             <div className="space-y-1">
               <Label className="text-xs">{lang === "bn" ? "বিবরণ / নোট" : "Note"}</Label>
@@ -1277,6 +1811,104 @@ export default function EmployeesPage() {
               <Button type="submit" disabled={busy} size="sm" className="rounded-xl text-xs font-bold bg-orange-600 hover:bg-orange-700 text-white">
                 {busy ? <RefreshCw className="size-3.5 animate-spin mr-1" /> : <Check className="size-3.5 mr-1" />}
                 <span>{lang === "bn" ? "খরচ সংরক্ষণ" : "Save Expense"}</span>
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* ──────────────── Modal 3.5: Give Bonus (Owner Bonus to Employee) ──────────────── */}
+      <Dialog open={addBonusOpen} onOpenChange={setAddBonusOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="font-charukola flex items-center gap-2 text-amber-600">
+              <span>🎁</span>
+              {lang === "bn" ? "কর্মচারীকে বোনাস প্রদান করুন" : "Give Bonus to Employee"}
+            </DialogTitle>
+          </DialogHeader>
+
+          <form onSubmit={handleSaveBonus} className="space-y-3 font-balooda">
+            <div className="space-y-1">
+              <Label className="text-xs">{lang === "bn" ? "কর্মচারী নির্বাচন *" : "Select Employee *"}</Label>
+              <Select value={bonusEmpId} onValueChange={setBonusEmpId}>
+                <SelectTrigger className="h-9 text-xs">
+                  <SelectValue placeholder={lang === "bn" ? "কর্মচারী বাছাই করুন" : "Select employee"} />
+                </SelectTrigger>
+                <SelectContent>
+                  {employees.map(e => (
+                    <SelectItem key={e.id} value={e.id}>
+                      {e.name} ({lang === "bn" ? "অবশিষ্ট বেতন:" : "Rem:"} {fmtMoney(getEmployeeSalaryStats(e.id, currentMonthStr, true).remaining)})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {bonusEmpId && (
+              <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-[11px] text-amber-800 dark:text-amber-300 space-y-1">
+                <p className="font-bold">
+                  {lang === "bn"
+                    ? "💡 বোনাস কর্মচারীর মূল বেতন বা অবশিষ্ট বেতন থেকে কাটা হবে না।"
+                    : "💡 Bonus is an extra reward and will NOT reduce the employee's remaining salary."}
+                </p>
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1">
+                <Label className="text-xs">{lang === "bn" ? "তারিখ" : "Date"}</Label>
+                <Input
+                  type="date"
+                  value={bonusDate}
+                  onChange={e => setBonusDate(e.target.value)}
+                  className="h-8.5 text-xs"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-xs">{lang === "bn" ? "বোনাসের পরিমাণ (৳) *" : "Bonus Amount (৳) *"}</Label>
+                <Input
+                  type="number"
+                  required
+                  placeholder="0.00"
+                  value={bonusAmount}
+                  onChange={e => setBonusAmount(e.target.value)}
+                  className="h-8.5 text-xs font-bold font-charukola text-amber-600"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs">{lang === "bn" ? "পরিশোধের মাধ্যম" : "Payment Method"}</Label>
+              <Select value={bonusMethod} onValueChange={setBonusMethod}>
+                <SelectTrigger className="h-8.5 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="cash">{lang === "bn" ? "💵 ক্যাশ / নগদ (ক্যাশবক্স থেকে)" : "💵 Cash (From Cashbox)"}</SelectItem>
+                  <SelectItem value="bkash">{lang === "bn" ? "📱 বিকাশ (bKash)" : "📱 bKash"}</SelectItem>
+                  <SelectItem value="bank">{lang === "bn" ? "🏦 ব্যাংক ট্রান্সফার" : "🏦 Bank Transfer"}</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs">{lang === "bn" ? "বোনাসের উপলক্ষ / নোট" : "Bonus Reason / Note"}</Label>
+              <Input
+                placeholder={lang === "bn" ? "যেমন: ঈদ বোনাস, ভালো কাজের পুরস্কার..." : "e.g. Eid Bonus, Sales Target Bonus..."}
+                value={bonusNote}
+                onChange={e => setBonusNote(e.target.value)}
+                className="h-8 text-xs"
+              />
+            </div>
+
+            <DialogFooter className="gap-2 pt-2">
+              <Button type="button" variant="outline" size="sm" onClick={() => setAddBonusOpen(false)} className="rounded-xl text-xs">
+                {t("cancel")}
+              </Button>
+              <Button type="submit" disabled={busy} size="sm" className="rounded-xl text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white cursor-pointer">
+                {busy ? <RefreshCw className="size-3.5 animate-spin mr-1" /> : <Check className="size-3.5 mr-1" />}
+                <span>🎁 {lang === "bn" ? "বোনাস প্রদান করুন" : "Give Bonus"}</span>
               </Button>
             </DialogFooter>
           </form>
@@ -1325,86 +1957,202 @@ export default function EmployeesPage() {
             </div>
 
             {/* Product Picker */}
-            <div className="p-3 bg-pink-500/10 border border-pink-500/20 rounded-xl space-y-2">
+            <div className="p-3 bg-pink-500/10 border border-pink-500/20 rounded-xl space-y-2.5">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-pink-700 dark:text-pink-300">
                   {lang === "bn" ? "দোকান থেকে নেওয়া পণ্য বাছাই করুন" : "Select Products from Store"}
                 </span>
-                <span className="text-[10px] text-muted-foreground font-mono">
-                  {shopItems.length} {lang === "bn" ? "টি পণ্য" : "items"}
-                </span>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setCustomItemOpen(prev => !prev)}
+                    className="text-[10px] font-bold text-pink-700 dark:text-pink-300 hover:underline cursor-pointer"
+                  >
+                    {customItemOpen ? (lang === "bn" ? "✕ বন্ধ" : "✕ Close") : (lang === "bn" ? "+ কাস্টম আইটেম" : "+ Custom Item")}
+                  </button>
+                  <span className="text-[10px] text-muted-foreground font-mono">
+                    ({shopItems.length} {lang === "bn" ? "টি" : "items"})
+                  </span>
+                </div>
               </div>
 
+              {/* Custom Item Form */}
+              {customItemOpen && (
+                <div className="p-2 bg-card border border-pink-500/30 rounded-lg space-y-1.5 shadow-xs">
+                  <span className="text-[11px] font-bold text-foreground">
+                    {lang === "bn" ? "কাস্টম পোশাক বা পণ্যের নাম ও বিক্রয় মূল্য:" : "Custom Product & Sell Price:"}
+                  </span>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    <Input
+                      placeholder={lang === "bn" ? "পণ্যের নাম..." : "Product name..."}
+                      value={customItemName}
+                      onChange={e => setCustomItemName(e.target.value)}
+                      className="h-7 text-xs"
+                    />
+                    <Input
+                      type="number"
+                      placeholder={lang === "bn" ? "বিক্রয় মূল্য (৳)..." : "Sell price (৳)..."}
+                      value={customItemPrice}
+                      onChange={e => setCustomItemPrice(e.target.value)}
+                      className="h-7 text-xs font-mono font-bold"
+                    />
+                  </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={handleAddCustomShopItem}
+                    className="h-6.5 text-[11px] w-full bg-pink-600 hover:bg-pink-700 text-white rounded-md font-bold"
+                  >
+                    {lang === "bn" ? "তালিকায় যুক্ত করুন" : "Add to List"}
+                  </Button>
+                </div>
+              )}
+
               <Input
-                placeholder={lang === "bn" ? "পণ্য সার্চ করুন..." : "Search products..."}
+                placeholder={lang === "bn" ? "পণ্য বা কোড সার্চ করুন..." : "Search product name or code..."}
                 value={shopProdSearch}
                 onChange={e => setShopProdSearch(e.target.value)}
                 className="h-8 text-xs bg-card"
               />
 
               {shopProdSearch.trim() && (
-                <div className="max-h-32 overflow-y-auto divide-y divide-border bg-card border rounded-lg shadow-xs">
+                <div className="max-h-36 overflow-y-auto divide-y divide-border bg-card border rounded-lg shadow-xs">
                   {products
-                    .filter(p => p.name.toLowerCase().includes(shopProdSearch.toLowerCase()) || (p.code && p.code.toLowerCase().includes(shopProdSearch.toLowerCase())))
-                    .slice(0, 5)
-                    .map(p => (
-                      <div
-                        key={p.id}
-                        className="p-2 flex items-center justify-between hover:bg-muted/60 cursor-pointer text-xs"
-                        onClick={() => {
-                          const existingIdx = shopItems.findIndex(i => i.product_id === p.id);
-                          let newItems = [...shopItems];
-                          if (existingIdx >= 0) {
-                            newItems[existingIdx].qty += 1;
-                            newItems[existingIdx].total = newItems[existingIdx].qty * newItems[existingIdx].unit_price;
-                          } else {
-                            const price = Number(p.sell_price) || 0;
-                            newItems.push({
-                              product_id: p.id,
-                              product_name: p.name,
-                              qty: 1,
-                              unit_price: price,
-                              total: price,
-                            });
-                          }
-                          setShopItems(newItems);
-                          setShopProdSearch("");
-                        }}
-                      >
-                        <div>
-                          <span className="font-semibold">{p.name}</span>
-                          <span className="text-[10px] text-muted-foreground ml-1.5">(স্টক: {p.stock})</span>
+                    .filter(p => {
+                      const q = shopProdSearch.toLowerCase();
+                      return (
+                        p.name.toLowerCase().includes(q) ||
+                        (p.code && p.code.toLowerCase().includes(q)) ||
+                        (p.barcode && p.barcode.toLowerCase().includes(q))
+                      );
+                    })
+                    .slice(0, 6)
+                    .map(p => {
+                      const realSellPrice = Number(
+                        p.sell_price ??
+                        (p as any).selling_price ??
+                        (p as any).price ??
+                        (p as any).unit_price ??
+                        p.buy_price ??
+                        0
+                      );
+                      return (
+                        <div
+                          key={p.id}
+                          className="p-2 flex items-center justify-between hover:bg-muted/60 cursor-pointer text-xs"
+                          onClick={() => handleAddProductToShop(p)}
+                        >
+                          <div>
+                            <span className="font-semibold">{p.name}</span>
+                            <span className="text-[10px] text-muted-foreground ml-1.5">(স্টক: {p.stock})</span>
+                          </div>
+                          <span className="font-bold text-emerald-600 font-mono">
+                            ৳{realSellPrice}
+                          </span>
                         </div>
-                        <span className="font-bold text-emerald-600">৳{p.sell_price}</span>
-                      </div>
-                    ))}
+                      );
+                    })}
                 </div>
               )}
 
-              {/* Chosen Items */}
+              {/* Chosen Items List with Editable Sell Price */}
               {shopItems.length > 0 && (
                 <div className="space-y-1.5 pt-1">
+                  <span className="text-[11px] font-bold text-foreground block">
+                    {lang === "bn" ? "নির্বাচিত পণ্যসমূহ ও বিক্রয় মূল্য নির্ধারণ:" : "Selected Products & Sell Prices:"}
+                  </span>
                   {shopItems.map((item, idx) => (
-                    <div key={idx} className="flex items-center justify-between p-1.5 rounded-lg bg-card border text-xs">
-                      <div className="min-w-0 flex-1 mr-2">
-                        <p className="font-bold truncate">{item.product_name}</p>
-                        <p className="text-[10px] text-muted-foreground">৳{item.unit_price} x {item.qty} = ৳{item.total}</p>
+                    <div key={idx} className="p-2 rounded-xl bg-card border border-border/80 space-y-1.5 shadow-2xs">
+                      <div className="flex items-center justify-between gap-1">
+                        <span className="font-bold text-xs truncate max-w-[200px] sm:max-w-xs">{item.product_name}</span>
+                        <button
+                          type="button"
+                          onClick={() => setShopItems(shopItems.filter((_, i) => i !== idx))}
+                          className="p-1 text-rose-500 hover:bg-rose-500/10 rounded cursor-pointer"
+                          title="Remove"
+                        >
+                          <X className="size-3.5" />
+                        </button>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => setShopItems(shopItems.filter((_, i) => i !== idx))}
-                        className="p-1 text-rose-500 hover:bg-rose-500/10 rounded"
-                      >
-                        <X className="size-3" />
-                      </button>
+
+                      <div className="flex items-center justify-between gap-2 flex-wrap pt-0.5">
+                        {/* Sell Price Editable Input */}
+                        <div className="flex items-center gap-1">
+                          <span className="text-[10px] sm:text-[11px] text-muted-foreground font-medium">
+                            {lang === "bn" ? "বিক্রয় মূল্য:" : "Sell Price:"}
+                          </span>
+                          <div className="flex items-center border border-border rounded-lg bg-background px-1.5 h-6.5">
+                            <span className="text-[10px] text-muted-foreground mr-0.5">৳</span>
+                            <input
+                              type="number"
+                              min="0"
+                              value={item.unit_price === 0 ? "" : item.unit_price}
+                              placeholder="0"
+                              onChange={e => handleUpdateShopItemPrice(idx, e.target.value)}
+                              className="w-16 text-xs font-bold font-mono text-pink-600 bg-transparent outline-none"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Qty Stepper */}
+                        <div className="flex items-center gap-1">
+                          <span className="text-[10px] sm:text-[11px] text-muted-foreground">{lang === "bn" ? "পরিমাণ:" : "Qty:"}</span>
+                          <div className="flex items-center border border-border rounded-lg bg-background overflow-hidden h-6">
+                            <button
+                              type="button"
+                              onClick={() => handleUpdateShopItemQty(idx, -1)}
+                              className="px-1.5 hover:bg-muted text-xs font-bold"
+                            >
+                              -
+                            </button>
+                            <span className="px-2 text-xs font-mono font-bold">{item.qty}</span>
+                            <button
+                              type="button"
+                              onClick={() => handleUpdateShopItemQty(idx, 1)}
+                              className="px-1.5 hover:bg-muted text-xs font-bold"
+                            >
+                              +
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Line Total */}
+                        <div className="text-right">
+                          <span className="text-xs font-bold font-charukola text-foreground">
+                            {fmtMoney(item.total)}
+                          </span>
+                        </div>
+                      </div>
                     </div>
                   ))}
-                  <div className="flex justify-between items-center pt-1 font-bold text-xs">
-                    <span>{lang === "bn" ? "মোট মূল্য:" : "Total Price:"}</span>
-                    <span className="text-pink-600 font-charukola">
+
+                  <div className="flex justify-between items-center pt-1 font-bold text-xs border-t border-border/60">
+                    <span>{lang === "bn" ? "সর্বমোট বিক্রয় মূল্য:" : "Grand Total Price:"}</span>
+                    <span className="text-pink-600 font-charukola text-sm font-bold">
                       {fmtMoney(shopItems.reduce((a, b) => a + b.total, 0))}
                     </span>
                   </div>
+
+                  {/* Payment Status Context Info */}
+                  {shopStatus === "deduct_from_salary" ? (
+                    <p className="text-[10px] text-amber-700 dark:text-amber-300 bg-amber-500/10 p-1.5 rounded-lg border border-amber-500/20">
+                      {lang === "bn"
+                        ? `💡 এই সর্বমোট ${fmtMoney(shopItems.reduce((a, b) => a + b.total, 0))} কর্মচারীর পরবর্তী বেতন থেকে স্বয়ংক্রিয়ভাবে কাটা হবে।`
+                        : `💡 Total ${fmtMoney(shopItems.reduce((a, b) => a + b.total, 0))} will be deducted from staff salary.`}
+                    </p>
+                  ) : shopStatus === "paid_cash" ? (
+                    <p className="text-[10px] text-emerald-700 dark:text-emerald-300 bg-emerald-500/10 p-1.5 rounded-lg border border-emerald-500/20">
+                      {lang === "bn"
+                        ? `💡 নগদ প্রাপ্ত ${fmtMoney(shopItems.reduce((a, b) => a + b.total, 0))} ক্যাশবক্সে জমা হিসেবে যুক্ত হবে।`
+                        : `💡 Cash of ${fmtMoney(shopItems.reduce((a, b) => a + b.total, 0))} will be recorded into cashbox.`}
+                    </p>
+                  ) : (
+                    <p className="text-[10px] text-purple-700 dark:text-purple-300 bg-purple-500/10 p-1.5 rounded-lg border border-purple-500/20">
+                      {lang === "bn"
+                        ? "💡 এটি উপহার/বোনাস হিসেবে রেকর্ড হবে (বেতন বা ক্যাশ থেকে কাটা হবে না)।"
+                        : "💡 Recorded as gift (no deduction from salary or cash)."}
+                    </p>
+                  )}
                 </div>
               )}
 
@@ -1454,7 +2202,7 @@ export default function EmployeesPage() {
             <div className="space-y-3 font-balooda">
               <div id="thermal-employee-receipt" className="p-4 bg-background rounded-xl border border-dashed text-xs space-y-2.5 font-mono shadow-inner">
                 <div className="text-center border-b pb-2 space-y-0.5">
-                  <h3 className="font-bold text-sm uppercase tracking-wide">{user?.business_name || "Dream Fashion"}</h3>
+                  <h3 className="font-bold text-sm uppercase tracking-wide">{user?.business_name || "Classic World"}</h3>
                   <p className="text-[10px] text-muted-foreground">{lang === "bn" ? "পোশাক ও পণ্য ড্র ভাউচার" : "Staff Clothing Voucher"}</p>
                 </div>
 
@@ -1486,7 +2234,7 @@ export default function EmployeesPage() {
                   </div>
                   {printSlipItem.items?.map((it, idx) => (
                     <div key={idx} className="flex justify-between text-[11px]">
-                      <span className="truncate max-w-[170px]">{it.product_name} x{it.qty}</span>
+                      <span className="truncate max-w-[170px]">{it.product_name} x{it.qty} {it.unit_price ? `(@৳${it.unit_price})` : ""}</span>
                       <span className="font-bold">৳{it.total}</span>
                     </div>
                   ))}

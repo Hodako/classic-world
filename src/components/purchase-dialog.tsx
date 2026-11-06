@@ -140,24 +140,26 @@ export function PurchaseDialog({
     }
     setBusy(true);
     try {
-      for (const line of valid) {
-        const p = products.find(x => x.id === line.productId)!;
-        const qty = Number(line.qty) || 0;
-        const unit_cost = Number(line.unitCost) || 0;
-        const sell_price = Number(line.sellPrice) || 0;
-        await createPurchaseFn({
-          data: {
-            product_id: p.id,
-            product_name: p.name,
-            qty,
-            unit_cost,
-            sell_price: sell_price > 0 ? sell_price : undefined,
-            total: qty * unit_cost,
-            party_id: partyId || null,
-            payment_type: paymentType,
-          },
-        });
-      }
+      await Promise.all(
+        valid.map(line => {
+          const p = products.find(x => x.id === line.productId)!;
+          const qty = Number(line.qty) || 0;
+          const unit_cost = Number(line.unitCost) || 0;
+          const sell_price = Number(line.sellPrice) || 0;
+          return createPurchaseFn({
+            data: {
+              product_id: p.id,
+              product_name: p.name,
+              qty,
+              unit_cost,
+              sell_price: sell_price > 0 ? sell_price : undefined,
+              total: qty * unit_cost,
+              party_id: partyId || null,
+              payment_type: paymentType,
+            },
+          });
+        })
+      )
       toast.success(t("save"));
       qc.invalidateQueries({ queryKey: ["purchases"] });
       qc.invalidateQueries({ queryKey: ["products"] });

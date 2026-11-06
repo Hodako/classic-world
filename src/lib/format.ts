@@ -1,5 +1,9 @@
 export function fmtMoney(n: number | string | null | undefined): string {
-  const num = typeof n === "string" ? Number(n) : (n ?? 0);
+  let val = n;
+  if (typeof val === "string") {
+    val = val.replace(/^[৳$Tk.\s]+/i, "").replace(/,/g, "").trim();
+  }
+  const num = typeof val === "string" ? Number(val) : (val ?? 0);
   if (!Number.isFinite(num)) return "৳0";
   return "৳" + num.toLocaleString("en-IN", { maximumFractionDigits: 2 });
 }

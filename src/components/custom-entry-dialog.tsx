@@ -277,6 +277,7 @@ export function CustomEntryDialog({ open, onOpenChange, initialType = "sale" }: 
               kind: "deposit",
               amount: cashboxAmtNum,
               note: noteText,
+              created_at: isoDate,
             });
           } catch (_) {}
         }
@@ -302,6 +303,7 @@ export function CustomEntryDialog({ open, onOpenChange, initialType = "sale" }: 
               kind: "withdraw",
               amount: cashboxAmtNum,
               note: noteText,
+              created_at: isoDate,
             });
           } catch (_) {}
         }

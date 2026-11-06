@@ -99,7 +99,7 @@ export function ProductDialog({
         buy_price: Number(buy) || 0,
         sell_price: Number(sellPrice) || 0,
         stock: Number(stock) || 0,
-        min_stock: Number(minStock) ?? 5,
+        min_stock: minStock.trim() && Number.isFinite(Number(minStock)) ? Math.max(0, Number(minStock)) : 5,
         category: category.trim(),
         barcode: barcode.trim() || null,
         attributes: attributesObj,
@@ -132,28 +132,18 @@ export function ProductDialog({
             </label>
             <Field label={t("product_name")}><Input required placeholder={t("product_name")} value={name} onChange={e => setName(e.target.value)} /></Field>
             
-            {/* Barcode & QR Code Field with Scan Button */}
+            {/* Barcode & QR Code Field */}
             <Field label={lang === "bn" ? "বারকোড / QR কোড (ঐচ্ছিক)" : "Barcode / QR Code (Optional)"}>
-              <div className="flex gap-1.5">
-                <Input
-                  type="text"
-                  className="font-mono text-xs"
-                  placeholder={lang === "bn" ? "বারকোড বা QR কোড লিখুন..." : "Enter barcode or QR code..."}
-                  value={barcode}
-                  onChange={e => setBarcode(e.target.value)}
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="h-9 min-w-[44px] px-2.5 shrink-0 flex items-center justify-center cursor-pointer"
-                  onClick={() => setScannerOpen(true)}
-                  title={lang === "bn" ? "বারকোড / QR কোড স্ক্যানার" : "Barcode / QR Code Scanner"}
-                  aria-label={lang === "bn" ? "বারকোড / QR কোড স্ক্যানার" : "Barcode / QR Code Scanner"}
-                >
-                  <Scan className="size-4 text-primary" />
-                </Button>
-              </div>
+              <Input
+                type="text"
+                className="font-mono text-xs"
+                placeholder={lang === "bn" ? "বারকোড স্ক্যান করুন অথবা লিখুন..." : "Scan or enter barcode..."}
+                value={barcode}
+                onChange={e => setBarcode(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === "Enter") e.preventDefault();
+                }}
+              />
             </Field>
 
             <div className="grid grid-cols-2 gap-3">

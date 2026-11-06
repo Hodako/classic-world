@@ -9,6 +9,7 @@ import type { Product } from "@/lib/queries";
 import { useT } from "@/lib/i18n";
 import { BarcodeScannerDialog } from "@/components/barcode-scanner-dialog";
 import { toast } from "sonner";
+import { findProductsByScannedCode } from "@/lib/pos-hardware";
 
 interface ProductSearchProps {
   products: Product[];
@@ -16,10 +17,11 @@ interface ProductSearchProps {
   onChange: (id: string) => void;
   showPrice?: boolean;
   placeholder?: string;
+  showBuyPrice?: boolean;
 }
 
 /** Searchable product picker for buy/sell dialogs. Inline design avoids modal/keyboard conflicts. */
-export function ProductSearchSelect({ products, value, onChange, showPrice, placeholder }: ProductSearchProps) {
+export function ProductSearchSelect({ products, value, onChange, showPrice, placeholder, showBuyPrice }: ProductSearchProps) {
   const { t, lang } = useT();
   const [isOpen, setIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -70,30 +72,12 @@ export function ProductSearchSelect({ products, value, onChange, showPrice, plac
   };
 
   const handleBarcodeScanned = (code: string) => {
-    const rawCode = String(code || "").trim();
-    const cleanCode = rawCode.toLowerCase();
-    const strippedCode = cleanCode.replace(/^0+/, "");
-
-    const found = products.find(p => {
-      const pBarcode = (p.barcode || "").trim().toLowerCase();
-      const pStripped = pBarcode.replace(/^0+/, "");
-      const pQr = ((p as any).qr_code || "").trim().toLowerCase();
-      const pCode = ((p as any).code || "").trim().toLowerCase();
-      const pSku = ((p as any).sku || "").trim().toLowerCase();
-      const pNum = ((p as any).product_number || "").trim().toLowerCase();
-      const pId = String(p.id || "").trim().toLowerCase();
-      const pName = (p.name || "").trim().toLowerCase();
-
-      return (
-        (pBarcode && (pBarcode === cleanCode || cleanCode.includes(pBarcode) || (strippedCode && pStripped === strippedCode))) ||
-        (pQr && (pQr === cleanCode || cleanCode.includes(pQr))) ||
-        (pCode && (pCode === cleanCode || cleanCode.includes(pCode))) ||
-        (pSku && (pSku === cleanCode || cleanCode.includes(pSku))) ||
-        (pNum && (pNum === cleanCode || cleanCode.includes(pNum))) ||
-        (pId && (pId === cleanCode || cleanCode.includes(pId))) ||
-        (pName && pName === cleanCode)
-      );
-    });
+    const matches = findProductsByScannedCode(products, String(code || ""));
+    if (matches.length > 1) {
+      toast.error(lang === "bn" ? "একই কোড একাধিক পণ্যে আছে" : "This code belongs to multiple products");
+      return;
+    }
+    const found = matches[0];
     if (found) {
       onChange(found.id);
       setIsOpen(false);
@@ -114,6 +98,11 @@ export function ProductSearchSelect({ products, value, onChange, showPrice, plac
               {showPrice && (
                 <span className="text-[10px] text-muted-foreground font-normal">
                   ({fmtMoney(selectedProduct.sell_price)} · {selectedProduct.stock} pcs)
+                </span>
+              )}
+              {showBuyPrice && (
+                <span className="text-[10px] text-amber-700 dark:text-amber-400 font-semibold font-mono bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20">
+                  {lang === "bn" ? "ক্রয়" : "Cost"}: {fmtMoney(selectedProduct.buy_price)}
                 </span>
               )}
             </span>
@@ -198,8 +187,14 @@ export function ProductSearchSelect({ products, value, onChange, showPrice, plac
                             <span className="truncate">{p.name}</span>
                             {p.barcode && <span className="font-mono text-[9px] opacity-75">{p.barcode}</span>}
                           </div>
-                          <span className="shrink-0 text-[10px] opacity-80">
-                            {showPrice && `${fmtMoney(p.sell_price)} · `}({p.stock})
+                          <span className="shrink-0 text-[10px] opacity-80 text-right">
+                            {showPrice && `${fmtMoney(p.sell_price)} · `}
+                            {showBuyPrice && (
+                              <span className="text-amber-600 dark:text-amber-400 font-semibold font-mono">
+                                ({lang === "bn" ? "ক্রয়" : "Cost"} {fmtMoney(p.buy_price)}) · 
+                              </span>
+                            )}
+                            ({p.stock})
                           </span>
                         </button>
                       );
@@ -208,27 +203,9 @@ export function ProductSearchSelect({ products, value, onChange, showPrice, plac
                 </div>
               )}
             </div>
-            
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="h-9 px-3 shrink-0 text-xs flex items-center gap-1 border-dashed cursor-pointer min-h-[44px]"
-              onClick={() => setScannerOpen(true)}
-              title="Scan Barcode"
-            >
-              <Scan className="size-4 text-primary" />
-            </Button>
           </div>
         )}
       </div>
-
-      <BarcodeScannerDialog
-        open={scannerOpen}
-        onOpenChange={setScannerOpen}
-        onScan={handleBarcodeScanned}
-        title={lang === "bn" ? "পণ্য খুঁজুন (বারকোড)" : "Scan Product Barcode"}
-      />
     </>
   );
 }

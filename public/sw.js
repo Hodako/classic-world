@@ -1,6 +1,8 @@
-const CACHE_NAME = "classicworld-pwa-v51";
+const CACHE_NAME = "classicworld-pwa-v55";
 
 const PRECACHE_ASSETS = [
+  "/",
+  "/index.html",
   "/manifest.json",
   "/logo.png",
   "/icon-512.png",
@@ -79,13 +81,18 @@ self.addEventListener("fetch", (event) => {
         .then((networkRes) => {
           if (networkRes && networkRes.status === 200) {
             const copy = networkRes.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+            caches.open(CACHE_NAME).then((cache) => {
+              cache.put(event.request, copy).catch(() => {});
+            }).catch(() => {});
           }
           return networkRes;
         })
         .catch(async () => {
           const cached = await caches.match(event.request);
           if (cached) return cached;
+
+          const fallback = (await caches.match("/")) || (await caches.match("/index.html"));
+          if (fallback) return fallback;
           return new Response("Offline", {
             status: 503,
             statusText: "Offline",
@@ -96,14 +103,24 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // 2. Next.js Static JS Chunks -> Fetch directly with network fallback
+  // 2. Next.js Static JS Chunks -> Network-First with cached fallback & safe Response
   if (url.pathname.startsWith("/_next/static/")) {
     event.respondWith(
-      fetch(event.request).catch(async () => {
-        const cached = await caches.match(event.request);
-        if (cached) return cached;
-        throw new Error("Chunk load failed from network");
-      })
+      fetch(event.request)
+        .then((networkRes) => {
+          if (networkRes && networkRes.status === 200) {
+            const copy = networkRes.clone();
+            caches.open(CACHE_NAME).then((cache) => {
+              cache.put(event.request, copy).catch(() => {});
+            }).catch(() => {});
+          }
+          return networkRes;
+        })
+        .catch(async () => {
+          const cached = await caches.match(event.request);
+          if (cached) return cached;
+          return new Response("", { status: 408, statusText: "Offline" });
+        })
     );
     return;
   }
@@ -131,7 +148,9 @@ self.addEventListener("fetch", (event) => {
           .then((networkRes) => {
             if (networkRes && networkRes.status === 200) {
               const copy = networkRes.clone();
-              caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+              caches.open(CACHE_NAME).then((cache) => {
+                cache.put(event.request, copy).catch(() => {});
+              }).catch(() => {});
             }
             return networkRes;
           })
@@ -141,16 +160,22 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // 4. Default: Network-First
+  // 4. Default: Network-First with guaranteed Response
   event.respondWith(
     fetch(event.request)
       .then((networkRes) => {
         if (networkRes && networkRes.status === 200) {
           const copy = networkRes.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+          caches.open(CACHE_NAME).then((cache) => {
+            cache.put(event.request, copy).catch(() => {});
+          }).catch(() => {});
         }
         return networkRes;
       })
-      .catch(() => caches.match(event.request))
+      .catch(async () => {
+        const cached = await caches.match(event.request);
+        if (cached) return cached;
+        return new Response("", { status: 503, statusText: "Offline" });
+      })
   );
 });

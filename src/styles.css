@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500&family=Hind+Siliguri:wght@400;500;600;700&family=Lora:ital,wght@0,400;0,600;0,700;1,400&family=Poppins:wght@400;500;600;700&family=Roboto:wght@400;500;700&family=Montserrat:wght@400;500;600;700&family=Nunito:wght@400;500;600;700&family=Ubuntu:wght@400;500;700&family=Playfair+Display:wght@400;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500&family=Hind+Siliguri:wght@400;500;600;700&family=Lora:ital,wght@0,400;0,600;0,700;1,400&family=Poppins:wght@400;500;600;700&family=Roboto:wght@300;400;500;700;900&family=Montserrat:wght@400;500;600;700&family=Nunito:wght@400;500;600;700&family=Ubuntu:wght@400;500;700&family=Playfair+Display:wght@400;600;700&display=swap');
 @import url('https://banglawebfonts.pages.dev/css/siyam-rupali.css');
 @import url('https://banglawebfonts.pages.dev/css/baloo-da-2.css');
 @import url('https://banglawebfonts.pages.dev/css/charukola.css');
@@ -92,9 +92,9 @@
   --sidebar-accent-foreground: #059669;
   --sidebar-border: #bfdbfe;
   --sidebar-ring: #059669;
-  --font-sans: 'Hind Siliguri', 'Baloo Da 2', 'Poppins', sans-serif;
-  --font-serif: 'Poppins', 'Montserrat', 'Roboto', sans-serif;
-  --font-mono: 'Fira Code', 'Roboto Mono', 'Poppins', monospace;
+  --font-sans: 'Roboto', 'Hind Siliguri', 'Baloo Da 2', 'Poppins', sans-serif;
+  --font-serif: 'Roboto', 'Poppins', 'Montserrat', sans-serif;
+  --font-mono: 'Roboto Mono', 'Fira Code', monospace;
   --radius: 0.5rem;
 
   /* bKash Fintech Design System Tokens */
@@ -189,7 +189,7 @@
 
   body {
     @apply bg-background text-foreground antialiased;
-    font-family: 'Siyam Rupali', sans-serif;
+    font-family: 'Roboto', 'Hind Siliguri', 'Siyam Rupali', sans-serif;
     font-weight: 400;
     font-style: normal;
     background-color: var(--background);
@@ -203,8 +203,14 @@
     -webkit-user-select: text !important;
   }
 
+  html[lang="en"],
+  html[lang="en"] body {
+    font-family: 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif !important;
+  }
+
+  html[lang="bn"],
   html[lang="bn"] body {
-    font-family: 'Siyam Rupali', sans-serif;
+    font-family: 'Roboto', 'Hind Siliguri', 'Siyam Rupali', sans-serif;
   }
 
   h1, h2, h3 {
@@ -615,6 +621,10 @@
 .font-num {
   font-family: 'Poppins', 'Montserrat', 'Roboto', 'Fira Code', sans-serif !important;
   font-variant-numeric: tabular-nums;
+}
+
+.font-roboto {
+  font-family: 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important;
 }
 
 

@@ -43,6 +43,17 @@ export function ModeSwitcherDialog({ open, onOpenChange }: ModeSwitcherDialogPro
       }
     } catch (_) {}
 
+    // Also refresh employees from Firestore so latest staff PINs are available
+    import("@/lib/firestore-service")
+      .then(({ fsGetEmployees }) => fsGetEmployees())
+      .then((emps) => {
+        if (Array.isArray(emps) && emps.length > 0) {
+          setEmployees(emps);
+          setSelectedEmpId((prev) => prev || emps[0].id);
+        }
+      })
+      .catch(() => {});
+
     try {
       const activeEmp = JSON.parse(localStorage.getItem("cw_active_employee_session") || "null");
       setActiveEmpSession(activeEmp);
@@ -65,7 +76,33 @@ export function ModeSwitcherDialog({ open, onOpenChange }: ModeSwitcherDialogPro
       sessionStorage.setItem("app_pin_unlocked", "true");
       localStorage.removeItem("cw_active_employee_session");
       localStorage.setItem("cw_active_session_role", "owner");
+      try {
+        const backupProfile = localStorage.getItem("cw_owner_backup_profile");
+        const backupToken = localStorage.getItem("cw_owner_backup_token");
+        if (backupProfile) {
+          localStorage.setItem("user", backupProfile);
+          localStorage.setItem("classicworld_auth_profile", backupProfile);
+          localStorage.setItem("cw-auth-profile", backupProfile);
+        } else {
+          const curUserRaw = localStorage.getItem("classicworld_auth_profile") || localStorage.getItem("user");
+          if (curUserRaw) {
+            const parsed = JSON.parse(curUserRaw);
+            if (parsed?.role === "employee") {
+              const ownerRestored = { ...parsed, role: "owner", permissions: undefined };
+              localStorage.setItem("user", JSON.stringify(ownerRestored));
+              localStorage.setItem("classicworld_auth_profile", JSON.stringify(ownerRestored));
+              localStorage.setItem("cw-auth-profile", JSON.stringify(ownerRestored));
+            }
+          }
+        }
+        if (backupToken) {
+          localStorage.setItem("auth_token", backupToken);
+        } else if (localStorage.getItem("auth_token")?.startsWith("token_emp_")) {
+          localStorage.setItem("auth_token", "token_owner");
+        }
+      } catch (_) {}
       window.dispatchEvent(new Event("hz-employee-switched"));
+      window.dispatchEvent(new Event("storage"));
       onOpenChange(false);
       toast.success(lang === "bn" ? "স্বত্বাধিকারী (Owner) মোডে সফলভাবে প্রবেশ করেছেন!" : "Switched to Owner Mode successfully!");
     } else {
@@ -78,31 +115,54 @@ export function ModeSwitcherDialog({ open, onOpenChange }: ModeSwitcherDialogPro
   };
 
   const handleVerifyEmployeePin = (pinToTest: string) => {
-    const defaultEmpPin = localStorage.getItem("app_employee_pin_code_val") || "0000";
     let targetEmployee = employees.find(e => e.id === selectedEmpId);
-    if (!targetEmployee) {
-      targetEmployee = employees.find(e => String(e.pin).trim() === pinToTest.trim());
+    if (!targetEmployee || String(targetEmployee.pin || targetEmployee.plain_password || targetEmployee.password || "").trim() !== pinToTest.trim()) {
+      targetEmployee = employees.find(e => String(e.pin || e.plain_password || e.password || "").trim() === pinToTest.trim());
     }
 
-    if (pinToTest.trim() === defaultEmpPin.trim() || (targetEmployee && String(targetEmployee.pin).trim() === pinToTest.trim())) {
+    const isMatch = Boolean(targetEmployee && String(targetEmployee.pin || targetEmployee.plain_password || targetEmployee.password || "").trim() === pinToTest.trim());
+
+    if (isMatch && targetEmployee) {
       playSaleSuccessSound();
       sessionStorage.setItem("app_pin_unlocked", "true");
-      const empData = targetEmployee || { id: "default-emp", name: "Staff / কর্মচারী", pin: defaultEmpPin, permissions: { sales: true, products: true, customers: true } };
+      try {
+        const curUserRaw = localStorage.getItem("classicworld_auth_profile") || localStorage.getItem("user");
+        const curToken = localStorage.getItem("auth_token");
+        if (curUserRaw) {
+          const parsed = JSON.parse(curUserRaw);
+          if (parsed?.role === "owner") {
+            localStorage.setItem("cw_owner_backup_profile", curUserRaw);
+          }
+        }
+        if (curToken && !curToken.startsWith("token_emp_")) {
+          localStorage.setItem("cw_owner_backup_token", curToken);
+        }
+      } catch (_) {}
+      const empData = targetEmployee;
       localStorage.setItem("cw_active_employee_session", JSON.stringify(empData));
       localStorage.setItem("cw_active_session_role", "employee");
+      localStorage.setItem("user", JSON.stringify({ ...empData, role: "employee" }));
+      localStorage.setItem("classicworld_auth_profile", JSON.stringify({ ...empData, role: "employee" }));
+      localStorage.setItem("cw-auth-profile", JSON.stringify({ ...empData, role: "employee" }));
+      localStorage.setItem("auth_token", `token_emp_${empData.id}`);
       window.dispatchEvent(new Event("hz-employee-switched"));
+      window.dispatchEvent(new Event("storage"));
       onOpenChange(false);
       toast.success(
         lang === "bn"
-          ? `কর্মচারী (${empData.name}) মোডে প্রবেশ সফল হয়েছে!`
-          : `Switched to Employee (${empData.name}) Mode!`
+          ? `কর্মচারী (${empData.name || empData.full_name || "Staff"}) মোডে প্রবেশ সফল হয়েছে!`
+          : `Switched to Employee (${empData.name || empData.full_name || "Staff"}) Mode!`
       );
     } else {
       playErrorSound();
       setErrorShake(true);
       setTimeout(() => setErrorShake(false), 500);
       setPinInput("");
-      toast.error(lang === "bn" ? "ভুল কর্মচারী পিন কোড!" : "Incorrect Employee PIN code!");
+      toast.error(
+        employees.length === 0
+          ? (lang === "bn" ? "দোকানে কোনো কর্মচারী অ্যাকাউন্ট যোগ করা নেই!" : "No employee accounts found! Please add staff first.")
+          : (lang === "bn" ? "ভুল কর্মচারী পিন কোড!" : "Incorrect Employee PIN code!")
+      );
     }
   };
 
@@ -198,24 +258,29 @@ export function ModeSwitcherDialog({ open, onOpenChange }: ModeSwitcherDialogPro
           {/* PIN Input field */}
           <div className="space-y-1.5">
             <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider flex items-center justify-between">
-              <span>{activeTab === "owner" ? (lang === "bn" ? "মালিক পিন কোড দিন" : "Enter Owner PIN") : (lang === "bn" ? "কর্মচারী পিন কোড দিন" : "Enter Employee PIN")}</span>
-              <span className="text-[10px] font-normal lowercase font-mono">{activeTab === "owner" ? "(Default: 1234)" : "(Default: 0000)"}</span>
+              <span>{activeTab === "owner" ? (lang === "bn" ? "মালিক সিকিউরিটি পিন দিন" : "Enter Owner PIN") : (lang === "bn" ? "কর্মচারী সিকিউরিটি পিন দিন" : "Enter Employee PIN")}</span>
             </label>
             <div className={`relative ${errorShake ? "animate-shake" : ""}`}>
               <Input
                 type="password"
                 maxLength={6}
                 autoFocus
-                placeholder="••••"
+                placeholder="******"
                 value={pinInput}
                 onChange={(e) => {
                   const val = e.target.value.replace(/\D/g, "");
                   setPinInput(val);
-                  if (val.length === 4) {
+                  if (val.length >= 4) {
                     if (activeTab === "owner") {
-                      handleVerifyOwnerPin(val);
+                      const oPin = (localStorage.getItem("app_pin_code_val") || "1234").trim();
+                      if (val === oPin || val.length === oPin.length) {
+                        handleVerifyOwnerPin(val);
+                      }
                     } else {
-                      handleVerifyEmployeePin(val);
+                      const match = employees.find(emp => String(emp.pin || emp.plain_password || emp.password || "").trim() === val);
+                      if (match) {
+                        handleVerifyEmployeePin(val);
+                      }
                     }
                   }
                 }}

@@ -29,6 +29,8 @@ import {
   applyAssetTransferKeyFn,
   listMyTransferKeysFn,
   deleteTransferKeyFn,
+  getEmployeesFn,
+  updateEmployeeFn,
 } from "@/lib/rpc";
 import Link from "next/link";
 import {
@@ -44,8 +46,10 @@ import {
   RefreshCw,
   AlertTriangle,
   Printer,
+  Scan,
   Store,
   Sparkles,
+  Flame,
   ExternalLink,
   Plus,
   Mail,
@@ -54,6 +58,7 @@ import {
   Clock,
   CheckCircle,
   GripVertical,
+  Pencil,
   ChevronUp,
   ChevronDown,
   ArrowUpDown,
@@ -83,6 +88,9 @@ import {
   Calendar,
 } from "lucide-react";
 import { getPosPaperConfig, savePosPaperConfig, DEFAULT_POS_CONFIG, type PosPaperSettings } from "@/lib/pos-print";
+import { findProductsByScannedCode, getPosHardwareSettings, savePosHardwareSettings, type ReceiptPrintMode } from "@/lib/pos-hardware";
+import { printPwaInvoice } from "@/lib/invoice-printer";
+import { getProducts } from "@/lib/queries";
 import { DEFAULT_EMPLOYEE_PERMISSIONS, type PermissionSet } from "@/lib/permissions";
 import {
   uploadImageFn,
@@ -121,7 +129,7 @@ import {
 
 const BUSINESS_TYPES = ["retail", "wholesale", "fashion", "grocery", "services"];
 
-type SettingsTab = "profile" | "transfer" | "printing" | "sheets" | "staff" | "appearance" | "security" | "history";
+type SettingsTab = "profile" | "transfer" | "printing" | "hardware" | "sheets" | "staff" | "appearance" | "security" | "history";
 
 export default function SettingsPage() {
   const { lang, t } = useT();
@@ -140,6 +148,51 @@ export default function SettingsPage() {
 
   const [busy, setBusy] = useState(false);
   const [settingsTab, setSettingsTab] = useState<SettingsTab>("profile");
+  const [printMode, setPrintMode] = useState<ReceiptPrintMode>("manual");
+  const [scannerSuffix, setScannerSuffix] = useState<"Enter" | "Tab">("Enter");
+  const [scannerTestCode, setScannerTestCode] = useState("");
+  const [scannerTestResult, setScannerTestResult] = useState("");
+  const hardwareProducts = useQuery({ queryKey: ["products"], queryFn: getProducts, enabled: settingsTab === "hardware" });
+
+  useEffect(() => {
+    setPrintMode(getPosHardwareSettings().printMode);
+    setScannerSuffix(getPosHardwareSettings().scannerSuffix);
+  }, []);
+
+  const testScanner = () => {
+    const code = scannerTestCode.trim();
+    if (!code) return;
+    if (hardwareProducts.isLoading || hardwareProducts.isError) {
+      setScannerTestResult(lang === "bn" ? "পণ্যের তালিকা লোড হয়নি। আবার চেষ্টা করুন।" : "Products are unavailable. Try again after they load.");
+      return;
+    }
+    const matches = findProductsByScannedCode(hardwareProducts.data || [], code);
+    setScannerTestResult(matches.length === 1
+      ? (lang === "bn" ? `পাওয়া গেছে: ${matches[0].name}` : `Found: ${matches[0].name}`)
+      : matches.length > 1
+        ? (lang === "bn" ? `একাধিক পণ্যে বারকোড ${code} আছে` : `Barcode ${code} belongs to multiple products`)
+        : (lang === "bn" ? `স্ক্যান পাওয়া গেছে: ${code} · কোনো পণ্য মেলেনি` : `Scan received: ${code} · no matching product`));
+    setScannerTestCode("");
+  };
+
+  const testPrinter = () => {
+    printPwaInvoice({
+      businessName: settings.data?.business?.name || "Classic World",
+      shopAddress: settings.data?.business?.address || "",
+      shopPhoneNumbers: settings.data?.business?.phone_numbers || "",
+      pageSize: getPosPaperConfig().widthMm === 58 ? "58mm" : getPosPaperConfig().widthMm === 80 ? "80mm" : "A4",
+      invoiceNo: "TEST-RECEIPT",
+      invoiceDate: new Date().toLocaleString(),
+      customerName: "Printer test",
+      items: [{ product: { name: "Test item" }, qty: 1, sellPrice: 1 }],
+      subtotal: 1,
+      discountAmount: 0,
+      total: 1,
+      paidAmount: 1,
+      due: 0,
+      terms: "Hardware test · No sale recorded",
+    });
+  };
 
   // Transfer Keys State
   const myTransferKeys = useQuery({ queryKey: ["my-transfer-keys"], queryFn: listMyTransferKeysFn, enabled: !!user });
@@ -458,14 +511,158 @@ export default function SettingsPage() {
   const [pinLockEnabled, setPinLockEnabled] = useState(false);
   const [pinCodeVal, setPinCodeVal] = useState("1234");
   const [pinTimeoutVal, setPinTimeoutVal] = useState("10");
+  const [showOwnerPin, setShowOwnerPin] = useState(false);
+  const [defaultStaffPin, setDefaultStaffPin] = useState("0000");
+  const [showDefaultStaffPin, setShowDefaultStaffPin] = useState(false);
+
+  // Employee PIN management state
+  const [selectedEmpForPin, setSelectedEmpForPin] = useState<any | null>(null);
+  const [newEmpPin, setNewEmpPin] = useState("");
+  const [showNewEmpPin, setShowNewEmpPin] = useState(false);
+  const [savingEmpPin, setSavingEmpPin] = useState(false);
+
+  const employeesListQuery = useQuery({
+    queryKey: ["employees"],
+    queryFn: async () => {
+      try {
+        const res = await getEmployeesFn();
+        if (Array.isArray(res) && res.length > 0) return res;
+      } catch (_) {}
+      try {
+        const { fsGetEmployees } = await import("@/lib/firestore-service");
+        return await fsGetEmployees();
+      } catch (_) {
+        return [];
+      }
+    },
+    enabled: !!user,
+  });
 
   useEffect(() => {
     if (typeof window !== "undefined") {
-      setPinLockEnabled(localStorage.getItem("app_pin_code_enabled") === "true");
+      setPinLockEnabled(localStorage.getItem("app_pin_code_enabled") !== "false");
       setPinCodeVal(localStorage.getItem("app_pin_code_val") || "1234");
       setPinTimeoutVal(localStorage.getItem("app_pin_timeout") || "10");
     }
   }, []);
+
+  useEffect(() => {
+    if (settings.data?.owner_pin) {
+      setPinCodeVal(settings.data.owner_pin);
+      if (typeof window !== "undefined") {
+        localStorage.setItem("app_pin_code_val", settings.data.owner_pin);
+      }
+    }
+  }, [settings.data]);
+
+  async function handleSaveOwnerPin(customPin?: string) {
+    const cleanPin = (customPin !== undefined ? customPin : pinCodeVal).trim();
+    if (!/^\d{4,6}$/.test(cleanPin)) {
+      toast.error(lang === "bn" ? "মালিক পিন কোড ৪ থেকে ৬ সংখ্যার হতে হবে।" : "Owner PIN must be 4 to 6 digits.");
+      return;
+    }
+    setPinCodeVal(cleanPin);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("app_pin_code_val", cleanPin);
+      window.dispatchEvent(new Event("storage"));
+    }
+    try {
+      await updateBusinessSettingsFn({
+        data: {
+          owner_pin: cleanPin,
+        },
+      });
+      try {
+        const { fsUpdateBusinessSettings } = await import("@/lib/firestore-service");
+        await fsUpdateBusinessSettings({ owner_pin: cleanPin });
+      } catch (_) {}
+      qc.invalidateQueries({ queryKey: ["business-settings"] });
+    } catch (_) {}
+    toast.success(lang === "bn" ? "দোকান মালিকের পিন কোড সফলভাবে সংরক্ষিত হয়েছে!" : "Owner PIN code saved successfully!");
+  }
+
+  async function handleSaveDefaultStaffPin() {
+    const cleanPin = defaultStaffPin.trim();
+    if (!/^\d{4,6}$/.test(cleanPin)) {
+      toast.error(lang === "bn" ? "স্টাফ পিন কোড ৪ সংখ্যার হতে হবে।" : "Staff PIN must be 4 digits.");
+      return;
+    }
+    if (typeof window !== "undefined") {
+      localStorage.setItem("app_employee_pin_code_val", cleanPin);
+      localStorage.setItem("cw_default_staff_pin", cleanPin);
+      window.dispatchEvent(new Event("storage"));
+    }
+    try {
+      await updateBusinessSettingsFn({
+        data: {
+          default_staff_pin: cleanPin,
+        },
+      });
+    } catch (_) {}
+    toast.success(lang === "bn" ? "ডিফল্ট স্টাফ পিন কোড সংরক্ষিত হয়েছে!" : "Default staff PIN saved!");
+  }
+
+  async function handleSaveEmployeePin() {
+    if (!selectedEmpForPin) return;
+    const cleanPin = newEmpPin.trim();
+    if (!/^\d{4,6}$/.test(cleanPin)) {
+      toast.error(lang === "bn" ? "কর্মচারীর পিন কোড ৪ থেকে ৬ সংখ্যার হতে হবে।" : "Employee PIN must be 4 to 6 digits.");
+      return;
+    }
+    setSavingEmpPin(true);
+    try {
+      const empId = selectedEmpForPin.id;
+      try {
+        const { fsUpdateEmployee } = await import("@/lib/firestore-service");
+        await fsUpdateEmployee(empId, {
+          pin: cleanPin,
+          password: cleanPin,
+          plain_password: cleanPin,
+        });
+      } catch (_) {}
+      try {
+        await updateEmployeeFn({
+          data: {
+            id: empId,
+            pin: cleanPin,
+            password: cleanPin,
+            plain_password: cleanPin,
+          },
+        });
+      } catch (_) {}
+
+      // Update local storage cache
+      if (typeof window !== "undefined") {
+        try {
+          const raw = localStorage.getItem("cw_employee_accounts");
+          if (raw) {
+            const arr = JSON.parse(raw);
+            if (Array.isArray(arr)) {
+              const idx = arr.findIndex((x: any) => x.id === empId);
+              if (idx >= 0) {
+                arr[idx] = { ...arr[idx], pin: cleanPin, password: cleanPin, plain_password: cleanPin };
+                localStorage.setItem("cw_employee_accounts", JSON.stringify(arr));
+              }
+            }
+          }
+        } catch (_) {}
+      }
+
+      toast.success(
+        lang === "bn"
+          ? `কর্মচারী (${selectedEmpForPin.name || selectedEmpForPin.full_name || selectedEmpForPin.email})-এর পিন সফলভাবে পরিবর্তন হয়েছে!`
+          : `PIN updated for ${selectedEmpForPin.name || selectedEmpForPin.full_name || selectedEmpForPin.email}!`
+      );
+      setSelectedEmpForPin(null);
+      setNewEmpPin("");
+      qc.invalidateQueries({ queryKey: ["employees"] });
+      qc.invalidateQueries({ queryKey: ["business-settings"] });
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to update employee PIN");
+    } finally {
+      setSavingEmpPin(false);
+    }
+  }
 
   useEffect(() => {
     const saved = localStorage.getItem("hz_kpi_config");
@@ -1117,6 +1314,7 @@ export default function SettingsPage() {
     { id: "profile", label: lang === "bn" ? "দোকান প্রোফাইল" : "Shop Profile", icon: Store },
     { id: "transfer", label: lang === "bn" ? "অ্যাসেট ট্রান্সফার ও কি" : "Transfer Assets & Keys", icon: ArrowRightLeft, count: (myTransferKeys.data || []).length },
     { id: "printing", label: lang === "bn" ? "প্রিন্ট ও ইনভয়েস" : "POS & Printing", icon: Printer },
+    { id: "hardware", label: lang === "bn" ? "হার্ডওয়্যার" : "Hardware", icon: Scan },
     { id: "sheets", label: lang === "bn" ? "গুগল শিট ও ক্লাউড" : "Google Sheets & Cloud", icon: FileSpreadsheet },
     { id: "staff", label: lang === "bn" ? "কর্মচারী ও আমন্ত্রণ" : "Staff & Invitations", icon: Users, count: activeEmployees.length + pendingInvites.length },
     { id: "appearance", label: lang === "bn" ? "থিম ও ডিসপ্লে" : "Appearance & Themes", icon: Sparkles },
@@ -1155,210 +1353,12 @@ export default function SettingsPage() {
             className="h-9 px-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs gap-2 shadow-xs cursor-pointer transition-all hover:scale-[1.02] active:scale-95"
             title={lang === "bn" ? "যেকোনো তারিখ ও সময়ের এন্ট্রি ডায়ালগ খুলুন [Alt+C]" : "Open Custom Entry Dialog with Date [Alt+C]"}
           >
-            <Sparkles className="size-4 animate-pulse" />
+            <Flame className="size-4 animate-pulse text-amber-300" />
             <span>{lang === "bn" ? "কাস্টম এন্ট্রি ডায়ালগ" : "Custom Entry Dialog"}</span>
             <kbd className="hidden md:inline-flex text-[10px] px-1.5 py-0.5 bg-black/20 rounded font-mono leading-none">
               Alt+C
             </kbd>
           </Button>
-        </div>
-      </div>
-
-      {/* Top Secondary Div: Custom Entry Quick Launch Hub (PC & Tablet Only - hidden on phone) */}
-      <div className="hidden md:block p-4 sm:p-5 rounded-2xl bg-card border border-border/80 shadow-xs space-y-3.5">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
-          <div className="flex items-center gap-2.5">
-            <div className="size-2.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)] animate-pulse" />
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="text-xs sm:text-sm font-bold uppercase tracking-wider text-foreground">
-                  {lang === "bn" ? "কাস্টম এন্ট্রি ও দ্রুত শর্টকাট" : "Custom Entry & Quick Actions"}
-                </span>
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/25 text-emerald-600 dark:text-emerald-400 font-bold flex items-center gap-1">
-                  <Calendar className="size-3" />
-                  {lang === "bn" ? "তারিখ নির্বাচন সমর্থিত" : "Custom Date Supported"}
-                </span>
-              </div>
-              <p className="text-[11px] text-muted-foreground mt-0.5">
-                {lang === "bn"
-                  ? "যেকোনো পেছনের বা বর্তমান তারিখ ও সময় নির্বাচন করে সরাসরি সেল, খরচ, ক্রয় ও ক্যাশ এন্ট্রি করুন"
-                  : "Record backdated or forward-dated sales, expenses, purchases, and cashbox transactions"}
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground bg-muted/50 px-2.5 py-1 rounded-lg border border-border/50 self-start sm:self-auto">
-            <span>{lang === "bn" ? "পিসি শর্টকাট:" : "PC Hotkey:"}</span>
-            <kbd className="font-mono font-bold text-foreground bg-background px-1 py-0.2 rounded border border-border text-[10px]">Alt + C</kbd>
-            <span className="opacity-60">|</span>
-            <kbd className="font-mono font-bold text-foreground bg-background px-1 py-0.2 rounded border border-border text-[10px]">Alt + 1..6</kbd>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2.5 pt-1">
-          {/* 1. Custom Sale (with date) */}
-          <button
-            type="button"
-            onClick={() => {
-              window.dispatchEvent(new CustomEvent("open_custom_entry", { detail: { initialType: "sale" } }));
-            }}
-            className="flex flex-col items-center justify-center p-2.5 rounded-xl bg-muted/40 hover:bg-emerald-500/10 hover:border-emerald-500/30 border border-border/60 transition-all text-center group cursor-pointer active:scale-95 shadow-2xs"
-            title={lang === "bn" ? "তারিখসহ বিক্রি এন্ট্রি [Alt+1]" : "Custom Sale with Date [Alt+1]"}
-          >
-            <div className="size-8 sm:size-9 rounded-xl bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 group-hover:scale-110 transition-transform flex items-center justify-center mb-1.5 shadow-2xs">
-              <ShoppingBag className="size-4" />
-            </div>
-            <span className="text-[11px] font-bold text-foreground truncate w-full">
-              {lang === "bn" ? "কাস্টম বিক্রি" : "Custom Sale"}
-            </span>
-            <span className="text-[9px] font-medium text-emerald-600 dark:text-emerald-400 mt-0.5 flex items-center gap-0.5">
-              <Calendar className="size-2.5" />
-              {lang === "bn" ? "তারিখসহ" : "With Date"}
-            </span>
-          </button>
-
-          {/* 2. Custom Expense (with date) */}
-          <button
-            type="button"
-            onClick={() => {
-              window.dispatchEvent(new CustomEvent("open_custom_entry", { detail: { initialType: "expense" } }));
-            }}
-            className="flex flex-col items-center justify-center p-2.5 rounded-xl bg-muted/40 hover:bg-rose-500/10 hover:border-rose-500/30 border border-border/60 transition-all text-center group cursor-pointer active:scale-95 shadow-2xs"
-            title={lang === "bn" ? "তারিখসহ খরচ এন্ট্রি [Alt+2]" : "Custom Expense with Date [Alt+2]"}
-          >
-            <div className="size-8 sm:size-9 rounded-xl bg-rose-500/15 text-rose-600 dark:text-rose-400 group-hover:scale-110 transition-transform flex items-center justify-center mb-1.5 shadow-2xs">
-              <Receipt className="size-4" />
-            </div>
-            <span className="text-[11px] font-bold text-foreground truncate w-full">
-              {lang === "bn" ? "কাস্টম খরচ" : "Custom Expense"}
-            </span>
-            <span className="text-[9px] font-medium text-rose-600 dark:text-rose-400 mt-0.5 flex items-center gap-0.5">
-              <Calendar className="size-2.5" />
-              {lang === "bn" ? "তারিখসহ" : "With Date"}
-            </span>
-          </button>
-
-          {/* 3. Custom Purchase / Restock (with date) */}
-          <button
-            type="button"
-            onClick={() => {
-              window.dispatchEvent(new CustomEvent("open_custom_entry", { detail: { initialType: "purchase" } }));
-            }}
-            className="flex flex-col items-center justify-center p-2.5 rounded-xl bg-muted/40 hover:bg-indigo-500/10 hover:border-indigo-500/30 border border-border/60 transition-all text-center group cursor-pointer active:scale-95 shadow-2xs"
-            title={lang === "bn" ? "তারিখসহ ক্রয় এন্ট্রি [Alt+3]" : "Custom Purchase with Date [Alt+3]"}
-          >
-            <div className="size-8 sm:size-9 rounded-xl bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 group-hover:scale-110 transition-transform flex items-center justify-center mb-1.5 shadow-2xs">
-              <ShoppingCart className="size-4" />
-            </div>
-            <span className="text-[11px] font-bold text-foreground truncate w-full">
-              {lang === "bn" ? "কাস্টম ক্রয়" : "Custom Buy"}
-            </span>
-            <span className="text-[9px] font-medium text-indigo-600 dark:text-indigo-400 mt-0.5 flex items-center gap-0.5">
-              <Calendar className="size-2.5" />
-              {lang === "bn" ? "তারিখসহ" : "With Date"}
-            </span>
-          </button>
-
-          {/* 4. Cash Deposit / Add Money (with date) */}
-          <button
-            type="button"
-            onClick={() => {
-              window.dispatchEvent(new CustomEvent("open_custom_entry", { detail: { initialType: "deposit" } }));
-            }}
-            className="flex flex-col items-center justify-center p-2.5 rounded-xl bg-muted/40 hover:bg-emerald-500/10 hover:border-emerald-500/30 border border-border/60 transition-all text-center group cursor-pointer active:scale-95 shadow-2xs"
-            title={lang === "bn" ? "ক্যাশবক্সে টাকা জমা (তারিখসহ) [Alt+4]" : "Cash Deposit with Date [Alt+4]"}
-          >
-            <div className="size-8 sm:size-9 rounded-xl bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 group-hover:scale-110 transition-transform flex items-center justify-center mb-1.5 shadow-2xs">
-              <ArrowDownLeft className="size-4" />
-            </div>
-            <span className="text-[11px] font-bold text-foreground truncate w-full">
-              {lang === "bn" ? "টাকা জমা" : "Deposit"}
-            </span>
-            <span className="text-[9px] font-medium text-emerald-600 dark:text-emerald-400 mt-0.5 flex items-center gap-0.5">
-              <Calendar className="size-2.5" />
-              {lang === "bn" ? "ক্যাশবক্স" : "Cashbox"}
-            </span>
-          </button>
-
-          {/* 5. Cash Withdraw (with date) */}
-          <button
-            type="button"
-            onClick={() => {
-              window.dispatchEvent(new CustomEvent("open_custom_entry", { detail: { initialType: "withdraw" } }));
-            }}
-            className="flex flex-col items-center justify-center p-2.5 rounded-xl bg-muted/40 hover:bg-amber-500/10 hover:border-amber-500/30 border border-border/60 transition-all text-center group cursor-pointer active:scale-95 shadow-2xs"
-            title={lang === "bn" ? "ক্যাশবক্স থেকে টাকা উত্তোলন (তারিখসহ) [Alt+5]" : "Cash Withdraw with Date [Alt+5]"}
-          >
-            <div className="size-8 sm:size-9 rounded-xl bg-amber-500/15 text-amber-600 dark:text-amber-400 group-hover:scale-110 transition-transform flex items-center justify-center mb-1.5 shadow-2xs">
-              <ArrowUpRight className="size-4" />
-            </div>
-            <span className="text-[11px] font-bold text-foreground truncate w-full">
-              {lang === "bn" ? "টাকা উত্তোলন" : "Withdraw"}
-            </span>
-            <span className="text-[9px] font-medium text-amber-600 dark:text-amber-400 mt-0.5 flex items-center gap-0.5">
-              <Calendar className="size-2.5" />
-              {lang === "bn" ? "ক্যাশবক্স" : "Cashbox"}
-            </span>
-          </button>
-
-          {/* 6. Due Collection (with date) */}
-          <button
-            type="button"
-            onClick={() => {
-              window.dispatchEvent(new CustomEvent("open_custom_entry", { detail: { initialType: "due_collection" } }));
-            }}
-            className="flex flex-col items-center justify-center p-2.5 rounded-xl bg-muted/40 hover:bg-cyan-500/10 hover:border-cyan-500/30 border border-border/60 transition-all text-center group cursor-pointer active:scale-95 shadow-2xs"
-            title={lang === "bn" ? "তারিখসহ বাকি আদায় [Alt+6]" : "Due Collection with Date [Alt+6]"}
-          >
-            <div className="size-8 sm:size-9 rounded-xl bg-cyan-500/15 text-cyan-600 dark:text-cyan-400 group-hover:scale-110 transition-transform flex items-center justify-center mb-1.5 shadow-2xs">
-              <Banknote className="size-4" />
-            </div>
-            <span className="text-[11px] font-bold text-foreground truncate w-full">
-              {lang === "bn" ? "বাকি আদায়" : "Due Collect"}
-            </span>
-            <span className="text-[9px] font-medium text-cyan-600 dark:text-cyan-400 mt-0.5 flex items-center gap-0.5">
-              <Calendar className="size-2.5" />
-              {lang === "bn" ? "তারিখসহ" : "With Date"}
-            </span>
-          </button>
-
-          {/* 7. Switch ID / Profile */}
-          <button
-            type="button"
-            onClick={() => {
-              window.dispatchEvent(new CustomEvent("open_mode_switcher"));
-            }}
-            className="flex flex-col items-center justify-center p-2.5 rounded-xl bg-muted/40 hover:bg-purple-500/10 hover:border-purple-500/30 border border-border/60 transition-all text-center group cursor-pointer active:scale-95 shadow-2xs"
-            title={lang === "bn" ? "মোড ও প্রোফাইল পরিবর্তন" : "Switch Profile & Mode"}
-          >
-            <div className="size-8 sm:size-9 rounded-xl bg-purple-500/15 text-purple-600 dark:text-purple-400 group-hover:scale-110 transition-transform flex items-center justify-center mb-1.5 shadow-2xs">
-              <Users className="size-4" />
-            </div>
-            <span className="text-[11px] font-bold text-foreground truncate w-full">
-              {lang === "bn" ? "প্রোফাইল সুইচ" : "Switch ID"}
-            </span>
-            <span className="text-[9px] font-medium text-purple-600 dark:text-purple-400 mt-0.5">
-              {lang === "bn" ? "আইডি বদল" : "Multi-ID"}
-            </span>
-          </button>
-
-          {/* 8. Transfer Assets */}
-          <button
-            type="button"
-            onClick={() => setSettingsTab("transfer")}
-            className="flex flex-col items-center justify-center p-2.5 rounded-xl bg-muted/40 hover:bg-amber-500/10 hover:border-amber-500/30 border border-border/60 transition-all text-center group cursor-pointer active:scale-95 shadow-2xs"
-            title={lang === "bn" ? "অ্যাসেট ট্রান্সফার কি তৈরি করুন" : "Transfer Assets & Keys"}
-          >
-            <div className="size-8 sm:size-9 rounded-xl bg-amber-500/15 text-amber-600 dark:text-amber-400 group-hover:scale-110 transition-transform flex items-center justify-center mb-1.5 shadow-2xs">
-              <ArrowRightLeft className="size-4" />
-            </div>
-            <span className="text-[11px] font-bold text-foreground truncate w-full">
-              {lang === "bn" ? "অ্যাসেট ট্রান্সফার" : "Transfer Key"}
-            </span>
-            <span className="text-[9px] font-medium text-amber-600 dark:text-amber-400 mt-0.5">
-              {lang === "bn" ? "ডাটা কি" : "Data Key"}
-            </span>
-          </button>
         </div>
       </div>
 
@@ -1414,6 +1414,49 @@ export default function SettingsPage() {
           );
         })}
       </div>
+
+      {settingsTab === "hardware" && (
+        <div className="grid gap-5 lg:grid-cols-2">
+          <Card className="p-5 sm:p-6 space-y-4 rounded-2xl">
+            <div>
+              <h2 className="font-bold text-base flex items-center gap-2"><Scan className="size-4 text-primary" />{lang === "bn" ? "বারকোড স্ক্যানার" : "Barcode scanner"}</h2>
+              <p className="text-xs text-muted-foreground mt-1">{lang === "bn" ? "USB বা Bluetooth স্ক্যানারকে Keyboard/HID মোডে জোড়া দিন। স্ক্যানের শেষ কী নিচের সেটিংয়ের সাথে মিলিয়ে দিন।" : "Pair a USB or Bluetooth scanner in keyboard/HID mode. Match its ending key to the setting below."}</p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="scanner-suffix">{lang === "bn" ? "স্ক্যানের শেষ কী" : "Scanner ending key"}</Label>
+              <select id="scanner-suffix" value={scannerSuffix} onChange={e => { const value = e.target.value === "Tab" ? "Tab" : "Enter"; setScannerSuffix(value); savePosHardwareSettings({ scannerSuffix: value }); }} className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm">
+                <option value="Enter">Enter</option>
+                <option value="Tab">Tab</option>
+              </select>
+              <Label htmlFor="hardware-scanner-test">{lang === "bn" ? "স্ক্যানার পরীক্ষা" : "Test scanner"}</Label>
+              <div className="flex gap-2">
+                <Input id="hardware-scanner-test" value={scannerTestCode} onChange={e => setScannerTestCode(e.target.value)} onKeyDown={e => { if (e.key === scannerSuffix) { e.preventDefault(); testScanner(); } }} placeholder={lang === "bn" ? "এখানে স্ক্যান করুন" : "Scan here"} autoComplete="off" />
+                <Button type="button" variant="outline" onClick={testScanner} disabled={!scannerTestCode.trim() || hardwareProducts.isLoading}>{lang === "bn" ? "পরীক্ষা" : "Test"}</Button>
+              </div>
+              {scannerTestResult && <p role="status" className="text-xs font-medium text-foreground">{scannerTestResult}</p>}
+            </div>
+            <p className="text-xs text-muted-foreground">{lang === "bn" ? "নতুন বিক্রিতে স্ক্যান করলে পণ্য সরাসরি কার্টে যোগ হয়। অন্য ঘরে টাইপ করার সময় স্ক্যান করতে স্ক্যান ঘরটি নির্বাচন করুন।" : "In New Sale, each scan adds the item directly to the cart. Select its scan field when returning from another text field."}</p>
+          </Card>
+
+          <Card className="p-5 sm:p-6 space-y-4 rounded-2xl">
+            <div>
+              <h2 className="font-bold text-base flex items-center gap-2"><Printer className="size-4 text-primary" />{lang === "bn" ? "রসিদ প্রিন্টার" : "Receipt printer"}</h2>
+              <p className="text-xs text-muted-foreground mt-1">{lang === "bn" ? "প্রিন্টার ড্রাইভার ইনস্টল করে USB বা Bluetooth প্রিন্টারকে ডিভাইসের প্রিন্টার তালিকায় যোগ করুন।" : "Install the printer manufacturer’s driver and add the USB or Bluetooth printer to this device’s printer list."}</p>
+            </div>
+            <fieldset className="space-y-2">
+              <legend className="text-xs font-semibold mb-2">{lang === "bn" ? "বিক্রির পর প্রিন্ট" : "Printing after a sale"}</legend>
+              {(["manual", "automatic"] as const).map(mode => (
+                <label key={mode} className="flex items-start gap-3 rounded-xl border border-border p-3 cursor-pointer">
+                  <input type="radio" name="receipt-print-mode" value={mode} checked={printMode === mode} onChange={() => { setPrintMode(mode); savePosHardwareSettings({ printMode: mode }); }} className="mt-0.5 accent-primary" />
+                  <span className="text-xs"><strong className="block text-foreground">{mode === "manual" ? (lang === "bn" ? "ম্যানুয়াল" : "Manual") : (lang === "bn" ? "অটোমেটিক" : "Automatic")}</strong><span className="text-muted-foreground">{mode === "manual" ? (lang === "bn" ? "শুধু ‘সংরক্ষণ ও প্রিন্ট’ চাপলে প্রিন্ট খুলবে।" : "Print only when you choose Save & print.") : (lang === "bn" ? "বিক্রি সংরক্ষণের পর প্রিন্ট ডায়ালগ খুলবে।" : "Open the print dialog after a sale is saved.")}</span></span>
+                </label>
+              ))}
+            </fieldset>
+            <Button type="button" variant="outline" onClick={testPrinter} className="gap-2"><Printer className="size-4" />{lang === "bn" ? "টেস্ট রসিদ প্রিন্ট" : "Print test receipt"}</Button>
+            <p className="text-xs text-muted-foreground">{lang === "bn" ? "এই ওয়েব সংস্করণে ব্রাউজারের প্রিন্ট ডায়ালগ থেকে প্রিন্টার নির্বাচন করুন। কাগজের মাপ POS & Printing-এ ঠিক করুন।" : "Choose the printer in the browser print dialog. Set the paper size in POS & Printing."}</p>
+          </Card>
+        </div>
+      )}
 
       {(isOwner || hasDangerZoneAccess) && biz && (
         <div className="space-y-6">
@@ -2564,21 +2607,45 @@ export default function SettingsPage() {
                                 </Badge>
                               )}
                             </div>
-                            <p className="text-[11px] text-muted-foreground truncate">{emp.email}</p>
+                            <div className="flex items-center justify-between gap-2 pt-1">
+                              <p className="text-[11px] text-muted-foreground truncate">{emp.email}</p>
+                              <div className="flex items-center gap-1 text-[11px] font-mono font-bold text-amber-700 dark:text-amber-300 bg-amber-500/10 px-2 py-0.5 rounded-lg border border-amber-500/20 shrink-0">
+                                <KeyRound className="size-3 text-amber-500" />
+                                <span>{lang === "bn" ? "পিন:" : "PIN:"} {emp.pin || emp.plain_password || emp.password || "1234"}</span>
+                              </div>
+                            </div>
                           </div>
 
                           <div className="flex items-center justify-between gap-2 pt-2 border-t border-border/50">
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              onClick={() => openPermissionsModal(emp)}
-                              className="h-8 px-2.5 rounded-xl border-primary/30 hover:bg-primary/10 text-primary text-xs font-semibold gap-1.5 cursor-pointer"
-                              title="Manage Access & Permissions"
-                            >
-                              <Shield className="size-3.5" />
-                              <span>{lang === "bn" ? "পারমিশন কন্ট্রোল" : "Access & Permissions"}</span>
-                            </Button>
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  setSelectedEmpForPin(emp);
+                                  setNewEmpPin(emp.pin || emp.plain_password || emp.password || "");
+                                }}
+                                className="h-8 px-2.5 rounded-xl border-amber-500/30 text-amber-700 dark:text-amber-300 hover:bg-amber-500/10 text-xs font-semibold gap-1.5 cursor-pointer"
+                                title="Change Employee PIN"
+                              >
+                                <KeyRound className="size-3.5 text-amber-500" />
+                                <span>{lang === "bn" ? "পিন পরিবর্তন" : "Change PIN"}</span>
+                              </Button>
+
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => openPermissionsModal(emp)}
+                                className="h-8 px-2.5 rounded-xl border-primary/30 hover:bg-primary/10 text-primary text-xs font-semibold gap-1.5 cursor-pointer"
+                                title="Manage Access & Permissions"
+                              >
+                                <Shield className="size-3.5" />
+                                <span>{lang === "bn" ? "পারমিশন" : "Permissions"}</span>
+                              </Button>
+                            </div>
+
                             <Button
                               type="button"
                               variant="ghost"
@@ -3180,99 +3247,319 @@ export default function SettingsPage() {
           )}
 
           {settingsTab === "security" && (
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-              {/* Screen Security & Admin PIN Code Lock */}
-              <Card className="lg:col-span-12 p-5 sm:p-6 rounded-3xl bg-card border-border/80 shadow-xs space-y-4">
-                <div className="flex items-center justify-between border-b border-border/60 pb-3">
-                  <div className="flex items-center gap-2.5">
-                    <div className="p-2 rounded-xl bg-primary/10 text-primary">
-                      <Lock className="size-5" />
+            <div className="space-y-6">
+              {/* 1. SHOP OWNER PIN & SCREEN SECURITY */}
+              <Card className="p-5 sm:p-6 rounded-3xl bg-card border-border/80 shadow-xs space-y-5">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-border/60 pb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2.5 rounded-2xl bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                      <Shield className="size-5 text-amber-500" />
                     </div>
                     <div>
-                      <h2 className="font-bold text-base text-foreground">
-                        {lang === "bn" ? "স্ক্রিন সিকিউরিটি ও অ্যাডমিন পিন কোড লক" : "Screen Security & Admin PIN Lock"}
-                      </h2>
+                      <div className="flex items-center gap-2">
+                        <h2 className="font-bold text-base sm:text-lg text-foreground">
+                          {lang === "bn" ? "দোকান মালিকের ৪-সংখ্যার পিন ও স্ক্রিন সিকিউরিটি" : "Owner 4-Digit PIN & Screen Security"}
+                        </h2>
+                        <Badge variant="outline" className="bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30 text-[10px] font-bold">
+                          OWNER ACCESS
+                        </Badge>
+                      </div>
                       <p className="text-xs text-muted-foreground mt-0.5">
-                        {lang === "bn" ? "সাইটে প্রবেশের সময় ৪ সংখ্যার পিন কোড সক্রিয় করুন" : "Require a 4-digit PIN code to enter and access this website"}
+                        {lang === "bn"
+                          ? "দোকান মালিক হিসেবে আপনার নিজস্ব ৪-সংখ্যার পিন কোড সেট করুন এবং স্ক্রিন লক সক্রিয় রাখুন।"
+                          : "Set your personal 4-digit Owner PIN to protect your POS and enable auto screen locking."}
                       </p>
                     </div>
                   </div>
-                  <Switch
-                    checked={pinLockEnabled}
-                    onCheckedChange={(checked) => {
-                      setPinLockEnabled(checked);
-                      localStorage.setItem("app_pin_code_enabled", checked ? "true" : "false");
-                      if (checked && !pinCodeVal) {
-                        setPinCodeVal("1234");
-                        localStorage.setItem("app_pin_code_val", "1234");
-                      }
-                      window.dispatchEvent(new Event("storage"));
-                      toast.success(checked ? (lang === "bn" ? "পিন লক সক্রিয় করা হয়েছে!" : "PIN Lock enabled!") : (lang === "bn" ? "পিন লক নিষ্ক্রিয় করা হয়েছে" : "PIN Lock disabled"));
-                    }}
-                  />
+
+                  <div className="flex items-center gap-2 self-end sm:self-center">
+                    <span className="text-xs font-semibold text-muted-foreground">
+                      {pinLockEnabled ? (lang === "bn" ? "লক সক্রিয়" : "Lock Enabled") : (lang === "bn" ? "লক নিষ্ক্রিয়" : "Lock Disabled")}
+                    </span>
+                    <Switch
+                      checked={pinLockEnabled}
+                      onCheckedChange={(checked) => {
+                        setPinLockEnabled(checked);
+                        localStorage.setItem("app_pin_code_enabled", checked ? "true" : "false");
+                        if (checked && !pinCodeVal) {
+                          setPinCodeVal("1234");
+                          localStorage.setItem("app_pin_code_val", "1234");
+                        }
+                        window.dispatchEvent(new Event("storage"));
+                        toast.success(checked ? (lang === "bn" ? "পিন লক সক্রিয় করা হয়েছে!" : "PIN Lock enabled!") : (lang === "bn" ? "পিন লক নিষ্ক্রিয় করা হয়েছে" : "PIN Lock disabled"));
+                      }}
+                    />
+                  </div>
                 </div>
 
-                {pinLockEnabled && (
-                  <div className="space-y-4 pt-2">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <div className="space-y-1.5">
-                        <Label className="text-xs font-semibold">{lang === "bn" ? "৪ সংখ্যার পিন কোড সেট করুন" : "Set 4-Digit PIN Code"}</Label>
-                        <Input
-                          type="password"
-                          maxLength={6}
-                          value={pinCodeVal}
-                          onChange={(e) => {
-                            const val = e.target.value.replace(/[^0-9]/g, "");
-                            setPinCodeVal(val);
-                            localStorage.setItem("app_pin_code_val", val);
-                            window.dispatchEvent(new Event("storage"));
-                          }}
-                          placeholder="e.g. 1234"
-                          className="h-10 rounded-xl text-base font-mono tracking-widest text-center font-bold"
-                        />
-                      </div>
-
-                      <div className="space-y-1.5">
-                        <Label className="text-xs font-semibold">{lang === "bn" ? "অটো-লক সময়সীমা (নিষ্ক্রিয় থাকলে)" : "Auto-Lock Inactivity Timeout"}</Label>
-                        <select
-                          value={pinTimeoutVal}
-                          onChange={(e) => {
-                            setPinTimeoutVal(e.target.value);
-                            localStorage.setItem("app_pin_timeout", e.target.value);
-                            window.dispatchEvent(new Event("storage"));
-                            toast.success(lang === "bn" ? "অটো-লক সময়সীমা আপডেট হয়েছে" : "Auto-lock timeout updated");
-                          }}
-                          className="h-10 w-full rounded-xl border border-input bg-background px-3 text-xs font-medium focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                        >
-                          <option value="1">{lang === "bn" ? "১ মিনিট নিষ্ক্রিয় থাকলে" : "1 minute of inactivity"}</option>
-                          <option value="5">{lang === "bn" ? "৫ মিনিট নিষ্ক্রিয় থাকলে" : "5 minutes of inactivity"}</option>
-                          <option value="10">{lang === "bn" ? "১০ মিনিট (ডিফল্ট)" : "10 minutes (Default)"}</option>
-                          <option value="30">{lang === "bn" ? "৩০ মিনিট নিষ্ক্রিয় থাকলে" : "30 minutes of inactivity"}</option>
-                          <option value="0">{lang === "bn" ? "কখনই অটো-লক হবে না (শুধু ম্যানুয়াল)" : "Never (Manual lock only)"}</option>
-                        </select>
-                      </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-1">
+                  {/* Owner PIN Setting */}
+                  <div className="p-4 rounded-2xl bg-muted/40 border border-border/80 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-xs font-bold flex items-center gap-1.5 text-foreground">
+                        <Lock className="size-3.5 text-amber-500" />
+                        <span>{lang === "bn" ? "দোকান মালিকের পিন কোড" : "Owner PIN Code"}</span>
+                      </Label>
+                      <button
+                        type="button"
+                        onClick={() => setShowOwnerPin(!showOwnerPin)}
+                        className="text-[11px] text-muted-foreground hover:text-foreground flex items-center gap-1 cursor-pointer"
+                      >
+                        {showOwnerPin ? <EyeOff className="size-3" /> : <Eye className="size-3" />}
+                        <span>{showOwnerPin ? (lang === "bn" ? "লুকান" : "Hide") : (lang === "bn" ? "দেখান" : "Show")}</span>
+                      </button>
                     </div>
 
-                    <div className="flex justify-end pt-1">
+                    <div className="flex gap-2">
+                      <Input
+                        type={showOwnerPin ? "text" : "password"}
+                        maxLength={6}
+                        value={pinCodeVal}
+                        onChange={(e) => setPinCodeVal(e.target.value.replace(/[^0-9]/g, ""))}
+                        placeholder="1234"
+                        className="h-10 rounded-xl text-base font-mono tracking-widest text-center font-bold bg-background"
+                      />
                       <Button
                         type="button"
-                        variant="outline"
-                        className="h-9 px-4 rounded-xl text-xs font-semibold gap-1.5 border-amber-500/40 text-amber-700 dark:text-amber-300 hover:bg-amber-500/10 cursor-pointer"
-                        onClick={() => {
-                          sessionStorage.removeItem("app_pin_unlocked");
-                          window.dispatchEvent(new Event("app_lock_screen"));
-                          toast.info(lang === "bn" ? "স্ক্রিন লক করা হয়েছে" : "Screen locked!");
-                        }}
+                        onClick={() => handleSaveOwnerPin()}
+                        className="h-10 px-3.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shrink-0 cursor-pointer shadow-xs"
                       >
-                        <Lock className="size-3.5" />
-                        {lang === "bn" ? "এখনই স্ক্রিন লক করুন" : "Lock Screen Now"}
+                        {lang === "bn" ? "সংরক্ষণ" : "Save"}
                       </Button>
                     </div>
+                    <p className="text-[11px] text-muted-foreground">
+                      {lang === "bn" ? "মালিকের জরুরি আনলক ও সিকিউরিটি পাসকোড।" : "Primary owner PIN for lock screen and POS authorization."}
+                    </p>
                   </div>
-                )}
+
+                  {/* Auto-Lock Inactivity Timeout */}
+                  <div className="p-4 rounded-2xl bg-muted/40 border border-border/80 space-y-3">
+                    <Label className="text-xs font-bold flex items-center gap-1.5 text-foreground">
+                      <Clock className="size-3.5 text-indigo-500" />
+                      <span>{lang === "bn" ? "অটো-লক সময়সীমা (নিষ্ক্রিয় থাকলে)" : "Auto-Lock Timeout"}</span>
+                    </Label>
+
+                    <select
+                      value={pinTimeoutVal}
+                      onChange={(e) => {
+                        setPinTimeoutVal(e.target.value);
+                        localStorage.setItem("app_pin_timeout", e.target.value);
+                        window.dispatchEvent(new Event("storage"));
+                        toast.success(lang === "bn" ? "অটো-লক সময়সীমা আপডেট হয়েছে" : "Auto-lock timeout updated");
+                      }}
+                      className="h-10 w-full rounded-xl border border-input bg-background px-3 text-xs font-medium focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring cursor-pointer"
+                    >
+                      <option value="1">{lang === "bn" ? "১ মিনিট নিষ্ক্রিয় থাকলে" : "1 minute of inactivity"}</option>
+                      <option value="5">{lang === "bn" ? "৫ মিনিট নিষ্ক্রিয় থাকলে" : "5 minutes of inactivity"}</option>
+                      <option value="10">{lang === "bn" ? "১০ মিনিট (ডিফল্ট)" : "10 minutes (Default)"}</option>
+                      <option value="30">{lang === "bn" ? "৩০ মিনিট নিষ্ক্রিয় থাকলে" : "30 minutes of inactivity"}</option>
+                      <option value="0">{lang === "bn" ? "কখনই না (শুধু ম্যানুয়াল লক)" : "Never (Manual lock only)"}</option>
+                    </select>
+                    <p className="text-[11px] text-muted-foreground">
+                      {lang === "bn" ? "ব্যবহারকারী নিষ্ক্রিয় থাকলে সফটওয়্যার স্বয়ংক্রিয় লক হবে।" : "Automatically locks POS screen when idle."}
+                    </p>
+                  </div>
+
+                  {/* Employee PIN Info & Management Direct Link */}
+                  <div className="p-4 rounded-2xl bg-muted/40 border border-border/80 space-y-3 flex flex-col justify-between">
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-bold flex items-center gap-1.5 text-foreground">
+                        <Users className="size-3.5 text-emerald-500" />
+                        <span>{lang === "bn" ? "কর্মচারী ও স্টাফ পিন কোড" : "Employee & Staff PINs"}</span>
+                      </Label>
+                      <p className="text-[11px] text-muted-foreground leading-relaxed">
+                        {lang === "bn"
+                          ? "নিরাপত্তার কারণে কোনো ডিফল্ট পিন কাজ করবে না। স্টাফ ট্যাবে কর্মচারী যুক্ত করে তাদের জন্য নির্দিষ্ট পিন সেট করুন।"
+                          : "Default staff PINs are disabled for security. Assign dedicated PINs to each added employee in Staff tab."}
+                      </p>
+                    </div>
+
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => setSettingsTab("staff")}
+                      className="w-full h-9 rounded-xl border-emerald-500/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 text-xs font-bold gap-2 cursor-pointer shadow-2xs"
+                    >
+                      <UserPlus className="size-3.5" />
+                      <span>{lang === "bn" ? "স্টাফ ও পিন ব্যবস্থাপনা" : "Manage Staff & PINs"}</span>
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between pt-2 border-t border-border/50">
+                  <div className="text-xs text-muted-foreground flex items-center gap-1.5">
+                    <Sparkles className="size-3.5 text-amber-500" />
+                    <span>{lang === "bn" ? "লক স্ক্রিন অবিলম্বে টেস্ট করতে নিচের বাটনে চাপুন:" : "Test your lock screen immediately:"}</span>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-9 px-4 rounded-xl text-xs font-semibold gap-1.5 border-amber-500/40 text-amber-700 dark:text-amber-300 hover:bg-amber-500/10 cursor-pointer shadow-2xs"
+                    onClick={() => {
+                      sessionStorage.removeItem("app_pin_unlocked");
+                      window.dispatchEvent(new Event("app_lock_screen"));
+                      toast.info(lang === "bn" ? "স্ক্রিন লক করা হয়েছে" : "Screen locked!");
+                    }}
+                  >
+                    <Lock className="size-3.5" />
+                    {lang === "bn" ? "এখনই স্ক্রিন লক করুন" : "Lock Screen Now"}
+                  </Button>
+                </div>
               </Card>
 
-              {/* Change Password */}
+              {/* 2. EMPLOYEE PIN CODE MANAGEMENT SUITE (OWNER CAN VIEW & CHANGE ALL STAFF PINS) */}
+              <Card className="p-5 sm:p-6 rounded-3xl bg-card border-border/80 shadow-xs space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-border/60 pb-3">
+                  <div className="flex items-center gap-2.5">
+                    <div className="p-2.5 rounded-2xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20">
+                      <Users className="size-5" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h2 className="font-bold text-base sm:text-lg text-foreground">
+                          {lang === "bn" ? "কর্মচারীদের পিন কোড পরিচালনা" : "Employee PIN Code Management"}
+                        </h2>
+                        <Badge variant="outline" className="bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/30 text-xs">
+                          {((employeesListQuery.data && employeesListQuery.data.length > 0) ? employeesListQuery.data : activeEmployees).length} {lang === "bn" ? "জন কর্মচারী" : "Staff"}
+                        </Badge>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {lang === "bn"
+                          ? "দোকান মালিক হিসেবে প্রতিটি কর্মচারীর ৪-সংখ্যার পিন কোড দেখুন ও সরাসরি পরিবর্তন করুন। কর্মচারী এই পিন দিয়ে লগইন করতে পারবে।"
+                          : "View and update 4-digit PIN codes for your staff members. Employees can log in directly using this PIN."}
+                      </p>
+                    </div>
+                  </div>
+
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      employeesListQuery.refetch();
+                      qc.invalidateQueries({ queryKey: ["employees"] });
+                      toast.info(lang === "bn" ? "কর্মচারী তালিকা রিফ্রেশ করা হয়েছে" : "Employee list refreshed");
+                    }}
+                    className="h-8.5 px-3 rounded-xl text-xs font-semibold gap-1.5 border-border/80 cursor-pointer self-start sm:self-center"
+                  >
+                    <RefreshCw className={`size-3.5 ${employeesListQuery.isFetching ? "animate-spin" : ""}`} />
+                    <span>{lang === "bn" ? "তালিকা রিফ্রেশ" : "Refresh List"}</span>
+                  </Button>
+                </div>
+
+                {/* Helper notice */}
+                <div className="rounded-2xl bg-indigo-500/5 border border-indigo-500/20 p-3 text-xs text-indigo-700 dark:text-indigo-300 flex items-start gap-2.5">
+                  <KeyRound className="size-4 shrink-0 text-indigo-500 mt-0.5" />
+                  <div className="space-y-0.5">
+                    <p className="font-semibold text-foreground">
+                      {lang === "bn" ? "💡 কর্মচারী পিন ব্যবহারের নিয়ম:" : "💡 How Staff PIN Login Works:"}
+                    </p>
+                    <p className="text-[11px] text-muted-foreground leading-relaxed">
+                      {lang === "bn"
+                        ? "কর্মচারী সাইন-ইন পেজে মোবাইল নম্বর বা ইউজারনেম লিখে আপনার সেট করা ৪-সংখ্যার পিন প্রবেশ করলেই সরাসরি তার কর্মচারী একাউন্ট ওপেন হবে।"
+                        : "Staff members can enter their registered phone/username and the 4-digit PIN configured below to immediately log in."}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Employee PIN Grid */}
+                {(() => {
+                  const staffList = (employeesListQuery.data && employeesListQuery.data.length > 0) ? employeesListQuery.data : activeEmployees;
+                  if (staffList.length === 0) {
+                    return (
+                      <div className="text-center py-10 space-y-2 border border-dashed border-border/80 rounded-2xl bg-muted/20">
+                        <Users className="size-8 mx-auto text-muted-foreground/50" />
+                        <p className="text-sm font-semibold text-foreground">
+                          {lang === "bn" ? "কোনো সক্রিয় কর্মচারী যুক্ত নেই" : "No Staff Members Found"}
+                        </p>
+                        <p className="text-xs text-muted-foreground max-w-sm mx-auto">
+                          {lang === "bn"
+                            ? "কর্মচারী ও আমন্ত্রণ ট্যাব থেকে নতুন কর্মচারী যোগ করুন।"
+                            : "Add or invite employees from the Staff & Invitations tab to configure their PINs."}
+                        </p>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setSettingsTab("staff")}
+                          className="text-xs rounded-xl mt-2"
+                        >
+                          {lang === "bn" ? "কর্মচারী ট্যাবে যান" : "Go to Staff Tab"}
+                        </Button>
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5 pt-1">
+                      {staffList.map((emp: any) => {
+                        const currentPin = emp.pin || emp.plain_password || emp.password || "1234";
+                        const empName = emp.name || emp.full_name || emp.email?.split("@")[0] || "Employee";
+                        const empContact = emp.phone || emp.email || "No contact";
+
+                        return (
+                          <div
+                            key={emp.id}
+                            className="p-4 rounded-2xl bg-muted/40 border border-border/80 hover:border-border transition-all flex flex-col justify-between gap-3 text-xs shadow-2xs"
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="flex items-center gap-2.5 min-w-0">
+                                <div className="size-9 rounded-xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20 flex items-center justify-center font-bold text-xs shrink-0">
+                                  {empName.slice(0, 2).toUpperCase()}
+                                </div>
+                                <div className="min-w-0 space-y-0.5">
+                                  <p className="font-bold text-foreground text-sm truncate">{empName}</p>
+                                  <p className="text-[11px] text-muted-foreground truncate">{empContact}</p>
+                                  <div className="flex items-center gap-1.5 pt-0.5">
+                                    <Badge variant="secondary" className="text-[10px] font-normal py-0 px-1.5 h-4">
+                                      {emp.designation || "Staff"}
+                                    </Badge>
+                                    <Badge
+                                      variant="outline"
+                                      className={`text-[10px] py-0 px-1.5 h-4 ${
+                                        emp.status === "inactive"
+                                          ? "bg-muted text-muted-foreground"
+                                          : "bg-emerald-500/10 text-emerald-600 border-emerald-500/20"
+                                      }`}
+                                    >
+                                      {emp.status === "inactive" ? (lang === "bn" ? "নিষ্ক্রিয়" : "Inactive") : (lang === "bn" ? "সক্রিয়" : "Active")}
+                                    </Badge>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Current PIN Display & Action */}
+                            <div className="flex items-center justify-between gap-2 pt-2.5 border-t border-border/50">
+                              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-amber-500/10 border border-amber-500/25 text-amber-700 dark:text-amber-300 font-mono font-bold text-xs">
+                                <KeyRound className="size-3 text-amber-500" />
+                                <span>{lang === "bn" ? "পিন:" : "PIN:"} {currentPin}</span>
+                              </div>
+
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  setSelectedEmpForPin(emp);
+                                  setNewEmpPin(currentPin);
+                                }}
+                                className="h-8 px-2.5 rounded-xl border-indigo-500/30 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-500/10 text-xs font-semibold gap-1 cursor-pointer"
+                              >
+                                <Pencil className="size-3" />
+                                <span>{lang === "bn" ? "পিন পরিবর্তন" : "Change PIN"}</span>
+                              </Button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
+              </Card>
+
+              {/* Row: Password & Danger Zone */}
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
               <Card className="lg:col-span-5 p-5 sm:p-6 rounded-3xl bg-card border-border/80 shadow-xs space-y-4">
                 <div className="flex items-center gap-2 text-primary border-b border-border/60 pb-3">
                   <Shield className="size-5" />
@@ -3420,6 +3707,7 @@ export default function SettingsPage() {
                     </div>
                   </Card>
                 )}
+                </div>
               </div>
             </div>
           )}
@@ -3716,6 +4004,109 @@ export default function SettingsPage() {
               Crop & Upload
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Employee PIN Change Dialog Modal ── */}
+      <Dialog open={selectedEmpForPin !== null} onOpenChange={(open) => !open && setSelectedEmpForPin(null)}>
+        <DialogContent className="sm:max-w-[420px] rounded-3xl p-6 bg-card border-border shadow-2xl">
+          <DialogHeader className="space-y-1.5">
+            <div className="size-11 rounded-2xl bg-amber-500/10 border border-amber-500/25 flex items-center justify-center text-amber-600 mb-1">
+              <KeyRound className="size-5" />
+            </div>
+            <DialogTitle className="text-base sm:text-lg font-bold">
+              {lang === "bn" ? "কর্মচারীর পিন কোড পরিবর্তন" : "Change Employee PIN Code"}
+            </DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground">
+              {selectedEmpForPin && (
+                <span>
+                  {lang === "bn"
+                    ? `"${selectedEmpForPin.name || selectedEmpForPin.full_name || selectedEmpForPin.email}" এর জন্য ৪-সংখ্যার সিকিউরিটি পিন সেট করুন।`
+                    : `Set new 4-digit security PIN for "${selectedEmpForPin.name || selectedEmpForPin.full_name || selectedEmpForPin.email}".`}
+                </span>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              handleSaveEmployeePin();
+            }}
+            className="space-y-4 pt-2"
+          >
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label className="text-xs font-semibold flex items-center gap-1.5">
+                  <Lock className="size-3.5 text-amber-500" />
+                  <span>{lang === "bn" ? "নতুন ৪-সংখ্যার পিন কোড" : "New 4-Digit PIN"}</span>
+                </Label>
+                <button
+                  type="button"
+                  onClick={() => setShowNewEmpPin(!showNewEmpPin)}
+                  className="text-[11px] text-muted-foreground hover:text-foreground flex items-center gap-1 cursor-pointer"
+                >
+                  {showNewEmpPin ? <EyeOff className="size-3" /> : <Eye className="size-3" />}
+                  <span>{showNewEmpPin ? (lang === "bn" ? "লুকান" : "Hide") : (lang === "bn" ? "দেখান" : "Show")}</span>
+                </button>
+              </div>
+
+              <Input
+                type={showNewEmpPin ? "text" : "password"}
+                maxLength={6}
+                required
+                value={newEmpPin}
+                onChange={(e) => setNewEmpPin(e.target.value.replace(/[^0-9]/g, ""))}
+                placeholder="••••"
+                className="h-12 rounded-2xl text-xl font-mono tracking-widest text-center font-bold bg-muted/40 border-border"
+                autoFocus
+              />
+
+              {/* Quick preset buttons */}
+              <div className="flex items-center gap-1.5 pt-1">
+                <span className="text-[10px] text-muted-foreground">{lang === "bn" ? "দ্রুত পিন:" : "Quick:"}</span>
+                {["1234", "0000", "5555", "7777"].map((preset) => (
+                  <button
+                    key={preset}
+                    type="button"
+                    onClick={() => setNewEmpPin(preset)}
+                    className="px-2 py-0.5 rounded-lg bg-muted hover:bg-muted/80 text-[10px] font-mono font-bold text-muted-foreground hover:text-foreground transition-all cursor-pointer"
+                  >
+                    {preset}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <DialogFooter className="gap-2 sm:gap-0 pt-2 border-t border-border/50">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setSelectedEmpForPin(null)}
+                disabled={savingEmpPin}
+                className="rounded-xl text-xs cursor-pointer"
+              >
+                {lang === "bn" ? "বাতিল" : "Cancel"}
+              </Button>
+              <Button
+                type="submit"
+                disabled={savingEmpPin || newEmpPin.trim().length < 4}
+                className="rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs gap-1.5 cursor-pointer shadow-xs"
+              >
+                {savingEmpPin ? (
+                  <>
+                    <RefreshCw className="size-3.5 animate-spin" />
+                    <span>{lang === "bn" ? "সংরক্ষণ হচ্ছে..." : "Saving..."}</span>
+                  </>
+                ) : (
+                  <>
+                    <Check className="size-3.5" />
+                    <span>{lang === "bn" ? "পিন সংরক্ষণ করুন" : "Save PIN"}</span>
+                  </>
+                )}
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
     </div>

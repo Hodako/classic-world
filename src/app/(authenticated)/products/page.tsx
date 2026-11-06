@@ -7,7 +7,7 @@ import { PaginationBar, paginate } from "@/components/ui/pagination-bar";
 import { FAB } from "@/components/ui/fab";
 import { useState, useMemo, useRef, useEffect } from "react";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { Plus, Pencil, Trash2, Search, Archive, Download, Eye, AlertCircle, MoreVertical, ShoppingCart, Minus, X, Scan, BarChart2, ArrowLeftRight, RefreshCw } from "lucide-react";
+import { Plus, Pencil, Trash2, Search, Archive, Download, Eye, EyeOff, AlertCircle, MoreVertical, ShoppingCart, Minus, X, Scan, BarChart2, ArrowLeftRight, RefreshCw } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { getProducts, getSales, getCustomers, type Product } from "@/lib/queries";
 import { useT } from "@/lib/i18n";
@@ -70,6 +70,9 @@ export default function ProductsPage() {
   const [productBoxSize, setProductBoxSize] = useState<"small" | "standard" | "large" | string>("standard");
   const [searchVisible, setSearchVisible] = useState(false);
   const [scannerOpen, setScannerOpen] = useState(false);
+  const [showBuyPrice, setShowBuyPrice] = useState(false);
+  const [showStockStats, setShowStockStats] = useState(false);
+  const [showProductStock, setShowProductStock] = useState(false);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -175,6 +178,7 @@ export default function ProductsPage() {
   // Valuations & Total Raw Profit from sold products (Selling Price - Buying Cost)
   const totalCostValuation = allProducts.filter(p => !p.archived).reduce((sum, p) => sum + (p.buy_price * p.stock), 0);
   const totalSaleValuation = allProducts.filter(p => !p.archived).reduce((sum, p) => sum + (p.sell_price * p.stock), 0);
+  const totalStockUnits = allProducts.filter(p => !p.archived).reduce((sum, p) => sum + (Number(p.stock) || 0), 0);
   const totalRawProfit = useMemo(() => {
     return salesData
       .filter(s => !s.returned)
@@ -293,9 +297,19 @@ export default function ProductsPage() {
     <div className="space-y-3">
       {/* Valuation & Top Header - Collapsible */}
       <div className="flex items-center justify-between bg-secondary/20 px-3 py-1.5 rounded-lg border border-border/40 no-print">
-        <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
-          {lang === "bn" ? "স্টক এবং মূল্যায়ন পরিসংখ্যান" : "Stock & Valuation Statistics"}
-        </span>
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+            {lang === "bn" ? "স্টক এবং মূল্যায়ন পরিসংখ্যান" : "Stock & Valuation Statistics"}
+          </span>
+          <button
+            type="button"
+            className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors cursor-pointer"
+            onClick={() => setShowStockStats(prev => !prev)}
+            title={showStockStats ? (lang === "bn" ? "স্টক পরিসংখ্যান লুকান" : "Hide Stock Stats") : (lang === "bn" ? "স্টক পরিসংখ্যান দেখুন" : "Show Stock Stats")}
+          >
+            {showStockStats ? <EyeOff className="size-3.5 text-primary" /> : <Eye className="size-3.5" />}
+          </button>
+        </div>
         <Button
           variant="ghost"
           size="sm"
@@ -309,18 +323,67 @@ export default function ProductsPage() {
       </div>
 
       {statsExpanded && (
-        <div className="grid grid-cols-3 gap-2 sm:gap-3 transition-all duration-300">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3 transition-all duration-300">
+          <Card className="p-2 sm:p-3 bg-gradient-to-br from-blue-50/50 to-blue-100/50 dark:from-blue-950/20 dark:to-blue-900/10 border-blue-200/30">
+            <div className="flex items-center justify-between">
+              <div className="text-[8px] sm:text-[10px] text-muted-foreground uppercase tracking-wider">{lang === "bn" ? "মোট স্টক (মজুদ)" : "Total Stock"}</div>
+              <button
+                type="button"
+                className="p-0.5 text-muted-foreground/70 hover:text-blue-600 transition-colors cursor-pointer"
+                onClick={() => setShowStockStats(prev => !prev)}
+                title={showStockStats ? (lang === "bn" ? "স্টক লুকান" : "Hide Stock") : (lang === "bn" ? "স্টক দেখুন" : "Show Stock")}
+              >
+                {showStockStats ? <EyeOff className="size-3 text-blue-600" /> : <Eye className="size-3" />}
+              </button>
+            </div>
+            <div className="text-xs sm:text-base font-bold font-serif text-blue-700 dark:text-blue-400 mt-0.5">
+              {showStockStats ? `${totalStockUnits.toLocaleString()} ${lang === "bn" ? "টি" : "units"}` : "••••••"}
+            </div>
+          </Card>
           <Card className="p-2 sm:p-3 bg-gradient-to-br from-indigo-50/50 to-indigo-100/50 dark:from-indigo-950/20 dark:to-indigo-900/10 border-indigo-200/30">
-            <div className="text-[8px] sm:text-[10px] text-muted-foreground uppercase tracking-wider">{t("stock_value")} ({t("buy")})</div>
-            <div className="text-xs sm:text-base font-bold font-serif text-indigo-700 dark:text-indigo-400 mt-0.5">{fmtMoney(totalCostValuation)}</div>
+            <div className="flex items-center justify-between">
+              <div className="text-[8px] sm:text-[10px] text-muted-foreground uppercase tracking-wider">{t("stock_value")} ({t("buy")})</div>
+              <button
+                type="button"
+                className="p-0.5 text-muted-foreground/70 hover:text-indigo-600 transition-colors cursor-pointer"
+                onClick={() => setShowStockStats(prev => !prev)}
+              >
+                {showStockStats ? <EyeOff className="size-3 text-indigo-600" /> : <Eye className="size-3" />}
+              </button>
+            </div>
+            <div className="text-xs sm:text-base font-bold font-serif text-indigo-700 dark:text-indigo-400 mt-0.5">
+              {showStockStats ? fmtMoney(totalCostValuation) : "••••••"}
+            </div>
           </Card>
           <Card className="p-2 sm:p-3 bg-gradient-to-br from-emerald-50/50 to-emerald-100/50 dark:from-emerald-950/20 dark:to-emerald-900/10 border-emerald-200/30">
-            <div className="text-[8px] sm:text-[10px] text-muted-foreground uppercase tracking-wider">{t("stock_value")} ({t("sell")})</div>
-            <div className="text-xs sm:text-base font-bold font-serif text-emerald-700 dark:text-emerald-400 mt-0.5">{fmtMoney(totalSaleValuation)}</div>
+            <div className="flex items-center justify-between">
+              <div className="text-[8px] sm:text-[10px] text-muted-foreground uppercase tracking-wider">{t("stock_value")} ({t("sell")})</div>
+              <button
+                type="button"
+                className="p-0.5 text-muted-foreground/70 hover:text-emerald-600 transition-colors cursor-pointer"
+                onClick={() => setShowStockStats(prev => !prev)}
+              >
+                {showStockStats ? <EyeOff className="size-3 text-emerald-600" /> : <Eye className="size-3" />}
+              </button>
+            </div>
+            <div className="text-xs sm:text-base font-bold font-serif text-emerald-700 dark:text-emerald-400 mt-0.5">
+              {showStockStats ? fmtMoney(totalSaleValuation) : "••••••"}
+            </div>
           </Card>
           <Card className="p-2 sm:p-3 bg-gradient-to-br from-amber-50/50 to-amber-100/50 dark:from-amber-950/20 dark:to-amber-900/10 border-amber-200/30">
-            <div className="text-[8px] sm:text-[10px] text-muted-foreground uppercase tracking-wider">{lang === "bn" ? "মোট বিক্রয় লাভ (র' প্রফিট)" : "Raw Sales Profit"}</div>
-            <div className="text-xs sm:text-base font-bold font-serif text-amber-700 dark:text-amber-400 mt-0.5">{fmtMoney(totalRawProfit)}</div>
+            <div className="flex items-center justify-between">
+              <div className="text-[8px] sm:text-[10px] text-muted-foreground uppercase tracking-wider">{lang === "bn" ? "মোট বিক্রয় লাভ (র' প্রফিট)" : "Raw Sales Profit"}</div>
+              <button
+                type="button"
+                className="p-0.5 text-muted-foreground/70 hover:text-amber-600 transition-colors cursor-pointer"
+                onClick={() => setShowStockStats(prev => !prev)}
+              >
+                {showStockStats ? <EyeOff className="size-3 text-amber-600" /> : <Eye className="size-3" />}
+              </button>
+            </div>
+            <div className="text-xs sm:text-base font-bold font-serif text-amber-700 dark:text-amber-400 mt-0.5">
+              {showStockStats ? fmtMoney(totalRawProfit) : "••••••"}
+            </div>
           </Card>
         </div>
       )}
@@ -339,12 +402,31 @@ export default function ProductsPage() {
           </Button>
           <Button
             size="sm"
-            variant="outline"
-            className="h-8 w-8 p-0 shrink-0"
-            title={lang === "bn" ? "বারকোড স্ক্যান" : "Scan Barcode"}
-            onClick={() => setScannerOpen(true)}
+            variant={showProductStock ? "default" : "outline"}
+            className={`h-8 px-2 text-[10px] sm:text-xs flex items-center gap-1 shrink-0 ${
+              showProductStock
+                ? "bg-blue-600 hover:bg-blue-700 text-white border-blue-600"
+                : "text-blue-700 dark:text-blue-400 border-blue-500/30 hover:bg-blue-500/10"
+            }`}
+            title={showProductStock ? (lang === "bn" ? "স্টক লুকান" : "Hide Stock") : (lang === "bn" ? "স্টক দেখুন" : "View Stock")}
+            onClick={() => setShowProductStock(prev => !prev)}
           >
-            <Scan className="size-3.5 text-primary" />
+            {showProductStock ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
+            <span className="hidden sm:inline">{lang === "bn" ? (showProductStock ? "স্টক লুকান" : "স্টক") : (showProductStock ? "Hide Stock" : "Stock")}</span>
+          </Button>
+          <Button
+            size="sm"
+            variant={showBuyPrice ? "default" : "outline"}
+            className={`h-8 px-2 text-[10px] sm:text-xs flex items-center gap-1 shrink-0 ${
+              showBuyPrice
+                ? "bg-amber-600 hover:bg-amber-700 text-white border-amber-600"
+                : "text-amber-700 dark:text-amber-400 border-amber-500/30 hover:bg-amber-500/10"
+            }`}
+            title={showBuyPrice ? (lang === "bn" ? "ক্রয়মূল্য লুকান" : "Hide Buying Price") : (lang === "bn" ? "ক্রয়মূল্য দেখুন" : "View Buying Price")}
+            onClick={() => setShowBuyPrice(prev => !prev)}
+          >
+            {showBuyPrice ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
+            <span className="hidden sm:inline">{lang === "bn" ? (showBuyPrice ? "ক্রয় লুকান" : "ক্রয়মূল্য") : (showBuyPrice ? "Hide Cost" : "Cost")}</span>
           </Button>
           <Button
             size="sm"
@@ -659,6 +741,8 @@ export default function ProductsPage() {
               t={t}
               isMobile={isMobile}
               isPinned={pinnedIds.includes(p.id)}
+              showBuyPrice={showBuyPrice}
+              showStock={showProductStock}
               onTogglePin={() => togglePin(p.id)}
               onSell={() => {
                 setSellCart(prev => {
@@ -810,6 +894,8 @@ function ProductCard({
   isPinned,
   onTogglePin,
   onBuy,
+  showBuyPrice,
+  showStock = false,
 }: {
   p: Product;
   isLowStock: boolean;
@@ -826,10 +912,47 @@ function ProductCard({
   isMobile: boolean;
   isPinned: boolean;
   onTogglePin: () => void;
+  showBuyPrice?: boolean;
+  showStock?: boolean;
 }) {
+  const { lang } = useT();
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const [contextMenuOpen, setContextMenuOpen] = useState(false);
   const [longPressProgress, setLongPressProgress] = useState(false);
+
+  // Independent nullable local override states
+  const [localShowBuyPrice, setLocalShowBuyPrice] = useState<boolean | null>(null);
+  const [localShowStock, setLocalShowStock] = useState<boolean | null>(null);
+
+  // Sync with parent props when they change
+  useEffect(() => {
+    setLocalShowBuyPrice(null);
+  }, [showBuyPrice]);
+
+  useEffect(() => {
+    setLocalShowStock(null);
+  }, [showStock]);
+
+  const isBuyPriceVisible = localShowBuyPrice !== null ? localShowBuyPrice : Boolean(showBuyPrice);
+  const isStockVisible = localShowStock !== null ? localShowStock : Boolean(showStock);
+
+  const toggleBuyPrice = (e: React.MouseEvent | React.TouchEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    setLocalShowBuyPrice(prev => {
+      const current = prev !== null ? prev : Boolean(showBuyPrice);
+      return !current;
+    });
+  };
+
+  const toggleStock = (e: React.MouseEvent | React.TouchEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    setLocalShowStock(prev => {
+      const current = prev !== null ? prev : Boolean(showStock);
+      return !current;
+    });
+  };
 
   const handleStart = () => {
     if (timerRef.current) clearTimeout(timerRef.current);
@@ -862,7 +985,11 @@ function ProductCard({
         onClick={e => e.stopPropagation()}
       >
         <div className="w-8 h-1 bg-muted-foreground/30 rounded-full mx-auto mb-3 sm:hidden" />
-        <p className="text-xs font-bold text-foreground mb-2 truncate px-1 py-1 border-b border-border/40 pb-2">📦 {p.name}</p>
+        <p className="text-xs font-bold text-foreground mb-1 truncate px-1 py-1 border-b border-border/40 pb-1.5">📦 {p.name}</p>
+        <div className="flex items-center justify-between text-xs px-2.5 py-1.5 rounded-xl bg-amber-500/10 border border-amber-500/20 mb-2">
+          <span className="text-amber-800 dark:text-amber-300 font-medium">🏷️ {t("buy_price") || "ক্রয়মূল্য"}:</span>
+          <span className="font-bold text-amber-700 dark:text-amber-400 font-mono text-sm">৳{p.buy_price || 0}</span>
+        </div>
         {!p.archived ? (
           <>
             <button onClick={() => { setContextMenuOpen(false); onTogglePin(); }} className="w-full text-left text-sm px-3 py-2.5 rounded-xl hover:bg-muted flex items-center gap-3 font-medium transition-colors">
@@ -931,10 +1058,20 @@ function ProductCard({
           <div className="relative aspect-square w-full overflow-hidden">
             <ProductImage path={p.image_url} className="w-full h-full object-cover" />
 
-            {/* Stock badge */}
-            <div className="absolute top-1 left-1 bg-black/60 backdrop-blur-md text-white px-1.5 py-0.5 rounded text-[8px] font-bold flex items-center gap-0.5 z-10">
+            {/* Stock badge with responsive eye toggle */}
+            <div className="absolute top-1 left-1 bg-black/75 backdrop-blur-md text-white pl-1.5 pr-1 py-0.5 rounded text-[8px] font-bold flex items-center gap-1 z-10 shadow-xs">
               <span className={isLowStock ? "text-rose-400" : "text-emerald-400"}>●</span>
-              <span>{p.stock}</span>
+              <span>{isStockVisible ? p.stock : "••"}</span>
+              <button
+                type="button"
+                className="size-4 flex items-center justify-center text-white/70 hover:text-white active:scale-75 transition-all cursor-pointer touch-manipulation"
+                onClick={toggleStock}
+                onTouchStart={(e) => e.stopPropagation()}
+                onTouchEnd={(e) => e.stopPropagation()}
+                title={isStockVisible ? (lang === "bn" ? "স্টক লুকান" : "Hide Stock") : (lang === "bn" ? "স্টক দেখুন" : "View Stock")}
+              >
+                {isStockVisible ? <EyeOff className="size-2.5 text-blue-300" /> : <Eye className="size-2.5" />}
+              </button>
             </div>
 
             {/* Pin indicator */}
@@ -965,12 +1102,31 @@ function ProductCard({
               {p.name}
             </div>
             <div className="flex justify-between items-baseline mt-0.5">
-              <span className="font-bold text-[10px] text-emerald-600 dark:text-emerald-400 font-serif">
-                {p.sell_price > 0 ? fmtMoney(p.sell_price) : "—"}
-              </span>
-              {p.category && (
-                <span className="text-[7px] text-muted-foreground truncate ml-1 max-w-[40px]">{p.category}</span>
-              )}
+              <div className="flex items-center gap-1 min-w-0">
+                <span className="font-bold text-[10px] text-emerald-600 dark:text-emerald-400 font-serif shrink-0">
+                  {p.sell_price > 0 ? fmtMoney(p.sell_price) : "—"}
+                </span>
+                {isBuyPriceVisible && (
+                  <span className="text-[8.5px] font-semibold text-amber-700 dark:text-amber-400 font-mono truncate" title={`ক্রয়: ৳${p.buy_price || 0}`}>
+                    (ক্রয় ৳{p.buy_price || 0})
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-1 shrink-0 ml-1">
+                <button
+                  type="button"
+                  className="size-7 sm:size-6 flex items-center justify-center rounded-md text-muted-foreground/80 hover:text-amber-600 hover:bg-amber-500/10 active:scale-90 transition-all cursor-pointer touch-manipulation"
+                  onClick={toggleBuyPrice}
+                  onTouchStart={(e) => e.stopPropagation()}
+                  onTouchEnd={(e) => e.stopPropagation()}
+                  title={isBuyPriceVisible ? (lang === "bn" ? "ক্রয়মূল্য লুকান" : "Hide buy price") : (lang === "bn" ? "ক্রয়মূল্য দেখুন" : "View buy price")}
+                >
+                  {isBuyPriceVisible ? <EyeOff className="size-3.5 text-amber-600 dark:text-amber-400" /> : <Eye className="size-3.5" />}
+                </button>
+                {p.category && (
+                  <span className="text-[7px] text-muted-foreground truncate max-w-[36px]">{p.category}</span>
+                )}
+              </div>
             </div>
           </div>
         </Card>
@@ -1020,13 +1176,42 @@ function ProductCard({
               </div>
             )}
 
-            <div className="flex justify-between text-[9px] sm:text-[10px] pt-1">
+            {isBuyPriceVisible && (
+              <div className="flex justify-between items-center text-[9px] sm:text-[10px] bg-amber-500/10 -mx-0.5 px-1.5 py-0.5 rounded border border-amber-500/20">
+                <span className="text-amber-800 dark:text-amber-300 font-medium">{t("buy_price") || "ক্রয়মূল্য"}</span>
+                <span className="font-bold text-amber-700 dark:text-amber-400 font-mono">{p.buy_price > 0 ? fmtMoney(p.buy_price) : "—"}</span>
+              </div>
+            )}
+
+            <div className="flex justify-between items-center text-[9px] sm:text-[10px] pt-1">
               <span className="text-muted-foreground">{t("sell_price")}</span>
-              <span className="font-bold text-indigo-600 dark:text-indigo-400 font-serif">{p.sell_price > 0 ? fmtMoney(p.sell_price) : "—"}</span>
+              <div className="flex items-center gap-1">
+                <span className="font-bold text-indigo-600 dark:text-indigo-400 font-serif">{p.sell_price > 0 ? fmtMoney(p.sell_price) : "—"}</span>
+                <button
+                  type="button"
+                  className="size-6 flex items-center justify-center rounded text-muted-foreground/70 hover:text-amber-600 hover:bg-amber-500/10 active:scale-90 transition-all cursor-pointer"
+                  onClick={toggleBuyPrice}
+                  title={isBuyPriceVisible ? (lang === "bn" ? "ক্রয়মূল্য লুকান" : "Hide buy price") : (lang === "bn" ? "ক্রয়মূল্য দেখুন" : "View buy price")}
+                >
+                  {isBuyPriceVisible ? <EyeOff className="size-3.5 text-amber-600" /> : <Eye className="size-3.5 hover:text-foreground" />}
+                </button>
+              </div>
             </div>
-            <div className="flex justify-between text-[9px] sm:text-[10px]">
+            <div className="flex justify-between items-center text-[9px] sm:text-[10px]">
               <span className="text-muted-foreground">{t("stock")}</span>
-              <span className={isLowStock ? "text-rose-600 dark:text-rose-400 font-bold" : "text-emerald-600 dark:text-emerald-400 font-bold"}>{p.stock}</span>
+              <div className="flex items-center gap-1">
+                <span className={isLowStock ? "text-rose-600 dark:text-rose-400 font-bold" : "text-emerald-600 dark:text-emerald-400 font-bold"}>
+                  {isStockVisible ? p.stock : "••••"}
+                </span>
+                <button
+                  type="button"
+                  className="size-5 flex items-center justify-center rounded text-muted-foreground/60 hover:text-blue-600 hover:bg-blue-500/10 active:scale-90 transition-all cursor-pointer"
+                  onClick={toggleStock}
+                  title={isStockVisible ? (lang === "bn" ? "স্টক লুকান" : "Hide stock") : (lang === "bn" ? "স্টক দেখুন" : "View stock")}
+                >
+                  {isStockVisible ? <EyeOff className="size-3 text-blue-600" /> : <Eye className="size-3" />}
+                </button>
+              </div>
             </div>
           </div>
         </div>

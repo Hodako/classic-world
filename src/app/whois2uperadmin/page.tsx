@@ -75,9 +75,15 @@ import {
   ExternalLink,
   Plus,
   Radio,
+  Menu,
+  FolderTree,
 } from "lucide-react";
 import { SpeedLoader } from "@/components/speed-loader";
 import { fmtDateTime } from "@/lib/format";
+import { AdminBlogsManager } from "@/components/admin-blogs-manager";
+import { AdminMenusManager } from "@/components/admin-menus-manager";
+import { AdminDivisionsManager } from "@/components/admin-divisions-manager";
+import { AdminSettingsManager } from "@/components/admin-settings-manager";
 
 export default function SuperAdminPage() {
   const qc = useQueryClient();
@@ -86,7 +92,7 @@ export default function SuperAdminPage() {
   const [username, setUsername] = useState("superadmin");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
-  const [activeTab, setActiveTab] = useState<"feed" | "businesses" | "users" | "licenses" | "recycle_bin" | "sms_gateway" | "settings">("feed");
+  const [activeTab, setActiveTab] = useState<"feed" | "businesses" | "users" | "blogs" | "menus" | "divisions" | "licenses" | "recycle_bin" | "sms_gateway" | "settings">("feed");
   const [searchQuery, setSearchQuery] = useState("");
   const [bizStatusFilter, setBizStatusFilter] = useState<"all" | "active" | "frozen">("all");
 
@@ -522,6 +528,33 @@ export default function SuperAdminPage() {
             >
               <Users className="size-3.5 inline mr-1.5 text-indigo-500" />
               Users ({filteredUsers.length})
+            </button>
+            <button
+              onClick={() => setActiveTab("blogs")}
+              className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-all flex items-center shrink-0 ${
+                activeTab === "blogs" ? "bg-card text-foreground shadow-xs border border-border/60" : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <MessageSquare className="size-3.5 inline mr-1.5 text-pink-500" />
+              ব্লগ ও প্রশ্নোত্তর (Quora Blog)
+            </button>
+            <button
+              onClick={() => setActiveTab("menus")}
+              className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-all flex items-center shrink-0 ${
+                activeTab === "menus" ? "bg-card text-foreground shadow-xs border border-border/60" : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <Menu className="size-3.5 inline mr-1.5 text-emerald-500" />
+              মেনু ম্যানেজার (Menus)
+            </button>
+            <button
+              onClick={() => setActiveTab("divisions")}
+              className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-all flex items-center shrink-0 ${
+                activeTab === "divisions" ? "bg-card text-foreground shadow-xs border border-border/60" : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <FolderTree className="size-3.5 inline mr-1.5 text-orange-500" />
+              বিভাগ ও স্পেস (Divisions)
             </button>
             <button
               onClick={() => setActiveTab("licenses")}
@@ -1318,7 +1351,7 @@ export default function SuperAdminPage() {
                             routeType: directRoute,
                           },
                         });
-                        toast.success(`SMS dispatched! Status: ${res.status}`);
+                        toast.success(`SMS dispatched! Status: ${(res as any)?.status || (res as any)?.message || "sent"}`);
                         setDirectMsg("");
                       } catch (err: any) {
                         toast.error(err.message || "Failed to send SMS");
@@ -1401,72 +1434,31 @@ export default function SuperAdminPage() {
           </div>
         )}
 
-        {/* ─── TAB 5: ADMIN SETTINGS ─────────────────────────────────── */}
+        {/* ─── TAB: QUORA BLOG & QA EDITOR ─────────────────────────────── */}
+        {activeTab === "blogs" && (
+          <div className="animate-in fade-in duration-200">
+            <AdminBlogsManager />
+          </div>
+        )}
+
+        {/* ─── TAB: MENUS MANAGER ───────────────────────────────────────── */}
+        {activeTab === "menus" && (
+          <div className="animate-in fade-in duration-200">
+            <AdminMenusManager />
+          </div>
+        )}
+
+        {/* ─── TAB: DIVISIONS & SPACES ──────────────────────────────────── */}
+        {activeTab === "divisions" && (
+          <div className="animate-in fade-in duration-200">
+            <AdminDivisionsManager />
+          </div>
+        )}
+
+        {/* ─── TAB: ADMIN & STORE SETTINGS ─────────────────────────────── */}
         {activeTab === "settings" && (
-          <div className="max-w-xl mx-auto space-y-6">
-            <Card className="p-6 rounded-2xl bg-card border-border/80 shadow-xs space-y-4">
-              <div className="space-y-1">
-                <h3 className="text-base font-bold flex items-center gap-2">
-                  <Lock className="size-5 text-primary" />
-                  Change Super Administrator Password
-                </h3>
-                <p className="text-xs text-muted-foreground">
-                  Update the master password used to access this console.
-                </p>
-              </div>
-
-              <div className="space-y-3">
-                <div className="space-y-1">
-                  <Label className="text-xs font-semibold">Current Password</Label>
-                  <Input
-                    type="password"
-                    placeholder="••••••••"
-                    value={superAdminCurrentPass}
-                    onChange={(e) => setSuperAdminCurrentPass(e.target.value)}
-                    className="rounded-xl text-xs"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs font-semibold">New Master Password</Label>
-                  <Input
-                    type="password"
-                    placeholder="Minimum 6 characters"
-                    value={superAdminNewPass}
-                    onChange={(e) => setSuperAdminNewPass(e.target.value)}
-                    className="rounded-xl text-xs"
-                  />
-                </div>
-
-                <Button
-                  onClick={async () => {
-                    if (!superAdminNewPass || superAdminNewPass.length < 6) {
-                      toast.error("Password must be at least 6 characters");
-                      return;
-                    }
-                    setSuperAdminPassBusy(true);
-                    try {
-                      await changeSuperAdminPasswordFn({
-                        data: {
-                          currentPassword: superAdminCurrentPass,
-                          newPassword: superAdminNewPass,
-                        },
-                      });
-                      toast.success("Master password updated successfully!");
-                      setSuperAdminCurrentPass("");
-                      setSuperAdminNewPass("");
-                    } catch (err: any) {
-                      toast.error(err.message || "Failed to update password");
-                    } finally {
-                      setSuperAdminPassBusy(false);
-                    }
-                  }}
-                  disabled={superAdminPassBusy}
-                  className="w-full rounded-xl beveled-button"
-                >
-                  {superAdminPassBusy ? "Updating..." : "Update Master Password"}
-                </Button>
-              </div>
-            </Card>
+          <div className="animate-in fade-in duration-200">
+            <AdminSettingsManager />
           </div>
         )}
       </main>

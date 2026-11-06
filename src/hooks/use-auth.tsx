@@ -67,79 +67,162 @@ function cacheUser(u: AuthUser | null) {
   writeAuthProfile({
     id: u.id,
     email: u.email,
-    full_name: u.full_name,
-    activated: u.activated,
-    role: u.role,
-    business_id: u.business_id,
-    business_name: u.business_name,
-    logo_url: u.logo_url,
+    full_name: u.full_name || (u as any).name || "Owner",
+    activated: u.activated ?? (u as any).is_activated ?? true,
+    role: u.role || "owner",
+    business_id: u.business_id || "classic-world-default",
+    business_name: u.business_name || "Classic World",
+    business_address: u.business_address,
+    business_phone_numbers: u.business_phone_numbers,
+    business_emails: u.business_emails,
+    invoice_page_size: u.invoice_page_size,
+    invoice_page_width: u.invoice_page_width,
+    invoice_page_height: u.invoice_page_height,
+    invoice_font_size: u.invoice_font_size,
+    invoice_scale: u.invoice_scale,
+    invoice_line_spacing: u.invoice_line_spacing,
+    invoice_terms: u.invoice_terms,
+    logo_url: u.logo_url || "/logo.png",
     avatar_url: u.avatar_url,
+    permissions: u.permissions,
     profiles: u.profiles,
     activeProfile: u.activeProfile,
+    status: u.status,
+    frozen_reason: u.frozen_reason,
+    subscription_expires_at: u.subscription_expires_at,
+    sms_credits: u.sms_credits,
+    admin_whatsapp: u.admin_whatsapp,
   } as any);
 }
 
 function profileToUser(p: ReturnType<typeof readAuthProfile>): AuthUser | null {
   if (!p) return null;
+  const anyP = p as any;
   return {
     id: p.id,
     email: p.email,
-    full_name: p.full_name,
-    activated: p.activated,
-    role: p.role,
-    business_id: p.business_id,
-    business_name: p.business_name,
-    logo_url: p.logo_url,
+    full_name: p.full_name || anyP.name || "Owner",
+    activated: p.activated ?? anyP.is_activated ?? true,
+    role: p.role || "owner",
+    business_id: p.business_id || "classic-world-default",
+    business_name: p.business_name || "Classic World",
+    business_address: anyP.business_address,
+    business_phone_numbers: anyP.business_phone_numbers,
+    business_emails: anyP.business_emails,
+    invoice_page_size: anyP.invoice_page_size,
+    invoice_page_width: anyP.invoice_page_width,
+    invoice_page_height: anyP.invoice_page_height,
+    invoice_font_size: anyP.invoice_font_size,
+    invoice_scale: anyP.invoice_scale,
+    invoice_line_spacing: anyP.invoice_line_spacing,
+    invoice_terms: anyP.invoice_terms,
+    logo_url: p.logo_url || "/logo.png",
     avatar_url: p.avatar_url,
-    profiles: (p as any).profiles,
-    activeProfile: (p as any).activeProfile,
+    permissions: anyP.permissions,
+    profiles: anyP.profiles,
+    activeProfile: anyP.activeProfile,
+    status: anyP.status,
+    frozen_reason: anyP.frozen_reason,
+    subscription_expires_at: anyP.subscription_expires_at,
+    sms_credits: anyP.sms_credits,
+    admin_whatsapp: anyP.admin_whatsapp,
   };
 }
 
-function getInitialUser(): AuthUser | null {
-  if (typeof window === "undefined") return null;
-  const cached = readAuthProfile();
-  const tokenExists = !!window.localStorage.getItem("auth_token");
-  if (cached && tokenExists) {
-    return profileToUser(cached);
-  }
-  return null;
-}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<AuthUser | null>(getInitialUser);
-  const [loading, setLoading] = useState(() => {
-    if (typeof window === "undefined") return true;
-    const tokenExists = !!window.localStorage.getItem("auth_token");
-    const cached = readAuthProfile();
-    if (tokenExists && cached) return false;
-    if (!tokenExists) return false;
-    return true;
-  });
+  const [user, setUser] = useState<AuthUser | null>(null);
+  const [loading, setLoading] = useState(true);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const { lang } = useT();
 
   async function checkUser() {
     try {
+      const isEmp = typeof window !== "undefined" && (
+        !!window.localStorage.getItem("cw_active_employee_session") ||
+        window.localStorage.getItem("cw_active_session_role") === "employee"
+      );
       const data = await getMeFn();
-      const next = data.user as AuthUser | null;
+      const next = data?.user as AuthUser | null;
       if (next) {
         setUser(next);
         cacheUser(next);
         writeBrand({ name: next.business_name, logo_url: next.logo_url });
-      } else if (!window.localStorage.getItem("auth_token")) {
-        setUser(null);
-        clearAuthProfile();
+      } else if (!isEmp) {
+        // Check if Firebase Auth has an active user that can re-sync the session
+        let syncedFromFirebase = false;
+        try {
+          const { auth } = await import("@/lib/firebase");
+          const fbUser = auth.currentUser;
+          if (fbUser && fbUser.email && !fbUser.isAnonymous) {
+            const { firebaseAuthSyncFn } = await import("@/lib/rpc");
+            const syncRes = await firebaseAuthSyncFn({
+              data: {
+                email: fbUser.email,
+                fullName: fbUser.displayName || undefined,
+                photoUrl: fbUser.photoURL || undefined,
+                firebaseUid: fbUser.uid,
+              },
+            });
+            if (syncRes?.user) {
+              if (syncRes.token && typeof window !== "undefined") {
+                window.localStorage.setItem("auth_token", syncRes.token);
+              }
+              setUser(syncRes.user as AuthUser);
+              cacheUser(syncRes.user as AuthUser);
+              writeBrand({ name: syncRes.user.business_name, logo_url: syncRes.user.logo_url });
+              syncedFromFirebase = true;
+            }
+          }
+        } catch (_) {}
+
+        if (!syncedFromFirebase) {
+          const cached = readAuthProfile();
+          if (cached) {
+            setUser(profileToUser(cached));
+          } else {
+            setUser(null);
+            clearAuthProfile();
+            if (typeof window !== "undefined") {
+              window.localStorage.removeItem("auth_token");
+            }
+          }
+        }
       }
     } catch (err: any) {
       console.warn("Background auth check info:", err?.message || err);
+      const isEmp = typeof window !== "undefined" && (
+        !!window.localStorage.getItem("cw_active_employee_session") ||
+        window.localStorage.getItem("cw_active_session_role") === "employee"
+      );
+      if (!isEmp && (err?.message?.includes("401") || err?.message?.includes("Unauthorized"))) {
+        setUser(null);
+        clearAuthProfile();
+        if (typeof window !== "undefined") {
+          window.localStorage.removeItem("auth_token");
+        }
+      }
     } finally {
       setLoading(false);
     }
   }
 
   useEffect(() => {
+    // Restore locally cached session immediately on client mount
+    try {
+      const tokenExists = typeof window !== "undefined" && !!window.localStorage.getItem("auth_token");
+      const cached = readAuthProfile();
+      if (tokenExists && cached) {
+        setUser(profileToUser(cached));
+        setLoading(false);
+      } else if (!tokenExists) {
+        setLoading(false);
+      }
+    } catch {
+      setLoading(false);
+    }
+
     void checkUser();
 
     // Listen to Firebase Auth state to seamlessly restore auth_token
@@ -149,7 +232,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const { auth } = await import("@/lib/firebase");
         const { onAuthStateChanged } = await import("firebase/auth");
         unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
-          if (fbUser && fbUser.email && !window.localStorage.getItem("auth_token")) {
+          const isEmp = typeof window !== "undefined" && (
+            !!window.localStorage.getItem("cw_active_employee_session") ||
+            window.localStorage.getItem("cw_active_session_role") === "employee"
+          );
+          const currentToken = typeof window !== "undefined" ? window.localStorage.getItem("auth_token") : null;
+          const needsJwtSync = !currentToken || !currentToken.includes(".");
+          if (fbUser && fbUser.email && !fbUser.isAnonymous && needsJwtSync && !isEmp) {
             try {
               const { firebaseAuthSyncFn } = await import("@/lib/rpc");
               const res = await firebaseAuthSyncFn({
@@ -162,11 +251,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               });
               if (res?.token) {
                 window.localStorage.setItem("auth_token", res.token);
-                if (res.user) {
-                  setUser(res.user as AuthUser);
-                  cacheUser(res.user as AuthUser);
-                  writeBrand({ name: res.user.business_name, logo_url: res.user.logo_url });
-                }
+              }
+              if (res?.user) {
+                setUser(res.user as AuthUser);
+                cacheUser(res.user as AuthUser);
+                writeBrand({ name: res.user.business_name, logo_url: res.user.logo_url });
               }
             } catch (syncErr) {
               console.warn("Firebase auto-sync on auth state changed failed:", syncErr);
@@ -176,14 +265,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } catch (_) {}
     })();
 
+    const handleRoleSwitch = () => {
+      try {
+        const cached = readAuthProfile();
+        if (cached) {
+          setUser(profileToUser(cached));
+        }
+      } catch (_) {}
+      void checkUser();
+    };
+    window.addEventListener("hz-employee-switched", handleRoleSwitch);
+    const deviceSessionTimer = window.setInterval(() => {
+      if (localStorage.getItem("cw_employee_device_link_id")) void checkUser();
+    }, 60000);
+
     return () => {
       if (unsubscribe) unsubscribe();
+      window.removeEventListener("hz-employee-switched", handleRoleSwitch);
+      window.clearInterval(deviceSessionTimer);
     };
   }, []);
 
   const login = (newUser: AuthUser, token?: string) => {
     if (token && typeof window !== "undefined") {
       window.localStorage.setItem("auth_token", token);
+    }
+    if (typeof window !== "undefined") {
+      window.sessionStorage.setItem("app_pin_unlocked", "true");
     }
     setUser(newUser);
     cacheUser(newUser);
@@ -211,6 +319,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     clearAuthProfile();
     setLoading(false);
     if (typeof window !== "undefined") {
+      window.localStorage.removeItem("auth_token");
+      window.localStorage.removeItem("cw_active_employee_session");
+      window.localStorage.removeItem("cw_active_session_role");
+      window.localStorage.removeItem("cw_owner_backup_profile");
+      window.localStorage.removeItem("cw_owner_backup_token");
+      window.sessionStorage.removeItem("app_pin_unlocked");
       window.location.href = "/auth";
     }
   };

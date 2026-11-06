@@ -4,6 +4,7 @@ import {
   getSalesFn,
   getSalesForPartyFn,
   getPurchasesFn,
+  getPurchasesForPartyFn,
   getExpensesFn,
   getSomitiFn,
   getWithdrawalsFn,
@@ -71,7 +72,7 @@ export type Payment = {
   split_bkash?: number;
   split_bank?: number;
 };
-export type PartyLedger = { id: string; party_id: string; amount: number; note: string | null; created_at: string };
+export type PartyLedger = { id: string; party_id: string; amount: number; note: string | null; created_at: string; ref_id?: string | null };
 export type Return = {
   id: string; sale_id: string; product_id: string; product_name: string;
   qty: number; note: string | null; created_at: string;
@@ -155,6 +156,9 @@ export type EmployeeShopping = {
   items: { product_id: string; product_name: string; qty: number; unit_price: number; total: number }[];
   total_amount: number;
   payment_status: "deduct_from_salary" | "paid_cash" | "gift";
+  is_settled?: boolean;
+  settled?: boolean;
+  settled_salary_id?: string | null;
   date: string;
   note?: string | null;
   created_at: string;
@@ -168,6 +172,7 @@ export const getCustomers = () => getCustomersFn() as unknown as Promise<Custome
 export const getCustomer = (id: string) => getCustomerFn({ data: { id } }) as unknown as Promise<Customer | null>;
 export const getSales = () => getSalesFn() as unknown as Promise<Sale[]>;
 export const getPurchases = () => getPurchasesFn() as unknown as Promise<Purchase[]>;
+export const getPurchasesForParty = (partyId: string) => getPurchasesForPartyFn({ data: { partyId } }) as unknown as Promise<Purchase[]>;
 export const getExpenses = () => getExpensesFn() as unknown as Promise<Expense[]>;
 export const getSomiti = () => getSomitiFn() as unknown as Promise<Somiti[]>;
 export const getWithdrawals = () => getWithdrawalsFn() as unknown as Promise<Withdrawal[]>;

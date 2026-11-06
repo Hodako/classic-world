@@ -476,37 +476,33 @@ export default function ProductAnalyticsPage() {
   }, [filteredProducts, page, pageSize]);
 
   return (
-    <div className="min-h-screen bg-background pb-20 md:pb-12">
+    <div className="min-h-screen bg-white dark:bg-background pb-20 md:pb-12">
       {/* Header */}
-      <div className="sticky top-0 z-30 bg-card/95 backdrop-blur border-b px-4 py-3 sm:px-6 shadow-sm">
-        <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
+      <div className="sticky top-0 z-30 bg-white dark:bg-card border-b px-3 py-2.5 sm:px-6 shadow-xs">
+        <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-2.5">
+          <div className="flex items-center gap-2.5">
             <Link href="/dashboard">
-              <Button variant="ghost" size="icon" className="size-9 rounded-full">
-                <ArrowLeft className="size-5" />
+              <Button variant="ghost" size="icon" className="size-8 sm:size-9 rounded-full">
+                <ArrowLeft className="size-4 sm:size-5" />
               </Button>
             </Link>
             <div>
               <div className="flex items-center gap-2">
-                <h1 className="text-xl font-bold text-foreground tracking-tight flex items-center gap-2">
-                  <BarChart2 className="size-6 text-primary" />
+                <h1 className="text-base sm:text-xl font-bold text-foreground tracking-tight flex items-center gap-2">
+                  <BarChart2 className="size-5 sm:size-6 text-primary" />
                   {lang === "bn" ? "পণ্য অ্যানালিটিক্স ও স্টক অডিট" : "Product Analytics & Stock Audit"}
                 </h1>
-                <Badge variant="outline" className="text-[11px] bg-primary/10 text-primary border-primary/20">
-                  <Sparkles className="size-3 mr-1" />
-                  {lang === "bn" ? "লাইভ ক্যালকুলেটর" : "Live Calculator"}
-                </Badge>
               </div>
-              <p className="text-xs text-muted-foreground hidden sm:block">
+              <p className="text-[11px] sm:text-xs text-muted-foreground hidden sm:block">
                 {lang === "bn"
-                  ? "বারকোড স্ক্যানার দিয়ে ফিজিক্যাল স্টক চেক, ভ্যালুয়েশন ক্যালকুলেটর ও বিক্রির বিশ্লেষণ"
-                  : "Physical stock audit scanner, valuation calculator & sales intelligence"}
+                  ? "বারকোড স্ক্যানার দিয়ে ফিজিক্যাল স্টক চেক ও বিক্রির বিশ্লেষণ"
+                  : "Physical stock audit scanner & sales intelligence"}
               </p>
             </div>
           </div>
 
           {/* Quick Header Actions */}
-          <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
             <Button
               variant={activeTab === "stock_scanner" ? "default" : "outline"}
               size="sm"
@@ -514,10 +510,10 @@ export default function ProductAnalyticsPage() {
                 setActiveTab("stock_scanner");
                 setScannerOpen(true);
               }}
-              className="gap-1.5 shadow-sm font-semibold"
+              className="h-8 sm:h-9 text-xs gap-1.5 shadow-xs font-semibold"
             >
-              <Scan className="size-4" />
-              {lang === "bn" ? "বারকোড স্ক্যানার" : "Barcode Scanner"}
+              <Scan className="size-3.5 sm:size-4" />
+              <span>{lang === "bn" ? "বারকোড স্ক্যানার" : "Barcode Scanner"}</span>
             </Button>
 
             <Button
@@ -533,30 +529,30 @@ export default function ProductAnalyticsPage() {
                 }, 400);
               }}
               disabled={isRefreshing}
-              className="size-9 p-0"
+              className="size-8 sm:size-9 p-0"
               title="Refresh"
             >
-              <RefreshCw className={`size-4 ${isRefreshing ? "animate-spin" : ""}`} />
+              <RefreshCw className={`size-3.5 sm:size-4 ${isRefreshing ? "animate-spin" : ""}`} />
             </Button>
           </div>
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 py-6 sm:px-6 space-y-6">
+      <div className="max-w-7xl mx-auto px-3 py-4 sm:px-6 space-y-4 sm:space-y-6">
         {/* Main Tab Navigation */}
-        <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none border-b">
+        <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto pb-1 scrollbar-none border-b">
           <button
             onClick={() => setActiveTab("stock_scanner")}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-t-lg font-semibold text-sm transition-all border-b-2 whitespace-nowrap ${
+            className={`flex items-center gap-1.5 px-3 py-2 sm:px-4 sm:py-2.5 rounded-t-lg font-semibold text-xs sm:text-sm transition-all border-b-2 whitespace-nowrap shrink-0 ${
               activeTab === "stock_scanner"
-                ? "border-primary text-primary bg-primary/5 font-bold shadow-sm"
+                ? "border-primary text-primary bg-primary/5 font-bold shadow-xs"
                 : "border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/40"
             }`}
           >
-            <Scan className="size-4 text-emerald-500" />
-            <span>{lang === "bn" ? "🔍 স্টক অডিট স্ক্যানার ও ক্যালকুলেটর" : "🔍 Stock Audit Scanner & Calculator"}</span>
+            <Scan className="size-3.5 sm:size-4 text-emerald-500" />
+            <span>{lang === "bn" ? "🔍 স্টক অডিট স্ক্যানার" : "🔍 Stock Audit Scanner"}</span>
             {scannedAuditItems.length > 0 && (
-              <Badge className="bg-emerald-600 text-white text-[11px] px-1.5 py-0 h-5">
+              <Badge className="bg-emerald-600 text-white text-[10px] sm:text-[11px] px-1.5 py-0 h-4.5 sm:h-5">
                 {auditCalculations.totalPieces} pcs
               </Badge>
             )}
@@ -564,216 +560,216 @@ export default function ProductAnalyticsPage() {
 
           <button
             onClick={() => setActiveTab("best_sellers")}
-            className={`flex items-center gap-1.5 px-4 py-2.5 rounded-t-lg font-medium text-sm transition-all border-b-2 whitespace-nowrap ${
+            className={`flex items-center gap-1.5 px-3 py-2 sm:px-4 sm:py-2.5 rounded-t-lg font-medium text-xs sm:text-sm transition-all border-b-2 whitespace-nowrap shrink-0 ${
               activeTab === "best_sellers"
                 ? "border-primary text-primary bg-primary/5 font-bold"
                 : "border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/40"
             }`}
           >
-            <Flame className="size-4 text-amber-500" />
+            <Flame className="size-3.5 sm:size-4 text-amber-500" />
             <span>{lang === "bn" ? "সেরা বিক্রিত" : "Best Sellers"}</span>
           </button>
 
           <button
             onClick={() => setActiveTab("trending")}
-            className={`flex items-center gap-1.5 px-4 py-2.5 rounded-t-lg font-medium text-sm transition-all border-b-2 whitespace-nowrap ${
+            className={`flex items-center gap-1.5 px-3 py-2 sm:px-4 sm:py-2.5 rounded-t-lg font-medium text-xs sm:text-sm transition-all border-b-2 whitespace-nowrap shrink-0 ${
               activeTab === "trending"
                 ? "border-primary text-primary bg-primary/5 font-bold"
                 : "border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/40"
             }`}
           >
-            <TrendingUp className="size-4 text-indigo-500" />
+            <TrendingUp className="size-3.5 sm:size-4 text-indigo-500" />
             <span>{lang === "bn" ? "ট্রেন্ডিং" : "Trending"}</span>
           </button>
 
           <button
             onClick={() => setActiveTab("critical_stock")}
-            className={`flex items-center gap-1.5 px-4 py-2.5 rounded-t-lg font-medium text-sm transition-all border-b-2 whitespace-nowrap ${
+            className={`flex items-center gap-1.5 px-3 py-2 sm:px-4 sm:py-2.5 rounded-t-lg font-medium text-xs sm:text-sm transition-all border-b-2 whitespace-nowrap shrink-0 ${
               activeTab === "critical_stock"
                 ? "border-primary text-primary bg-primary/5 font-bold"
                 : "border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/40"
             }`}
           >
-            <AlertTriangle className="size-4 text-rose-500" />
+            <AlertTriangle className="size-3.5 sm:size-4 text-rose-500" />
             <span>{lang === "bn" ? "স্টক শেষ / কম" : "Low / Out of Stock"}</span>
           </button>
 
           <button
             onClick={() => setActiveTab("slow_moving")}
-            className={`flex items-center gap-1.5 px-4 py-2.5 rounded-t-lg font-medium text-sm transition-all border-b-2 whitespace-nowrap ${
+            className={`flex items-center gap-1.5 px-3 py-2 sm:px-4 sm:py-2.5 rounded-t-lg font-medium text-xs sm:text-sm transition-all border-b-2 whitespace-nowrap shrink-0 ${
               activeTab === "slow_moving"
                 ? "border-primary text-primary bg-primary/5 font-bold"
                 : "border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/40"
             }`}
           >
-            <Clock className="size-4 text-orange-500" />
+            <Clock className="size-3.5 sm:size-4 text-orange-500" />
             <span>{lang === "bn" ? "ধীর বিক্রিত" : "Slow Moving"}</span>
           </button>
 
           <button
             onClick={() => setActiveTab("all")}
-            className={`flex items-center gap-1.5 px-4 py-2.5 rounded-t-lg font-medium text-sm transition-all border-b-2 whitespace-nowrap ${
+            className={`flex items-center gap-1.5 px-3 py-2 sm:px-4 sm:py-2.5 rounded-t-lg font-medium text-xs sm:text-sm transition-all border-b-2 whitespace-nowrap shrink-0 ${
               activeTab === "all"
                 ? "border-primary text-primary bg-primary/5 font-bold"
                 : "border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/40"
             }`}
           >
-            <Layers className="size-4 text-slate-500" />
+            <Layers className="size-3.5 sm:size-4 text-slate-500" />
             <span>{lang === "bn" ? "সকল পণ্য" : "All Products"}</span>
           </button>
         </div>
 
         {/* ------------------------------------------------------------- */}
-        {/* TAB 1: STOCK AUDIT SCANNER & VALUATION CALCULATOR             */}
+        {/* TAB 1: STOCK AUDIT SCANNER & VALUATION                        */}
         {/* ------------------------------------------------------------- */}
         {activeTab === "stock_scanner" && (
           <div className="space-y-6">
             {/* Top Audit Calculator Summary Cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-4">
               {/* Card 1: Total Scanned Pieces */}
-              <Card className="p-4 bg-gradient-to-br from-emerald-500/10 via-emerald-500/5 to-transparent border-emerald-500/30">
+              <Card className="p-3 sm:p-4 bg-white dark:bg-card border border-emerald-500/30 shadow-xs">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-400 uppercase tracking-wider">
-                    {lang === "bn" ? "স্ক্যানকৃত মোট পিস" : "Scanned Physical Pieces"}
+                  <span className="text-[10px] sm:text-xs font-bold text-emerald-700 dark:text-emerald-400 uppercase tracking-wider">
+                    {lang === "bn" ? "স্ক্যানকৃত মোট পিস" : "Scanned Pieces"}
                   </span>
-                  <div className="p-2 bg-emerald-500/20 text-emerald-600 rounded-lg">
-                    <Package className="size-4" />
+                  <div className="p-1.5 sm:p-2 bg-emerald-500/10 text-emerald-600 rounded-md sm:rounded-lg">
+                    <Package className="size-3.5 sm:size-4" />
                   </div>
                 </div>
-                <div className="mt-2 flex items-baseline gap-2">
-                  <span className="text-3xl font-black text-foreground">
+                <div className="mt-1 sm:mt-2 flex items-baseline gap-1.5">
+                  <span className="text-xl sm:text-3xl font-black text-foreground">
                     {auditCalculations.totalPieces}
                   </span>
-                  <span className="text-xs text-muted-foreground">
-                    {lang === "bn" ? `(${auditCalculations.uniqueItemCount} ধরণের পণ্য)` : `(${auditCalculations.uniqueItemCount} unique items)`}
+                  <span className="text-[10px] sm:text-xs text-muted-foreground">
+                    {lang === "bn" ? `(${auditCalculations.uniqueItemCount} আইটেম)` : `(${auditCalculations.uniqueItemCount} items)`}
                   </span>
                 </div>
-                <p className="text-xs text-muted-foreground mt-1">
+                <p className="text-[10px] sm:text-xs text-muted-foreground mt-0.5 sm:mt-1 truncate">
                   {lang === "bn"
-                    ? `দোকানের মোট সিস্টেম স্টক: ${totalStoreStock} পিস`
-                    : `Total Store System Stock: ${totalStoreStock} pcs`}
+                    ? `সিস্টেম: ${totalStoreStock} পিস`
+                    : `System: ${totalStoreStock} pcs`}
                 </p>
               </Card>
 
               {/* Card 2: Total Cost Worth */}
-              <Card className="p-4 bg-gradient-to-br from-indigo-500/10 via-indigo-500/5 to-transparent border-indigo-500/30">
+              <Card className="p-3 sm:p-4 bg-white dark:bg-card border border-indigo-500/30 shadow-xs">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold text-indigo-700 dark:text-indigo-400 uppercase tracking-wider">
-                    {lang === "bn" ? "মোট ক্রয়মূল্য হিসাব (কেনা)" : "Total Cost Worth (Buy)"}
+                  <span className="text-[10px] sm:text-xs font-bold text-indigo-700 dark:text-indigo-400 uppercase tracking-wider">
+                    {lang === "bn" ? "মোট ক্রয়মূল্য (কেনা)" : "Total Cost (Buy)"}
                   </span>
-                  <div className="p-2 bg-indigo-500/20 text-indigo-600 rounded-lg">
-                    <Calculator className="size-4" />
+                  <div className="p-1.5 sm:p-2 bg-indigo-500/10 text-indigo-600 rounded-md sm:rounded-lg">
+                    <Calculator className="size-3.5 sm:size-4" />
                   </div>
                 </div>
-                <div className="mt-2">
-                  <span className="text-3xl font-black text-indigo-600 dark:text-indigo-400">
+                <div className="mt-1 sm:mt-2">
+                  <span className="text-xl sm:text-3xl font-black text-indigo-600 dark:text-indigo-400">
                     {fmtMoney(auditCalculations.totalCostValuation)}
                   </span>
                 </div>
-                <p className="text-xs text-muted-foreground mt-1">
+                <p className="text-[10px] sm:text-xs text-muted-foreground mt-0.5 sm:mt-1 truncate">
                   {lang === "bn"
-                    ? `প্রত্যাশিত সিস্টেম ক্রয়মূল্য: ${fmtMoney(auditCalculations.totalSystemCostOfScanned)}`
-                    : `Expected System Cost: ${fmtMoney(auditCalculations.totalSystemCostOfScanned)}`}
+                    ? `সিস্টেম: ${fmtMoney(auditCalculations.totalSystemCostOfScanned)}`
+                    : `Expected: ${fmtMoney(auditCalculations.totalSystemCostOfScanned)}`}
                 </p>
               </Card>
 
               {/* Card 3: Total Retail Worth */}
-              <Card className="p-4 bg-gradient-to-br from-purple-500/10 via-purple-500/5 to-transparent border-purple-500/30">
+              <Card className="p-3 sm:p-4 bg-white dark:bg-card border border-purple-500/30 shadow-xs">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold text-purple-700 dark:text-purple-400 uppercase tracking-wider">
-                    {lang === "bn" ? "মোট বিক্রয়মূল্য হিসাব (বিক্রি)" : "Total Retail Worth (Sale)"}
+                  <span className="text-[10px] sm:text-xs font-bold text-purple-700 dark:text-purple-400 uppercase tracking-wider">
+                    {lang === "bn" ? "মোট বিক্রয়মূল্য" : "Total Retail (Sell)"}
                   </span>
-                  <div className="p-2 bg-purple-500/20 text-purple-600 rounded-lg">
-                    <DollarSign className="size-4" />
+                  <div className="p-1.5 sm:p-2 bg-purple-500/10 text-purple-600 rounded-md sm:rounded-lg">
+                    <DollarSign className="size-3.5 sm:size-4" />
                   </div>
                 </div>
-                <div className="mt-2">
-                  <span className="text-3xl font-black text-purple-600 dark:text-purple-400">
+                <div className="mt-1 sm:mt-2">
+                  <span className="text-xl sm:text-3xl font-black text-purple-600 dark:text-purple-400">
                     {fmtMoney(auditCalculations.totalSaleValuation)}
                   </span>
                 </div>
-                <p className="text-xs text-muted-foreground mt-1">
+                <p className="text-[10px] sm:text-xs text-muted-foreground mt-0.5 sm:mt-1 truncate">
                   {lang === "bn"
-                    ? `প্রত্যাশিত বিক্রয়মূল্য: ${fmtMoney(auditCalculations.totalSystemSaleOfScanned)}`
-                    : `Expected Retail: ${fmtMoney(auditCalculations.totalSystemSaleOfScanned)}`}
+                    ? `সিস্টেম: ${fmtMoney(auditCalculations.totalSystemSaleOfScanned)}`
+                    : `Expected: ${fmtMoney(auditCalculations.totalSystemSaleOfScanned)}`}
                 </p>
               </Card>
 
               {/* Card 4: Match Status & Discrepancy */}
-              <Card className={`p-4 border ${
+              <Card className={`p-3 sm:p-4 border shadow-xs bg-white dark:bg-card ${
                 auditCalculations.totalPieces === 0
-                  ? "bg-muted/40 border-border"
+                  ? "border-border"
                   : auditCalculations.piecesDifference === 0
-                  ? "bg-emerald-500/10 border-emerald-500/30"
+                  ? "border-emerald-500/40"
                   : auditCalculations.piecesDifference < 0
-                  ? "bg-rose-500/10 border-rose-500/30"
-                  : "bg-amber-500/10 border-amber-500/30"
+                  ? "border-rose-500/40"
+                  : "border-amber-500/40"
               }`}>
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    {lang === "bn" ? "স্টক ম্যাচিং স্ট্যাটাস" : "Stock Matching Status"}
+                  <span className="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                    {lang === "bn" ? "স্টক ম্যাচিং" : "Match Status"}
                   </span>
-                  <div className="p-2 rounded-lg bg-card shadow-xs">
+                  <div className="p-1.5 sm:p-2 rounded-md sm:rounded-lg bg-muted/30">
                     {auditCalculations.totalPieces === 0 ? (
-                      <Clock className="size-4 text-muted-foreground" />
+                      <Clock className="size-3.5 sm:size-4 text-muted-foreground" />
                     ) : auditCalculations.piecesDifference === 0 ? (
-                      <CheckCheck className="size-4 text-emerald-500" />
+                      <CheckCheck className="size-3.5 sm:size-4 text-emerald-500" />
                     ) : auditCalculations.piecesDifference < 0 ? (
-                      <AlertTriangle className="size-4 text-rose-500" />
+                      <AlertTriangle className="size-3.5 sm:size-4 text-rose-500" />
                     ) : (
-                      <Plus className="size-4 text-amber-500" />
+                      <Plus className="size-3.5 sm:size-4 text-amber-500" />
                     )}
                   </div>
                 </div>
 
-                <div className="mt-2">
+                <div className="mt-1 sm:mt-2">
                   {auditCalculations.totalPieces === 0 ? (
-                    <span className="text-lg font-bold text-muted-foreground">
+                    <span className="text-sm sm:text-lg font-bold text-muted-foreground">
                       {lang === "bn" ? "স্ক্যান শুরু করুন" : "Start Scanning"}
                     </span>
                   ) : auditCalculations.piecesDifference === 0 ? (
-                    <div className="flex items-center gap-1.5 text-emerald-600 font-black text-2xl">
-                      <CheckCircle2 className="size-6" />
-                      <span>{lang === "bn" ? "হুবহু মিল রয়েছে" : "Perfect Match"}</span>
+                    <div className="flex items-center gap-1 text-emerald-600 font-black text-base sm:text-2xl">
+                      <CheckCircle2 className="size-4 sm:size-6" />
+                      <span>{lang === "bn" ? "হুবহু মিল" : "Perfect Match"}</span>
                     </div>
                   ) : auditCalculations.piecesDifference < 0 ? (
-                    <div>
-                      <span className="text-2xl font-black text-rose-600">
+                    <div className="flex items-baseline gap-1">
+                      <span className="text-lg sm:text-2xl font-black text-rose-600">
                         {auditCalculations.piecesDifference} pcs
                       </span>
-                      <span className="text-xs font-semibold text-rose-500 ml-1.5">
-                        {lang === "bn" ? "(ঘাটতি / Shortage)" : "(Shortage)"}
+                      <span className="text-[10px] sm:text-xs font-semibold text-rose-500">
+                        {lang === "bn" ? "ঘাটতি" : "Shortage"}
                       </span>
                     </div>
                   ) : (
-                    <div>
-                      <span className="text-2xl font-black text-amber-600">
+                    <div className="flex items-baseline gap-1">
+                      <span className="text-lg sm:text-2xl font-black text-amber-600">
                         +{auditCalculations.piecesDifference} pcs
                       </span>
-                      <span className="text-xs font-semibold text-amber-500 ml-1.5">
-                        {lang === "bn" ? "(উদ্বৃত্ত / Surplus)" : "(Surplus)"}
+                      <span className="text-[10px] sm:text-xs font-semibold text-amber-500">
+                        {lang === "bn" ? "উদ্বৃত্ত" : "Surplus"}
                       </span>
                     </div>
                   )}
                 </div>
 
-                <p className="text-xs text-muted-foreground mt-1">
+                <p className="text-[10px] sm:text-xs text-muted-foreground mt-0.5 sm:mt-1 truncate">
                   {auditCalculations.totalPieces === 0
-                    ? (lang === "bn" ? "বারকোড দিয়ে পণ্য যোগ করুন" : "Scan barcodes to check")
+                    ? (lang === "bn" ? "বারকোড দিয়ে চেক করুন" : "Scan to check")
                     : (lang === "bn"
-                        ? `মূল্য পার্থক্য: ${fmtMoney(Math.abs(auditCalculations.costDifference))}`
-                        : `Valuation Diff: ${fmtMoney(Math.abs(auditCalculations.costDifference))}`)}
+                        ? `পার্থক্য: ${fmtMoney(Math.abs(auditCalculations.costDifference))}`
+                        : `Diff: ${fmtMoney(Math.abs(auditCalculations.costDifference))}`)}
                 </p>
               </Card>
             </div>
 
             {/* Scanner Input Console & Control Bench */}
-            <Card className="p-5 border-2 border-primary/20 shadow-md bg-card">
-              <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4">
+            <Card className="p-3 sm:p-5 border border-border/80 shadow-xs bg-white dark:bg-card space-y-3">
+              <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
                 {/* Manual Barcode & Gun Scan Input */}
                 <div className="flex-1 flex items-center gap-2">
                   <div className="relative flex-1">
-                    <Scan className="absolute left-3.5 top-1/2 -translate-y-1/2 size-5 text-primary" />
+                    <Scan className="absolute left-3 top-1/2 -translate-y-1/2 size-4 sm:size-5 text-primary" />
                     <Input
                       ref={barcodeInputRef}
                       value={manualBarcodeInput}
@@ -784,43 +780,42 @@ export default function ProductAnalyticsPage() {
                           handleScanOrAddProduct(manualBarcodeInput);
                         }
                       }}
-                      placeholder={lang === "bn" ? "বারকোড স্ক্যান করুন বা লিখুন (Enter চাপুন)..." : "Scan barcode or enter SKU/ID (Press Enter)..."}
-                      className="pl-11 pr-24 h-12 text-base font-mono bg-background border-primary/30 focus-visible:ring-primary shadow-inner"
+                      placeholder={lang === "bn" ? "বারকোড স্ক্যান বা লিখুন (Enter)..." : "Scan barcode or enter SKU (Enter)..."}
+                      className="pl-9 sm:pl-11 pr-20 sm:pr-24 h-10 sm:h-12 text-xs sm:text-base font-mono bg-background border-border/80 focus-visible:ring-primary shadow-xs"
                       autoFocus
                     />
                     <Button
                       size="sm"
                       onClick={() => handleScanOrAddProduct(manualBarcodeInput)}
                       disabled={!manualBarcodeInput.trim()}
-                      className="absolute right-1.5 top-1/2 -translate-y-1/2 h-9 px-3"
+                      className="absolute right-1 top-1/2 -translate-y-1/2 h-8 sm:h-9 px-2.5 sm:px-3 text-xs"
                     >
-                      {lang === "bn" ? "যোগ করুন" : "Add"}
+                      {lang === "bn" ? "যোগ" : "Add"}
                     </Button>
                   </div>
 
                   {/* Camera Scanner Button */}
                   <Button
-                    size="lg"
+                    size="default"
                     onClick={() => setScannerOpen(true)}
-                    className="h-12 px-5 gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-md"
+                    className="h-10 sm:h-12 px-3 sm:px-5 gap-1.5 sm:gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-xs text-xs sm:text-sm shrink-0"
                   >
-                    <QrCode className="size-5" />
-                    <span className="hidden sm:inline">{lang === "bn" ? "ক্যামেরা স্ক্যানার" : "Camera Scanner"}</span>
-                    <span className="sm:hidden">{lang === "bn" ? "ক্যামেরা" : "Camera"}</span>
+                    <QrCode className="size-4 sm:size-5" />
+                    <span>{lang === "bn" ? "ক্যামেরা" : "Camera"}</span>
                   </Button>
                 </div>
 
                 {/* Sound & Controls Toolbar */}
-                <div className="flex items-center gap-2 flex-wrap justify-end">
+                <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap justify-between sm:justify-end">
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={() => setSoundEnabled(!soundEnabled)}
-                    className={`h-10 gap-1.5 ${soundEnabled ? "text-primary border-primary/30" : "text-muted-foreground"}`}
+                    className={`h-8 sm:h-10 px-2 sm:px-3 text-[11px] sm:text-xs gap-1 ${soundEnabled ? "text-primary border-primary/30" : "text-muted-foreground"}`}
                     title={soundEnabled ? "Sound Enabled" : "Sound Muted"}
                   >
-                    {soundEnabled ? <Volume2 className="size-4 text-emerald-500" /> : <VolumeX className="size-4 text-rose-500" />}
-                    <span className="text-xs font-semibold">{soundEnabled ? (lang === "bn" ? "সাউন্ড অন" : "Beep On") : (lang === "bn" ? "সাউন্ড অফ" : "Muted")}</span>
+                    {soundEnabled ? <Volume2 className="size-3.5 sm:size-4 text-emerald-500" /> : <VolumeX className="size-3.5 sm:size-4 text-rose-500" />}
+                    <span>{soundEnabled ? (lang === "bn" ? "সাউন্ড" : "Beep") : (lang === "bn" ? "মিউট" : "Mute")}</span>
                   </Button>
 
                   <Button
@@ -828,10 +823,10 @@ export default function ProductAnalyticsPage() {
                     size="sm"
                     onClick={handleExportAuditCsv}
                     disabled={scannedAuditItems.length === 0}
-                    className="h-10 gap-1.5 text-xs font-semibold"
+                    className="h-8 sm:h-10 px-2 sm:px-3 text-[11px] sm:text-xs gap-1"
                   >
-                    <Download className="size-4 text-indigo-500" />
-                    <span>{lang === "bn" ? "CSV এক্সপোর্ট" : "Export CSV"}</span>
+                    <Download className="size-3.5 sm:size-4 text-indigo-500" />
+                    <span>CSV</span>
                   </Button>
 
                   <Button
@@ -839,9 +834,9 @@ export default function ProductAnalyticsPage() {
                     size="sm"
                     onClick={() => window.print()}
                     disabled={scannedAuditItems.length === 0}
-                    className="h-10 gap-1.5 text-xs font-semibold"
+                    className="h-8 sm:h-10 px-2 sm:px-3 text-[11px] sm:text-xs gap-1"
                   >
-                    <Printer className="size-4 text-purple-500" />
+                    <Printer className="size-3.5 sm:size-4 text-purple-500" />
                     <span>{lang === "bn" ? "প্রিন্ট" : "Print"}</span>
                   </Button>
 
@@ -850,82 +845,84 @@ export default function ProductAnalyticsPage() {
                     size="sm"
                     onClick={handleClearAudit}
                     disabled={scannedAuditItems.length === 0}
-                    className="h-10 gap-1.5 text-rose-600 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/30 text-xs font-semibold"
+                    className="h-8 sm:h-10 px-2 sm:px-3 text-[11px] sm:text-xs gap-1 text-rose-600 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/30"
                   >
-                    <RotateCcw className="size-4" />
+                    <RotateCcw className="size-3.5 sm:size-4" />
                     <span>{lang === "bn" ? "রিসেট" : "Reset"}</span>
                   </Button>
                 </div>
               </div>
 
               {/* Quick Search Dropdown / Fast Picker */}
-              <div className="mt-3 pt-3 border-t flex items-center justify-between text-xs text-muted-foreground">
-                <span className="flex items-center gap-1.5">
-                  <Sparkles className="size-3.5 text-amber-500" />
-                  {lang === "bn"
-                    ? "টিপস: বারকোড গান দিয়ে একটার পর একটা স্ক্যান করলে সাথে সাথে মূল্য ও মোট হিসাব বাড়তে থাকবে।"
-                    : "Tip: Scanning barcodes continuously auto-adds products and updates live valuation with a beep sound."}
+              <div className="pt-2 border-t flex items-center justify-between text-[11px] sm:text-xs text-muted-foreground gap-2">
+                <span className="flex items-center gap-1 truncate">
+                  <Sparkles className="size-3 sm:size-3.5 text-amber-500 shrink-0" />
+                  <span className="truncate">
+                    {lang === "bn"
+                      ? "টিপস: বারকোড গান দিয়ে পরপর স্ক্যান করলে সাথে সাথে মূল্য ও মোট হিসাব বাড়তে থাকবে।"
+                      : "Tip: Scanning barcodes continuously auto-adds products and updates valuation."}
+                  </span>
                 </span>
-                <span className="font-semibold text-foreground">
-                  {lang === "bn" ? `স্ক্যানকৃত আইটেম: ${scannedAuditItems.length} টি` : `Scanned Items: ${scannedAuditItems.length}`}
+                <span className="font-semibold text-foreground shrink-0">
+                  {lang === "bn" ? `${scannedAuditItems.length} টি` : `${scannedAuditItems.length}`}
                 </span>
               </div>
             </Card>
 
             {/* Spotlight of Last Scanned Item */}
             {lastScannedProduct && (
-              <Card className="p-4 bg-gradient-to-r from-primary/10 via-emerald-500/10 to-transparent border-2 border-emerald-500/40 animate-in fade-in slide-in-from-top-2 duration-300">
-                <div className="flex items-center justify-between gap-4 flex-wrap">
-                  <div className="flex items-center gap-3">
-                    <div className="size-14 rounded-lg overflow-hidden border bg-background shrink-0">
+              <Card className="p-3 sm:p-4 bg-white dark:bg-card border-2 border-emerald-500/40 shadow-xs animate-in fade-in slide-in-from-top-2 duration-300">
+                <div className="flex items-center justify-between gap-3 sm:gap-4 flex-wrap">
+                  <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+                    <div className="size-12 sm:size-14 rounded-lg overflow-hidden border bg-background shrink-0">
                       <ProductImage
                         path={lastScannedProduct.product.image_url}
                         alt={lastScannedProduct.product.name}
                         className="w-full h-full object-cover"
                       />
                     </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <Badge className="bg-emerald-600 text-white text-[10px] font-bold">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+                        <Badge className="bg-emerald-600 text-white text-[10px] font-bold px-1.5 py-0">
                           {lang === "bn" ? "সবেমাত্র স্ক্যান হয়েছে" : "Just Scanned"}
                         </Badge>
-                        <span className="text-xs text-muted-foreground font-mono">
+                        <span className="text-[10px] sm:text-xs text-muted-foreground font-mono truncate">
                           {lastScannedProduct.product.barcode || lastScannedProduct.product.sku || "No Barcode"}
                         </span>
                       </div>
-                      <h4 className="text-base font-bold text-foreground">
+                      <h4 className="text-xs sm:text-base font-bold text-foreground truncate">
                         {lastScannedProduct.product.name}
                       </h4>
-                      <p className="text-xs text-muted-foreground">
+                      <p className="text-[10px] sm:text-xs text-muted-foreground truncate">
                         {lang === "bn" ? "ক্যাটাগরি" : "Category"}: {lastScannedProduct.product.category || "General"}
                       </p>
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-6">
-                    <div className="text-right">
-                      <span className="text-[11px] text-muted-foreground uppercase font-bold block">
-                        {lang === "bn" ? "ক্রয় মূল্য (Unit Cost)" : "Unit Cost"}
+                  <div className="flex items-center gap-3 sm:gap-6 w-full sm:w-auto justify-between sm:justify-end pt-2 sm:pt-0 border-t sm:border-t-0">
+                    <div className="text-left sm:text-right">
+                      <span className="text-[10px] sm:text-[11px] text-muted-foreground uppercase font-bold block">
+                        {lang === "bn" ? "একক ক্রয়" : "Unit Cost"}
                       </span>
-                      <span className="text-base font-bold text-indigo-600 dark:text-indigo-400">
+                      <span className="text-xs sm:text-base font-bold text-indigo-600 dark:text-indigo-400">
                         {fmtMoney(Number(lastScannedProduct.product.buy_price) || 0)}
                       </span>
                     </div>
 
-                    <div className="text-right">
-                      <span className="text-[11px] text-muted-foreground uppercase font-bold block">
-                        {lang === "bn" ? "বিক্রয় মূল্য (Unit Sell)" : "Unit Retail"}
+                    <div className="text-left sm:text-right">
+                      <span className="text-[10px] sm:text-[11px] text-muted-foreground uppercase font-bold block">
+                        {lang === "bn" ? "একক বিক্রয়" : "Unit Retail"}
                       </span>
-                      <span className="text-base font-bold text-purple-600 dark:text-purple-400">
+                      <span className="text-xs sm:text-base font-bold text-purple-600 dark:text-purple-400">
                         {fmtMoney(Number(lastScannedProduct.product.sell_price) || 0)}
                       </span>
                     </div>
 
-                    <div className="text-right bg-card px-3 py-1.5 rounded-lg border shadow-xs">
-                      <span className="text-[11px] text-muted-foreground uppercase font-bold block">
-                        {lang === "bn" ? "স্ক্যান সংখ্যা" : "Scanned Qty"}
+                    <div className="text-right bg-slate-50 dark:bg-muted/40 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-lg border shadow-xs">
+                      <span className="text-[10px] sm:text-[11px] text-muted-foreground uppercase font-bold block">
+                        {lang === "bn" ? "সংখ্যা" : "Qty"}
                       </span>
-                      <span className="text-xl font-black text-emerald-600">
+                      <span className="text-sm sm:text-xl font-black text-emerald-600">
                         {lastScannedProduct.qty} pcs
                       </span>
                     </div>
@@ -934,36 +931,36 @@ export default function ProductAnalyticsPage() {
               </Card>
             )}
 
-            {/* Scanned Items Ledger Table */}
-            <Card className="overflow-hidden border shadow-sm">
-              <div className="p-4 border-b bg-muted/30 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+            {/* Scanned Items Ledger Table & Mobile Cards */}
+            <Card className="overflow-hidden border shadow-xs bg-white dark:bg-card">
+              <div className="p-3 sm:p-4 border-b bg-slate-50/60 dark:bg-muted/30 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 sm:gap-3">
                 <div className="flex items-center gap-2">
-                  <FileSpreadsheet className="size-5 text-primary" />
-                  <h3 className="text-base font-bold text-foreground">
+                  <FileSpreadsheet className="size-4 sm:size-5 text-primary" />
+                  <h3 className="text-sm sm:text-base font-bold text-foreground">
                     {lang === "bn" ? "স্ক্যানকৃত পণ্যের অডিট লেজার" : "Scanned Product Audit Ledger"}
                   </h3>
-                  <Badge variant="secondary" className="text-xs">
+                  <Badge variant="secondary" className="text-[10px] sm:text-xs">
                     {scannedAuditItems.length}
                   </Badge>
                 </div>
 
                 <div className="relative w-full sm:w-64">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 sm:size-4 text-muted-foreground" />
                   <Input
                     value={auditSearchQuery}
                     onChange={(e) => setAuditSearchQuery(e.target.value)}
                     placeholder={lang === "bn" ? "তালিকায় খুঁজুন..." : "Filter in table..."}
-                    className="pl-9 h-9 text-xs bg-background"
+                    className="pl-8 sm:pl-9 h-8 sm:h-9 text-xs bg-background"
                   />
                 </div>
               </div>
 
               {filteredAuditItems.length === 0 ? (
-                <div className="p-12 text-center text-muted-foreground space-y-3">
-                  <div className="size-16 rounded-full bg-primary/10 text-primary grid place-items-center mx-auto">
-                    <Scan className="size-8 animate-pulse" />
+                <div className="p-8 sm:p-12 text-center text-muted-foreground space-y-3">
+                  <div className="size-12 sm:size-16 rounded-full bg-primary/10 text-primary grid place-items-center mx-auto">
+                    <Scan className="size-6 sm:size-8 animate-pulse" />
                   </div>
-                  <h4 className="text-base font-bold text-foreground">
+                  <h4 className="text-sm sm:text-base font-bold text-foreground">
                     {lang === "bn" ? "এখনো কোনো পণ্য স্ক্যান করা হয়নি" : "No products scanned yet"}
                   </h4>
                   <p className="text-xs max-w-md mx-auto">
@@ -973,169 +970,321 @@ export default function ProductAnalyticsPage() {
                   </p>
                   <Button
                     onClick={() => setScannerOpen(true)}
-                    className="gap-2 font-bold bg-emerald-600 hover:bg-emerald-700 text-white"
+                    className="gap-2 font-bold bg-emerald-600 hover:bg-emerald-700 text-white text-xs sm:text-sm"
                   >
                     <QrCode className="size-4" />
                     {lang === "bn" ? "ক্যামেরা দিয়ে স্ক্যান শুরু করুন" : "Open Camera Scanner"}
                   </Button>
                 </div>
               ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-xs border-collapse">
-                    <thead>
-                      <tr className="border-b bg-muted/50 text-muted-foreground font-semibold">
-                        <th className="p-3 w-10 text-center">#</th>
-                        <th className="p-3">{lang === "bn" ? "পণ্য" : "Product"}</th>
-                        <th className="p-3">{lang === "bn" ? "বারকোড / SKU" : "Barcode / SKU"}</th>
-                        <th className="p-3 text-right">{lang === "bn" ? "একক ক্রয়মূল্য" : "Unit Cost"}</th>
-                        <th className="p-3 text-right">{lang === "bn" ? "একক বিক্রয়মূল্য" : "Unit Retail"}</th>
-                        <th className="p-3 text-center">{lang === "bn" ? "ফিজিক্যাল সংখ্যা" : "Physical Qty"}</th>
-                        <th className="p-3 text-right">{lang === "bn" ? "মোট ক্রয়মূল্য" : "Total Cost"}</th>
-                        <th className="p-3 text-right">{lang === "bn" ? "মোট বিক্রয়মূল্য" : "Total Retail"}</th>
-                        <th className="p-3 text-center">{lang === "bn" ? "সিস্টেম স্টক" : "System Stock"}</th>
-                        <th className="p-3 text-center">{lang === "bn" ? "ম্যাচিং স্ট্যাটাস" : "Match Status"}</th>
-                        <th className="p-3 text-center w-12">{lang === "bn" ? "অ্যাকশন" : "Action"}</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-border/60">
-                      {filteredAuditItems.map((item, idx) => {
-                        const p = item.product;
-                        const buy = Number(p.buy_price) || 0;
-                        const sell = Number(p.sell_price) || 0;
-                        const sysStock = Number(p.stock) || 0;
-                        const diff = item.scannedQty - sysStock;
-                        const totalCost = item.scannedQty * buy;
-                        const totalSell = item.scannedQty * sell;
+                <>
+                  {/* Phone View: Touch-Friendly Card Ledger */}
+                  <div className="md:hidden divide-y divide-border/60">
+                    {filteredAuditItems.map((item, idx) => {
+                      const p = item.product;
+                      const buy = Number(p.buy_price) || 0;
+                      const sell = Number(p.sell_price) || 0;
+                      const sysStock = Number(p.stock) || 0;
+                      const diff = item.scannedQty - sysStock;
+                      const totalCost = item.scannedQty * buy;
+                      const totalSell = item.scannedQty * sell;
 
-                        return (
-                          <tr key={item.id} className="hover:bg-muted/20 transition-colors">
-                            <td className="p-3 text-center font-mono text-muted-foreground">
-                              {idx + 1}
-                            </td>
-                            <td className="p-3">
-                              <div className="flex items-center gap-2.5">
-                                <div className="size-10 rounded-md overflow-hidden border bg-background shrink-0">
-                                  <ProductImage
-                                    path={p.image_url}
-                                    alt={p.name}
-                                    className="w-full h-full object-cover"
-                                  />
-                                </div>
-                                <div>
-                                  <span className="font-bold text-foreground text-sm block">
-                                    {p.name}
-                                  </span>
-                                  <span className="text-[11px] text-muted-foreground">
-                                    {p.category || "General"}
-                                  </span>
-                                </div>
+                      return (
+                        <div key={item.id} className="p-3 space-y-2.5 bg-white dark:bg-card">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <span className="font-mono text-[10px] text-muted-foreground font-semibold">
+                                #{idx + 1}
+                              </span>
+                              <div className="size-11 rounded-lg overflow-hidden border bg-background shrink-0">
+                                <ProductImage
+                                  path={p.image_url}
+                                  alt={p.name}
+                                  className="w-full h-full object-cover"
+                                />
                               </div>
-                            </td>
-                            <td className="p-3 font-mono text-[11px] text-muted-foreground">
-                              {p.barcode || p.sku || "-"}
-                            </td>
-                            <td className="p-3 text-right font-medium text-indigo-600 dark:text-indigo-400">
-                              {fmtMoney(buy)}
-                            </td>
-                            <td className="p-3 text-right font-medium text-purple-600 dark:text-purple-400">
-                              {fmtMoney(sell)}
-                            </td>
-                            <td className="p-3">
-                              <div className="flex items-center justify-center gap-1.5">
+                              <div className="min-w-0">
+                                <h4 className="font-bold text-foreground text-xs truncate">
+                                  {p.name}
+                                </h4>
+                                <p className="text-[10px] text-muted-foreground font-mono truncate">
+                                  {p.barcode || p.sku || "No Barcode"} {p.category ? `• ${p.category}` : ""}
+                                </p>
+                              </div>
+                            </div>
+
+                            <div className="shrink-0">
+                              {diff === 0 ? (
+                                <Badge className="bg-emerald-500/15 text-emerald-600 border-emerald-500/30 text-[10px] px-1.5 py-0">
+                                  <CheckCircle2 className="size-2.5 mr-1" />
+                                  {lang === "bn" ? "মিল আছে" : "Matched"}
+                                </Badge>
+                              ) : diff < 0 ? (
+                                <Badge className="bg-rose-500/15 text-rose-600 border-rose-500/30 text-[10px] px-1.5 py-0">
+                                  {lang === "bn" ? `ঘাটতি (${diff})` : `Short (${diff})`}
+                                </Badge>
+                              ) : (
+                                <Badge className="bg-amber-500/15 text-amber-600 border-amber-500/30 text-[10px] px-1.5 py-0">
+                                  {lang === "bn" ? `উদ্বৃত্ত (+${diff})` : `Surplus (+${diff})`}
+                                </Badge>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Pricing Ledger Bar */}
+                          <div className="grid grid-cols-2 gap-1.5 bg-slate-50/80 dark:bg-muted/30 p-2 rounded-lg text-[11px]">
+                            <div>
+                              <span className="text-muted-foreground block text-[10px] leading-tight">
+                                {lang === "bn" ? "একক ক্রয় / মোট ক্রয়" : "Unit / Total Cost"}
+                              </span>
+                              <span className="font-semibold text-indigo-600 dark:text-indigo-400">
+                                {fmtMoney(buy)} <span className="text-[10px] font-normal text-muted-foreground">({fmtMoney(totalCost)})</span>
+                              </span>
+                            </div>
+                            <div>
+                              <span className="text-muted-foreground block text-[10px] leading-tight">
+                                {lang === "bn" ? "একক বিক্রয় / মোট বিক্রয়" : "Unit / Total Retail"}
+                              </span>
+                              <span className="font-semibold text-purple-600 dark:text-purple-400">
+                                {fmtMoney(sell)} <span className="text-[10px] font-normal text-muted-foreground">({fmtMoney(totalSell)})</span>
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Stock Comparison & Touch Stepper Row */}
+                          <div className="flex items-center justify-between pt-0.5">
+                            <div className="text-[11px] text-muted-foreground">
+                              <span>{lang === "bn" ? "সিস্টেম:" : "System:"} </span>
+                              <span className="font-bold text-foreground font-mono">{sysStock}</span>
+                              <span className="mx-1">|</span>
+                              <span>{lang === "bn" ? "স্ক্যান:" : "Scan:"} </span>
+                              <span className="font-bold text-emerald-600 font-mono">{item.scannedQty}</span>
+                            </div>
+
+                            <div className="flex items-center gap-1.5">
+                              <div className="flex items-center border rounded-lg bg-background p-0.5 shadow-2xs">
                                 <Button
-                                  variant="outline"
+                                  variant="ghost"
                                   size="icon"
-                                  className="size-7"
+                                  className="size-7 text-muted-foreground hover:text-foreground"
                                   onClick={() => handleAdjustScannedQty(item.id, -1)}
                                 >
-                                  <Minus className="size-3" />
+                                  <Minus className="size-3.5" />
                                 </Button>
                                 <input
                                   type="number"
                                   min="0"
                                   value={item.scannedQty}
                                   onChange={(e) => handleSetScannedQty(item.id, parseInt(e.target.value, 10) || 0)}
-                                  className="w-14 h-7 text-center font-bold font-mono text-sm bg-background border rounded px-1"
+                                  className="w-10 h-7 text-center font-bold font-mono text-xs bg-transparent border-0 focus:outline-hidden"
                                 />
                                 <Button
-                                  variant="outline"
+                                  variant="ghost"
                                   size="icon"
-                                  className="size-7"
+                                  className="size-7 text-muted-foreground hover:text-foreground"
                                   onClick={() => handleAdjustScannedQty(item.id, 1)}
                                 >
-                                  <Plus className="size-3" />
+                                  <Plus className="size-3.5" />
                                 </Button>
                               </div>
-                            </td>
-                            <td className="p-3 text-right font-bold text-indigo-700 dark:text-indigo-300">
-                              {fmtMoney(totalCost)}
-                            </td>
-                            <td className="p-3 text-right font-bold text-purple-700 dark:text-purple-300">
-                              {fmtMoney(totalSell)}
-                            </td>
-                            <td className="p-3 text-center font-mono text-xs">
-                              {sysStock} pcs
-                            </td>
-                            <td className="p-3 text-center">
-                              {diff === 0 ? (
-                                <Badge className="bg-emerald-500/15 text-emerald-600 border-emerald-500/30 text-[10px]">
-                                  <CheckCircle2 className="size-3 mr-1" />
-                                  {lang === "bn" ? "মিল রয়েছে" : "Matched"}
-                                </Badge>
-                              ) : diff < 0 ? (
-                                <Badge className="bg-rose-500/15 text-rose-600 border-rose-500/30 text-[10px]">
-                                  {lang === "bn" ? `ঘাটতি (${diff})` : `Shortage (${diff})`}
-                                </Badge>
-                              ) : (
-                                <Badge className="bg-amber-500/15 text-amber-600 border-amber-500/30 text-[10px]">
-                                  {lang === "bn" ? `উদ্বৃত্ত (+${diff})` : `Surplus (+${diff})`}
-                                </Badge>
-                              )}
-                            </td>
-                            <td className="p-3 text-center">
+
                               <Button
                                 variant="ghost"
                                 size="icon"
-                                className="size-7 text-rose-500 hover:text-rose-700 hover:bg-rose-50"
+                                className="size-7 text-rose-500 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/30"
                                 onClick={() => handleRemoveScannedItem(item.id)}
                               >
                                 <Trash2 className="size-3.5" />
                               </Button>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                    <tfoot>
-                      <tr className="border-t-2 bg-muted/60 font-bold">
-                        <td colSpan={5} className="p-3 text-right text-sm">
-                          {lang === "bn" ? "সর্বমোট হিসাব (Grand Totals):" : "Grand Totals:"}
-                        </td>
-                        <td className="p-3 text-center text-sm text-emerald-600">
-                          {auditCalculations.totalPieces} pcs
-                        </td>
-                        <td className="p-3 text-right text-sm text-indigo-600">
-                          {fmtMoney(auditCalculations.totalCostValuation)}
-                        </td>
-                        <td className="p-3 text-right text-sm text-purple-600">
-                          {fmtMoney(auditCalculations.totalSaleValuation)}
-                        </td>
-                        <td className="p-3 text-center text-xs text-muted-foreground">
-                          {auditCalculations.totalSystemStockOfScanned} pcs
-                        </td>
-                        <td colSpan={2} className="p-3 text-center">
-                          {auditCalculations.piecesDifference === 0 ? (
-                            <span className="text-xs text-emerald-600 font-bold">{lang === "bn" ? "হুবহু মিল" : "Perfect Match"}</span>
-                          ) : (
-                            <span className={`text-xs font-bold ${auditCalculations.piecesDifference < 0 ? "text-rose-600" : "text-amber-600"}`}>
-                              {auditCalculations.piecesDifference > 0 ? `+${auditCalculations.piecesDifference}` : auditCalculations.piecesDifference} pcs
-                            </span>
-                          )}
-                        </td>
-                      </tr>
-                    </tfoot>
-                  </table>
-                </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+
+                    {/* Mobile Grand Totals Summary Footer */}
+                    <div className="p-3 bg-slate-50 dark:bg-muted/40 border-t space-y-1.5 text-xs">
+                      <div className="flex justify-between font-bold">
+                        <span>{lang === "bn" ? "সর্বমোট স্ক্যান সংখ্যা:" : "Grand Total Pieces:"}</span>
+                        <span className="text-emerald-600 font-mono">{auditCalculations.totalPieces} pcs</span>
+                      </div>
+                      <div className="flex justify-between text-[11px]">
+                        <span className="text-muted-foreground">{lang === "bn" ? "মোট ক্রয়মূল্য:" : "Total Cost Worth:"}</span>
+                        <span className="font-bold text-indigo-600 dark:text-indigo-400 font-mono">{fmtMoney(auditCalculations.totalCostValuation)}</span>
+                      </div>
+                      <div className="flex justify-between text-[11px]">
+                        <span className="text-muted-foreground">{lang === "bn" ? "মোট বিক্রয়মূল্য:" : "Total Retail Worth:"}</span>
+                        <span className="font-bold text-purple-600 dark:text-purple-400 font-mono">{fmtMoney(auditCalculations.totalSaleValuation)}</span>
+                      </div>
+                      <div className="flex justify-between text-[11px] pt-1 border-t border-border/60">
+                        <span className="text-muted-foreground">{lang === "bn" ? "সিস্টেম বনাম স্ক্যান:" : "System vs Scanned:"}</span>
+                        <span className={`font-bold font-mono ${auditCalculations.piecesDifference === 0 ? "text-emerald-600" : auditCalculations.piecesDifference < 0 ? "text-rose-600" : "text-amber-600"}`}>
+                          {auditCalculations.piecesDifference === 0
+                            ? (lang === "bn" ? "হুবহু মিল" : "Perfect Match")
+                            : (auditCalculations.piecesDifference > 0 ? `+${auditCalculations.piecesDifference}` : auditCalculations.piecesDifference) + " pcs"}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Desktop View: Comprehensive 11-Column Table */}
+                  <div className="hidden md:block overflow-x-auto">
+                    <table className="w-full text-left text-xs border-collapse">
+                      <thead>
+                        <tr className="border-b bg-muted/50 text-muted-foreground font-semibold">
+                          <th className="p-3 w-10 text-center">#</th>
+                          <th className="p-3">{lang === "bn" ? "পণ্য" : "Product"}</th>
+                          <th className="p-3">{lang === "bn" ? "বারকোড / SKU" : "Barcode / SKU"}</th>
+                          <th className="p-3 text-right">{lang === "bn" ? "একক ক্রয়মূল্য" : "Unit Cost"}</th>
+                          <th className="p-3 text-right">{lang === "bn" ? "একক বিক্রয়মূল্য" : "Unit Retail"}</th>
+                          <th className="p-3 text-center">{lang === "bn" ? "ফিজিক্যাল সংখ্যা" : "Physical Qty"}</th>
+                          <th className="p-3 text-right">{lang === "bn" ? "মোট ক্রয়মূল্য" : "Total Cost"}</th>
+                          <th className="p-3 text-right">{lang === "bn" ? "মোট বিক্রয়মূল্য" : "Total Retail"}</th>
+                          <th className="p-3 text-center">{lang === "bn" ? "সিস্টেম স্টক" : "System Stock"}</th>
+                          <th className="p-3 text-center">{lang === "bn" ? "ম্যাচিং স্ট্যাটাস" : "Match Status"}</th>
+                          <th className="p-3 text-center w-12">{lang === "bn" ? "অ্যাকশন" : "Action"}</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border/60">
+                        {filteredAuditItems.map((item, idx) => {
+                          const p = item.product;
+                          const buy = Number(p.buy_price) || 0;
+                          const sell = Number(p.sell_price) || 0;
+                          const sysStock = Number(p.stock) || 0;
+                          const diff = item.scannedQty - sysStock;
+                          const totalCost = item.scannedQty * buy;
+                          const totalSell = item.scannedQty * sell;
+
+                          return (
+                            <tr key={item.id} className="hover:bg-muted/20 transition-colors">
+                              <td className="p-3 text-center font-mono text-muted-foreground">
+                                {idx + 1}
+                              </td>
+                              <td className="p-3">
+                                <div className="flex items-center gap-2.5">
+                                  <div className="size-10 rounded-md overflow-hidden border bg-background shrink-0">
+                                    <ProductImage
+                                      path={p.image_url}
+                                      alt={p.name}
+                                      className="w-full h-full object-cover"
+                                    />
+                                  </div>
+                                  <div>
+                                    <span className="font-bold text-foreground text-sm block">
+                                      {p.name}
+                                    </span>
+                                    <span className="text-[11px] text-muted-foreground">
+                                      {p.category || "General"}
+                                    </span>
+                                  </div>
+                                </div>
+                              </td>
+                              <td className="p-3 font-mono text-[11px] text-muted-foreground">
+                                {p.barcode || p.sku || "-"}
+                              </td>
+                              <td className="p-3 text-right font-medium text-indigo-600 dark:text-indigo-400">
+                                {fmtMoney(buy)}
+                              </td>
+                              <td className="p-3 text-right font-medium text-purple-600 dark:text-purple-400">
+                                {fmtMoney(sell)}
+                              </td>
+                              <td className="p-3">
+                                <div className="flex items-center justify-center gap-1.5">
+                                  <Button
+                                    variant="outline"
+                                    size="icon"
+                                    className="size-7"
+                                    onClick={() => handleAdjustScannedQty(item.id, -1)}
+                                  >
+                                    <Minus className="size-3" />
+                                  </Button>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    value={item.scannedQty}
+                                    onChange={(e) => handleSetScannedQty(item.id, parseInt(e.target.value, 10) || 0)}
+                                    className="w-14 h-7 text-center font-bold font-mono text-sm bg-background border rounded px-1"
+                                  />
+                                  <Button
+                                    variant="outline"
+                                    size="icon"
+                                    className="size-7"
+                                    onClick={() => handleAdjustScannedQty(item.id, 1)}
+                                  >
+                                    <Plus className="size-3" />
+                                  </Button>
+                                </div>
+                              </td>
+                              <td className="p-3 text-right font-bold text-indigo-700 dark:text-indigo-300">
+                                {fmtMoney(totalCost)}
+                              </td>
+                              <td className="p-3 text-right font-bold text-purple-700 dark:text-purple-300">
+                                {fmtMoney(totalSell)}
+                              </td>
+                              <td className="p-3 text-center font-mono text-xs">
+                                {sysStock} pcs
+                              </td>
+                              <td className="p-3 text-center">
+                                {diff === 0 ? (
+                                  <Badge className="bg-emerald-500/15 text-emerald-600 border-emerald-500/30 text-[10px]">
+                                    <CheckCircle2 className="size-3 mr-1" />
+                                    {lang === "bn" ? "মিল রয়েছে" : "Matched"}
+                                  </Badge>
+                                ) : diff < 0 ? (
+                                  <Badge className="bg-rose-500/15 text-rose-600 border-rose-500/30 text-[10px]">
+                                    {lang === "bn" ? `ঘাটতি (${diff})` : `Shortage (${diff})`}
+                                  </Badge>
+                                ) : (
+                                  <Badge className="bg-amber-500/15 text-amber-600 border-amber-500/30 text-[10px]">
+                                    {lang === "bn" ? `উদ্বৃত্ত (+${diff})` : `Surplus (+${diff})`}
+                                  </Badge>
+                                )}
+                              </td>
+                              <td className="p-3 text-center">
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="size-7 text-rose-500 hover:text-rose-700 hover:bg-rose-50"
+                                  onClick={() => handleRemoveScannedItem(item.id)}
+                                >
+                                  <Trash2 className="size-3.5" />
+                                </Button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                      <tfoot>
+                        <tr className="border-t-2 bg-muted/60 font-bold">
+                          <td colSpan={5} className="p-3 text-right text-sm">
+                            {lang === "bn" ? "সর্বমোট হিসাব (Grand Totals):" : "Grand Totals:"}
+                          </td>
+                          <td className="p-3 text-center text-sm text-emerald-600">
+                            {auditCalculations.totalPieces} pcs
+                          </td>
+                          <td className="p-3 text-right text-sm text-indigo-600">
+                            {fmtMoney(auditCalculations.totalCostValuation)}
+                          </td>
+                          <td className="p-3 text-right text-sm text-purple-600">
+                            {fmtMoney(auditCalculations.totalSaleValuation)}
+                          </td>
+                          <td className="p-3 text-center text-xs text-muted-foreground">
+                            {auditCalculations.totalSystemStockOfScanned} pcs
+                          </td>
+                          <td colSpan={2} className="p-3 text-center">
+                            {auditCalculations.piecesDifference === 0 ? (
+                              <span className="text-xs text-emerald-600 font-bold">{lang === "bn" ? "হুবহু মিল" : "Perfect Match"}</span>
+                            ) : (
+                              <span className={`text-xs font-bold ${auditCalculations.piecesDifference < 0 ? "text-rose-600" : "text-amber-600"}`}>
+                                {auditCalculations.piecesDifference > 0 ? `+${auditCalculations.piecesDifference}` : auditCalculations.piecesDifference} pcs
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                </>
               )}
             </Card>
           </div>
@@ -1147,75 +1296,75 @@ export default function ProductAnalyticsPage() {
         {activeTab !== "stock_scanner" && (
           <div className="space-y-6">
             {/* Top Aggregate Summary Bento */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              <Card className="p-4 bg-card shadow-xs">
-                <div className="flex items-center justify-between text-xs font-semibold text-muted-foreground uppercase">
-                  <span>{lang === "bn" ? "মোট স্টক মূল্য (কেনা)" : "Total Stock Worth (Cost)"}</span>
-                  <Package className="size-4 text-teal-500" />
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-4">
+              <Card className="p-3 sm:p-4 bg-white dark:bg-card border shadow-xs">
+                <div className="flex items-center justify-between text-[10px] sm:text-xs font-semibold text-muted-foreground uppercase">
+                  <span className="truncate">{lang === "bn" ? "মোট স্টক মূল্য (কেনা)" : "Stock Worth (Cost)"}</span>
+                  <Package className="size-3.5 sm:size-4 text-teal-500 shrink-0" />
                 </div>
-                <div className="mt-2 text-2xl font-bold text-foreground">
+                <div className="mt-1 sm:mt-2 text-lg sm:text-2xl font-bold text-foreground">
                   {fmtMoney(totalValuationCost)}
                 </div>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {lang === "bn" ? "কেনা মূল্যের সর্বমোট হিসাব" : "Based on purchase cost"}
+                <p className="text-[10px] sm:text-xs text-muted-foreground mt-0.5 sm:mt-1 truncate">
+                  {lang === "bn" ? "কেনা মূল্যের হিসাব" : "Purchase cost basis"}
                 </p>
               </Card>
 
-              <Card className="p-4 bg-card shadow-xs">
-                <div className="flex items-center justify-between text-xs font-semibold text-muted-foreground uppercase">
-                  <span>{lang === "bn" ? "মোট বিক্রয় মূল্য (আনুমানিক)" : "Total Sell Value (Est.)"}</span>
-                  <TrendingUp className="size-4 text-emerald-500" />
+              <Card className="p-3 sm:p-4 bg-white dark:bg-card border shadow-xs">
+                <div className="flex items-center justify-between text-[10px] sm:text-xs font-semibold text-muted-foreground uppercase">
+                  <span className="truncate">{lang === "bn" ? "মোট বিক্রয় মূল্য" : "Retail Value"}</span>
+                  <TrendingUp className="size-3.5 sm:size-4 text-emerald-500 shrink-0" />
                 </div>
-                <div className="mt-2 text-2xl font-bold text-foreground">
+                <div className="mt-1 sm:mt-2 text-lg sm:text-2xl font-bold text-foreground">
                   {fmtMoney(totalValuationSale)}
                 </div>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {lang === "bn" ? "বিক্রি মূল্যের সর্বমোট হিসাব" : "Based on retail selling price"}
+                <p className="text-[10px] sm:text-xs text-muted-foreground mt-0.5 sm:mt-1 truncate">
+                  {lang === "bn" ? "বিক্রি মূল্যের সর্বমোট" : "Retail price basis"}
                 </p>
               </Card>
 
-              <Card className="p-4 bg-card shadow-xs">
-                <div className="flex items-center justify-between text-xs font-semibold text-muted-foreground uppercase">
-                  <span>{lang === "bn" ? "স্টক শেষ পণ্য" : "Out of Stock Items"}</span>
-                  <ShieldAlert className="size-4 text-rose-500" />
+              <Card className="p-3 sm:p-4 bg-white dark:bg-card border shadow-xs">
+                <div className="flex items-center justify-between text-[10px] sm:text-xs font-semibold text-muted-foreground uppercase">
+                  <span className="truncate">{lang === "bn" ? "স্টক শেষ পণ্য" : "Out of Stock"}</span>
+                  <ShieldAlert className="size-3.5 sm:size-4 text-rose-500 shrink-0" />
                 </div>
-                <div className="mt-2 text-2xl font-bold text-rose-600">
+                <div className="mt-1 sm:mt-2 text-lg sm:text-2xl font-bold text-rose-600">
                   {analyticsProducts.filter((p) => p.isOut).length}
                 </div>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {lang === "bn" ? "তাৎক্ষণিক রি-অর্ডার প্রয়োজন" : "Immediate replenishment needed"}
+                <p className="text-[10px] sm:text-xs text-muted-foreground mt-0.5 sm:mt-1 truncate">
+                  {lang === "bn" ? "রি-অর্ডার প্রয়োজন" : "Replenishment needed"}
                 </p>
               </Card>
 
-              <Card className="p-4 bg-card shadow-xs">
-                <div className="flex items-center justify-between text-xs font-semibold text-muted-foreground uppercase">
-                  <span>{lang === "bn" ? "মোট আইটেম সংখ্যা" : "Total Products"}</span>
-                  <Layers className="size-4 text-indigo-500" />
+              <Card className="p-3 sm:p-4 bg-white dark:bg-card border shadow-xs">
+                <div className="flex items-center justify-between text-[10px] sm:text-xs font-semibold text-muted-foreground uppercase">
+                  <span className="truncate">{lang === "bn" ? "মোট পণ্য সংখ্যা" : "Total Products"}</span>
+                  <Layers className="size-3.5 sm:size-4 text-indigo-500 shrink-0" />
                 </div>
-                <div className="mt-2 text-2xl font-bold text-foreground">
+                <div className="mt-1 sm:mt-2 text-lg sm:text-2xl font-bold text-foreground">
                   {products.length}
                 </div>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {lang === "bn" ? `${categories.length} টি ক্যাটাগরি` : `Across ${categories.length} categories`}
+                <p className="text-[10px] sm:text-xs text-muted-foreground mt-0.5 sm:mt-1 truncate">
+                  {lang === "bn" ? `${categories.length} টি ক্যাটাগরি` : `${categories.length} categories`}
                 </p>
               </Card>
             </div>
 
             {/* Filter Toolbar */}
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-card p-3 rounded-lg border shadow-xs">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 sm:gap-3 bg-white dark:bg-card p-2.5 sm:p-3 rounded-lg border shadow-xs">
               <div className="flex items-center gap-2 flex-1">
                 <div className="relative flex-1">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 sm:size-4 text-muted-foreground" />
                   <Input
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
                     placeholder={lang === "bn" ? "নাম বা বারকোড দিয়ে খুঁজুন..." : "Search name or barcode..."}
-                    className="pl-9 h-9 text-xs"
+                    className="pl-8 sm:pl-9 h-8 sm:h-9 text-xs"
                   />
                 </div>
 
                 <Select value={selectedCategory || "all"} onValueChange={(v) => setSelectedCategory(v === "all" ? null : v)}>
-                  <SelectTrigger className="w-40 h-9 text-xs">
+                  <SelectTrigger className="w-32 sm:w-40 h-8 sm:h-9 text-xs">
                     <SelectValue placeholder={lang === "bn" ? "সকল ক্যাটাগরি" : "All Categories"} />
                   </SelectTrigger>
                   <SelectContent>
@@ -1231,7 +1380,7 @@ export default function ProductAnalyticsPage() {
 
               <div className="flex items-center gap-2">
                 <Select value={timeRange} onValueChange={(v) => setTimeRange(v as TimeRange)}>
-                  <SelectTrigger className="w-32 h-9 text-xs">
+                  <SelectTrigger className="w-28 sm:w-32 h-8 sm:h-9 text-xs">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -1245,9 +1394,96 @@ export default function ProductAnalyticsPage() {
               </div>
             </div>
 
-            {/* Product Table */}
-            <Card className="overflow-hidden border shadow-xs">
-              <div className="overflow-x-auto">
+            {/* Product Table & Mobile Cards */}
+            <Card className="overflow-hidden border shadow-xs bg-white dark:bg-card">
+              {/* Phone View: Touch-Friendly Product Cards */}
+              <div className="md:hidden divide-y divide-border/60">
+                {pagedResult.items.map((item) => (
+                  <div key={item.product.id} className="p-3 space-y-2.5 bg-white dark:bg-card hover:bg-muted/10 transition-colors">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="size-11 rounded-lg overflow-hidden border bg-background shrink-0">
+                          <ProductImage
+                            path={item.product.image_url}
+                            alt={item.product.name}
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+                        <div className="min-w-0">
+                          <span className="font-bold text-foreground text-xs sm:text-sm block truncate">
+                            {item.product.name}
+                          </span>
+                          <span className="text-[10px] text-muted-foreground font-mono block truncate">
+                            {item.product.category || "General"} • {item.product.barcode || item.product.sku || "No Barcode"}
+                          </span>
+                        </div>
+                      </div>
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold shrink-0 ${
+                        item.isOut
+                          ? "bg-rose-500/15 text-rose-600 border border-rose-500/30"
+                          : item.isLow
+                          ? "bg-amber-500/15 text-amber-600 border border-amber-500/30"
+                          : "bg-emerald-500/15 text-emerald-600 border border-emerald-500/30"
+                      }`}>
+                        {item.currentStock} pcs
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-1.5 bg-slate-50/80 dark:bg-muted/30 p-2 rounded-lg text-[11px]">
+                      <div>
+                        <span className="text-muted-foreground block text-[10px] leading-tight">
+                          {lang === "bn" ? "কেনা / বিক্রি মূল্য" : "Cost / Retail"}
+                        </span>
+                        <span className="font-semibold text-foreground">
+                          {fmtMoney(Number(item.product.buy_price) || 0)} / {fmtMoney(Number(item.product.sell_price) || 0)}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground block text-[10px] leading-tight">
+                          {lang === "bn" ? "বিক্রিত / লাভ" : "Sold / Profit"}
+                        </span>
+                        <span className="font-bold text-emerald-600 dark:text-emerald-400">
+                          {item.soldPieces} pcs • {fmtMoney(item.profit)}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between pt-0.5">
+                      <div className="text-[11px] text-muted-foreground">
+                        <span>{lang === "bn" ? "মোট আয়:" : "Revenue:"} </span>
+                        <span className="font-bold text-indigo-600 dark:text-indigo-400 font-mono">{fmtMoney(item.revenue)}</span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 text-xs px-2.5 bg-background shadow-2xs"
+                          onClick={() => {
+                            setSaleProduct(item.product.id);
+                            setSaleOpen(true);
+                          }}
+                        >
+                          {lang === "bn" ? "বিক্রি" : "Sell"}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 text-xs px-2.5 bg-background shadow-2xs"
+                          onClick={() => {
+                            setBuyProduct(item.product.id);
+                            setBuyOpen(true);
+                          }}
+                        >
+                          {lang === "bn" ? "ক্রয়" : "Buy"}
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Desktop View: Full Analytics Table */}
+              <div className="hidden md:block overflow-x-auto">
                 <table className="w-full text-left text-xs border-collapse">
                   <thead>
                     <tr className="border-b bg-muted/50 text-muted-foreground font-semibold">
@@ -1332,7 +1568,7 @@ export default function ProductAnalyticsPage() {
               </div>
 
               {pagedResult.totalPages > 1 && (
-                <div className="p-3 border-t">
+                <div className="p-3 border-t bg-white dark:bg-card">
                   <PaginationBar
                     page={page}
                     totalPages={pagedResult.totalPages}

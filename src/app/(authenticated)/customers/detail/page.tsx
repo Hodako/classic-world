@@ -77,7 +77,7 @@ export default function CustomerDetail() {
   const totalItemsCount = allPartySales.reduce((sum, s) => sum + (Number(s.qty) || 0), 0);
 
   const saleDue = allPartySales.reduce((a, s) => a + Number(s.due_amount), 0);
-  const extraReceivable = (receivables.data ?? []).reduce((a, r) => a + Number(r.amount), 0);
+  const extraReceivable = (receivables.data ?? []).filter(r => !r.ref_id).reduce((a, r) => a + Number(r.amount), 0);
   const paidTotal = (payments.data ?? []).reduce((a, p) => a + Number(p.amount), 0);
   const netBalance = saleDue + extraReceivable - paidTotal;
 
@@ -93,7 +93,7 @@ export default function CustomerDetail() {
       label: s.product_id ? `${s.product_name} ×${s.qty}` : s.product_name,
       amount: Number(s.due_amount), kind: "sale" as const, deletable: !s.product_id,
     })),
-    ...(receivables.data ?? []).map(r => ({
+    ...(receivables.data ?? []).filter(r => !r.ref_id).map(r => ({
       id: "r" + r.id, rawId: r.id, date: r.created_at || (r as any).date || "",
       label: r.note || (lang === "bn" ? "বাকী যোগ" : "Money Owed"), amount: Number(r.amount),
       kind: "receivable" as const, deletable: true,

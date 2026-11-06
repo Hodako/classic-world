@@ -26,13 +26,12 @@ if (fs.existsSync(oldDistDir)) {
   fs.rmSync(oldDistDir, { recursive: true, force: true });
 }
 
-// 1. Create destination directory
-if (fs.existsSync(outputDir)) {
-  fs.rmSync(outputDir, { recursive: true, force: true });
+// 1. Ensure destination directory exists
+if (!fs.existsSync(outputDir)) {
+  fs.mkdirSync(outputDir, { recursive: true });
 }
-fs.mkdirSync(outputDir, { recursive: true });
 
-// 2. Copy all electron dist files recursively
+// 2. Copy all electron dist files if missing
 function copyDir(src, dest) {
   fs.mkdirSync(dest, { recursive: true });
   const entries = fs.readdirSync(src, { withFileTypes: true });
@@ -42,20 +41,30 @@ function copyDir(src, dest) {
     if (entry.isDirectory()) {
       copyDir(srcPath, destPath);
     } else {
-      fs.copyFileSync(srcPath, destPath);
+      try {
+        if (!fs.existsSync(destPath)) {
+          fs.copyFileSync(srcPath, destPath);
+        }
+      } catch (_) {}
     }
   }
 }
 
-console.log("[Electron Packager] Copying Electron Windows binaries...");
+console.log("[Electron Packager] Verifying Electron Windows binaries...");
 copyDir(electronDistDir, outputDir);
 
 // 3. Rename electron.exe to ClassicWorld-POS.exe
 const defaultExe = path.join(outputDir, "electron.exe");
 const targetExe = path.join(outputDir, "ClassicWorld-POS.exe");
 if (fs.existsSync(defaultExe)) {
-  fs.renameSync(defaultExe, targetExe);
-  console.log("[Electron Packager] Renamed electron.exe -> ClassicWorld-POS.exe");
+  try {
+    if (fs.existsSync(targetExe)) {
+      fs.unlinkSync(defaultExe);
+    } else {
+      fs.renameSync(defaultExe, targetExe);
+      console.log("[Electron Packager] Renamed electron.exe -> ClassicWorld-POS.exe");
+    }
+  } catch (_) {}
 }
 
 // 4. Create resources/app

@@ -56,24 +56,55 @@ export function buildInvoiceHtml(data: PrintInvoiceParams, settingsOverride?: Pa
   const vis = { ...DEFAULT_VISIBILITY_SETTINGS, ...(hw.visibility || {}) };
 
   const widthMm = Number(hw.paperWidthMm) || (data.pageSize === "58mm" ? 58 : 80);
-  const isNarrow = widthMm <= 52;
-  const targetWidth = `${widthMm}mm`;
+  const isNarrow = widthMm <= 58;
+
+  // Safe printable width within physical thermal printer head boundaries:
+  // 80mm roll has a ~72mm print head; 58mm roll has a ~48mm print head.
+  let printableWidthMm = widthMm;
+  if (widthMm >= 80) printableWidthMm = Math.min(72, widthMm - 6);
+  else if (widthMm >= 70) printableWidthMm = Math.min(63, widthMm - 6);
+  else if (widthMm >= 56) printableWidthMm = Math.min(48, widthMm - 8);
+  else if (widthMm >= 48) printableWidthMm = Math.min(42, widthMm - 6);
+  else printableWidthMm = Math.max(16, widthMm - 4);
+
+  const targetWidth = `${printableWidthMm}mm`;
 
   const heightMm =
     hw.paperHeightMm !== undefined && hw.paperHeightMm !== "auto" && Number(hw.paperHeightMm) > 0
       ? Number(hw.paperHeightMm)
       : undefined;
   const targetHeight = heightMm ? `${heightMm}mm` : "auto";
-  const pageSizeRule = heightMm ? `${widthMm}mm ${heightMm}mm` : `${widthMm}mm auto`;
+  const pageSizeRule = heightMm ? `${widthMm}mm ${heightMm}mm portrait` : `${widthMm}mm auto portrait`;
 
   const topMm = hw.marginTopMm ?? 0;
   const bottomMm = hw.marginBottomMm ?? 0;
   const leftMm = hw.marginLeftMm ?? 0;
   const rightMm = hw.marginRightMm ?? 0;
   const scalePct = hw.printScale || 100;
-  const baseFontPt = Number(hw.fontSizePt) || 8.5;
-  const titleFontPt = Number(hw.titleFontSizePt) || 12;
-  const smallFontPt = Math.max(5.5, Number((baseFontPt - 1.2).toFixed(1)));
+
+  // Auto-decrease font size if text exceeds the roll boundary
+  const userBasePt = Number(hw.fontSizePt) || 8.5;
+  const userTitlePt = Number(hw.titleFontSizePt) || 12;
+
+  // Maximum safe font size based on roll width
+  const maxSafeBasePt =
+    widthMm <= 25 ? 5.5 :
+    widthMm <= 50 ? 6.5 :
+    widthMm <= 58 ? 7.2 :
+    widthMm <= 72 ? 8.0 :
+    8.5;
+
+  const maxSafeTitlePt =
+    widthMm <= 25 ? 7.5 :
+    widthMm <= 50 ? 8.5 :
+    widthMm <= 58 ? 9.5 :
+    widthMm <= 72 ? 10.5 :
+    12.0;
+
+  // Decrease font size if it exceeds the roll boundary limit
+  const baseFontPt = Math.min(userBasePt, maxSafeBasePt);
+  const titleFontPt = Math.min(userTitlePt, maxSafeTitlePt);
+  const smallFontPt = Math.max(5.0, Number((baseFontPt - 1.2).toFixed(1)));
   const largeFontPt = Number((baseFontPt + 1.5).toFixed(1));
 
   const shopName = hw.customHeaderTitle || data.businessName;
@@ -113,14 +144,19 @@ export function buildInvoiceHtml(data: PrintInvoiceParams, settingsOverride?: Pa
         )
         .join("")
     : `
-      <table>
+      <table style="table-layout: fixed !important; width: 100% !important; max-width: 100% !important; border-collapse: collapse !important; margin: 2px 0 !important;">
+        <colgroup>
+          <col style="width: 52%;" />
+          <col style="width: 20%;" />
+          <col style="width: 28%;" />
+        </colgroup>
         ${
           vis.showItemsHeader !== false
             ? `<thead>
                 <tr style="border-bottom: 1.5px dashed #000000;">
-                  <th style="text-align: left; font-size: ${smallFontPt}pt;">বিবরণ</th>
-                  <th style="text-align: center; width: 18%; font-size: ${smallFontPt}pt;">পরিমাণ</th>
-                  <th style="text-align: right; width: 27%; font-size: ${smallFontPt}pt;">মূল্য</th>
+                  <th style="text-align: left; font-size: ${smallFontPt}pt; width: 52%; word-break: break-word;">বিবরণ</th>
+                  <th style="text-align: center; font-size: ${smallFontPt}pt; width: 20%;">পরিমাণ</th>
+                  <th style="text-align: right; font-size: ${smallFontPt}pt; width: 28%;">মূল্য</th>
                 </tr>
               </thead>`
             : ""
@@ -130,13 +166,13 @@ export function buildInvoiceHtml(data: PrintInvoiceParams, settingsOverride?: Pa
             .map(
               (item, idx) => `
             <tr>
-              <td style="padding: 3px 0; text-align: left; vertical-align: top; font-weight: 800; font-size: ${baseFontPt}pt; color: #000000; width: 55%; word-break: break-word; line-height: 1.25;">
+              <td style="padding: 2.5px 0; text-align: left; vertical-align: top; font-weight: 800; font-size: ${baseFontPt}pt; color: #000000; width: 52%; word-break: break-word; overflow-wrap: break-word; line-height: 1.2;">
                 ${idx + 1}. ${item.product.name}
               </td>
-              <td style="padding: 3px 2px; text-align: center; vertical-align: top; font-family: monospace; font-size: ${baseFontPt}pt; font-weight: 800; color: #000000; width: 18%;">
+              <td style="padding: 2.5px 2px; text-align: center; vertical-align: top; font-family: monospace; font-size: ${baseFontPt}pt; font-weight: 800; color: #000000; width: 20%;">
                 ${item.qty}
               </td>
-              <td style="padding: 3px 0; text-align: right; vertical-align: top; font-family: monospace; font-weight: 800; font-size: ${baseFontPt}pt; color: #000000; width: 27%;">
+              <td style="padding: 2.5px 0; text-align: right; vertical-align: top; font-family: monospace; font-weight: 800; font-size: ${baseFontPt}pt; color: #000000; width: 28%; white-space: nowrap;">
                 ৳${(item.qty * item.sellPrice).toLocaleString()}
               </td>
             </tr>
@@ -159,8 +195,9 @@ export function buildInvoiceHtml(data: PrintInvoiceParams, settingsOverride?: Pa
   <title>Invoice ${data.invoiceNo}</title>
   <style>
     @page { 
-      ${heightMm ? `size: ${widthMm}mm ${heightMm}mm portrait !important;` : `size: ${widthMm}mm portrait !important;`}
-      margin: 0 !important; 
+      size: ${pageSizeRule} !important;
+      margin: 0mm !important; 
+      padding: 0mm !important;
     }
     *, *:before, *:after { 
       box-sizing: border-box !important; 
@@ -169,6 +206,8 @@ export function buildInvoiceHtml(data: PrintInvoiceParams, settingsOverride?: Pa
       font-family: 'Nirmala UI', 'Hind Siliguri', 'Noto Sans Bengali', 'SolaimanLipi', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important; 
       font-weight: 800 !important;
       color: #000000 !important;
+      word-break: break-word !important;
+      overflow-wrap: break-word !important;
       -webkit-print-color-adjust: exact !important; 
       print-color-adjust: exact !important; 
       color-scheme: light !important; 
@@ -182,12 +221,16 @@ export function buildInvoiceHtml(data: PrintInvoiceParams, settingsOverride?: Pa
       min-height: 0 !important;
       margin: 0 !important; 
       padding: 0 !important; 
-      font-size: 8.5pt; 
-      line-height: 1.25; 
+      font-size: ${baseFontPt}pt; 
+      line-height: 1.2; 
       zoom: ${scalePct}% !important;
       vertical-align: top !important;
       writing-mode: horizontal-tb !important;
       direction: ltr !important;
+    }
+    body > *:first-child, .receipt-wrap > *:first-child {
+      margin-top: 0 !important;
+      padding-top: 0 !important;
     }
     .receipt-wrap { 
       width: 100% !important; 
@@ -201,30 +244,34 @@ export function buildInvoiceHtml(data: PrintInvoiceParams, settingsOverride?: Pa
       font-weight: 800 !important;
       color: #000000 !important;
       display: flow-root !important; /* Prevents margin collapse at top and bottom */
+      overflow: hidden !important;
     }
     .dashed-line { 
       border-top: 1.5px dashed #000000 !important; 
-      margin: 4px 0 !important; 
+      margin: 3px 0 !important; 
       height: 0; 
     }
     .solid-line { 
       border-top: 1.5px solid #000000 !important; 
-      margin: 4px 0 !important; 
+      margin: 3px 0 !important; 
       height: 0; 
     }
     table { 
       width: 100% !important; 
+      max-width: 100% !important;
       border-collapse: collapse !important; 
       margin: 2px 0 !important; 
+      table-layout: fixed !important;
     }
     th, td, span, div, p, strong, b { 
       font-weight: 800 !important; 
       color: #000000 !important; 
+      word-break: break-word !important;
     }
     th { 
-      font-size: 8pt !important; 
+      font-size: ${smallFontPt}pt !important; 
       font-weight: 900 !important; 
-      padding-bottom: 3px !important; 
+      padding-bottom: 2px !important; 
       color: #000000 !important; 
     }
   </style>

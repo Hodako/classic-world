@@ -327,7 +327,7 @@ async function performSilentPrint(html, printerName, options = {}) {
       ? "size: A4 portrait !important;"
       : userHeightMm
       ? `size: ${widthMm}mm ${userHeightMm}mm portrait !important;`
-      : `size: ${widthMm}mm portrait !important;`;
+      : `size: ${widthMm}mm auto portrait !important;`;
 
     // Prepare HTML: remove external font blocking that causes blank pages & enforce all-bold pure black thermal styling + margins
     let preparedHtml = String(html || "");
@@ -337,7 +337,8 @@ async function performSilentPrint(html, printerName, options = {}) {
       <style id="pos-thermal-override">
         @page {
           ${cssPageRule}
-          margin: 0 !important;
+          margin: 0mm !important;
+          padding: 0mm !important;
         }
         html, body {
           background: #ffffff !important;
@@ -352,10 +353,17 @@ async function performSilentPrint(html, printerName, options = {}) {
           width: 100% !important;
           vertical-align: top !important;
         }
+        body > *:first-child, .receipt-wrap > *:first-child {
+          margin-top: 0 !important;
+          padding-top: 0 !important;
+        }
         *, body, div, span, p, td, th, tr, table, strong, b, h1, h2, h3, h4, small {
           font-weight: 800 !important;
           color: #000000 !important;
           margin-top: 0;
+          word-break: break-word !important;
+          overflow-wrap: break-word !important;
+          box-sizing: border-box !important;
           font-family: 'Nirmala UI', 'Hind Siliguri', 'Noto Sans Bengali', 'SolaimanLipi', 'Segoe UI', Arial, sans-serif !important;
         }
         .receipt-wrap {
@@ -367,6 +375,7 @@ async function performSilentPrint(html, printerName, options = {}) {
           width: 100% !important;
           margin: 0 auto !important;
           display: flow-root !important; /* Prevents top and bottom margin collapse */
+          overflow: hidden !important;
         }
       </style>
     `;
@@ -463,25 +472,22 @@ async function performSilentPrint(html, printerName, options = {}) {
           const measuredPx = await printWin.webContents.executeJavaScript(`
             (function() {
               const wrap = document.querySelector('.receipt-wrap');
-              if (!wrap) return 60;
+              if (!wrap) return 40;
               const rect = wrap.getBoundingClientRect();
-              const h = Math.ceil(rect.height);
+              const h = Math.ceil(rect.height || wrap.scrollHeight || wrap.offsetHeight);
               return Math.ceil(h * 0.264583);
             })()
           `);
-          if (Number.isFinite(measuredPx) && measuredPx > 10) {
-            effectiveHeightMm = measuredPx + topMm + bottomMm + 2;
+          if (Number.isFinite(measuredPx) && measuredPx > 5) {
+            effectiveHeightMm = measuredPx + topMm + bottomMm;
           }
         } catch (_) {}
       }
       if (!effectiveHeightMm || effectiveHeightMm <= 0) {
-        effectiveHeightMm = 60;
+        effectiveHeightMm = 45;
       }
 
-      // Windows thermal printer drivers rotate 90° if paper width > paper height.
-      // Ensuring the driver page bounds height is at least widthMm prevents driver auto-landscape.
-      const driverHeightMm = Math.max(widthMm, effectiveHeightMm);
-      const heightMicrons = Math.max(15000, Math.round(driverHeightMm * 1000));
+      const heightMicrons = Math.max(10000, Math.round(effectiveHeightMm * 1000));
 
       if (!isA4) {
         await printWin.webContents
@@ -493,7 +499,7 @@ async function performSilentPrint(html, printerName, options = {}) {
                 st.id = 'pos-exact-page-size';
                 document.head.appendChild(st);
               }
-              st.textContent = '@page { size: ' + ${widthMm} + 'mm ' + ${effectiveHeightMm} + 'mm portrait !important; margin: 0 !important; }';
+              st.textContent = '@page { size: ' + ${widthMm} + 'mm ' + ${effectiveHeightMm} + 'mm portrait !important; margin: 0mm !important; }';
             })()
           `)
           .catch(() => {});
@@ -507,6 +513,10 @@ async function performSilentPrint(html, printerName, options = {}) {
         landscape: false, // Strictly force vertical Portrait orientation (prevents horizontal print)
         margins: {
           marginType: "none",
+          top: 0,
+          bottom: 0,
+          left: 0,
+          right: 0,
         },
         headerFooter: false,
       };

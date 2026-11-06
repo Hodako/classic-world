@@ -623,14 +623,14 @@ export function PosHardwareSettings({ lang = "en" }: { lang?: "en" | "bn" | stri
               <Sliders className="size-4 text-primary" />
               <span>
                 {lang === "bn"
-                  ? "থার্মাল প্রিন্টিং সাইজ, মার্জিন ও স্কেল সেটিংস"
-                  : "Thermal Printing Margins (mm), Scale & Copies"}
+                  ? "থার্মাল প্রিন্টিং সাইজ, মার্জিন, ফন্ট ও স্কেল সেটিংস"
+                  : "Thermal Printing Margins (mm), Scale, Fonts & Copies"}
               </span>
             </h3>
             <p className="text-[11px] text-muted-foreground">
               {lang === "bn"
-                ? "প্রিন্টার অনুযায়ী রসিদের প্রস্থ, উচ্চতা, চারপাশের মার্জিন ও জুম স্কেল কাস্টমাইজ করুন (সকল টেক্সট অটোমেটিক বোল্ড হবে)"
-                : "Adjust top, bottom, left, and right receipt margins in millimeters to match your thermal printer roll"}
+                ? "প্রিন্টারের রোল সাইজ অনুযায়ী টেক্সট যাতে সীমানা অতিক্রম না করে সে জন্য অটোমেটিক ফন্ট হ্রাস হবে। আপনি প্রয়োজনে ফন্ট বাড়াতে বা কমাতে পারেন।"
+                : "Receipt font auto-decreases if exceeding roll width. You can also customize margins, base/title font sizes, and scale."}
             </p>
           </div>
           <Button
@@ -645,16 +645,18 @@ export function PosHardwareSettings({ lang = "en" }: { lang?: "en" | "bn" | stri
                 marginRightMm: 0,
                 printScale: 100,
                 copies: 1,
+                fontSizePt: 8.5,
+                titleFontSizePt: 12,
               })
             }
             className="h-7 px-2.5 text-[11px] gap-1 text-muted-foreground hover:text-foreground cursor-pointer"
           >
             <RotateCcw className="size-3" />
-            <span>{lang === "bn" ? "০ মিমি মার্জিন রিসেট" : "Reset 0mm Margins"}</span>
+            <span>{lang === "bn" ? "ডিফল্ট রিসেট" : "Reset Defaults"}</span>
           </Button>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-5 lg:grid-cols-10 gap-2.5">
           <div className="space-y-1">
             <Label className="text-[11px] font-semibold">
               {lang === "bn" ? "রোল প্রস্থ" : "Width (mm)"}
@@ -686,6 +688,36 @@ export function PosHardwareSettings({ lang = "en" }: { lang?: "en" | "bn" | stri
               }}
               className="h-9 text-xs font-mono font-bold bg-background"
               placeholder="auto"
+            />
+          </div>
+
+          <div className="space-y-1">
+            <Label className="text-[11px] font-semibold">
+              {lang === "bn" ? "বেস ফন্ট" : "Base Font (pt)"}
+            </Label>
+            <Input
+              type="number"
+              min="5"
+              max="16"
+              step="0.5"
+              value={hwConfig.fontSizePt || 8.5}
+              onChange={(e) => updateHw({ fontSizePt: Math.min(16, Math.max(5, Number(e.target.value) || 8.5)) }, true)}
+              className="h-9 text-xs font-mono font-bold bg-background"
+            />
+          </div>
+
+          <div className="space-y-1">
+            <Label className="text-[11px] font-semibold">
+              {lang === "bn" ? "টাইটেল ফন্ট" : "Title Font (pt)"}
+            </Label>
+            <Input
+              type="number"
+              min="7"
+              max="24"
+              step="0.5"
+              value={hwConfig.titleFontSizePt || 12}
+              onChange={(e) => updateHw({ titleFontSizePt: Math.min(24, Math.max(7, Number(e.target.value) || 12)) }, true)}
+              className="h-9 text-xs font-mono font-bold bg-background"
             />
           </div>
 

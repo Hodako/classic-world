@@ -44,6 +44,8 @@ export interface PosHardwareSettings {
 
   /** Paper width in millimeters: e.g. 80, 76, 70, 58, 50, 20 or custom typed mm */
   paperWidthMm: number;
+  /** Paper height in millimeters: "auto" (content height) or specific number like 40, 50, 60, 70, 80, 100, 150 etc. */
+  paperHeightMm: number | "auto";
   /** Auto fit mode to make invoice contents fit inside the roll perfectly */
   fitToWidth: boolean;
   /** Base font size in points (e.g. 8.5pt, can be increased/decreased e.g. 6 to 16pt) */
@@ -95,6 +97,7 @@ export const DEFAULT_HARDWARE_SETTINGS: PosHardwareSettings = {
   printScale: 100,
   copies: 1,
   paperWidthMm: 80,
+  paperHeightMm: "auto",
   fitToWidth: true,
   fontSizePt: 8.5,
   titleFontSizePt: 12,
@@ -193,6 +196,7 @@ export function getPosHardwareSettings(): PosHardwareSettings {
       copies: saved?.copies !== undefined && Number.isFinite(Number(saved.copies)) ? Math.min(10, Math.max(1, Number(saved.copies))) : 1,
 
       paperWidthMm: saved?.paperWidthMm !== undefined && Number.isFinite(Number(saved.paperWidthMm)) ? Math.max(15, Math.min(300, Number(saved.paperWidthMm))) : 80,
+      paperHeightMm: saved?.paperHeightMm !== undefined && saved?.paperHeightMm !== "auto" && Number.isFinite(Number(saved.paperHeightMm)) && Number(saved.paperHeightMm) > 0 ? Number(saved.paperHeightMm) : "auto",
       fitToWidth: saved?.fitToWidth !== undefined ? Boolean(saved.fitToWidth) : true,
       fontSizePt: saved?.fontSizePt !== undefined && Number.isFinite(Number(saved.fontSizePt)) ? Math.max(5, Math.min(24, Number(saved.fontSizePt))) : 8.5,
       titleFontSizePt: saved?.titleFontSizePt !== undefined && Number.isFinite(Number(saved.titleFontSizePt)) ? Math.max(8, Math.min(32, Number(saved.titleFontSizePt))) : 12,

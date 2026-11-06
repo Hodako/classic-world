@@ -72,6 +72,17 @@ const PRESET_WIDTHS = [
   { label: "20mm (Narrow Strip)", value: 20 },
 ];
 
+const PRESET_HEIGHTS = [
+  { label: "স্বয়ংক্রিয় (Auto)", value: "auto" as const },
+  { label: "120mm", value: 120 },
+  { label: "100mm", value: 100 },
+  { label: "80mm", value: 80 },
+  { label: "60mm", value: 60 },
+  { label: "50mm", value: 50 },
+  { label: "40mm", value: 40 },
+  { label: "30mm", value: 30 },
+];
+
 export function InvoicePreviewDialog({
   open,
   onOpenChange,
@@ -82,6 +93,7 @@ export function InvoicePreviewDialog({
 }: InvoicePreviewDialogProps) {
   const [settings, setSettings] = useState<PosHardwareSettings>(DEFAULT_HARDWARE_SETTINGS);
   const [customMmInput, setCustomMmInput] = useState<string>("80");
+  const [customHeightInput, setCustomHeightInput] = useState<string>("auto");
   const [scaleInput, setScaleInput] = useState<string>("100");
   const [activeTab, setActiveTab] = useState<string>("format");
   const [printing, setPrinting] = useState<boolean>(false);
@@ -99,6 +111,7 @@ export function InvoicePreviewDialog({
       const current = { ...getPosHardwareSettings(), ...(initialSettings || {}) };
       setSettings(current);
       setCustomMmInput(String(current.paperWidthMm || 80));
+      setCustomHeightInput(current.paperHeightMm === "auto" || !current.paperHeightMm ? "auto" : String(current.paperHeightMm));
       setScaleInput(String(current.printScale || 100));
     }
   }, [open, initialSettings]);
@@ -155,6 +168,18 @@ export function InvoicePreviewDialog({
     const num = parseInt(valStr.replace(/\D/g, ""), 10);
     if (Number.isFinite(num) && num > 0) {
       updateSettings({ paperWidthMm: num });
+    }
+  };
+
+  const handleCustomHeightChange = (valStr: string) => {
+    setCustomHeightInput(valStr);
+    if (valStr.toLowerCase() === "auto" || !valStr.trim()) {
+      updateSettings({ paperHeightMm: "auto" });
+      return;
+    }
+    const num = parseInt(valStr.replace(/\D/g, ""), 10);
+    if (Number.isFinite(num) && num > 0) {
+      updateSettings({ paperHeightMm: num });
     }
   };
 
@@ -220,11 +245,18 @@ export function InvoicePreviewDialog({
     const def = { ...DEFAULT_HARDWARE_SETTINGS };
     setSettings(def);
     setCustomMmInput(String(def.paperWidthMm));
+    setCustomHeightInput("auto");
     setScaleInput(String(def.printScale));
     toast.info(lang === "bn" ? "ডিফল্ট মার্জিন (০ মিমি) ও সাইজ রিসেট করা হয়েছে" : "Reset to default 0mm margins & settings");
   };
 
   const currentWidthMm = Number(settings.paperWidthMm) || 80;
+  const currentHeightMm =
+    settings.paperHeightMm !== undefined &&
+    settings.paperHeightMm !== "auto" &&
+    Number(settings.paperHeightMm) > 0
+      ? Number(settings.paperHeightMm)
+      : null;
   const currentScale = Number(settings.printScale) || 100;
   const vis = { ...DEFAULT_VISIBILITY_SETTINGS, ...(settings.visibility || {}) };
 
@@ -241,7 +273,7 @@ export function InvoicePreviewDialog({
               <DialogTitle className="text-base sm:text-lg font-bold flex items-center gap-2">
                 <span>{lang === "bn" ? "ইনভয়েস লাইভ প্রিভিউ ও কাস্টমাইজেশন" : "Live Invoice Preview & Customizer"}</span>
                 <Badge variant="outline" className="font-mono text-xs font-bold bg-primary/10 text-primary border-primary/30">
-                  {currentWidthMm}mm Roll
+                  {currentWidthMm}mm × {currentHeightMm ? `${currentHeightMm}mm` : "Auto"}
                 </Badge>
               </DialogTitle>
               <DialogDescription className="text-xs text-muted-foreground mt-0.5">
@@ -358,6 +390,57 @@ export function InvoicePreviewDialog({
                       />
                       <span className="text-xs font-bold text-muted-foreground">mm</span>
                     </div>
+                  </div>
+                </div>
+
+                {/* Paper Height Controls (User sets height to eliminate blank space) */}
+                <div className="p-3.5 rounded-xl bg-muted/30 border border-border/70 space-y-2.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <div>
+                      <Label className="text-xs font-bold text-foreground">
+                        {lang === "bn" ? "কাগজের উচ্চতা নির্ধারণ (Paper Height)" : "Paper Height Selection"}
+                      </Label>
+                      <p className="text-[11px] text-muted-foreground">
+                        {lang === "bn"
+                          ? "উপরে ও নিচে বাড়তি ফাঁকা জায়গা দূর করতে উচ্চতা অটো বা নির্দিষ্ট মিমি (যেমন 50mm, 60mm) সেট করুন"
+                          : "Eliminate top and bottom wasted blank space by setting exact height or auto"}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-1.5 w-32 shrink-0">
+                      <Input
+                        value={customHeightInput}
+                        onChange={(e) => handleCustomHeightChange(e.target.value)}
+                        className="h-8 text-xs font-mono font-bold text-center bg-background"
+                        placeholder="auto"
+                      />
+                      <span className="text-xs font-bold text-muted-foreground">mm</span>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    {PRESET_HEIGHTS.map((preset) => {
+                      const isSelected =
+                        preset.value === "auto"
+                          ? settings.paperHeightMm === "auto" || !settings.paperHeightMm
+                          : Number(settings.paperHeightMm) === preset.value;
+                      return (
+                        <Button
+                          key={String(preset.value)}
+                          type="button"
+                          variant={isSelected ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => {
+                            updateSettings({ paperHeightMm: preset.value });
+                            setCustomHeightInput(String(preset.value));
+                          }}
+                          className={`h-8 text-xs font-bold rounded-xl justify-center cursor-pointer ${
+                            isSelected ? "ring-2 ring-primary ring-offset-1" : ""
+                          }`}
+                        >
+                          {preset.label}
+                        </Button>
+                      );
+                    })}
                   </div>
                 </div>
 
@@ -957,7 +1040,9 @@ export function InvoicePreviewDialog({
                 <div
                   style={{
                     width: `${Math.min(currentWidthMm * 3.78, 380)}px`,
-                    minHeight: "360px",
+                    height: currentHeightMm ? `${currentHeightMm * 3.78}px` : "auto",
+                    minHeight: currentHeightMm ? `${currentHeightMm * 3.78}px` : "240px",
+                    maxHeight: currentHeightMm ? `${currentHeightMm * 3.78}px` : undefined,
                   }}
                   className="bg-white text-black p-0 shadow-2xl transition-all duration-200 border-x border-slate-200 select-none overflow-hidden"
                 >
@@ -966,7 +1051,7 @@ export function InvoicePreviewDialog({
                     srcDoc={invoiceHtml}
                     className="w-full border-none pointer-events-none"
                     style={{
-                      height: "580px",
+                      height: currentHeightMm ? `${currentHeightMm * 3.78}px` : "580px",
                       background: "#ffffff",
                     }}
                   />

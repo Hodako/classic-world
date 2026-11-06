@@ -598,7 +598,41 @@ export function PosHardwareSettings({ lang = "en" }: { lang?: "en" | "bn" | stri
           </Button>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
+          <div className="space-y-1">
+            <Label className="text-[11px] font-semibold">
+              {lang === "bn" ? "রোল প্রস্থ (Width mm)" : "Width (mm)"}
+            </Label>
+            <Input
+              type="number"
+              min="15"
+              max="210"
+              value={hwConfig.paperWidthMm || 80}
+              onChange={(e) => updateHw({ paperWidthMm: Math.max(15, Number(e.target.value) || 80) }, true)}
+              className="h-9 text-xs font-mono font-bold bg-background"
+            />
+          </div>
+
+          <div className="space-y-1">
+            <Label className="text-[11px] font-semibold">
+              {lang === "bn" ? "রোল উচ্চতা (Height mm)" : "Height (mm)"}
+            </Label>
+            <Input
+              value={hwConfig.paperHeightMm === "auto" || !hwConfig.paperHeightMm ? "auto" : String(hwConfig.paperHeightMm)}
+              onChange={(e) => {
+                const val = e.target.value.trim().toLowerCase();
+                if (val === "auto" || !val) {
+                  updateHw({ paperHeightMm: "auto" }, true);
+                } else {
+                  const n = parseInt(val.replace(/\D/g, ""), 10);
+                  if (Number.isFinite(n) && n > 0) updateHw({ paperHeightMm: n }, true);
+                }
+              }}
+              className="h-9 text-xs font-mono font-bold bg-background"
+              placeholder="auto"
+            />
+          </div>
+
           <div className="space-y-1">
             <Label className="text-[11px] font-semibold">
               {lang === "bn" ? "উপরের মার্জিন (Top mm)" : "Top Margin (mm)"}

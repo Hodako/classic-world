@@ -58,7 +58,13 @@ export function buildInvoiceHtml(data: PrintInvoiceParams, settingsOverride?: Pa
   const widthMm = Number(hw.paperWidthMm) || (data.pageSize === "58mm" ? 58 : 80);
   const isNarrow = widthMm <= 52;
   const targetWidth = `${widthMm}mm`;
-  const pageSizeRule = `${widthMm}mm auto`;
+
+  const heightMm =
+    hw.paperHeightMm !== undefined && hw.paperHeightMm !== "auto" && Number(hw.paperHeightMm) > 0
+      ? Number(hw.paperHeightMm)
+      : undefined;
+  const targetHeight = heightMm ? `${heightMm}mm` : "auto";
+  const pageSizeRule = heightMm ? `${widthMm}mm ${heightMm}mm` : `${widthMm}mm auto`;
 
   const topMm = hw.marginTopMm ?? 0;
   const bottomMm = hw.marginBottomMm ?? 0;
@@ -171,15 +177,17 @@ export function buildInvoiceHtml(data: PrintInvoiceParams, settingsOverride?: Pa
       color: #000000 !important; 
       font-weight: 800 !important;
       width: 100% !important; 
-      margin: 0 auto !important; 
+      margin: 0 !important; 
       padding: 0 !important; 
       font-size: 8.5pt; 
-      line-height: 1.3; 
+      line-height: 1.25; 
       zoom: ${scalePct}% !important;
+      vertical-align: top !important;
     }
     .receipt-wrap { 
       width: 100% !important; 
       max-width: ${targetWidth} !important; 
+      ${heightMm ? `height: ${targetHeight} !important; max-height: ${targetHeight} !important; overflow: hidden !important;` : ""}
       margin: 0 auto !important; 
       padding: ${topMm}mm ${rightMm}mm ${bottomMm}mm ${leftMm}mm !important; 
       box-sizing: border-box !important; 
@@ -187,6 +195,8 @@ export function buildInvoiceHtml(data: PrintInvoiceParams, settingsOverride?: Pa
       position: relative;
       font-weight: 800 !important;
       color: #000000 !important;
+      display: flow-root !important; /* Prevents margin collapse at top and bottom */
+    }
     }
     .dashed-line { 
       border-top: 1.5px dashed #000000 !important; 
@@ -404,6 +414,8 @@ export async function printPwaInvoice(data: PrintInvoiceParams, settingsOverride
       rightMm,
     },
     pageSize: resolvedSize,
+    paperWidthMm: widthMm,
+    paperHeightMm: hw.paperHeightMm || "auto",
   });
   if (printedDirect) {
     return;

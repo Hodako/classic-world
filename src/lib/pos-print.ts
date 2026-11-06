@@ -58,6 +58,8 @@ export interface DirectPrintOptions {
     rightMm?: number;
   };
   pageSize?: string;
+  paperWidthMm?: number;
+  paperHeightMm?: number | "auto";
 }
 
 /**
@@ -99,7 +101,8 @@ export async function executeDirectSilentPrint(
         scaleFactor: effectiveScale,
         margins: effectiveMargins,
         pageSize: overrideOptions?.pageSize,
-        paperWidthMm: hw.paperWidthMm || 80,
+        paperWidthMm: overrideOptions?.paperWidthMm || hw.paperWidthMm || 80,
+        paperHeightMm: overrideOptions?.paperHeightMm !== undefined ? overrideOptions.paperHeightMm : (hw.paperHeightMm || "auto"),
       });
       if (res && res.success) return true;
     } catch (e) {

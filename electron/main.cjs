@@ -145,6 +145,7 @@ async function createWindow() {
               const raw = localStorage.getItem("classicworld_pos_hardware_v1") || localStorage.getItem("dreamfashion_pos_hardware_v1") || "{}";
               const parsed = JSON.parse(raw);
               const widthMm = Number(parsed.paperWidthMm) || (parsed.paperSize === "58mm" ? 58 : parsed.paperSize === "a4" ? 210 : 80);
+              const heightMm = parsed.paperHeightMm !== undefined && parsed.paperHeightMm !== "auto" && Number(parsed.paperHeightMm) > 0 ? Number(parsed.paperHeightMm) : "auto";
               return {
                 printerName: parsed.devicePrinterName || "",
                 silent: parsed.automatePrinting !== false,
@@ -152,6 +153,7 @@ async function createWindow() {
                 scaleFactor: Number(parsed.printScale) || 100,
                 pageSize: parsed.paperSize === "a4" ? "a4" : (widthMm + "mm"),
                 paperWidthMm: widthMm,
+                paperHeightMm: heightMm,
                 margins: {
                   topMm: parsed.marginTopMm != null ? Number(parsed.marginTopMm) : 0,
                   bottomMm: parsed.marginBottomMm != null ? Number(parsed.marginBottomMm) : 0,
@@ -160,7 +162,7 @@ async function createWindow() {
                 },
               };
             } catch (_) {
-              return { printerName: "", silent: true, copies: 1, scaleFactor: 100, pageSize: "80mm", paperWidthMm: 80 };
+              return { printerName: "", silent: true, copies: 1, scaleFactor: 100, pageSize: "80mm", paperWidthMm: 80, paperHeightMm: "auto" };
             }
           }
           if (window.electronPOS && typeof window.electronPOS.printSilent === "function") {
@@ -311,8 +313,21 @@ async function performSilentPrint(html, printerName, options = {}) {
     const parsedMmMatch = rawPageSize.match(/(\d+)\s*mm/i);
     const parsedMm = parsedMmMatch ? parseInt(parsedMmMatch[1], 10) : Number(options.paperWidthMm);
     const widthMm = isA4 ? 210 : (Number.isFinite(parsedMm) && parsedMm > 0 ? parsedMm : 80);
-    const cssPageSize = isA4 ? "A4 portrait" : `${widthMm}mm auto`;
     const widthMicrons = Math.max(15000, widthMm * 1000);
+
+    const userHeightMm =
+      options.paperHeightMm !== undefined &&
+      options.paperHeightMm !== "auto" &&
+      Number.isFinite(Number(options.paperHeightMm)) &&
+      Number(options.paperHeightMm) > 0
+        ? Number(options.paperHeightMm)
+        : null;
+
+    const cssPageSize = isA4
+      ? "A4 portrait"
+      : userHeightMm
+      ? `${widthMm}mm ${userHeightMm}mm`
+      : `${widthMm}mm auto`;
 
     // Prepare HTML: remove external font blocking that causes blank pages & enforce all-bold pure black thermal styling + margins
     let preparedHtml = String(html || "");
@@ -333,6 +348,7 @@ async function performSilentPrint(html, printerName, options = {}) {
           margin: 0 !important;
           padding: 0 !important;
           width: 100% !important;
+          vertical-align: top !important;
         }
         *, body, div, span, p, td, th, tr, table, strong, b, h1, h2, h3, h4, small {
           font-weight: 800 !important;
@@ -346,6 +362,8 @@ async function performSilentPrint(html, printerName, options = {}) {
           padding-right: ${rightMm}mm !important;
           box-sizing: border-box !important;
           width: 100% !important;
+          margin: 0 auto !important;
+          display: flow-root !important; /* Prevents top and bottom margin collapse */
         }
       </style>
     `;
@@ -436,18 +454,63 @@ async function performSilentPrint(html, printerName, options = {}) {
         }
       }
 
+      let effectiveHeightMm = userHeightMm;
+      if (!isA4 && (!effectiveHeightMm || effectiveHeightMm <= 0)) {
+        try {
+          const measuredPx = await printWin.webContents.executeJavaScript(`
+            (function() {
+              const wrap = document.querySelector('.receipt-wrap') || document.body;
+              const rect = wrap.getBoundingClientRect();
+              const h = Math.max(wrap.scrollHeight, Math.ceil(rect.height), document.body.scrollHeight);
+              return Math.ceil(h * 0.264583);
+            })()
+          `);
+          if (Number.isFinite(measuredPx) && measuredPx > 10) {
+            effectiveHeightMm = measuredPx + topMm + bottomMm + 2;
+          }
+        } catch (_) {}
+      }
+      if (!effectiveHeightMm || effectiveHeightMm <= 0) {
+        effectiveHeightMm = 80;
+      }
+
+      const heightMicrons = Math.max(15000, Math.round(effectiveHeightMm * 1000));
+
+      if (!isA4) {
+        await printWin.webContents
+          .executeJavaScript(`
+            (function() {
+              let st = document.getElementById('pos-exact-page-size');
+              if (!st) {
+                st = document.createElement('style');
+                st.id = 'pos-exact-page-size';
+                document.head.appendChild(st);
+              }
+              st.textContent = '@page { size: ' + ${widthMm} + 'mm ' + ${effectiveHeightMm} + 'mm !important; margin: 0mm !important; }';
+            })()
+          `)
+          .catch(() => {});
+      }
+
       const printConfig = {
         silent: useSilent,
         printBackground: true,
         copies,
         scaleFactor,
-        margins: { marginType: "none" },
+        margins: {
+          marginType: "custom",
+          top: 0,
+          bottom: 0,
+          left: 0,
+          right: 0,
+        },
+        headerFooter: false,
       };
 
       if (isA4) {
         printConfig.pageSize = "A4";
       } else {
-        printConfig.pageSize = { width: widthMicrons, height: 297000 };
+        printConfig.pageSize = { width: widthMicrons, height: heightMicrons };
       }
 
       if (useSilent && targetPrinter) {
@@ -458,7 +521,7 @@ async function performSilentPrint(html, printerName, options = {}) {
         cleanup();
         if (success) {
           console.log(
-            `[Windows POS] Receipt printed (${useSilent ? "SILENT" : "DIALOG"}) to: ${targetPrinter || "Windows Printer"}`
+            `[Windows POS] Receipt printed (${useSilent ? "SILENT" : "DIALOG"}) to: ${targetPrinter || "Windows Printer"} [Size: ${widthMm}mm x ${effectiveHeightMm}mm]`
           );
           resolve({ success: true, printer: targetPrinter, silent: useSilent });
         } else {
@@ -474,7 +537,7 @@ async function performSilentPrint(html, printerName, options = {}) {
 }
 
 ipcMain.handle("pos:print-silent", async (event, options = {}) => {
-  const { html, printerName, silent, margins, copies, scaleFactor, pageSize, paperWidthMm } = options;
+  const { html, printerName, silent, margins, copies, scaleFactor, pageSize, paperWidthMm, paperHeightMm } = options;
   if (!html) return { success: false, error: "Empty HTML" };
   return await performSilentPrint(html, printerName, {
     silent,
@@ -483,6 +546,7 @@ ipcMain.handle("pos:print-silent", async (event, options = {}) => {
     scaleFactor,
     pageSize,
     paperWidthMm,
+    paperHeightMm,
   });
 });
 

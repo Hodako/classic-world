@@ -24,6 +24,7 @@ export interface InvoiceVisibilitySettings {
   showPaymentMode?: boolean;
   showChangeReturn?: boolean;
   showTerms?: boolean;
+  showPolicyNote?: boolean;
   showItemsHeader?: boolean;
   showItemHeader?: boolean;
   showDiscount?: boolean;
@@ -70,6 +71,8 @@ export interface PosHardwareSettings {
   customPhone?: string;
   /** Custom footer note */
   customFooterNote?: string;
+  /** Exchange / return policy line printed at the very bottom (empty string hides it) */
+  customPolicyNote?: string;
   /** Toggle visibility of standard invoice lines */
   visibility: InvoiceVisibilitySettings;
   /** Custom lines added by admin */
@@ -92,6 +95,7 @@ export const DEFAULT_VISIBILITY_SETTINGS: InvoiceVisibilitySettings = {
   showPaymentMode: true,
   showChangeReturn: true,
   showTerms: true,
+  showPolicyNote: true,
   showItemsHeader: true,
   showItemHeader: true,
   showDiscount: true,
@@ -100,6 +104,9 @@ export const DEFAULT_VISIBILITY_SETTINGS: InvoiceVisibilitySettings = {
   showPaid: true,
   showDue: true,
 };
+
+/** Default exchange / return policy line shown at the bottom of the receipt */
+export const DEFAULT_POLICY_NOTE = "* ৭ দিনের মধ্যে ইনভয়েস সহ পণ্য পরিবর্তন প্রযোজ্য *";
 
 export const DEFAULT_HARDWARE_SETTINGS: PosHardwareSettings = {
   printMode: "manual",

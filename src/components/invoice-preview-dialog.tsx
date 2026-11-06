@@ -44,6 +44,7 @@ import {
   savePosHardwareSettings,
   DEFAULT_HARDWARE_SETTINGS,
   DEFAULT_VISIBILITY_SETTINGS,
+  DEFAULT_POLICY_NOTE,
   type PosHardwareSettings,
   type CustomInvoiceLine,
   type InvoiceVisibilitySettings,
@@ -779,13 +780,28 @@ export function InvoicePreviewDialog({
 
                 <div className="space-y-1.5">
                   <Label className="text-xs font-bold text-foreground">
-                    {lang === "bn" ? "ফুটার নোট বা শর্তাবলী" : "Footer Note & Return Policy"}
+                    {lang === "bn" ? "ফুটার নোট বা ধন্যবাদ বার্তা" : "Footer Note / Thank You Note"}
                   </Label>
                   <Input
                     value={settings.customFooterNote ?? (effectiveInvoiceData.terms || "")}
                     onChange={(e) => updateSettings({ customFooterNote: e.target.value })}
                     placeholder="আমাদের সাথে কেনাকাটা করার জন্য ধন্যবাদ!"
                     className="h-9 text-xs bg-background"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-bold text-foreground flex items-center justify-between">
+                    <span>{lang === "bn" ? "পণ্য পরিবর্তন সংক্রান্ত পলিসি টেক্সট" : "Exchange Policy Note"}</span>
+                    <span className="text-[10px] text-muted-foreground font-normal">
+                      {lang === "bn" ? "(রসিদের শেষে মুদ্রিত)" : "(Printed at bottom)"}
+                    </span>
+                  </Label>
+                  <Input
+                    value={settings.customPolicyNote ?? DEFAULT_POLICY_NOTE}
+                    onChange={(e) => updateSettings({ customPolicyNote: e.target.value })}
+                    placeholder={DEFAULT_POLICY_NOTE}
+                    className="h-9 text-xs bg-background font-medium"
                   />
                 </div>
               </TabsContent>
@@ -1016,6 +1032,13 @@ export function InvoicePreviewDialog({
                       <Switch
                         checked={vis.showTerms !== false}
                         onCheckedChange={(c) => updateVisibility({ showTerms: c })}
+                      />
+                    </label>
+                    <label className="flex items-center justify-between p-2 rounded-lg bg-background border border-border/50 cursor-pointer">
+                      <span>{lang === "bn" ? "পণ্য পরিবর্তন পলিসি লাইন" : "Exchange Policy Line"}</span>
+                      <Switch
+                        checked={vis.showPolicyNote !== false}
+                        onCheckedChange={(c) => updateVisibility({ showPolicyNote: c })}
                       />
                     </label>
                   </div>

@@ -32,6 +32,7 @@ import {
   savePosHardwareSettings,
   DEFAULT_HARDWARE_SETTINGS,
   DEFAULT_VISIBILITY_SETTINGS,
+  DEFAULT_POLICY_NOTE,
   type PosHardwareSettings as PosHwConfig,
   type CustomInvoiceLine,
   type InvoiceVisibilitySettings,
@@ -880,13 +881,28 @@ export function PosHardwareSettings({ lang = "en" }: { lang?: "en" | "bn" | stri
 
           <div className="space-y-1 sm:col-span-2">
             <Label className="text-[11px] font-semibold">
-              {lang === "bn" ? "ফুটার নোট বা শর্তাবলী" : "Footer Note & Return Terms"}
+              {lang === "bn" ? "ফুটার নোট বা ধন্যবাদ বার্তা" : "Footer Note / Thank You Note"}
             </Label>
             <Input
               value={hwConfig.customFooterNote ?? ""}
               onChange={(e) => updateHw({ customFooterNote: e.target.value }, true)}
-              placeholder={lang === "bn" ? "আমাদের সাথে কেনাকাটা করার জন্য ধন্যবাদ! ৭ দিনের মধ্যে ইনভয়েস সহ পরিবর্তনযোগ্য" : "Footer note"}
+              placeholder={lang === "bn" ? "আমাদের সাথে কেনাকাটা করার জন্য ধন্যবাদ!" : "Thank you for shopping with us!"}
               className="h-9 text-xs bg-background"
+            />
+          </div>
+
+          <div className="space-y-1 sm:col-span-2">
+            <Label className="text-[11px] font-semibold flex items-center justify-between">
+              <span>{lang === "bn" ? "পণ্য পরিবর্তন সংক্রান্ত শর্তাবলী / পলিসি নোট" : "Exchange / Return Policy Line"}</span>
+              <span className="text-[10px] text-muted-foreground font-normal">
+                {lang === "bn" ? "(রসিদের নিচে মুদ্রিত হবে)" : "(Printed at bottom of receipt)"}
+              </span>
+            </Label>
+            <Input
+              value={hwConfig.customPolicyNote ?? DEFAULT_POLICY_NOTE}
+              onChange={(e) => updateHw({ customPolicyNote: e.target.value }, true)}
+              placeholder={DEFAULT_POLICY_NOTE}
+              className="h-9 text-xs bg-background font-medium"
             />
           </div>
         </div>
@@ -1045,6 +1061,14 @@ export function PosHardwareSettings({ lang = "en" }: { lang?: "en" | "bn" | stri
                 <Switch
                   checked={vis.showTerms !== false}
                   onCheckedChange={(c) => updateVisibility({ showTerms: c })}
+                />
+              </label>
+
+              <label className="flex items-center justify-between p-2.5 rounded-xl bg-background border border-border/60 cursor-pointer">
+                <span className="font-semibold">{lang === "bn" ? "পণ্য পরিবর্তন পলিসি লাইন" : "Exchange Policy Line"}</span>
+                <Switch
+                  checked={vis.showPolicyNote !== false}
+                  onCheckedChange={(c) => updateVisibility({ showPolicyNote: c })}
                 />
               </label>
             </div>

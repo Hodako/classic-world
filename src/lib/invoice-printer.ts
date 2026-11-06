@@ -1,6 +1,6 @@
 import { fmtDateTime } from "@/lib/format";
 import { executeDirectSilentPrint, getPosPaperConfig } from "@/lib/pos-print";
-import { getPosHardwareSettings, DEFAULT_VISIBILITY_SETTINGS, type PosHardwareSettings } from "@/lib/pos-hardware";
+import { getPosHardwareSettings, DEFAULT_VISIBILITY_SETTINGS, DEFAULT_POLICY_NOTE, type PosHardwareSettings } from "@/lib/pos-hardware";
 
 export interface InvoiceItemData {
   product: {
@@ -112,6 +112,14 @@ export function buildInvoiceHtml(data: PrintInvoiceParams, settingsOverride?: Pa
   const address = hw.customAddress !== undefined ? hw.customAddress : data.shopAddress;
   const phone = hw.customPhone !== undefined ? hw.customPhone : data.shopPhoneNumbers;
   const terms = hw.customFooterNote !== undefined ? hw.customFooterNote : data.terms;
+  const policyNote = (hw.customPolicyNote !== undefined ? hw.customPolicyNote : DEFAULT_POLICY_NOTE).trim();
+  const normalizeLine = (s: string) => s.replace(/[*\s]/g, "");
+  const termLines = (terms !== undefined && terms !== null ? String(terms) : "আমাদের সাথে কেনাকাটা করার জন্য ধন্যবাদ!")
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0)
+    // Avoid printing the policy line twice when it is also part of the footer note
+    .filter((l) => !policyNote || normalizeLine(l) !== normalizeLine(policyNote));
   const dateStr = data.invoiceDate || fmtDateTime(new Date());
 
   const customLines = hw.customLines || [];
@@ -223,20 +231,20 @@ export function buildInvoiceHtml(data: PrintInvoiceParams, settingsOverride?: Pa
       padding: 0 !important; 
       font-size: ${baseFontPt}pt; 
       line-height: 1.2; 
-      zoom: ${scalePct}% !important;
       vertical-align: top !important;
       writing-mode: horizontal-tb !important;
       direction: ltr !important;
     }
+    body { zoom: ${scalePct}% !important; }
     body > *:first-child, .receipt-wrap > *:first-child {
       margin-top: 0 !important;
       padding-top: 0 !important;
     }
     .receipt-wrap { 
-      width: 100% !important; 
-      max-width: ${targetWidth} !important; 
+      width: ${targetWidth} !important; 
+      max-width: 100% !important; 
       ${heightMm ? `height: ${targetHeight} !important; max-height: ${targetHeight} !important; overflow: hidden !important;` : "height: auto !important; min-height: 0 !important;"}
-      margin: 0 auto !important; 
+      margin: 0 !important; /* Left-aligned: never auto-center (prevents big left margin) */
       padding: ${topMm}mm ${rightMm}mm ${bottomMm}mm ${leftMm}mm !important; 
       box-sizing: border-box !important; 
       background: #ffffff; 
@@ -434,12 +442,17 @@ export function buildInvoiceHtml(data: PrintInvoiceParams, settingsOverride?: Pa
       ${renderCustomLines("footer")}
       ${
         vis.showTerms !== false
-          ? `<div style="font-size: ${baseFontPt}pt; font-weight: 900; color: #000000;">
-              ${terms ? terms.split("\n")[0] : "আমাদের সাথে কেনাকাটা করার জন্য ধন্যবাদ!"}
-            </div>
-            <div style="font-size: ${smallFontPt}pt; font-weight: 800; color: #000000; margin-top: 1px;">
-              * ৭ দিনের মধ্যে ইনভয়েস সহ পণ্য পরিবর্তন প্রযোজ্য *
-            </div>`
+          ? termLines
+              .map(
+                (line, i) =>
+                  `<div style="font-size: ${i === 0 ? baseFontPt : smallFontPt}pt; font-weight: ${i === 0 ? 900 : 800}; color: #000000; margin-top: ${i === 0 ? 0 : 1}px;">${line}</div>`
+              )
+              .join("")
+          : ""
+      }
+      ${
+        vis.showPolicyNote !== false && policyNote
+          ? `<div style="font-size: ${smallFontPt}pt; font-weight: 800; color: #000000; margin-top: 1px;">${policyNote}</div>`
           : ""
       }
     </div>
@@ -511,7 +524,7 @@ export async function printPwaInvoice(data: PrintInvoiceParams, settingsOverride
           if (idoc && (!hw.paperHeightMm || hw.paperHeightMm === "auto")) {
             const wrap = idoc.querySelector(".receipt-wrap");
             if (wrap) {
-              const hMm = Math.max(widthMm, Math.ceil(wrap.getBoundingClientRect().height * 0.264583) + topMm + bottomMm + 2);
+              const hMm = Math.ceil(wrap.getBoundingClientRect().height * 0.264583) + topMm + bottomMm + 2;
               const exactStyle = idoc.createElement("style");
               exactStyle.id = "pwa-exact-roll-height";
               exactStyle.textContent = `@page { size: ${widthMm}mm ${hMm}mm portrait !important; margin: 0 !important; }`;

@@ -405,7 +405,7 @@ async function performSilentPrint(html, printerName, options = {}) {
           padding-right: ${rightMm}mm !important;
           box-sizing: border-box !important;
           width: 100% !important;
-          margin: 0 auto !important;
+          margin: 0 !important; /* Left-aligned: never auto-center (prevents big left margin) */
           display: flow-root !important; /* Prevents top and bottom margin collapse */
           overflow: hidden !important;
         }

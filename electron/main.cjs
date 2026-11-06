@@ -150,13 +150,13 @@ async function createWindow() {
                 silent: parsed.automatePrinting !== false,
                 copies: Number(parsed.copies) || 1,
                 scaleFactor: Number(parsed.printScale) || 100,
-                pageSize: parsed.paperSize === "a4" ? "a4" : `${widthMm}mm`,
+                pageSize: parsed.paperSize === "a4" ? "a4" : (widthMm + "mm"),
                 paperWidthMm: widthMm,
                 margins: {
-                  topMm: parsed.marginTopMm ?? 0,
-                  bottomMm: parsed.marginBottomMm ?? 0,
-                  leftMm: parsed.marginLeftMm ?? 0,
-                  rightMm: parsed.marginRightMm ?? 0,
+                  topMm: parsed.marginTopMm != null ? Number(parsed.marginTopMm) : 0,
+                  bottomMm: parsed.marginBottomMm != null ? Number(parsed.marginBottomMm) : 0,
+                  leftMm: parsed.marginLeftMm != null ? Number(parsed.marginLeftMm) : 0,
+                  rightMm: parsed.marginRightMm != null ? Number(parsed.marginRightMm) : 0,
                 },
               };
             } catch (_) {
@@ -483,11 +483,6 @@ ipcMain.handle("pos:print-silent", async (event, options = {}) => {
     scaleFactor,
     pageSize,
     paperWidthMm,
-  });
-});
-    copies,
-    scaleFactor,
-    pageSize,
   });
 });
 

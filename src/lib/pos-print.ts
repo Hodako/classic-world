@@ -81,10 +81,10 @@ export async function executeDirectSilentPrint(
   const effectiveCopies = overrideOptions?.copies || hw.copies || 1;
   const effectiveScale = overrideOptions?.scaleFactor || hw.printScale || 100;
   const effectiveMargins = {
-    topMm: overrideOptions?.margins?.topMm ?? hw.marginTopMm ?? 2,
-    bottomMm: overrideOptions?.margins?.bottomMm ?? hw.marginBottomMm ?? 4,
-    leftMm: overrideOptions?.margins?.leftMm ?? hw.marginLeftMm ?? 2,
-    rightMm: overrideOptions?.margins?.rightMm ?? hw.marginRightMm ?? 2,
+    topMm: overrideOptions?.margins?.topMm ?? hw.marginTopMm ?? 0,
+    bottomMm: overrideOptions?.margins?.bottomMm ?? hw.marginBottomMm ?? 0,
+    leftMm: overrideOptions?.margins?.leftMm ?? hw.marginLeftMm ?? 0,
+    rightMm: overrideOptions?.margins?.rightMm ?? hw.marginRightMm ?? 0,
   };
 
   // 1. Check if running inside our Electron Windows POS Desktop App
@@ -99,6 +99,7 @@ export async function executeDirectSilentPrint(
         scaleFactor: effectiveScale,
         margins: effectiveMargins,
         pageSize: overrideOptions?.pageSize,
+        paperWidthMm: hw.paperWidthMm || 80,
       });
       if (res && res.success) return true;
     } catch (e) {

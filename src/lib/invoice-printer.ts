@@ -1,6 +1,6 @@
 import { fmtDateTime } from "@/lib/format";
 import { executeDirectSilentPrint, getPosPaperConfig } from "@/lib/pos-print";
-import { getPosHardwareSettings } from "@/lib/pos-hardware";
+import { getPosHardwareSettings, DEFAULT_VISIBILITY_SETTINGS, type PosHardwareSettings } from "@/lib/pos-hardware";
 
 export interface InvoiceItemData {
   product: {
@@ -47,47 +47,103 @@ export interface PrintInvoiceParams {
 }
 
 /**
- * Clean Thermal POS Receipt Print Engine (Optimized for 58mm/80mm Thermal Printers & A4)
+ * Clean Thermal POS Receipt Print Engine (Optimized for 20mm/50mm/58mm/70mm/80mm Thermal Printers & A4)
  * All texts are rendered BOLD & pure black (#000000) for crisp thermal printing.
- * Respects per-device default printer, automated printing toggle, and margins.
+ * Respects per-device default printer, automated printing toggle, custom width, margins, font sizes, and custom lines.
  */
-export async function printPwaInvoice(data: PrintInvoiceParams) {
-  const now = new Date();
-  const dateStr = data.invoiceDate || fmtDateTime(now);
-  const hw = getPosHardwareSettings();
-  const posPaper = getPosPaperConfig();
+export function buildInvoiceHtml(data: PrintInvoiceParams, settingsOverride?: Partial<PosHardwareSettings>): string {
+  const hw = { ...getPosHardwareSettings(), ...(settingsOverride || {}) };
+  const vis = { ...DEFAULT_VISIBILITY_SETTINGS, ...(hw.visibility || {}) };
 
-  const resolvedSize = data.pageSize || (posPaper.widthMm === 80 ? "80mm" : posPaper.widthMm === 210 ? "A4" : "58mm");
-  const is58mm = resolvedSize === "58mm";
-  const is80mm = resolvedSize === "80mm";
-  const targetWidth = is58mm ? "54mm" : is80mm ? "76mm" : "100%";
-  const pageSizeRule = is58mm ? "58mm auto" : is80mm ? "80mm auto" : `${resolvedSize || "A4"} portrait`;
+  const widthMm = Number(hw.paperWidthMm) || (data.pageSize === "58mm" ? 58 : 80);
+  const isNarrow = widthMm <= 52;
+  const targetWidth = `${widthMm}mm`;
+  const pageSizeRule = `${widthMm}mm auto`;
 
-  const topMm = hw.marginTopMm ?? 2;
-  const bottomMm = hw.marginBottomMm ?? 4;
-  const leftMm = hw.marginLeftMm ?? 2;
-  const rightMm = hw.marginRightMm ?? 2;
-  const scalePct = hw.printScale || 100;
+  const topMm = hw.marginTopMm ?? 0;
+  const bottomMm = hw.marginBottomMm ?? 0;
+  const leftMm = hw.marginLeftMm ?? 0;
+  const rightMm = hw.marginRightMm ?? 0;
+  const baseFontPt = Number(hw.fontSizePt) || 8.5;
+  const titleFontPt = Number(hw.titleFontSizePt) || 12;
+  const smallFontPt = Math.max(5.5, Number((baseFontPt - 1.2).toFixed(1)));
+  const largeFontPt = Number((baseFontPt + 1.5).toFixed(1));
 
-  const itemsRowsHtml = data.items
-    .map(
-      (item, idx) => `
-    <tr>
-      <td style="padding: 4px 0; text-align: left; vertical-align: top; font-weight: 800; font-size: 8.5pt; color: #000000; width: 55%; word-break: break-word; line-height: 1.25;">
-        ${idx + 1}. ${item.product.name}
-      </td>
-      <td style="padding: 4px 2px; text-align: center; vertical-align: top; font-family: monospace; font-size: 8.5pt; font-weight: 800; color: #000000; width: 18%;">
-        ${item.qty}
-      </td>
-      <td style="padding: 4px 0; text-align: right; vertical-align: top; font-family: monospace; font-weight: 800; font-size: 8.5pt; color: #000000; width: 27%;">
-        ৳${(item.qty * item.sellPrice).toLocaleString()}
-      </td>
-    </tr>
-    ${idx < data.items.length - 1 ? `<tr><td colspan="3" style="border-top: 1px dotted #000000; height: 1px; padding: 0; margin: 0;"></td></tr>` : ""}`
-    )
-    .join("");
+  const shopName = hw.customHeaderTitle || data.businessName;
+  const tagline = hw.customSubtitle !== undefined ? hw.customSubtitle : data.tagline;
+  const address = hw.customAddress !== undefined ? hw.customAddress : data.shopAddress;
+  const phone = hw.customPhone !== undefined ? hw.customPhone : data.shopPhoneNumbers;
+  const terms = hw.customFooterNote !== undefined ? hw.customFooterNote : data.terms;
+  const dateStr = data.invoiceDate || fmtDateTime(new Date());
 
-  const html = `<!DOCTYPE html>
+  const customLines = hw.customLines || [];
+  const renderCustomLines = (pos: "header" | "before_items" | "after_items" | "footer") => {
+    const lines = customLines.filter((l) => l.position === pos);
+    if (!lines.length) return "";
+    return lines
+      .map(
+        (l) =>
+          `<div style="text-align: ${l.align || "center"}; font-weight: ${
+            l.bold ? "900" : "800"
+          }; font-size: ${baseFontPt}pt; color: #000000; margin: 1.5px 0; word-break: break-word;">${l.text}</div>`
+      )
+      .join("");
+  };
+
+  const itemsHtml = isNarrow
+    ? data.items
+        .map(
+          (item, idx) => `
+      <div style="padding: 2.5px 0; border-bottom: 1px dotted #000000;">
+        <div style="font-weight: 800; font-size: ${baseFontPt}pt; word-break: break-word; line-height: 1.2;">
+          ${idx + 1}. ${item.product.name}
+        </div>
+        <div style="display: flex; justify-content: space-between; font-size: ${smallFontPt}pt; font-family: monospace; margin-top: 1.5px;">
+          <span>${item.qty} × ৳${item.sellPrice.toLocaleString()}</span>
+          <span style="font-weight: 900;">৳${(item.qty * item.sellPrice).toLocaleString()}</span>
+        </div>
+      </div>`
+        )
+        .join("")
+    : `
+      <table>
+        ${
+          vis.showItemsHeader !== false
+            ? `<thead>
+                <tr style="border-bottom: 1.5px dashed #000000;">
+                  <th style="text-align: left; font-size: ${smallFontPt}pt;">বিবরণ (Item)</th>
+                  <th style="text-align: center; width: 18%; font-size: ${smallFontPt}pt;">পরিমাণ</th>
+                  <th style="text-align: right; width: 27%; font-size: ${smallFontPt}pt;">মূল্য</th>
+                </tr>
+              </thead>`
+            : ""
+        }
+        <tbody>
+          ${data.items
+            .map(
+              (item, idx) => `
+            <tr>
+              <td style="padding: 3px 0; text-align: left; vertical-align: top; font-weight: 800; font-size: ${baseFontPt}pt; color: #000000; width: 55%; word-break: break-word; line-height: 1.25;">
+                ${idx + 1}. ${item.product.name}
+              </td>
+              <td style="padding: 3px 2px; text-align: center; vertical-align: top; font-family: monospace; font-size: ${baseFontPt}pt; font-weight: 800; color: #000000; width: 18%;">
+                ${item.qty}
+              </td>
+              <td style="padding: 3px 0; text-align: right; vertical-align: top; font-family: monospace; font-weight: 800; font-size: ${baseFontPt}pt; color: #000000; width: 27%;">
+                ৳${(item.qty * item.sellPrice).toLocaleString()}
+              </td>
+            </tr>
+            ${
+              idx < data.items.length - 1
+                ? `<tr><td colspan="3" style="border-top: 1px dotted #000000; height: 1px; padding: 0; margin: 0;"></td></tr>`
+                : ""
+            }`
+            )
+            .join("")}
+        </tbody>
+      </table>`;
+
+  return `<!DOCTYPE html>
 <html lang="bn" style="color-scheme: light !important;">
 <head>
   <meta charset="utf-8">
@@ -162,54 +218,73 @@ export async function printPwaInvoice(data: PrintInvoiceParams) {
 <body>
   <div class="receipt-wrap">
     <!-- Header -->
-    <div style="text-align: center; margin-bottom: 4px;">
-      <div style="font-size: 12.5pt; font-weight: 900; text-transform: uppercase; letter-spacing: 0.5px; color: #000000; line-height: 1.2;">
-        ${data.businessName}
-      </div>
-      ${data.tagline ? `<div style="font-size: 8.5pt; font-weight: 800; color: #000000; margin-top: 1.5px;">${data.tagline}</div>` : ""}
-      ${data.shopAddress ? `<div style="font-size: 8pt; font-weight: 800; color: #000000; margin-top: 1.5px;">${data.shopAddress}</div>` : ""}
-      ${data.shopPhoneNumbers ? `<div style="font-size: 8.5pt; font-family: monospace; font-weight: 900; color: #000000; margin-top: 1.5px;">মোবাইল: ${data.shopPhoneNumbers}</div>` : ""}
-      ${data.userEmail ? `<div style="font-size: 7.5pt; font-weight: 800; color: #000000; margin-top: 1px;">${data.userEmail}</div>` : ""}
+    <div style="text-align: center; margin-bottom: 3px;">
+      ${
+        vis.showShopName !== false
+          ? `<div style="font-size: ${titleFontPt}pt; font-weight: 900; text-transform: uppercase; letter-spacing: 0.5px; color: #000000; line-height: 1.2;">
+              ${shopName}
+            </div>`
+          : ""
+      }
+      ${
+        vis.showTagline !== false && tagline
+          ? `<div style="font-size: ${smallFontPt}pt; font-weight: 800; color: #000000; margin-top: 1px;">${tagline}</div>`
+          : ""
+      }
+      ${
+        vis.showShopAddress !== false && address
+          ? `<div style="font-size: ${smallFontPt}pt; font-weight: 800; color: #000000; margin-top: 1px;">${address}</div>`
+          : ""
+      }
+      ${
+        vis.showShopPhone !== false && phone
+          ? `<div style="font-size: ${baseFontPt}pt; font-family: monospace; font-weight: 900; color: #000000; margin-top: 1px;">মোবাইল: ${phone}</div>`
+          : ""
+      }
+      ${
+        data.userEmail
+          ? `<div style="font-size: ${smallFontPt}pt; font-weight: 800; color: #000000; margin-top: 1px;">${data.userEmail}</div>`
+          : ""
+      }
+      ${renderCustomLines("header")}
     </div>
 
     <div class="dashed-line"></div>
 
     <!-- Meta info -->
-    <div style="font-size: 8pt; line-height: 1.35; font-weight: 800; color: #000000;">
+    <div style="font-size: ${smallFontPt}pt; line-height: 1.35; font-weight: 800; color: #000000;">
       <div style="display: flex; justify-content: space-between; align-items: center; font-family: monospace; font-weight: 800;">
-        <span style="font-weight: 900;">ইনভয়েস: ${data.invoiceNo}</span>
-        <span style="font-weight: 800;">${dateStr}</span>
+        ${vis.showInvoiceNo !== false ? `<span style="font-weight: 900;">ইনভয়েস: ${data.invoiceNo}</span>` : "<span></span>"}
+        ${vis.showDateTime !== false ? `<span style="font-weight: 800;">${dateStr}</span>` : ""}
       </div>
       ${
-        data.customerName
+        vis.showCustomer !== false && data.customerName
           ? `<div style="display: flex; justify-content: space-between; align-items: baseline; gap: 4px; margin-top: 2px; font-weight: 800;">
               <span style="font-weight: 800;">ক্রেতা: <strong style="font-weight: 900;">${data.customerName}</strong></span>
               <span style="font-family: monospace; font-weight: 800; shrink-0;">${data.customerPhone || ""}</span>
             </div>`
           : ""
       }
+      ${
+        vis.showCashier !== false && data.cashierName
+          ? `<div style="font-size: ${smallFontPt}pt; font-weight: 800; color: #000000; margin-top: 1px;">ক্যাশিয়ার: ${data.cashierName}</div>`
+          : ""
+      }
     </div>
+
+    ${renderCustomLines("before_items")}
 
     <div class="dashed-line"></div>
 
     <!-- Items table -->
-    <table>
-      <thead>
-        <tr style="border-bottom: 1.5px dashed #000000;">
-          <th style="text-align: left;">বিবরণ (Item)</th>
-          <th style="text-align: center; width: 18%;">পরিমাণ</th>
-          <th style="text-align: right; width: 27%;">মূল্য</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${itemsRowsHtml}
-      </tbody>
-    </table>
+    ${itemsHtml}
+
+    ${renderCustomLines("after_items")}
 
     <div class="dashed-line"></div>
 
     <!-- Financial Totals -->
-    <div style="font-size: 8.5pt; line-height: 1.45; font-weight: 800; color: #000000;">
+    <div style="font-size: ${baseFontPt}pt; line-height: 1.4; font-weight: 800; color: #000000;">
       <div style="display: flex; justify-content: space-between; font-weight: 800;">
         <span>মোট মূল্য (Subtotal):</span>
         <span style="font-family: monospace; font-weight: 800;">৳${data.subtotal.toLocaleString()}</span>
@@ -225,20 +300,20 @@ export async function printPwaInvoice(data: PrintInvoiceParams) {
       }
 
       <!-- Boxed Total Payable -->
-      <div style="border-top: 1.5px solid #000000; border-bottom: 1.5px solid #000000; padding: 3px 0; margin: 3px 0; display: flex; justify-content: space-between; font-size: 10pt; font-weight: 900;">
-        <span style="font-weight: 900;">সর্বমোট (Total Payable):</span>
+      <div style="border-top: 1.5px solid #000000; border-bottom: 1.5px solid #000000; padding: 2px 0; margin: 2px 0; display: flex; justify-content: space-between; font-size: ${largeFontPt}pt; font-weight: 900;">
+        <span style="font-weight: 900;">সর্বমোট (Total):</span>
         <span style="font-family: monospace; font-weight: 900;">৳${data.total.toLocaleString()}</span>
       </div>
 
       <div style="display: flex; justify-content: space-between; font-weight: 800; color: #000000;">
-        <span>পরিশোধ (Total Paid):</span>
+        <span>পরিশোধ (Paid):</span>
         <span style="font-family: monospace; font-weight: 800;">৳${data.paidAmount.toLocaleString()}</span>
       </div>
 
       ${
         data.splitCash !== undefined && (data.splitCash > 0 || (data.splitBkash && data.splitBkash > 0) || (data.splitBank && data.splitBank > 0))
           ? `
-            <div style="background: #ffffff; border: 1px dashed #000000; padding: 2px 4px; border-radius: 4px; margin: 3px 0; font-size: 8pt; font-weight: 800; color: #000000;">
+            <div style="background: #ffffff; border: 1px dashed #000000; padding: 2px 4px; border-radius: 4px; margin: 2px 0; font-size: ${smallFontPt}pt; font-weight: 800; color: #000000;">
               ${data.splitCash > 0 ? `<div style="display: flex; justify-content: space-between; font-weight: 800;"><span>• নগদ (Cash):</span><span style="font-family: monospace; font-weight: 800;">৳${data.splitCash.toLocaleString()}</span></div>` : ""}
               ${data.splitBkash && data.splitBkash > 0 ? `<div style="display: flex; justify-content: space-between; font-weight: 800;"><span>• বিকাশ (bKash):</span><span style="font-family: monospace; font-weight: 800;">৳${data.splitBkash.toLocaleString()}</span></div>` : ""}
               ${data.splitBank && data.splitBank > 0 ? `<div style="display: flex; justify-content: space-between; font-weight: 800;"><span>• ব্যাংক (Bank):</span><span style="font-family: monospace; font-weight: 800;">৳${data.splitBank.toLocaleString()}</span></div>` : ""}
@@ -260,34 +335,62 @@ export async function printPwaInvoice(data: PrintInvoiceParams) {
       }
 
       ${
-        (data.changeAmount || 0) > 0
+        vis.showChangeReturn !== false && (data.changeAmount || 0) > 0
           ? `<div style="display: flex; justify-content: space-between; font-weight: 800;">
-              <span>ফেরত (Change Return):</span>
+              <span>ফেরত (Change):</span>
               <span style="font-family: monospace; font-weight: 800;">৳${data.changeAmount?.toLocaleString()}</span>
             </div>`
           : ""
       }
 
-      <div style="display: flex; justify-content: space-between; font-size: 8pt; font-weight: 800; color: #000000; margin-top: 2px;">
-        <span>পেমেন্ট মাধ্যম:</span>
-        <span style="font-weight: 900; color: #000000; text-transform: uppercase;">${data.paymentMode || (data.due > 0 ? "CREDIT (বাকী)" : "CASH (নগদ)")}</span>
-      </div>
+      ${
+        vis.showPaymentMode !== false
+          ? `<div style="display: flex; justify-content: space-between; font-size: ${smallFontPt}pt; font-weight: 800; color: #000000; margin-top: 2px;">
+              <span>পেমেন্ট মাধ্যম:</span>
+              <span style="font-weight: 900; color: #000000; text-transform: uppercase;">${data.paymentMode || (data.due > 0 ? "CREDIT (বাকী)" : "CASH (নগদ)")}</span>
+            </div>`
+          : ""
+      }
     </div>
 
     <div class="dashed-line"></div>
 
     <!-- Footer -->
-    <div style="text-align: center; margin-top: 5px; margin-bottom: 2mm; font-weight: 800; color: #000000;">
-      <div style="font-size: 8.5pt; font-weight: 900; color: #000000;">
-        ${data.terms ? data.terms.split("\n")[0] : "আমাদের সাথে কেনাকাটা করার জন্য ধন্যবাদ!"}
-      </div>
-      <div style="font-size: 7.5pt; font-weight: 800; color: #000000; margin-top: 2px;">
-        * ৭ দিনের মধ্যে ইনভয়েস সহ পণ্য পরিবর্তন প্রযোজ্য *
-      </div>
+    <div style="text-align: center; margin-top: 3px; font-weight: 800; color: #000000;">
+      ${renderCustomLines("footer")}
+      ${
+        vis.showTerms !== false
+          ? `<div style="font-size: ${baseFontPt}pt; font-weight: 900; color: #000000;">
+              ${terms ? terms.split("\n")[0] : "আমাদের সাথে কেনাকাটা করার জন্য ধন্যবাদ!"}
+            </div>
+            <div style="font-size: ${smallFontPt}pt; font-weight: 800; color: #000000; margin-top: 1px;">
+              * ৭ দিনের মধ্যে ইনভয়েস সহ পণ্য পরিবর্তন প্রযোজ্য *
+            </div>`
+          : ""
+      }
     </div>
   </div>
 </body>
 </html>`;
+}
+
+/**
+ * Clean Thermal POS Receipt Print Engine (Optimized for 20mm/50mm/58mm/70mm/80mm Thermal Printers & A4)
+ * All texts are rendered BOLD & pure black (#000000) for crisp thermal printing.
+ * Respects per-device default printer, automated printing toggle, margins, custom width, scale and custom lines.
+ */
+export async function printPwaInvoice(data: PrintInvoiceParams, settingsOverride?: Partial<PosHardwareSettings>) {
+  const hw = { ...getPosHardwareSettings(), ...(settingsOverride || {}) };
+  const html = buildInvoiceHtml(data, hw);
+
+  const widthMm = Number(hw.paperWidthMm) || (data.pageSize === "58mm" ? 58 : 80);
+  const resolvedSize = data.pageSize || `${widthMm}mm`;
+
+  const topMm = hw.marginTopMm ?? 0;
+  const bottomMm = hw.marginBottomMm ?? 0;
+  const leftMm = hw.marginLeftMm ?? 0;
+  const rightMm = hw.marginRightMm ?? 0;
+  const scalePct = hw.printScale || 100;
 
   // 1-Click Direct Silent Printing (or Windows Print Dialog if automatePrinting is false / forcePrintDialog is true)
   const printedDirect = await executeDirectSilentPrint(html, hw.devicePrinterName || undefined, {

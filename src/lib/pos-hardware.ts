@@ -2,6 +2,29 @@ import type { Product } from "@/lib/queries";
 
 export type ReceiptPrintMode = "manual" | "automatic";
 
+export interface CustomInvoiceLine {
+  id: string;
+  text: string;
+  position: "header" | "before_items" | "after_items" | "footer";
+  align?: "left" | "center" | "right";
+  bold?: boolean;
+}
+
+export interface InvoiceVisibilitySettings {
+  showShopName?: boolean;
+  showShopAddress?: boolean;
+  showShopPhone?: boolean;
+  showTagline?: boolean;
+  showInvoiceNo?: boolean;
+  showDateTime?: boolean;
+  showCashier?: boolean;
+  showCustomer?: boolean;
+  showPaymentMode?: boolean;
+  showChangeReturn?: boolean;
+  showTerms?: boolean;
+  showItemsHeader?: boolean;
+}
+
 export interface PosHardwareSettings {
   printMode: ReceiptPrintMode;
   scannerSuffix: "Enter" | "Tab";
@@ -9,30 +32,74 @@ export interface PosHardwareSettings {
   automatePrinting: boolean;
   /** Per-device default printer name (empty string = Windows system default printer) */
   devicePrinterName: string;
-  /** Thermal paper margins in millimeters (per-device) */
+  /** Thermal paper margins in millimeters (per-device). Default is 0mm as requested */
   marginTopMm: number;
   marginBottomMm: number;
   marginLeftMm: number;
   marginRightMm: number;
-  /** Print scale percentage (50 to 200) */
+  /** Print scale percentage (50 to 200, typed by user) */
   printScale: number;
   /** Number of receipt copies per print */
   copies: number;
+
+  /** Paper width in millimeters: e.g. 80, 76, 70, 58, 50, 20 or custom typed mm */
+  paperWidthMm: number;
+  /** Auto fit mode to make invoice contents fit inside the roll perfectly */
+  fitToWidth: boolean;
+  /** Base font size in points (e.g. 8.5pt, can be increased/decreased e.g. 6 to 16pt) */
+  fontSizePt: number;
+  /** Title font size in points (e.g. 12pt) */
+  titleFontSizePt: number;
+  /** Custom header text override */
+  customHeaderTitle?: string;
+  /** Custom subtitle / tagline */
+  customSubtitle?: string;
+  /** Custom address override */
+  customAddress?: string;
+  /** Custom phone override */
+  customPhone?: string;
+  /** Custom footer note */
+  customFooterNote?: string;
+  /** Toggle visibility of standard invoice lines */
+  visibility: InvoiceVisibilitySettings;
+  /** Custom lines added by admin */
+  customLines: CustomInvoiceLine[];
 }
 
 const STORAGE_KEY = "classicworld_pos_hardware_v1";
+
+export const DEFAULT_VISIBILITY_SETTINGS: InvoiceVisibilitySettings = {
+  showShopName: true,
+  showShopAddress: true,
+  showShopPhone: true,
+  showTagline: true,
+  showInvoiceNo: true,
+  showDateTime: true,
+  showCashier: true,
+  showCustomer: true,
+  showPaymentMode: true,
+  showChangeReturn: true,
+  showTerms: true,
+  showItemsHeader: true,
+};
 
 export const DEFAULT_HARDWARE_SETTINGS: PosHardwareSettings = {
   printMode: "manual",
   scannerSuffix: "Enter",
   automatePrinting: true,
   devicePrinterName: "",
-  marginTopMm: 2,
-  marginBottomMm: 4,
-  marginLeftMm: 2,
-  marginRightMm: 2,
+  marginTopMm: 0,
+  marginBottomMm: 0,
+  marginLeftMm: 0,
+  marginRightMm: 0,
   printScale: 100,
   copies: 1,
+  paperWidthMm: 80,
+  fitToWidth: true,
+  fontSizePt: 8.5,
+  titleFontSizePt: 12,
+  visibility: DEFAULT_VISIBILITY_SETTINGS,
+  customLines: [],
 };
 
 /** Keyboard/HID scanners need no browser Bluetooth permission: the OS delivers keys. */
@@ -118,12 +185,27 @@ export function getPosHardwareSettings(): PosHardwareSettings {
       scannerSuffix: saved?.scannerSuffix === "Tab" ? "Tab" : "Enter",
       automatePrinting: saved?.automatePrinting !== undefined ? Boolean(saved.automatePrinting) : true,
       devicePrinterName: typeof saved?.devicePrinterName === "string" ? saved.devicePrinterName : "",
-      marginTopMm: saved?.marginTopMm !== undefined && Number.isFinite(Number(saved.marginTopMm)) ? Math.max(0, Number(saved.marginTopMm)) : 2,
-      marginBottomMm: saved?.marginBottomMm !== undefined && Number.isFinite(Number(saved.marginBottomMm)) ? Math.max(0, Number(saved.marginBottomMm)) : 4,
-      marginLeftMm: saved?.marginLeftMm !== undefined && Number.isFinite(Number(saved.marginLeftMm)) ? Math.max(0, Number(saved.marginLeftMm)) : 2,
-      marginRightMm: saved?.marginRightMm !== undefined && Number.isFinite(Number(saved.marginRightMm)) ? Math.max(0, Number(saved.marginRightMm)) : 2,
-      printScale: saved?.printScale !== undefined && Number.isFinite(Number(saved.printScale)) ? Math.min(200, Math.max(50, Number(saved.printScale))) : 100,
+      marginTopMm: saved?.marginTopMm !== undefined && Number.isFinite(Number(saved.marginTopMm)) ? Math.max(0, Number(saved.marginTopMm)) : 0,
+      marginBottomMm: saved?.marginBottomMm !== undefined && Number.isFinite(Number(saved.marginBottomMm)) ? Math.max(0, Number(saved.marginBottomMm)) : 0,
+      marginLeftMm: saved?.marginLeftMm !== undefined && Number.isFinite(Number(saved.marginLeftMm)) ? Math.max(0, Number(saved.marginLeftMm)) : 0,
+      marginRightMm: saved?.marginRightMm !== undefined && Number.isFinite(Number(saved.marginRightMm)) ? Math.max(0, Number(saved.marginRightMm)) : 0,
+      printScale: saved?.printScale !== undefined && Number.isFinite(Number(saved.printScale)) ? Math.min(250, Math.max(30, Number(saved.printScale))) : 100,
       copies: saved?.copies !== undefined && Number.isFinite(Number(saved.copies)) ? Math.min(10, Math.max(1, Number(saved.copies))) : 1,
+
+      paperWidthMm: saved?.paperWidthMm !== undefined && Number.isFinite(Number(saved.paperWidthMm)) ? Math.max(15, Math.min(300, Number(saved.paperWidthMm))) : 80,
+      fitToWidth: saved?.fitToWidth !== undefined ? Boolean(saved.fitToWidth) : true,
+      fontSizePt: saved?.fontSizePt !== undefined && Number.isFinite(Number(saved.fontSizePt)) ? Math.max(5, Math.min(24, Number(saved.fontSizePt))) : 8.5,
+      titleFontSizePt: saved?.titleFontSizePt !== undefined && Number.isFinite(Number(saved.titleFontSizePt)) ? Math.max(8, Math.min(32, Number(saved.titleFontSizePt))) : 12,
+      customHeaderTitle: typeof saved?.customHeaderTitle === "string" ? saved.customHeaderTitle : undefined,
+      customSubtitle: typeof saved?.customSubtitle === "string" ? saved.customSubtitle : undefined,
+      customAddress: typeof saved?.customAddress === "string" ? saved.customAddress : undefined,
+      customPhone: typeof saved?.customPhone === "string" ? saved.customPhone : undefined,
+      customFooterNote: typeof saved?.customFooterNote === "string" ? saved.customFooterNote : undefined,
+      visibility: {
+        ...DEFAULT_VISIBILITY_SETTINGS,
+        ...(saved?.visibility || {}),
+      },
+      customLines: Array.isArray(saved?.customLines) ? saved.customLines : [],
     };
   } catch {
     return DEFAULT_HARDWARE_SETTINGS;

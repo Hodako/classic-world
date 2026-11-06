@@ -19,6 +19,7 @@ import { Plus, Minus, Trash2, Scan, Printer, History, Banknote, Smartphone, Cred
 import Link from "next/link";
 import { safeUUID } from "@/lib/utils";
 import { printPwaInvoice, downloadPwaInvoicePdf } from "@/lib/invoice-printer";
+import { InvoicePreviewDialog } from "@/components/invoice-preview-dialog";
 import { playTapSound, playScanSuccessSound, playSaleSuccessSound, playErrorSound } from "@/lib/audio";
 import { getWhatsAppInvoiceUrl } from "@/lib/whatsapp-helper";
 import { createHidScanBuffer, findProductsByScannedCode, getPosHardwareSettings, type ReceiptPrintMode } from "@/lib/pos-hardware";
@@ -93,6 +94,7 @@ export function SaleDialog({
   const [newCustPhone, setNewCustPhone] = useState("");
   const [newCustAddress, setNewCustAddress] = useState("");
   const [addingCust, setAddingCust] = useState(false);
+  const [invoicePreviewOpen, setInvoicePreviewOpen] = useState(false);
 
   async function handleAddCustomer(e: React.FormEvent) {
     e.preventDefault();
@@ -1835,6 +1837,17 @@ export function SaleDialog({
                 type="button"
                 variant="outline"
                 size="sm"
+                disabled={cart.length === 0}
+                onClick={() => setInvoicePreviewOpen(true)}
+                className="gap-1.5 h-9 font-medium border-emerald-500/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/10 cursor-pointer"
+              >
+                <Eye className="size-3.5" />
+                <span>{lang === "bn" ? "প্রিভিউ ও সাইজ" : "Preview & Size"}</span>
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
                 disabled={busy || cart.length === 0}
                 onClick={(e) => submit(e, "print")}
                 className="gap-1.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-800 dark:text-amber-300 border border-amber-500/30 h-9 font-medium cursor-pointer"
@@ -1855,6 +1868,42 @@ export function SaleDialog({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Live Invoice Preview & Customizer */}
+      <InvoicePreviewDialog
+        open={invoicePreviewOpen}
+        onOpenChange={setInvoicePreviewOpen}
+        lang={lang}
+        invoiceData={{
+          businessName: user.business_name || user.full_name || "Classic World POS",
+          userEmail: user.business_emails || user.email || "",
+          shopAddress: user.business_address || "",
+          shopPhoneNumbers: user.business_phone_numbers || "",
+          pageSize: user.invoice_page_size || "80mm",
+          pageWidth: user.invoice_page_width || "",
+          pageHeight: user.invoice_page_height || "",
+          invoiceNo: "INV-PREVIEW",
+          invoiceDate: fmtDateTime(new Date()),
+          customerName: customers.find((c: any) => c.id === partyId)?.name || (lang === "bn" ? "সাধারণ কাস্টমার" : "Walk-in Customer"),
+          customerPhone: customers.find((c: any) => c.id === partyId)?.phone || "",
+          paymentMode: type === "split" ? "SPLIT" : type.toUpperCase(),
+          items: cart.map((c) => {
+            const prod = products.find((p: any) => p.id === c.productId);
+            return {
+              product: { id: prod?.id, name: prod?.name || "Product" },
+              qty: Number(c.qty) || 1,
+              sellPrice: Math.max((Number(c.sellPrice) || prod?.sell_price || 0) - (Number(c.discount) || 0), 0),
+            };
+          }),
+          subtotal: rawSellTotal,
+          discountAmount: finalDiscountAmount,
+          total: sellTotal,
+          paidAmount: type === "online" ? 0 : paidNum,
+          due: type === "online" ? sellTotal : due,
+          changeAmount: changeAmount > 0 ? changeAmount : undefined,
+          terms: user.invoice_terms || "",
+        }}
+      />
 
       <Dialog open={addCustomerOpen} onOpenChange={setAddCustomerOpen}>
         <DialogContent className="max-w-xs">

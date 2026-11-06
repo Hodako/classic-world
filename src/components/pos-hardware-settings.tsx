@@ -18,6 +18,7 @@ import {
   Sliders,
   Check,
   RotateCcw,
+  Eye,
 } from "lucide-react";
 import { executeDirectSilentPrint } from "@/lib/pos-print";
 import {
@@ -26,6 +27,7 @@ import {
   DEFAULT_HARDWARE_SETTINGS,
   type PosHardwareSettings as PosHwConfig,
 } from "@/lib/pos-hardware";
+import { InvoicePreviewDialog } from "@/components/invoice-preview-dialog";
 import { toast } from "sonner";
 
 interface PrinterItem {
@@ -40,6 +42,7 @@ export function PosHardwareSettings({ lang = "en" }: { lang?: "en" | "bn" | stri
   const [testingDialogPrint, setTestingDialogPrint] = useState(false);
   const [testingDrawer, setTestingDrawer] = useState(false);
   const [settingOsDefault, setSettingOsDefault] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
 
   const [hwConfig, setHwConfig] = useState<PosHwConfig>(DEFAULT_HARDWARE_SETTINGS);
 
@@ -580,10 +583,10 @@ export function PosHardwareSettings({ lang = "en" }: { lang?: "en" | "bn" | stri
             size="sm"
             onClick={() =>
               updateHw({
-                marginTopMm: 2,
-                marginBottomMm: 4,
-                marginLeftMm: 2,
-                marginRightMm: 2,
+                marginTopMm: 0,
+                marginBottomMm: 0,
+                marginLeftMm: 0,
+                marginRightMm: 0,
                 printScale: 100,
                 copies: 1,
               })
@@ -591,7 +594,7 @@ export function PosHardwareSettings({ lang = "en" }: { lang?: "en" | "bn" | stri
             className="h-7 px-2.5 text-[11px] gap-1 text-muted-foreground hover:text-foreground cursor-pointer"
           >
             <RotateCcw className="size-3" />
-            <span>{lang === "bn" ? "ডিফল্ট মার্জিন" : "Reset Defaults"}</span>
+            <span>{lang === "bn" ? "০ মিমি ডিফল্ট মার্জিন" : "Reset 0mm Margins"}</span>
           </Button>
         </div>
 
@@ -693,6 +696,19 @@ export function PosHardwareSettings({ lang = "en" }: { lang?: "en" | "bn" | stri
         <div className="flex flex-wrap items-center gap-2.5">
           <Button
             type="button"
+            onClick={() => setPreviewOpen(true)}
+            className="rounded-xl h-9 text-xs font-bold gap-2 bg-gradient-to-r from-emerald-600 to-teal-600 text-white hover:opacity-95 cursor-pointer shadow-sm"
+          >
+            <Eye className="size-3.5" />
+            <span>
+              {lang === "bn"
+                ? "রসিদ লাইভ প্রিভিউ ও কাস্টমাইজ"
+                : "Live Receipt Preview & Customizer"}
+            </span>
+          </Button>
+
+          <Button
+            type="button"
             onClick={() => handleTestPrint(false)}
             disabled={testingPrint}
             className="rounded-xl h-9 text-xs font-bold gap-2 bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer"
@@ -740,6 +756,13 @@ export function PosHardwareSettings({ lang = "en" }: { lang?: "en" | "bn" | stri
           ✓ {lang === "bn" ? "থার্মাল প্রিন্টারে সকল টেক্সট বোল্ড (Bold) সক্রিয়" : "All-Bold Thermal Text Active"}
         </Badge>
       </div>
+
+      {/* Invoice Live Preview & Customizer Dialog */}
+      <InvoicePreviewDialog
+        open={previewOpen}
+        onOpenChange={setPreviewOpen}
+        lang={lang}
+      />
     </Card>
   );
 }

@@ -144,20 +144,23 @@ async function createWindow() {
             try {
               const raw = localStorage.getItem("classicworld_pos_hardware_v1") || localStorage.getItem("dreamfashion_pos_hardware_v1") || "{}";
               const parsed = JSON.parse(raw);
+              const widthMm = Number(parsed.paperWidthMm) || (parsed.paperSize === "58mm" ? 58 : parsed.paperSize === "a4" ? 210 : 80);
               return {
                 printerName: parsed.devicePrinterName || "",
                 silent: parsed.automatePrinting !== false,
                 copies: Number(parsed.copies) || 1,
                 scaleFactor: Number(parsed.printScale) || 100,
+                pageSize: parsed.paperSize === "a4" ? "a4" : `${widthMm}mm`,
+                paperWidthMm: widthMm,
                 margins: {
-                  topMm: parsed.marginTopMm ?? 2,
-                  bottomMm: parsed.marginBottomMm ?? 4,
-                  leftMm: parsed.marginLeftMm ?? 2,
-                  rightMm: parsed.marginRightMm ?? 2,
+                  topMm: parsed.marginTopMm ?? 0,
+                  bottomMm: parsed.marginBottomMm ?? 0,
+                  leftMm: parsed.marginLeftMm ?? 0,
+                  rightMm: parsed.marginRightMm ?? 0,
                 },
               };
             } catch (_) {
-              return { printerName: "", silent: true, copies: 1, scaleFactor: 100 };
+              return { printerName: "", silent: true, copies: 1, scaleFactor: 100, pageSize: "80mm", paperWidthMm: 80 };
             }
           }
           if (window.electronPOS && typeof window.electronPOS.printSilent === "function") {
@@ -296,17 +299,20 @@ async function performSilentPrint(html, printerName, options = {}) {
   return new Promise(async (resolve) => {
     const useSilent = options.silent !== undefined ? Boolean(options.silent) : true;
     const copies = Math.max(1, Number(options.copies) || 1);
-    const scaleFactor = Math.max(50, Math.min(200, Number(options.scaleFactor) || 100));
+    const scaleFactor = Math.max(20, Math.min(250, Number(options.scaleFactor) || 100));
     const margins = options.margins || {};
-    const topMm = margins.topMm !== undefined ? Number(margins.topMm) : 2;
-    const bottomMm = margins.bottomMm !== undefined ? Number(margins.bottomMm) : 4;
-    const leftMm = margins.leftMm !== undefined ? Number(margins.leftMm) : 2;
-    const rightMm = margins.rightMm !== undefined ? Number(margins.rightMm) : 2;
+    const topMm = margins.topMm !== undefined ? Number(margins.topMm) : 0;
+    const bottomMm = margins.bottomMm !== undefined ? Number(margins.bottomMm) : 0;
+    const leftMm = margins.leftMm !== undefined ? Number(margins.leftMm) : 0;
+    const rightMm = margins.rightMm !== undefined ? Number(margins.rightMm) : 0;
 
-    const rawPageSize = String(options.pageSize || "80mm").toLowerCase();
-    const is58mm = rawPageSize.includes("58");
+    const rawPageSize = String(options.pageSize || "").toLowerCase();
     const isA4 = rawPageSize.includes("a4");
-    const cssPageSize = is58mm ? "58mm auto" : isA4 ? "A4 portrait" : "80mm auto";
+    const parsedMmMatch = rawPageSize.match(/(\d+)\s*mm/i);
+    const parsedMm = parsedMmMatch ? parseInt(parsedMmMatch[1], 10) : Number(options.paperWidthMm);
+    const widthMm = isA4 ? 210 : (Number.isFinite(parsedMm) && parsedMm > 0 ? parsedMm : 80);
+    const cssPageSize = isA4 ? "A4 portrait" : `${widthMm}mm auto`;
+    const widthMicrons = Math.max(15000, widthMm * 1000);
 
     // Prepare HTML: remove external font blocking that causes blank pages & enforce all-bold pure black thermal styling + margins
     let preparedHtml = String(html || "");
@@ -438,13 +444,10 @@ async function performSilentPrint(html, printerName, options = {}) {
         margins: { marginType: "none" },
       };
 
-      if (is58mm) {
-        printConfig.pageSize = { width: 58000, height: 297000 };
-      } else if (isA4) {
+      if (isA4) {
         printConfig.pageSize = "A4";
       } else {
-        // 80mm thermal roll (76mm printable width)
-        printConfig.pageSize = { width: 76000, height: 297000 };
+        printConfig.pageSize = { width: widthMicrons, height: 297000 };
       }
 
       if (useSilent && targetPrinter) {
@@ -471,11 +474,17 @@ async function performSilentPrint(html, printerName, options = {}) {
 }
 
 ipcMain.handle("pos:print-silent", async (event, options = {}) => {
-  const { html, printerName, silent, margins, copies, scaleFactor, pageSize } = options;
+  const { html, printerName, silent, margins, copies, scaleFactor, pageSize, paperWidthMm } = options;
   if (!html) return { success: false, error: "Empty HTML" };
   return await performSilentPrint(html, printerName, {
     silent,
     margins,
+    copies,
+    scaleFactor,
+    pageSize,
+    paperWidthMm,
+  });
+});
     copies,
     scaleFactor,
     pageSize,

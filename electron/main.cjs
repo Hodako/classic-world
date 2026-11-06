@@ -323,11 +323,11 @@ async function performSilentPrint(html, printerName, options = {}) {
         ? Number(options.paperHeightMm)
         : null;
 
-    const cssPageSize = isA4
-      ? "A4 portrait"
+    const cssPageRule = isA4
+      ? "size: A4 portrait !important;"
       : userHeightMm
-      ? `${widthMm}mm ${userHeightMm}mm`
-      : `${widthMm}mm auto`;
+      ? `size: ${widthMm}mm ${userHeightMm}mm !important;`
+      : "";
 
     // Prepare HTML: remove external font blocking that causes blank pages & enforce all-bold pure black thermal styling + margins
     let preparedHtml = String(html || "");
@@ -336,8 +336,8 @@ async function performSilentPrint(html, printerName, options = {}) {
     const thermalOverrideStyle = `
       <style id="pos-thermal-override">
         @page {
-          size: ${cssPageSize} !important;
-          margin: 0mm !important;
+          ${cssPageRule}
+          margin: 0 !important;
         }
         html, body {
           background: #ffffff !important;
@@ -347,12 +347,15 @@ async function performSilentPrint(html, printerName, options = {}) {
           print-color-adjust: exact !important;
           margin: 0 !important;
           padding: 0 !important;
+          height: auto !important;
+          min-height: 0 !important;
           width: 100% !important;
           vertical-align: top !important;
         }
         *, body, div, span, p, td, th, tr, table, strong, b, h1, h2, h3, h4, small {
           font-weight: 800 !important;
           color: #000000 !important;
+          margin-top: 0;
           font-family: 'Nirmala UI', 'Hind Siliguri', 'Noto Sans Bengali', 'SolaimanLipi', 'Segoe UI', Arial, sans-serif !important;
         }
         .receipt-wrap {
@@ -459,9 +462,10 @@ async function performSilentPrint(html, printerName, options = {}) {
         try {
           const measuredPx = await printWin.webContents.executeJavaScript(`
             (function() {
-              const wrap = document.querySelector('.receipt-wrap') || document.body;
+              const wrap = document.querySelector('.receipt-wrap');
+              if (!wrap) return 60;
               const rect = wrap.getBoundingClientRect();
-              const h = Math.max(wrap.scrollHeight, Math.ceil(rect.height), document.body.scrollHeight);
+              const h = Math.ceil(rect.height);
               return Math.ceil(h * 0.264583);
             })()
           `);
@@ -471,7 +475,7 @@ async function performSilentPrint(html, printerName, options = {}) {
         } catch (_) {}
       }
       if (!effectiveHeightMm || effectiveHeightMm <= 0) {
-        effectiveHeightMm = 80;
+        effectiveHeightMm = 60;
       }
 
       const heightMicrons = Math.max(15000, Math.round(effectiveHeightMm * 1000));
@@ -486,7 +490,7 @@ async function performSilentPrint(html, printerName, options = {}) {
                 st.id = 'pos-exact-page-size';
                 document.head.appendChild(st);
               }
-              st.textContent = '@page { size: ' + ${widthMm} + 'mm ' + ${effectiveHeightMm} + 'mm !important; margin: 0mm !important; }';
+              st.textContent = '@page { size: ' + ${widthMm} + 'mm ' + ${effectiveHeightMm} + 'mm !important; margin: 0 !important; }';
             })()
           `)
           .catch(() => {});
@@ -498,11 +502,7 @@ async function performSilentPrint(html, printerName, options = {}) {
         copies,
         scaleFactor,
         margins: {
-          marginType: "custom",
-          top: 0,
-          bottom: 0,
-          left: 0,
-          right: 0,
+          marginType: "none",
         },
         headerFooter: false,
       };

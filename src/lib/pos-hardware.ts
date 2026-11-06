@@ -18,11 +18,15 @@ export interface InvoiceVisibilitySettings {
   showInvoiceNo?: boolean;
   showDateTime?: boolean;
   showCashier?: boolean;
+  showCashierName?: boolean;
   showCustomer?: boolean;
+  showCustomerDetails?: boolean;
   showPaymentMode?: boolean;
   showChangeReturn?: boolean;
   showTerms?: boolean;
   showItemsHeader?: boolean;
+  showItemHeader?: boolean;
+  showDiscount?: boolean;
 }
 
 export interface PosHardwareSettings {

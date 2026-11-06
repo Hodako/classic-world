@@ -248,7 +248,7 @@ export default function PartiesPage() {
         </TabsList>
       </Tabs>
 
-      {parties.isLoading && (!parties.data || parties.data.length === 0) && (
+      {parties.isLoading && (!(parties as any).data || (parties as any).data.length === 0) && (
         <div className="space-y-2.5 py-4">
           {[1, 2, 3, 4].map(i => (
             <div key={i} className="h-16 rounded-xl border border-border/50 bg-muted/40 animate-pulse" />

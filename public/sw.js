@@ -1,4 +1,4 @@
-const CACHE_NAME = "classicworld-pwa-v55";
+const CACHE_NAME = "classicworld-pwa-v56";
 
 const PRECACHE_ASSETS = [
   "/",
@@ -14,6 +14,7 @@ const PRECACHE_ASSETS = [
   "/icons/cashbox_icon.png",
   "/icons/samity_icon.png",
   "/icons/online_sale_icon.png",
+  "/icons/purchases-icon.png",
 ];
 
 // ── Install: Pre-cache static assets & skip waiting ──────────────────────────
@@ -74,7 +75,7 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // 1. Navigation / HTML pages -> Always Network-First to get fresh chunk hashes
+  // 1. Navigation / HTML pages -> Always Network-First
   if (event.request.mode === "navigate") {
     event.respondWith(
       fetch(event.request)
@@ -90,9 +91,6 @@ self.addEventListener("fetch", (event) => {
         .catch(async () => {
           const cached = await caches.match(event.request);
           if (cached) return cached;
-
-          const fallback = (await caches.match("/")) || (await caches.match("/index.html"));
-          if (fallback) return fallback;
           return new Response("Offline", {
             status: 503,
             statusText: "Offline",
@@ -103,7 +101,7 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // 2. Next.js Static JS Chunks -> Network-First with cached fallback & safe Response
+  // 2. Next.js Static JS Chunks -> Cache fallback, guaranteed Response
   if (url.pathname.startsWith("/_next/static/")) {
     event.respondWith(
       fetch(event.request)

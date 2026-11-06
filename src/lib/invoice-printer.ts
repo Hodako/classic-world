@@ -70,6 +70,7 @@ export function buildInvoiceHtml(data: PrintInvoiceParams, settingsOverride?: Pa
   const bottomMm = hw.marginBottomMm ?? 0;
   const leftMm = hw.marginLeftMm ?? 0;
   const rightMm = hw.marginRightMm ?? 0;
+  const scalePct = hw.printScale || 100;
   const baseFontPt = Number(hw.fontSizePt) || 8.5;
   const titleFontPt = Number(hw.titleFontSizePt) || 12;
   const smallFontPt = Math.max(5.5, Number((baseFontPt - 1.2).toFixed(1)));
@@ -158,8 +159,8 @@ export function buildInvoiceHtml(data: PrintInvoiceParams, settingsOverride?: Pa
   <title>Invoice ${data.invoiceNo}</title>
   <style>
     @page { 
-      size: ${pageSizeRule}; 
-      margin: 0mm !important; 
+      ${heightMm ? `size: ${widthMm}mm ${heightMm}mm !important;` : `margin: 0 !important;`}
+      margin: 0 !important; 
     }
     *, *:before, *:after { 
       box-sizing: border-box !important; 
@@ -177,6 +178,8 @@ export function buildInvoiceHtml(data: PrintInvoiceParams, settingsOverride?: Pa
       color: #000000 !important; 
       font-weight: 800 !important;
       width: 100% !important; 
+      height: auto !important;
+      min-height: 0 !important;
       margin: 0 !important; 
       padding: 0 !important; 
       font-size: 8.5pt; 
@@ -187,7 +190,7 @@ export function buildInvoiceHtml(data: PrintInvoiceParams, settingsOverride?: Pa
     .receipt-wrap { 
       width: 100% !important; 
       max-width: ${targetWidth} !important; 
-      ${heightMm ? `height: ${targetHeight} !important; max-height: ${targetHeight} !important; overflow: hidden !important;` : ""}
+      ${heightMm ? `height: ${targetHeight} !important; max-height: ${targetHeight} !important; overflow: hidden !important;` : "height: auto !important; min-height: 0 !important;"}
       margin: 0 auto !important; 
       padding: ${topMm}mm ${rightMm}mm ${bottomMm}mm ${leftMm}mm !important; 
       box-sizing: border-box !important; 
@@ -196,7 +199,6 @@ export function buildInvoiceHtml(data: PrintInvoiceParams, settingsOverride?: Pa
       font-weight: 800 !important;
       color: #000000 !important;
       display: flow-root !important; /* Prevents margin collapse at top and bottom */
-    }
     }
     .dashed-line { 
       border-top: 1.5px dashed #000000 !important; 
@@ -225,10 +227,9 @@ export function buildInvoiceHtml(data: PrintInvoiceParams, settingsOverride?: Pa
     }
   </style>
 </head>
-<body>
-  <div class="receipt-wrap">
+<body><div class="receipt-wrap">
     <!-- Header -->
-    <div style="text-align: center; margin-bottom: 3px;">
+    <div style="text-align: center; margin: 0 0 3px 0; padding-top: 0;">
       ${
         vis.showShopName !== false
           ? `<div style="font-size: ${titleFontPt}pt; font-weight: 900; text-transform: uppercase; letter-spacing: 0.5px; color: #000000; line-height: 1.2;">
@@ -443,6 +444,17 @@ export async function printPwaInvoice(data: PrintInvoiceParams, settingsOverride
 
       const triggerPrint = () => {
         try {
+          const idoc = iframe.contentWindow?.document || iframe.contentDocument;
+          if (idoc && (!hw.paperHeightMm || hw.paperHeightMm === "auto")) {
+            const wrap = idoc.querySelector(".receipt-wrap");
+            if (wrap) {
+              const hMm = Math.max(30, Math.ceil(wrap.getBoundingClientRect().height * 0.264583) + topMm + bottomMm + 2);
+              const exactStyle = idoc.createElement("style");
+              exactStyle.id = "pwa-exact-roll-height";
+              exactStyle.textContent = `@page { size: ${widthMm}mm ${hMm}mm !important; margin: 0 !important; }`;
+              idoc.head.appendChild(exactStyle);
+            }
+          }
           iframe.contentWindow?.focus();
           iframe.contentWindow?.print();
         } catch (e) {

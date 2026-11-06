@@ -192,7 +192,7 @@ function startBridgeServer(customPrintHandler) {
       req.on("end", async () => {
         try {
           const payload = JSON.parse(body || "{}");
-          const { html, printerName, silent, margins, copies, scaleFactor, pageSize } = payload;
+          const { html, printerName, silent, margins, copies, scaleFactor, pageSize, paperWidthMm, paperHeightMm } = payload;
 
           if (typeof customPrintHandler === "function") {
             const result = await customPrintHandler(html, printerName, {
@@ -201,6 +201,8 @@ function startBridgeServer(customPrintHandler) {
               copies,
               scaleFactor,
               pageSize,
+              paperWidthMm,
+              paperHeightMm,
             });
             res.writeHead(200, { "Content-Type": "application/json" });
             res.end(JSON.stringify(result));

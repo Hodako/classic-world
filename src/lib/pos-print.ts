@@ -125,6 +125,8 @@ export async function executeDirectSilentPrint(
         scaleFactor: effectiveScale,
         margins: effectiveMargins,
         pageSize: overrideOptions?.pageSize,
+        paperWidthMm: overrideOptions?.paperWidthMm || hw.paperWidthMm || 80,
+        paperHeightMm: overrideOptions?.paperHeightMm !== undefined ? overrideOptions.paperHeightMm : (hw.paperHeightMm || "auto"),
       }),
       signal: controller.signal,
     });

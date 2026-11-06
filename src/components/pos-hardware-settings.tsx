@@ -19,14 +19,30 @@ import {
   Check,
   RotateCcw,
   Eye,
+  Scissors,
+  Plus,
+  Trash2,
+  FileText,
+  Type,
+  Layers,
 } from "lucide-react";
 import { executeDirectSilentPrint } from "@/lib/pos-print";
 import {
   getPosHardwareSettings,
   savePosHardwareSettings,
   DEFAULT_HARDWARE_SETTINGS,
+  DEFAULT_VISIBILITY_SETTINGS,
   type PosHardwareSettings as PosHwConfig,
+  type CustomInvoiceLine,
+  type InvoiceVisibilitySettings,
 } from "@/lib/pos-hardware";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { InvoicePreviewDialog } from "@/components/invoice-preview-dialog";
 import { toast } from "sonner";
 
@@ -45,6 +61,12 @@ export function PosHardwareSettings({ lang = "en" }: { lang?: "en" | "bn" | stri
   const [previewOpen, setPreviewOpen] = useState(false);
 
   const [hwConfig, setHwConfig] = useState<PosHwConfig>(DEFAULT_HARDWARE_SETTINGS);
+
+  // New Custom Line state for direct editing in settings
+  const [newLineText, setNewLineText] = useState("");
+  const [newLinePos, setNewLinePos] = useState<"header" | "before_items" | "after_items" | "footer">("header");
+  const [newLineAlign, setNewLineAlign] = useState<"left" | "center" | "right">("center");
+  const [newLineBold, setNewLineBold] = useState(true);
 
   const [status, setStatus] = useState<{
     isConnected: boolean;
@@ -70,10 +92,44 @@ export function PosHardwareSettings({ lang = "en" }: { lang?: "en" | "bn" | stri
     if (!silentToast) {
       toast.success(
         lang === "bn"
-          ? "প্রিন্টার এবং প্রিন্টিং প্রেফারেন্স সংরক্ষিত হয়েছে!"
-          : "Printer & printing preferences saved for this device!"
+          ? "প্রিন্টার ও ইনভয়েস সেটিংস সংরক্ষিত হয়েছে!"
+          : "Printer & invoice settings saved for this device!"
       );
     }
+  };
+
+  const updateVisibility = (patch: Partial<InvoiceVisibilitySettings>) => {
+    updateHw({
+      visibility: {
+        ...(hwConfig.visibility || DEFAULT_VISIBILITY_SETTINGS),
+        ...patch,
+      },
+    });
+  };
+
+  const handleAddCustomLine = () => {
+    const text = newLineText.trim();
+    if (!text) {
+      toast.error(lang === "bn" ? "লাইনের টেক্সট লিখুন" : "Please enter line text");
+      return;
+    }
+    const newLine: CustomInvoiceLine = {
+      id: "line_" + Date.now() + "_" + Math.random().toString(36).slice(2, 6),
+      text,
+      position: newLinePos,
+      align: newLineAlign,
+      bold: newLineBold,
+    };
+    const nextLines = [...(hwConfig.customLines || []), newLine];
+    updateHw({ customLines: nextLines });
+    setNewLineText("");
+    toast.success(lang === "bn" ? "কাস্টম লাইন যোগ করা হয়েছে" : "Custom line added");
+  };
+
+  const handleRemoveCustomLine = (id: string) => {
+    const nextLines = (hwConfig.customLines || []).filter((l) => l.id !== id);
+    updateHw({ customLines: nextLines });
+    toast.success(lang === "bn" ? "লাইন মুছে ফেলা হয়েছে" : "Line removed");
   };
 
   const checkHardware = async () => {
@@ -452,7 +508,7 @@ export function PosHardwareSettings({ lang = "en" }: { lang?: "en" | "bn" | stri
               <Printer className="size-4 text-primary shrink-0" />
               <span>
                 {lang === "bn"
-                  ? "বিক্রি সম্পন্ন হলেই অটো-প্রিন্ট (Auto-Print on Sale)"
+                  ? "বিক্রি সম্পন্ন হলেই অটো-প্রিন্ট"
                   : "Auto-Print Receipt After Recording Sale"}
               </span>
             </div>
@@ -462,8 +518,8 @@ export function PosHardwareSettings({ lang = "en" }: { lang?: "en" | "bn" | stri
                   ? "চালু আছে: বিক্রয় রেকর্ড করার সাথে সাথেই স্বয়ংক্রিয়ভাবে রসিদ প্রিন্ট হবে।"
                   : "ON: Completing a sale automatically triggers receipt printing."
                 : lang === "bn"
-                  ? "বন্ধ আছে: শুধুমাত্র প্রিন্ট [Space] বাটনে ক্লিক করলে রসিদ প্রিন্ট হবে।"
-                  : "OFF: Prints only when you click the Print [Space] button."}
+                  ? "বন্ধ আছে: শুধুমাত্র প্রিন্ট বাটনে ক্লিক করলে রসিদ প্রিন্ট হবে।"
+                  : "OFF: Prints only when you click the Print button."}
             </p>
           </div>
           <Switch
@@ -481,13 +537,13 @@ export function PosHardwareSettings({ lang = "en" }: { lang?: "en" | "bn" | stri
               <Settings2 className="size-4 text-primary" />
               <span>
                 {lang === "bn"
-                  ? "এই ডিভাইসের ডিফল্ট প্রিন্টার নির্বাচন ও Windows OS কন্ট্রোল"
+                  ? "ডিফল্ট প্রিন্টার নির্বাচন ও প্রিন্টার কন্ট্রোল"
                   : "Device Default Printer & Real Windows OS Printer Controls"}
               </span>
             </h3>
             <p className="text-[11px] text-muted-foreground">
               {lang === "bn"
-                ? "প্রতিটি কম্পিউটারের জন্য আলাদা প্রিন্টার সিলেক্ট করতে পারবেন এবং সরাসরি Windows Printing Preferences ওপেন করতে পারবেন"
+                ? "প্রতিটি কম্পিউটারের জন্য আলাদা প্রিন্টার সিলেক্ট করতে পারবেন এবং সরাসরি প্রিন্টিং প্রেফারেন্স ওপেন করতে পারবেন"
                 : "Each PC/terminal remembers its own selected printer. Open native Windows driver preferences anytime."}
             </p>
           </div>
@@ -501,7 +557,7 @@ export function PosHardwareSettings({ lang = "en" }: { lang?: "en" | "bn" | stri
         <div className="grid grid-cols-1 md:grid-cols-12 gap-2.5 items-end">
           <div className="md:col-span-6 space-y-1.5">
             <Label className="text-xs font-semibold">
-              {lang === "bn" ? "প্রিন্টার নির্বাচন করুন (Select Printer for this PC)" : "Select Printer for This Device"}
+              {lang === "bn" ? "প্রিন্টার নির্বাচন করুন" : "Select Printer for This Device"}
             </Label>
             <select
               value={hwConfig.devicePrinterName}
@@ -510,12 +566,12 @@ export function PosHardwareSettings({ lang = "en" }: { lang?: "en" | "bn" | stri
             >
               <option value="">
                 {lang === "bn"
-                  ? `সিস্টেম ডিফল্ট প্রিন্টার (${status.defaultPrinter || "Windows Default"})`
+                  ? "সিস্টেম ডিফল্ট প্রিন্টার"
                   : `Windows System Default (${status.defaultPrinter || "Auto"})`}
               </option>
               {status.printers.map((p) => (
                 <option key={p.name} value={p.name}>
-                  {p.name} {p.isDefault ? "(Windows Default)" : ""}
+                  {p.name} {p.isDefault ? "(Default)" : ""}
                 </option>
               ))}
             </select>
@@ -531,7 +587,7 @@ export function PosHardwareSettings({ lang = "en" }: { lang?: "en" | "bn" | stri
               className="h-10 rounded-xl text-xs font-semibold gap-1.5 cursor-pointer"
             >
               <Check className="size-3.5 text-emerald-500" />
-              <span>{lang === "bn" ? "Windows ডিফল্ট করুন" : "Set as Windows Default"}</span>
+              <span>{lang === "bn" ? "ডিফল্ট প্রিন্টার করুন" : "Set as Windows Default"}</span>
             </Button>
 
             <Button
@@ -542,7 +598,7 @@ export function PosHardwareSettings({ lang = "en" }: { lang?: "en" | "bn" | stri
               className="h-10 rounded-xl text-xs font-bold gap-1.5 border-primary/40 text-primary hover:bg-primary/10 cursor-pointer"
             >
               <Sliders className="size-3.5" />
-              <span>{lang === "bn" ? "Windows প্রিন্টিং প্রেফারেন্স" : "Windows Printing Preferences"}</span>
+              <span>{lang === "bn" ? "প্রিন্টিং প্রেফারেন্স" : "Windows Printing Preferences"}</span>
             </Button>
 
             <Button
@@ -567,13 +623,13 @@ export function PosHardwareSettings({ lang = "en" }: { lang?: "en" | "bn" | stri
               <Sliders className="size-4 text-primary" />
               <span>
                 {lang === "bn"
-                  ? "থার্মাল প্রিন্টিং মার্জিন, স্কেল এবং কপি সেটিংস"
+                  ? "থার্মাল প্রিন্টিং সাইজ, মার্জিন ও স্কেল সেটিংস"
                   : "Thermal Printing Margins (mm), Scale & Copies"}
               </span>
             </h3>
             <p className="text-[11px] text-muted-foreground">
               {lang === "bn"
-                ? "প্রিন্টার অনুযায়ী রসিদের চারপাশের মার্জিন (মিলিমিটারে) ও জুম স্কেল কাস্টমাইজ করুন (সকল টেক্সট অটোমেটিক বোল্ড হবে)"
+                ? "প্রিন্টার অনুযায়ী রসিদের প্রস্থ, উচ্চতা, চারপাশের মার্জিন ও জুম স্কেল কাস্টমাইজ করুন (সকল টেক্সট অটোমেটিক বোল্ড হবে)"
                 : "Adjust top, bottom, left, and right receipt margins in millimeters to match your thermal printer roll"}
             </p>
           </div>
@@ -594,14 +650,14 @@ export function PosHardwareSettings({ lang = "en" }: { lang?: "en" | "bn" | stri
             className="h-7 px-2.5 text-[11px] gap-1 text-muted-foreground hover:text-foreground cursor-pointer"
           >
             <RotateCcw className="size-3" />
-            <span>{lang === "bn" ? "০ মিমি ডিফল্ট মার্জিন" : "Reset 0mm Margins"}</span>
+            <span>{lang === "bn" ? "০ মিমি মার্জিন রিসেট" : "Reset 0mm Margins"}</span>
           </Button>
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
           <div className="space-y-1">
             <Label className="text-[11px] font-semibold">
-              {lang === "bn" ? "রোল প্রস্থ (Width mm)" : "Width (mm)"}
+              {lang === "bn" ? "রোল প্রস্থ" : "Width (mm)"}
             </Label>
             <Input
               type="number"
@@ -615,7 +671,7 @@ export function PosHardwareSettings({ lang = "en" }: { lang?: "en" | "bn" | stri
 
           <div className="space-y-1">
             <Label className="text-[11px] font-semibold">
-              {lang === "bn" ? "রোল উচ্চতা (Height mm)" : "Height (mm)"}
+              {lang === "bn" ? "রোল উচ্চতা" : "Height (mm)"}
             </Label>
             <Input
               value={hwConfig.paperHeightMm === "auto" || !hwConfig.paperHeightMm ? "auto" : String(hwConfig.paperHeightMm)}
@@ -635,7 +691,7 @@ export function PosHardwareSettings({ lang = "en" }: { lang?: "en" | "bn" | stri
 
           <div className="space-y-1">
             <Label className="text-[11px] font-semibold">
-              {lang === "bn" ? "উপরের মার্জিন (Top mm)" : "Top Margin (mm)"}
+              {lang === "bn" ? "উপরের মার্জিন" : "Top Margin (mm)"}
             </Label>
             <Input
               type="number"
@@ -650,7 +706,7 @@ export function PosHardwareSettings({ lang = "en" }: { lang?: "en" | "bn" | stri
 
           <div className="space-y-1">
             <Label className="text-[11px] font-semibold">
-              {lang === "bn" ? "নিচের মার্জিন (Bottom mm)" : "Bottom Margin (mm)"}
+              {lang === "bn" ? "নিচের মার্জিন" : "Bottom Margin (mm)"}
             </Label>
             <Input
               type="number"
@@ -665,7 +721,7 @@ export function PosHardwareSettings({ lang = "en" }: { lang?: "en" | "bn" | stri
 
           <div className="space-y-1">
             <Label className="text-[11px] font-semibold">
-              {lang === "bn" ? "বাম মার্জিন (Left mm)" : "Left Margin (mm)"}
+              {lang === "bn" ? "বাম মার্জিন" : "Left Margin (mm)"}
             </Label>
             <Input
               type="number"
@@ -680,7 +736,7 @@ export function PosHardwareSettings({ lang = "en" }: { lang?: "en" | "bn" | stri
 
           <div className="space-y-1">
             <Label className="text-[11px] font-semibold">
-              {lang === "bn" ? "ডান মার্জিন (Right mm)" : "Right Margin (mm)"}
+              {lang === "bn" ? "ডান মার্জিন" : "Right Margin (mm)"}
             </Label>
             <Input
               type="number"
@@ -695,7 +751,7 @@ export function PosHardwareSettings({ lang = "en" }: { lang?: "en" | "bn" | stri
 
           <div className="space-y-1">
             <Label className="text-[11px] font-semibold">
-              {lang === "bn" ? "প্রিন্ট স্কেল (Scale %)" : "Print Scale (%)"}
+              {lang === "bn" ? "প্রিন্ট স্কেল" : "Print Scale (%)"}
             </Label>
             <Input
               type="number"
@@ -710,7 +766,7 @@ export function PosHardwareSettings({ lang = "en" }: { lang?: "en" | "bn" | stri
 
           <div className="space-y-1">
             <Label className="text-[11px] font-semibold">
-              {lang === "bn" ? "কপি সংখ্যা (Copies)" : "Copies"}
+              {lang === "bn" ? "কপি সংখ্যা" : "Copies"}
             </Label>
             <Input
               type="number"
@@ -723,6 +779,360 @@ export function PosHardwareSettings({ lang = "en" }: { lang?: "en" | "bn" | stri
             />
           </div>
         </div>
+      </div>
+
+      {/* Row 4: Invoice Texts Customization (দোকানের নাম, ঠিকানা, ফোন, শর্তাবলী ইত্যাদি) */}
+      <div className="p-4 rounded-2xl bg-muted/20 border border-border/70 space-y-3.5">
+        <div>
+          <h3 className="text-xs sm:text-sm font-bold text-foreground flex items-center gap-1.5">
+            <FileText className="size-4 text-primary" />
+            <span>
+              {lang === "bn" ? "রসিদ ও ইনভয়েসের টেক্সট পরিবর্তন" : "Customize Invoice Texts"}
+            </span>
+          </h3>
+          <p className="text-[11px] text-muted-foreground">
+            {lang === "bn"
+              ? "ইনভয়েসে প্রদর্শিত দোকানের নাম, স্লোগান, ঠিকানা, ফোন নম্বর ও ফুটার শর্তাবলী সরাসরি পরিবর্তন করুন"
+              : "Directly change shop header name, tagline, address, phone numbers and return policy terms"}
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          <div className="space-y-1">
+            <Label className="text-[11px] font-semibold">
+              {lang === "bn" ? "দোকান / ব্যবসার নাম" : "Shop / Business Name"}
+            </Label>
+            <Input
+              value={hwConfig.customHeaderTitle ?? ""}
+              onChange={(e) => updateHw({ customHeaderTitle: e.target.value }, true)}
+              placeholder={lang === "bn" ? "ডিফল্ট নাম (যেমন: CLASSIC WORLD)" : "Shop Name"}
+              className="h-9 text-xs font-bold bg-background"
+            />
+          </div>
+
+          <div className="space-y-1">
+            <Label className="text-[11px] font-semibold">
+              {lang === "bn" ? "ট্যাগলাইন বা স্লোগান" : "Tagline / Subtitle"}
+            </Label>
+            <Input
+              value={hwConfig.customSubtitle ?? ""}
+              onChange={(e) => updateHw({ customSubtitle: e.target.value }, true)}
+              placeholder={lang === "bn" ? "যেমন: এক্সক্লুসিভ ফ্যাশন কালেকশন" : "Tagline"}
+              className="h-9 text-xs bg-background"
+            />
+          </div>
+
+          <div className="space-y-1">
+            <Label className="text-[11px] font-semibold">
+              {lang === "bn" ? "দোকানের ঠিকানা" : "Shop Address"}
+            </Label>
+            <Input
+              value={hwConfig.customAddress ?? ""}
+              onChange={(e) => updateHw({ customAddress: e.target.value }, true)}
+              placeholder={lang === "bn" ? "দোকান নং #১২, নিউ মার্কেট, ঢাকা" : "Shop Address"}
+              className="h-9 text-xs bg-background"
+            />
+          </div>
+
+          <div className="space-y-1">
+            <Label className="text-[11px] font-semibold">
+              {lang === "bn" ? "মোবাইল নম্বর" : "Shop Phone Number(s)"}
+            </Label>
+            <Input
+              value={hwConfig.customPhone ?? ""}
+              onChange={(e) => updateHw({ customPhone: e.target.value }, true)}
+              placeholder={lang === "bn" ? "01712-345678, 01898-765432" : "Phone Numbers"}
+              className="h-9 text-xs font-mono bg-background"
+            />
+          </div>
+
+          <div className="space-y-1 sm:col-span-2">
+            <Label className="text-[11px] font-semibold">
+              {lang === "bn" ? "ফুটার নোট বা শর্তাবলী" : "Footer Note & Return Terms"}
+            </Label>
+            <Input
+              value={hwConfig.customFooterNote ?? ""}
+              onChange={(e) => updateHw({ customFooterNote: e.target.value }, true)}
+              placeholder={lang === "bn" ? "আমাদের সাথে কেনাকাটা করার জন্য ধন্যবাদ! ৭ দিনের মধ্যে ইনভয়েস সহ পরিবর্তনযোগ্য" : "Footer note"}
+              className="h-9 text-xs bg-background"
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Row 5: Standard Lines Visibility (Hide / Show Existing Lines) */}
+      <div className="p-4 rounded-2xl bg-muted/20 border border-border/70 space-y-3.5">
+        <div>
+          <h3 className="text-xs sm:text-sm font-bold text-foreground flex items-center gap-1.5">
+            <Layers className="size-4 text-primary" />
+            <span>
+              {lang === "bn" ? "ইনভয়েসের বিদ্যমান লাইনসমূহ মুছুন বা দেখান (অন/অফ)" : "Hide or Show Existing Invoice Lines"}
+            </span>
+          </h3>
+          <p className="text-[11px] text-muted-foreground">
+            {lang === "bn"
+              ? "রসিদ থেকে যেকোনো লাইন বন্ধ (হাইড) করতে সুইচটি অফ করে দিন"
+              : "Toggle any standard receipt line on or off to match your desired receipt layout"}
+          </p>
+        </div>
+
+        {(() => {
+          const vis = { ...DEFAULT_VISIBILITY_SETTINGS, ...(hwConfig.visibility || {}) };
+          return (
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5 text-xs">
+              <label className="flex items-center justify-between p-2.5 rounded-xl bg-background border border-border/60 cursor-pointer">
+                <span className="font-semibold">{lang === "bn" ? "দোকানের নাম" : "Shop Name"}</span>
+                <Switch
+                  checked={vis.showShopName !== false}
+                  onCheckedChange={(c) => updateVisibility({ showShopName: c })}
+                />
+              </label>
+
+              <label className="flex items-center justify-between p-2.5 rounded-xl bg-background border border-border/60 cursor-pointer">
+                <span className="font-semibold">{lang === "bn" ? "ট্যাগলাইন" : "Tagline"}</span>
+                <Switch
+                  checked={vis.showTagline !== false}
+                  onCheckedChange={(c) => updateVisibility({ showTagline: c })}
+                />
+              </label>
+
+              <label className="flex items-center justify-between p-2.5 rounded-xl bg-background border border-border/60 cursor-pointer">
+                <span className="font-semibold">{lang === "bn" ? "দোকানের ঠিকানা" : "Shop Address"}</span>
+                <Switch
+                  checked={vis.showShopAddress !== false}
+                  onCheckedChange={(c) => updateVisibility({ showShopAddress: c })}
+                />
+              </label>
+
+              <label className="flex items-center justify-between p-2.5 rounded-xl bg-background border border-border/60 cursor-pointer">
+                <span className="font-semibold">{lang === "bn" ? "ফোন নম্বর" : "Shop Phone"}</span>
+                <Switch
+                  checked={vis.showShopPhone !== false}
+                  onCheckedChange={(c) => updateVisibility({ showShopPhone: c })}
+                />
+              </label>
+
+              <label className="flex items-center justify-between p-2.5 rounded-xl bg-background border border-border/60 cursor-pointer">
+                <span className="font-semibold">{lang === "bn" ? "ইনভয়েস নম্বর" : "Invoice No"}</span>
+                <Switch
+                  checked={vis.showInvoiceNo !== false}
+                  onCheckedChange={(c) => updateVisibility({ showInvoiceNo: c })}
+                />
+              </label>
+
+              <label className="flex items-center justify-between p-2.5 rounded-xl bg-background border border-border/60 cursor-pointer">
+                <span className="font-semibold">{lang === "bn" ? "তারিখ ও সময়" : "Date & Time"}</span>
+                <Switch
+                  checked={vis.showDateTime !== false}
+                  onCheckedChange={(c) => updateVisibility({ showDateTime: c })}
+                />
+              </label>
+
+              <label className="flex items-center justify-between p-2.5 rounded-xl bg-background border border-border/60 cursor-pointer">
+                <span className="font-semibold">{lang === "bn" ? "ক্যাশিয়ার নাম" : "Cashier Name"}</span>
+                <Switch
+                  checked={vis.showCashierName !== false}
+                  onCheckedChange={(c) => updateVisibility({ showCashierName: c })}
+                />
+              </label>
+
+              <label className="flex items-center justify-between p-2.5 rounded-xl bg-background border border-border/60 cursor-pointer">
+                <span className="font-semibold">{lang === "bn" ? "ক্রেতার তথ্য" : "Customer Details"}</span>
+                <Switch
+                  checked={vis.showCustomerDetails !== false}
+                  onCheckedChange={(c) => updateVisibility({ showCustomerDetails: c })}
+                />
+              </label>
+
+              <label className="flex items-center justify-between p-2.5 rounded-xl bg-background border border-border/60 cursor-pointer">
+                <span className="font-semibold">{lang === "bn" ? "আইটেম টেবিল হেডার" : "Item Table Header"}</span>
+                <Switch
+                  checked={vis.showItemHeader !== false}
+                  onCheckedChange={(c) => updateVisibility({ showItemHeader: c })}
+                />
+              </label>
+
+              <label className="flex items-center justify-between p-2.5 rounded-xl bg-background border border-border/60 cursor-pointer">
+                <span className="font-semibold">{lang === "bn" ? "মোট মূল্য" : "Subtotal"}</span>
+                <Switch
+                  checked={vis.showSubtotal !== false}
+                  onCheckedChange={(c) => updateVisibility({ showSubtotal: c })}
+                />
+              </label>
+
+              <label className="flex items-center justify-between p-2.5 rounded-xl bg-background border border-border/60 cursor-pointer">
+                <span className="font-semibold">{lang === "bn" ? "ডিসকাউন্ট" : "Discount"}</span>
+                <Switch
+                  checked={vis.showDiscount !== false}
+                  onCheckedChange={(c) => updateVisibility({ showDiscount: c })}
+                />
+              </label>
+
+              <label className="flex items-center justify-between p-2.5 rounded-xl bg-background border border-border/60 cursor-pointer">
+                <span className="font-semibold">{lang === "bn" ? "সর্বমোট টাকা" : "Total"}</span>
+                <Switch
+                  checked={vis.showTotal !== false}
+                  onCheckedChange={(c) => updateVisibility({ showTotal: c })}
+                />
+              </label>
+
+              <label className="flex items-center justify-between p-2.5 rounded-xl bg-background border border-border/60 cursor-pointer">
+                <span className="font-semibold">{lang === "bn" ? "পরিশোধ" : "Paid"}</span>
+                <Switch
+                  checked={vis.showPaid !== false}
+                  onCheckedChange={(c) => updateVisibility({ showPaid: c })}
+                />
+              </label>
+
+              <label className="flex items-center justify-between p-2.5 rounded-xl bg-background border border-border/60 cursor-pointer">
+                <span className="font-semibold">{lang === "bn" ? "বকেয়া" : "Due"}</span>
+                <Switch
+                  checked={vis.showDue !== false}
+                  onCheckedChange={(c) => updateVisibility({ showDue: c })}
+                />
+              </label>
+
+              <label className="flex items-center justify-between p-2.5 rounded-xl bg-background border border-border/60 cursor-pointer">
+                <span className="font-semibold">{lang === "bn" ? "ফেরত টাকা" : "Change Return"}</span>
+                <Switch
+                  checked={vis.showChangeReturn !== false}
+                  onCheckedChange={(c) => updateVisibility({ showChangeReturn: c })}
+                />
+              </label>
+
+              <label className="flex items-center justify-between p-2.5 rounded-xl bg-background border border-border/60 cursor-pointer">
+                <span className="font-semibold">{lang === "bn" ? "পেমেন্ট মাধ্যম" : "Payment Mode"}</span>
+                <Switch
+                  checked={vis.showPaymentMode !== false}
+                  onCheckedChange={(c) => updateVisibility({ showPaymentMode: c })}
+                />
+              </label>
+
+              <label className="flex items-center justify-between p-2.5 rounded-xl bg-background border border-border/60 cursor-pointer">
+                <span className="font-semibold">{lang === "bn" ? "শর্তাবলী ও ফুটার" : "Terms & Policy"}</span>
+                <Switch
+                  checked={vis.showTerms !== false}
+                  onCheckedChange={(c) => updateVisibility({ showTerms: c })}
+                />
+              </label>
+            </div>
+          );
+        })()}
+      </div>
+
+      {/* Row 6: Custom Lines Manager (Add & Remove Custom Invoice Lines) */}
+      <div className="p-4 rounded-2xl bg-muted/20 border border-border/70 space-y-3.5">
+        <div>
+          <h3 className="text-xs sm:text-sm font-bold text-foreground flex items-center gap-1.5">
+            <Plus className="size-4 text-primary" />
+            <span>
+              {lang === "bn" ? "কাস্টম লাইন যোগ ও পরিচালনা" : "Add & Manage Custom Lines"}
+            </span>
+          </h3>
+          <p className="text-[11px] text-muted-foreground">
+            {lang === "bn"
+              ? "রসিদের উপরে, আইটেমের আগে, পরে বা নিচে যেকোনো অতিরিক্ত তথ্য, নোটিশ বা লাইন যোগ করুন"
+              : "Add custom announcements, payment notice, or remarks at header, before/after items, or footer"}
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-end">
+          <div className="sm:col-span-5 space-y-1">
+            <Label className="text-[11px] font-semibold">{lang === "bn" ? "লাইনের টেক্সট" : "Line Text"}</Label>
+            <Input
+              value={newLineText}
+              onChange={(e) => setNewLineText(e.target.value)}
+              placeholder={lang === "bn" ? "যেমন: বিকাশ মার্চেন্ট নং 01700..." : "Enter line text"}
+              className="h-9 text-xs bg-background"
+            />
+          </div>
+
+          <div className="sm:col-span-3 space-y-1">
+            <Label className="text-[11px] font-semibold">{lang === "bn" ? "অবস্থান" : "Position"}</Label>
+            <Select value={newLinePos} onValueChange={(v: any) => setNewLinePos(v)}>
+              <SelectTrigger className="h-9 text-xs bg-background">
+                <SelectValue placeholder="Position" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="header">{lang === "bn" ? "হেডার (উপরে)" : "Header"}</SelectItem>
+                <SelectItem value="before_items">{lang === "bn" ? "আইটেমের পূর্বে" : "Before Items"}</SelectItem>
+                <SelectItem value="after_items">{lang === "bn" ? "আইটেমের পরে" : "After Items"}</SelectItem>
+                <SelectItem value="footer">{lang === "bn" ? "ফুটার (নিচে)" : "Footer"}</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="sm:col-span-2 space-y-1">
+            <Label className="text-[11px] font-semibold">{lang === "bn" ? "অ্যালাইনমেন্ট" : "Align"}</Label>
+            <Select value={newLineAlign} onValueChange={(v: any) => setNewLineAlign(v)}>
+              <SelectTrigger className="h-9 text-xs bg-background">
+                <SelectValue placeholder="Align" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="center">{lang === "bn" ? "মাঝখানে" : "Center"}</SelectItem>
+                <SelectItem value="left">{lang === "bn" ? "বামে" : "Left"}</SelectItem>
+                <SelectItem value="right">{lang === "bn" ? "ডানে" : "Right"}</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="sm:col-span-2 flex items-center justify-between gap-1 bg-background px-3 h-9 rounded-xl border border-input">
+            <span className="text-xs font-bold">{lang === "bn" ? "বোল্ড" : "Bold"}</span>
+            <Switch checked={newLineBold} onCheckedChange={setNewLineBold} />
+          </div>
+
+          <div className="sm:col-span-12">
+            <Button
+              type="button"
+              onClick={handleAddCustomLine}
+              size="sm"
+              className="w-full h-9 text-xs font-bold gap-1.5 cursor-pointer"
+            >
+              <Plus className="size-3.5" />
+              <span>{lang === "bn" ? "ইনভয়েসে লাইনটি যোগ করুন" : "Add Line to Invoice"}</span>
+            </Button>
+          </div>
+        </div>
+
+        {/* List of Configured Custom Lines */}
+        {hwConfig.customLines && hwConfig.customLines.length > 0 && (
+          <div className="space-y-1.5 pt-2 border-t border-border/50">
+            <Label className="text-xs font-bold text-foreground">
+              {lang === "bn" ? "যুক্ত করা কাস্টম লাইনসমূহ:" : "Configured Custom Lines:"}
+            </Label>
+            <div className="space-y-1.5">
+              {hwConfig.customLines.map((l) => (
+                <div
+                  key={l.id}
+                  className="p-2.5 rounded-xl bg-background border border-border/70 flex items-center justify-between gap-2 text-xs"
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Badge variant="outline" className="text-[10px] shrink-0 font-mono">
+                      {l.position === "header"
+                        ? lang === "bn" ? "হেডার" : "Header"
+                        : l.position === "before_items"
+                        ? lang === "bn" ? "আইটেমের পূর্বে" : "Before Items"
+                        : l.position === "after_items"
+                        ? lang === "bn" ? "আইটেমের পরে" : "After Items"
+                        : lang === "bn" ? "ফুটার" : "Footer"}
+                    </Badge>
+                    <span className={`truncate ${l.bold ? "font-bold" : ""}`}>{l.text}</span>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => handleRemoveCustomLine(l.id)}
+                    className="h-7 w-7 text-destructive hover:bg-destructive/10 cursor-pointer shrink-0"
+                    title={lang === "bn" ? "লাইন মুছে ফেলুন" : "Delete Line"}
+                  >
+                    <Trash2 className="size-3.5" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Action / Test Buttons */}
@@ -787,7 +1197,7 @@ export function PosHardwareSettings({ lang = "en" }: { lang?: "en" | "bn" | stri
         </div>
 
         <Badge variant="outline" className="text-[11px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30">
-          ✓ {lang === "bn" ? "থার্মাল প্রিন্টারে সকল টেক্সট বোল্ড (Bold) সক্রিয়" : "All-Bold Thermal Text Active"}
+          ✓ {lang === "bn" ? "থার্মাল প্রিন্টারে সকল টেক্সট বোল্ড সক্রিয়" : "All-Bold Thermal Text Active"}
         </Badge>
       </div>
 

@@ -27,6 +27,10 @@ export interface InvoiceVisibilitySettings {
   showItemsHeader?: boolean;
   showItemHeader?: boolean;
   showDiscount?: boolean;
+  showSubtotal?: boolean;
+  showTotal?: boolean;
+  showPaid?: boolean;
+  showDue?: boolean;
 }
 
 export interface PosHardwareSettings {
@@ -82,11 +86,19 @@ export const DEFAULT_VISIBILITY_SETTINGS: InvoiceVisibilitySettings = {
   showInvoiceNo: true,
   showDateTime: true,
   showCashier: true,
+  showCashierName: true,
   showCustomer: true,
+  showCustomerDetails: true,
   showPaymentMode: true,
   showChangeReturn: true,
   showTerms: true,
   showItemsHeader: true,
+  showItemHeader: true,
+  showDiscount: true,
+  showSubtotal: true,
+  showTotal: true,
+  showPaid: true,
+  showDue: true,
 };
 
 export const DEFAULT_HARDWARE_SETTINGS: PosHardwareSettings = {

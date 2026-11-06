@@ -88,6 +88,7 @@ import {
   Calendar,
 } from "lucide-react";
 import { getPosPaperConfig, savePosPaperConfig, DEFAULT_POS_CONFIG, type PosPaperSettings } from "@/lib/pos-print";
+import { PosHardwareSettings } from "@/components/pos-hardware-settings";
 import { findProductsByScannedCode, getPosHardwareSettings, savePosHardwareSettings, type ReceiptPrintMode } from "@/lib/pos-hardware";
 import { printPwaInvoice } from "@/lib/invoice-printer";
 import { getProducts } from "@/lib/queries";
@@ -2080,6 +2081,9 @@ export default function SettingsPage() {
           {/* ── TAB 2: POS PRINTING & INVOICE CUSTOMIZATION ───────────────────── */}
           {settingsTab === "printing" && (
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+              <div className="lg:col-span-12">
+                <PosHardwareSettings lang={lang} />
+              </div>
               <Card className="lg:col-span-7 p-5 sm:p-6 rounded-3xl bg-card border-border/80 shadow-xs space-y-5">
                 <div className="flex items-center justify-between border-b border-border/60 pb-3">
                   <div className="flex items-center gap-2.5 text-primary">

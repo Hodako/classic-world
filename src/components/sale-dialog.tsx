@@ -357,6 +357,32 @@ export function SaleDialog({
       playErrorSound();
       return toast.error(t("select_product"));
     }
+
+    // STRICT SELL PRICE VALIDATION: Block sale from recording if ANY item has empty or <= 0 price
+    const emptyPriceIdx = cart.findIndex((line) => {
+      const pStr = String(line.sellPrice ?? "").trim();
+      const num = Number(pStr);
+      return pStr === "" || isNaN(num) || num <= 0;
+    });
+
+    if (emptyPriceIdx !== -1) {
+      submittingRef.current = false;
+      playErrorSound();
+      const p = products.find((x) => x.id === cart[emptyPriceIdx].productId);
+      const name = p?.name ? `"${p.name}"` : `আইটেম #${emptyPriceIdx + 1}`;
+      toast.error(
+        lang === "bn"
+          ? `${name}-এর বিক্রয় মূল্য খালি বা ০ রাখা যাবে না! অনুগ্রহ করে সঠিক দর লিখুন।`
+          : `Sell price for ${name} cannot be empty or zero! Please enter a valid price.`
+      );
+      const el = document.querySelector(`[data-cart-sell-price-index="${emptyPriceIdx}"]`) as HTMLInputElement | null;
+      if (el) {
+        el.focus();
+        el.select();
+      }
+      return;
+    }
+
     if ((type === "credit" || (type === "split" && due > 0)) && !partyId) {
       playErrorSound();
       return toast.error(lang === "bn" ? "বকেয়া থাকার কারণে কাস্টমার নির্বাচন করা আবশ্যক" : "Customer is required when there is remaining due");
@@ -406,7 +432,10 @@ export function SaleDialog({
           throw new Error(lang === "bn" ? "কার্টের একটি পণ্য ডাটাবেজে পাওয়া যায়নি!" : "A product in your cart could not be found!");
         }
         const qtyNum = Math.max(1, Number(line.qty) || 1);
-        const rawSellPrice = Number(line.sellPrice) || product.sell_price || 0;
+        const rawSellPrice = Number(line.sellPrice);
+        if (isNaN(rawSellPrice) || rawSellPrice <= 0) {
+          throw new Error(lang === "bn" ? `${product.name}-এর বিক্রয় মূল্য সঠিক নয়!` : `Invalid sell price for ${product.name}!`);
+        }
         const disc = Math.max(0, Number(line.discount) || 0);
         const itemLineSell = Math.max(rawSellPrice - disc, 0) * qtyNum;
 
@@ -671,12 +700,62 @@ export function SaleDialog({
           <div className="flex-1 overflow-y-auto p-4 sm:p-5">
             <form
               id="sale-form"
-              onKeyDown={e => {
-                if (e.key === "Enter" && (e.target as HTMLElement).tagName === "INPUT") e.preventDefault();
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  if (draft.productId) {
+                    e.preventDefault();
+                    const draftPriceStr = String(draft.sellPrice ?? "").trim();
+                    if (!draftPriceStr || isNaN(Number(draftPriceStr)) || Number(draftPriceStr) <= 0) {
+                      e.stopPropagation();
+                      playErrorSound();
+                      toast.error(
+                        lang === "bn"
+                          ? "পণ্যের বিক্রয় মূল্য দিন! দর খালি বা ০ রাখা যাবে না।"
+                          : "Please enter a valid sell price!"
+                      );
+                      return;
+                    }
+                    addToCart();
+                    return;
+                  }
+                  // Check if any cart item has empty or <= 0 price
+                  const emptyIdx = cart.findIndex((l) => {
+                    const p = String(l.sellPrice ?? "").trim();
+                    return p === "" || isNaN(Number(p)) || Number(p) <= 0;
+                  });
+                  if (emptyIdx !== -1) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    playErrorSound();
+                    const invalidProduct = products.find((p) => p.id === cart[emptyIdx].productId);
+                    const prodName = invalidProduct?.name ? `"${invalidProduct.name}"` : `আইটেম #${emptyIdx + 1}`;
+                    toast.error(
+                      lang === "bn"
+                        ? `${prodName}-এর বিক্রয় মূল্য খালি! দর না লিখে এন্টার দিয়ে বিক্রি করা যাবে না।`
+                        : `Sell price for ${prodName} cannot be empty! Please enter the sell price.`
+                    );
+                    const inputEl = document.querySelector(`[data-cart-sell-price-index="${emptyIdx}"]`) as HTMLInputElement | null;
+                    if (inputEl) {
+                      inputEl.focus();
+                      inputEl.select();
+                    }
+                    return;
+                  }
+                }
               }}
               onSubmit={(e) => {
                 e.preventDefault();
                 if (draft.productId) {
+                  const draftPriceStr = String(draft.sellPrice ?? "").trim();
+                  if (!draftPriceStr || isNaN(Number(draftPriceStr)) || Number(draftPriceStr) <= 0) {
+                    playErrorSound();
+                    toast.error(
+                      lang === "bn"
+                        ? "পণ্যের বিক্রয় মূল্য দিন! দর খালি বা ০ রাখা যাবে না।"
+                        : "Please enter a valid sell price!"
+                    );
+                    return;
+                  }
                   addToCart();
                 } else if (cart.length > 0) {
                   submit(e);
@@ -1111,11 +1190,27 @@ export function SaleDialog({
                                   type="number"
                                   step="any"
                                   inputMode="decimal"
+                                  data-cart-sell-price-index={i}
                                   value={line.sellPrice}
                                   placeholder="0"
                                   onChange={e => {
                                     const val = e.target.value;
                                     setCart(prev => prev.map((item, idx) => idx === i ? { ...item, sellPrice: val } : item));
+                                  }}
+                                  onKeyDown={e => {
+                                    if (e.key === "Enter") {
+                                      const p = String(line.sellPrice ?? "").trim();
+                                      if (!p || isNaN(Number(p)) || Number(p) <= 0) {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        playErrorSound();
+                                        toast.error(
+                                          lang === "bn"
+                                            ? "বিক্রি দর খালি বা ০ রাখা যাবে না!"
+                                            : "Sell price cannot be empty or zero!"
+                                        );
+                                      }
+                                    }
                                   }}
                                   className="h-8 w-28 sm:w-32 text-xs font-mono font-bold px-2 border-primary/50 bg-background focus-visible:ring-1 focus-visible:ring-primary"
                                 />

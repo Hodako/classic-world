@@ -1,16 +1,23 @@
 /**
  * Classic World - Ultimate Windows POS Desktop Application
  * Connected with Cloud (https://classicworld-pos.web.app) & Local Offline Server
- * 1-Click Silent Thermal Printing & Native POS Hardware Integration
+ * 1-Click Silent Thermal Printing, Windows Printer Preferences & Native POS Hardware Integration
  */
 
 const { app, BrowserWindow, ipcMain, session } = require("electron");
 const path = require("path");
 const fs = require("fs");
+const os = require("os");
 const http = require("http");
 const https = require("https");
-const { spawn } = require("child_process");
-const { startBridgeServer } = require("./pos-bridge.cjs");
+const { spawn, exec } = require("child_process");
+const {
+  startBridgeServer,
+  getWindowsPrinters,
+  setWindowsDefaultPrinter,
+  openWindowsPrinterPreferences,
+  openWindowsPrinterProperties,
+} = require("./pos-bridge.cjs");
 
 // Find project root containing server.js whether running from electron/ or software/resources/app/electron/
 function findProjectRootWithServer() {
@@ -23,10 +30,6 @@ function findProjectRootWithServer() {
   }
   return path.resolve(__dirname, "..");
 }
-
-// Enable native Chromium Kiosk Silent Printing - ZERO print confirm messages or dialog popups!
-app.commandLine.appendSwitch("kiosk-printing");
-app.commandLine.appendSwitch("disable-print-preview");
 
 let mainWindow = null;
 let serverProcess = null;
@@ -129,16 +132,41 @@ async function createWindow() {
   // Hide default menu bar for clean, professional POS screen
   mainWindow.setMenuBarVisibility(false);
 
-  // Intercept any window.print() or iframe.contentWindow.print() so the Windows Print Confirm Dialog NEVER shows!
+  // Intercept window.print() / iframe.contentWindow.print() and route through electronPOS.printSilent
+  // while respecting the device's automatePrinting, printerName, and margin preferences!
   mainWindow.webContents.on("did-finish-load", () => {
     mainWindow.webContents
       .executeJavaScript(`
         (function() {
           if (window.__posSilentPrintHooked) return;
           window.__posSilentPrintHooked = true;
+          function getDevicePrintPrefs() {
+            try {
+              const raw = localStorage.getItem("classicworld_pos_hardware_v1") || localStorage.getItem("dreamfashion_pos_hardware_v1") || "{}";
+              const parsed = JSON.parse(raw);
+              return {
+                printerName: parsed.devicePrinterName || "",
+                silent: parsed.automatePrinting !== false,
+                copies: Number(parsed.copies) || 1,
+                scaleFactor: Number(parsed.printScale) || 100,
+                margins: {
+                  topMm: parsed.marginTopMm ?? 2,
+                  bottomMm: parsed.marginBottomMm ?? 4,
+                  leftMm: parsed.marginLeftMm ?? 2,
+                  rightMm: parsed.marginRightMm ?? 2,
+                },
+              };
+            } catch (_) {
+              return { printerName: "", silent: true, copies: 1, scaleFactor: 100 };
+            }
+          }
           if (window.electronPOS && typeof window.electronPOS.printSilent === "function") {
             window.print = function() {
-              window.electronPOS.printSilent({ html: document.documentElement.outerHTML });
+              const prefs = getDevicePrintPrefs();
+              window.electronPOS.printSilent({
+                html: document.documentElement.outerHTML,
+                ...prefs,
+              });
             };
             const hookIframe = (iframe) => {
               try {
@@ -146,7 +174,11 @@ async function createWindow() {
                   iframe.contentWindow.print = function() {
                     const doc = iframe.contentDocument || iframe.contentWindow.document;
                     if (doc && doc.documentElement) {
-                      window.electronPOS.printSilent({ html: doc.documentElement.outerHTML });
+                      const prefs = getDevicePrintPrefs();
+                      window.electronPOS.printSilent({
+                        html: doc.documentElement.outerHTML,
+                        ...prefs,
+                      });
                     }
                   };
                 }
@@ -171,7 +203,7 @@ async function createWindow() {
       .catch(() => {});
   });
 
-  // Ensure local Next.js engine on port 3141 is running first (instant speed + offline + cloud DB)
+  // Ensure local Next.js engine on port 3142 is running first (instant speed + offline + cloud DB)
   await ensureLocalServerRunning();
   const isLocalReady = await checkUrlReady(LOCAL_URL, 1500);
 
@@ -191,7 +223,7 @@ async function createWindow() {
   // Handle load failures gracefully (e.g. WiFi disconnected during load)
   mainWindow.webContents.on("did-fail-load", async (event, errorCode, errorDescription, validatedURL) => {
     console.warn(`[Windows POS] Failed to load ${validatedURL} [${errorCode}: ${errorDescription}]`);
-    if (validatedURL.startsWith("https://hakim.qzz.io")) {
+    if (validatedURL.startsWith("https://classicworld-pos.web.app")) {
       console.log("[Windows POS] Cloud failed, switching to local offline POS server...");
       await ensureLocalServerRunning();
       mainWindow.loadURL(LOCAL_URL).catch(() => {
@@ -205,25 +237,32 @@ async function createWindow() {
   });
 }
 
-// ── Silent Printing IPC Handlers ────────────────────────────
+// ── Windows OS Printer & Thermal Printing IPC Handlers ───────────────────────
 
 // 1. Get installed Windows printers and identify default printer
 ipcMain.handle("pos:get-printers", async () => {
-  if (!mainWindow) return [];
   try {
-    const list = await mainWindow.webContents.getPrintersAsync();
-    return list;
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      const list = await mainWindow.webContents.getPrintersAsync();
+      if (Array.isArray(list) && list.length > 0) return list;
+    }
+    return await getWindowsPrinters();
   } catch (err) {
     console.error("[Windows POS] Error fetching printers:", err);
-    return [];
+    return await getWindowsPrinters();
   }
 });
 
 // 2. Get default Windows printer
 ipcMain.handle("pos:get-default-printer", async () => {
-  if (!mainWindow) return null;
   try {
-    const list = await mainWindow.webContents.getPrintersAsync();
+    let list = [];
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      list = await mainWindow.webContents.getPrintersAsync();
+    }
+    if (!list || list.length === 0) {
+      list = await getWindowsPrinters();
+    }
     return list.find((p) => p.isDefault) || list[0] || null;
   } catch (err) {
     console.error("[Windows POS] Error fetching default printer:", err);
@@ -231,65 +270,194 @@ ipcMain.handle("pos:get-default-printer", async () => {
   }
 });
 
-// 3. 1-Click Silent Print without ANY print dialog!
-async function performSilentPrint(html, printerName) {
-  return new Promise(async (resolve) => {
-    let printWin = new BrowserWindow({
-      show: false,
-      width: 320,
-      height: 600,
-      webPreferences: {
-        nodeIntegration: false,
-        contextIsolation: true,
-      },
-    });
+// 3. Set real Windows OS default printer
+ipcMain.handle("pos:set-default-printer", async (event, { printerName } = {}) => {
+  return await setWindowsDefaultPrinter(printerName);
+});
 
-    printWin.on("closed", () => {
+// 4. Open real Windows OS Printing Preferences dialog for a printer
+ipcMain.handle("pos:open-printer-preferences", async (event, { printerName } = {}) => {
+  return await openWindowsPrinterPreferences(printerName);
+});
+
+// 5. Open real Windows OS Printer Properties dialog for a printer
+ipcMain.handle("pos:open-printer-properties", async (event, { printerName } = {}) => {
+  return await openWindowsPrinterProperties(printerName);
+});
+
+// 6. Open Windows OS Printers & Scanners settings page
+ipcMain.handle("pos:open-windows-printers-settings", async () => {
+  exec("start ms-settings:printers");
+  return { success: true };
+});
+
+// 7. Reliable Thermal Receipt Print (Supports both Silent 1-Click Print AND Windows Printing Preferences Dialog)
+async function performSilentPrint(html, printerName, options = {}) {
+  return new Promise(async (resolve) => {
+    const useSilent = options.silent !== undefined ? Boolean(options.silent) : true;
+    const copies = Math.max(1, Number(options.copies) || 1);
+    const scaleFactor = Math.max(50, Math.min(200, Number(options.scaleFactor) || 100));
+    const margins = options.margins || {};
+    const topMm = margins.topMm !== undefined ? Number(margins.topMm) : 2;
+    const bottomMm = margins.bottomMm !== undefined ? Number(margins.bottomMm) : 4;
+    const leftMm = margins.leftMm !== undefined ? Number(margins.leftMm) : 2;
+    const rightMm = margins.rightMm !== undefined ? Number(margins.rightMm) : 2;
+
+    // Prepare HTML: remove external font blocking that causes blank pages & enforce all-bold pure black thermal styling + margins
+    let preparedHtml = String(html || "");
+    preparedHtml = preparedHtml.replace(/display=swap/g, "display=optional");
+
+    const thermalOverrideStyle = `
+      <style id="pos-thermal-override">
+        @page {
+          margin: 0mm !important;
+        }
+        html, body {
+          background: #ffffff !important;
+          color: #000000 !important;
+          font-weight: 800 !important;
+          -webkit-print-color-adjust: exact !important;
+          print-color-adjust: exact !important;
+          margin: 0 !important;
+          padding-top: ${topMm}mm !important;
+          padding-bottom: ${bottomMm}mm !important;
+          padding-left: ${leftMm}mm !important;
+          padding-right: ${rightMm}mm !important;
+          zoom: ${scaleFactor}% !important;
+        }
+        *, body, div, span, p, td, th, tr, table, strong, b, h1, h2, h3, h4, small {
+          font-weight: 800 !important;
+          color: #000000 !important;
+          font-family: 'Nirmala UI', 'Hind Siliguri', 'Noto Sans Bengali', 'SolaimanLipi', 'Segoe UI', Arial, sans-serif !important;
+        }
+        .receipt-wrap {
+          padding-top: ${topMm}mm !important;
+          padding-bottom: ${bottomMm}mm !important;
+          padding-left: ${leftMm}mm !important;
+          padding-right: ${rightMm}mm !important;
+        }
+      </style>
+    `;
+
+    if (preparedHtml.includes("</head>")) {
+      preparedHtml = preparedHtml.replace("</head>", `${thermalOverrideStyle}</head>`);
+    } else {
+      preparedHtml = `<!DOCTYPE html><html><head><meta charset="utf-8">${thermalOverrideStyle}</head><body>${preparedHtml}</body></html>`;
+    }
+
+    const tempFilePath = path.join(
+      os.tmpdir(),
+      `pos_receipt_${Date.now()}_${Math.random().toString(36).slice(2, 7)}.html`
+    );
+
+    let printWin = null;
+    const cleanup = () => {
+      if (printWin && !printWin.isDestroyed()) {
+        try {
+          printWin.close();
+        } catch (_) {}
+      }
       printWin = null;
-    });
+      try {
+        if (fs.existsSync(tempFilePath)) fs.unlinkSync(tempFilePath);
+      } catch (_) {}
+    };
 
     try {
-      await printWin.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
-      await new Promise((r) => setTimeout(r, 120));
+      fs.writeFileSync(tempFilePath, preparedHtml, "utf8");
+
+      printWin = new BrowserWindow({
+        show: !useSilent, // Show window when user wants the interactive Windows Print Preferences dialog
+        width: 420,
+        height: 760,
+        title: "POS Receipt Print",
+        autoHideMenuBar: true,
+        webPreferences: {
+          nodeIntegration: false,
+          contextIsolation: true,
+          paintWhenInitiallyHidden: true, // CRITICAL: Prevents blank page when printing from hidden window!
+          backgroundThrottling: false,
+        },
+      });
+
+      await printWin.loadFile(tempFilePath);
+
+      // Ensure fonts and layout frames are 100% painted before triggering Windows print spooler
+      await printWin.webContents
+        .executeJavaScript(`
+          new Promise((res) => {
+            const finish = () => requestAnimationFrame(() => requestAnimationFrame(res));
+            if (document.fonts && document.fonts.ready) {
+              Promise.race([
+                document.fonts.ready,
+                new Promise((r) => setTimeout(r, 400))
+              ]).then(finish).catch(finish);
+            } else {
+              finish();
+            }
+          });
+        `)
+        .catch(() => {});
+
+      await new Promise((r) => setTimeout(r, 300));
 
       const printers = await printWin.webContents.getPrintersAsync();
       const defaultP = printers.find((p) => p.isDefault)?.name || printers[0]?.name || "";
-      const targetPrinter = printerName || defaultP;
 
-      printWin.webContents.print(
-        {
-          silent: true,
-          printBackground: true,
-          deviceName: targetPrinter,
-          margins: { marginType: "none" },
-        },
-        (success, failureReason) => {
-          if (printWin) {
-            printWin.close();
-          }
-          if (success) {
-            console.log(`[Windows POS] Receipt printed silently to: ${targetPrinter}`);
-            resolve({ success: true, printer: targetPrinter });
-          } else {
-            console.warn(`[Windows POS] Silent print failed: ${failureReason}`);
-            resolve({ success: false, error: failureReason });
-          }
+      let targetPrinter = printerName || defaultP;
+      if (targetPrinter && printers.length > 0) {
+        const matched = printers.find(
+          (p) => p.name.toLowerCase() === String(targetPrinter).trim().toLowerCase()
+        );
+        if (matched) {
+          targetPrinter = matched.name;
+        } else {
+          targetPrinter = defaultP;
         }
-      );
+      }
+
+      const printConfig = {
+        silent: useSilent,
+        printBackground: true,
+        copies,
+      };
+
+      if (useSilent && targetPrinter) {
+        printConfig.deviceName = targetPrinter;
+      }
+
+      printWin.webContents.print(printConfig, (success, failureReason) => {
+        cleanup();
+        if (success) {
+          console.log(
+            `[Windows POS] Receipt printed (${useSilent ? "SILENT" : "DIALOG"}) to: ${targetPrinter || "Windows Printer"}`
+          );
+          resolve({ success: true, printer: targetPrinter, silent: useSilent });
+        } else {
+          console.warn(`[Windows POS] Print cancelled or failed: ${failureReason}`);
+          resolve({ success: false, error: failureReason });
+        }
+      });
     } catch (e) {
-      if (printWin) printWin.close();
+      cleanup();
       resolve({ success: false, error: e.message });
     }
   });
 }
 
 ipcMain.handle("pos:print-silent", async (event, options = {}) => {
-  const { html, printerName } = options;
+  const { html, printerName, silent, margins, copies, scaleFactor, pageSize } = options;
   if (!html) return { success: false, error: "Empty HTML" };
-  return await performSilentPrint(html, printerName);
+  return await performSilentPrint(html, printerName, {
+    silent,
+    margins,
+    copies,
+    scaleFactor,
+    pageSize,
+  });
 });
 
-// 4. Open cash drawer via ESC/POS command
+// 8. Open cash drawer via ESC/POS command
 ipcMain.handle("pos:open-cash-drawer", async (event, { printerName } = {}) => {
   const drawerKickHtml = `
     <html>
@@ -297,33 +465,13 @@ ipcMain.handle("pos:open-cash-drawer", async (event, { printerName } = {}) => {
       <body>\x1b\x70\x00\x19\xfa</body>
     </html>
   `;
-  return await performSilentPrint(drawerKickHtml, printerName);
+  return await performSilentPrint(drawerKickHtml, printerName, { silent: true });
 });
 
-// 5. Server switching
-ipcMain.on("pos:switch-server", (event, target) => {
-  if (!mainWindow) return;
-  if (target === "cloud") {
-    mainWindow.loadURL(CLOUD_URL);
-  } else if (target === "local") {
-    ensureLocalServerRunning().then(() => {
-      mainWindow.loadURL(LOCAL_URL);
-    });
-  }
-});
-
-// ── App Lifecycle ───────────────────────────────────────────
-
-app.whenReady().then(async () => {
-  // Start local POS bridge HTTP server on 127.0.0.1:9123
-  try {
-    startBridgeServer(performSilentPrint);
-  } catch (e) {
-    console.warn("[Windows POS] Could not start POS bridge:", e);
-  }
-
-  // Create main UI window
-  await createWindow();
+app.whenReady().then(() => {
+  // Start local bridge on port 9123 so even external browsers (Chrome/Edge) get 1-click silent print & Windows printer preferences!
+  startBridgeServer((html, printerName, options) => performSilentPrint(html, printerName, options));
+  createWindow();
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -333,12 +481,12 @@ app.whenReady().then(async () => {
 });
 
 app.on("window-all-closed", () => {
+  if (serverProcess) {
+    try {
+      serverProcess.kill();
+    } catch (_) {}
+  }
   if (process.platform !== "darwin") {
-    if (serverProcess) {
-      try {
-        serverProcess.kill();
-      } catch (_) {}
-    }
     app.quit();
   }
 });

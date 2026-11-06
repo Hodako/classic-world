@@ -5,10 +5,35 @@ export type ReceiptPrintMode = "manual" | "automatic";
 export interface PosHardwareSettings {
   printMode: ReceiptPrintMode;
   scannerSuffix: "Enter" | "Tab";
+  /** When true, prints directly in 1-click without showing Windows print dialog. When false, opens Windows Print Preferences dialog. */
+  automatePrinting: boolean;
+  /** Per-device default printer name (empty string = Windows system default printer) */
+  devicePrinterName: string;
+  /** Thermal paper margins in millimeters (per-device) */
+  marginTopMm: number;
+  marginBottomMm: number;
+  marginLeftMm: number;
+  marginRightMm: number;
+  /** Print scale percentage (50 to 200) */
+  printScale: number;
+  /** Number of receipt copies per print */
+  copies: number;
 }
 
 const STORAGE_KEY = "classicworld_pos_hardware_v1";
-const DEFAULT_SETTINGS: PosHardwareSettings = { printMode: "manual", scannerSuffix: "Enter" };
+
+export const DEFAULT_HARDWARE_SETTINGS: PosHardwareSettings = {
+  printMode: "manual",
+  scannerSuffix: "Enter",
+  automatePrinting: true,
+  devicePrinterName: "",
+  marginTopMm: 2,
+  marginBottomMm: 4,
+  marginLeftMm: 2,
+  marginRightMm: 2,
+  printScale: 100,
+  copies: 1,
+};
 
 /** Keyboard/HID scanners need no browser Bluetooth permission: the OS delivers keys. */
 export function createHidScanBuffer(suffix: "Enter" | "Tab" | "None" = "Enter", maxGapMs = 250) {
@@ -85,21 +110,33 @@ export function createHidScanBuffer(suffix: "Enter" | "Tab" | "None" = "Enter", 
 }
 
 export function getPosHardwareSettings(): PosHardwareSettings {
-  if (typeof window === "undefined") return DEFAULT_SETTINGS;
+  if (typeof window === "undefined") return DEFAULT_HARDWARE_SETTINGS;
   try {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
     return {
       printMode: saved?.printMode === "automatic" ? "automatic" : "manual",
       scannerSuffix: saved?.scannerSuffix === "Tab" ? "Tab" : "Enter",
+      automatePrinting: saved?.automatePrinting !== undefined ? Boolean(saved.automatePrinting) : true,
+      devicePrinterName: typeof saved?.devicePrinterName === "string" ? saved.devicePrinterName : "",
+      marginTopMm: saved?.marginTopMm !== undefined && Number.isFinite(Number(saved.marginTopMm)) ? Math.max(0, Number(saved.marginTopMm)) : 2,
+      marginBottomMm: saved?.marginBottomMm !== undefined && Number.isFinite(Number(saved.marginBottomMm)) ? Math.max(0, Number(saved.marginBottomMm)) : 4,
+      marginLeftMm: saved?.marginLeftMm !== undefined && Number.isFinite(Number(saved.marginLeftMm)) ? Math.max(0, Number(saved.marginLeftMm)) : 2,
+      marginRightMm: saved?.marginRightMm !== undefined && Number.isFinite(Number(saved.marginRightMm)) ? Math.max(0, Number(saved.marginRightMm)) : 2,
+      printScale: saved?.printScale !== undefined && Number.isFinite(Number(saved.printScale)) ? Math.min(200, Math.max(50, Number(saved.printScale))) : 100,
+      copies: saved?.copies !== undefined && Number.isFinite(Number(saved.copies)) ? Math.min(10, Math.max(1, Number(saved.copies))) : 1,
     };
   } catch {
-    return DEFAULT_SETTINGS;
+    return DEFAULT_HARDWARE_SETTINGS;
   }
 }
 
-export function savePosHardwareSettings(settings: Partial<PosHardwareSettings>): void {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...getPosHardwareSettings(), ...settings }));
-  window.dispatchEvent(new Event("pos-hardware-settings-changed"));
+export function savePosHardwareSettings(settings: Partial<PosHardwareSettings>): PosHardwareSettings {
+  const updated = { ...getPosHardwareSettings(), ...settings };
+  if (typeof window !== "undefined") {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+    window.dispatchEvent(new Event("pos-hardware-settings-changed"));
+  }
+  return updated;
 }
 
 export function findProductsByScannedCode(products: Product[], code: string): Product[] {

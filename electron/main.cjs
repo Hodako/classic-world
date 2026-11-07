@@ -343,9 +343,17 @@ async function performSilentPrint(html, printerName, options = {}) {
     const rawPageSize = String(options.pageSize || "").toLowerCase();
     const isA4 = rawPageSize.includes("a4");
     const parsedMmMatch = rawPageSize.match(/(\d+)\s*mm/i);
-    const parsedMm = parsedMmMatch ? parseInt(parsedMmMatch[1], 10) : Number(options.paperWidthMm);
+    const parsedMm = Number(options.paperWidthMm) || (parsedMmMatch ? Number(parsedMmMatch[1]) : 80);
     const widthMm = isA4 ? 210 : (Number.isFinite(parsedMm) && parsedMm > 0 ? parsedMm : 80);
     const widthMicrons = Math.max(15000, widthMm * 1000);
+    // Match the browser renderer's physical print-head limits.
+    const printableWidthMm = widthMm >= 148 ? widthMm
+      : widthMm >= 80 ? Math.min(72, widthMm - 6)
+      : widthMm >= 70 ? Math.min(63, widthMm - 6)
+      : widthMm >= 56 ? Math.min(48, widthMm - 8)
+      : widthMm >= 48 ? Math.min(42, widthMm - 6)
+      : Math.max(1, widthMm - 4);
+    const layoutWidthMm = printableWidthMm * 100 / scaleFactor;
 
     const userHeightMm =
       options.paperHeightMm !== undefined &&
@@ -358,8 +366,8 @@ async function performSilentPrint(html, printerName, options = {}) {
     const cssPageRule = isA4
       ? "size: A4 portrait !important;"
       : userHeightMm
-      ? `size: ${widthMm}mm ${userHeightMm}mm portrait !important;`
-      : `size: ${widthMm}mm auto portrait !important;`;
+      ? `size: ${widthMm}mm ${userHeightMm}mm !important;`
+      : "size: auto !important;";
 
     // Prepare HTML: remove external font blocking that causes blank pages & enforce all-bold pure black thermal styling + margins
     let preparedHtml = String(html || "");
@@ -382,10 +390,15 @@ async function performSilentPrint(html, printerName, options = {}) {
           padding: 0 !important;
           height: auto !important;
           min-height: 0 !important;
-          width: 100% !important;
+          width: ${layoutWidthMm}mm !important;
+          max-width: ${layoutWidthMm}mm !important;
           vertical-align: top !important;
         }
-        body > *:first-child, .receipt-wrap > *:first-child {
+        html { zoom: 1 !important; }
+        body { zoom: ${scaleFactor}% !important; }
+        table { table-layout: fixed !important; width: 100% !important; max-width: 100% !important; }
+        td, th { white-space: normal !important; }
+        .receipt-wrap > *:first-child {
           margin-top: 0 !important;
           padding-top: 0 !important;
         }
@@ -393,8 +406,8 @@ async function performSilentPrint(html, printerName, options = {}) {
           font-weight: 800 !important;
           color: #000000 !important;
           margin-top: 0;
-          word-break: break-word !important;
-          overflow-wrap: break-word !important;
+          word-break: normal !important;
+          overflow-wrap: anywhere !important;
           box-sizing: border-box !important;
           font-family: 'Nirmala UI', 'Hind Siliguri', 'Noto Sans Bengali', 'SolaimanLipi', 'Segoe UI', Arial, sans-serif !important;
         }
@@ -404,10 +417,11 @@ async function performSilentPrint(html, printerName, options = {}) {
           padding-left: ${leftMm}mm !important;
           padding-right: ${rightMm}mm !important;
           box-sizing: border-box !important;
-          width: 100% !important;
+          width: ${layoutWidthMm}mm !important;
+          max-width: 100% !important;
           margin: 0 !important; /* Left-aligned: never auto-center (prevents big left margin) */
           display: flow-root !important; /* Prevents top and bottom margin collapse */
-          overflow: hidden !important;
+          overflow: visible !important;
         }
       </style>
     `;
@@ -525,13 +539,21 @@ async function performSilentPrint(html, printerName, options = {}) {
         await printWin.webContents
           .executeJavaScript(`
             (function() {
+              // Appending alone can leave Chromium using an earlier auto/Letter page size.
+              for (const sheet of Array.from(document.styleSheets)) {
+                try {
+                  for (const rule of Array.from(sheet.cssRules)) {
+                    if (rule.type === 6) rule.style.setProperty('size', '${widthMm}mm ${effectiveHeightMm}mm', 'important');
+                  }
+                } catch (_) {}
+              }
               let st = document.getElementById('pos-exact-page-size');
               if (!st) {
                 st = document.createElement('style');
                 st.id = 'pos-exact-page-size';
                 document.head.appendChild(st);
               }
-              st.textContent = '@page { size: ' + ${widthMm} + 'mm ' + ${effectiveHeightMm} + 'mm portrait !important; margin: 0mm !important; }';
+              st.textContent = '@page { size: ' + ${widthMm} + 'mm ' + ${effectiveHeightMm} + 'mm !important; margin: 0mm !important; }';
             })()
           `)
           .catch(() => {});
@@ -541,7 +563,7 @@ async function performSilentPrint(html, printerName, options = {}) {
         silent: useSilent,
         printBackground: true,
         copies,
-        scaleFactor,
+        scaleFactor: 100, // CSS zoom applies scale once, with width compensation.
         landscape: false, // Strictly force vertical Portrait orientation (prevents horizontal print)
         margins: {
           marginType: "none",

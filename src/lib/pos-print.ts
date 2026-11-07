@@ -1,5 +1,6 @@
 "use client";
 
+import { getPrintableWidthMm, getPrintScale, setReceiptPageSize } from "@/lib/print-layout";
 import { getPosHardwareSettings } from "@/lib/pos-hardware";
 
 export interface PosPaperSettings {
@@ -160,7 +161,8 @@ export async function printPwaPosReceipt(data: {
   const config = getPosPaperConfig();
   const hw = getPosHardwareSettings();
   const width = config.widthMm || 58;
-  const canvasW = config.canvasWidthMm || 82;
+  const scalePct = getPrintScale(hw.printScale);
+  const canvasW = Math.min(config.canvasWidthMm || width, getPrintableWidthMm(width)) * 100 / scalePct;
   const heightStr = config.heightMm === "auto" ? "auto" : `${config.heightMm || 40}mm`;
   const topMm = hw.marginTopMm ?? 2;
   const bottomMm = hw.marginBottomMm ?? 4;
@@ -191,7 +193,7 @@ export async function printPwaPosReceipt(data: {
   <title>POS Invoice ${data.invoiceNo}</title>
   <style>
     @page {
-      size: ${width}mm ${heightStr};
+      size: ${config.heightMm === "auto" ? "auto" : `${width}mm ${heightStr}`};
       margin: 0mm;
     }
     *, *:before, *:after {
@@ -206,17 +208,20 @@ export async function printPwaPosReceipt(data: {
       color-scheme: light !important;
     }
     html, body {
-      width: 100% !important;
+      width: ${canvasW}mm !important;
       max-width: ${canvasW}mm !important;
       margin: 0 auto !important;
-      padding: ${topMm}mm ${rightMm}mm ${bottomMm}mm ${leftMm}mm !important;
+      padding: 0 !important;
       background: #ffffff !important;
       color: #000000 !important;
       font-weight: 800 !important;
       font-size: 10.5px !important;
       line-height: 1.3 !important;
-      zoom: ${hw.printScale || 100}% !important;
+      zoom: 1 !important;
     }
+    body { zoom: ${scalePct}% !important; }
+    .receipt-wrap { padding: ${topMm}mm ${rightMm}mm ${bottomMm}mm ${leftMm}mm; }
+    td, th, div { overflow-wrap: anywhere !important; white-space: normal !important; }
     .divider {
       border-bottom: 1.5px dashed #000000 !important;
       margin: 6px 0 !important;
@@ -229,12 +234,13 @@ export async function printPwaPosReceipt(data: {
     }
     table.data-table {
       width: 100% !important;
+      table-layout: fixed !important;
       border-collapse: collapse !important;
       margin: 4px 0 !important;
     }
   </style>
 </head>
-<body>
+<body><div class="receipt-wrap">
   <!-- Header -->
   <div style="text-align: center; margin-bottom: 4px;">
     <div style="font-size: 15px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.5px; color: #000000;">
@@ -316,11 +322,14 @@ export async function printPwaPosReceipt(data: {
   <div style="text-align: center; margin-top: 6px; font-size: 9.5px; font-weight: 800; color: #000000;">
     <div style="font-weight: 900; color: #000000;">Thank you for your business!</div>
   </div>
-</body>
+</div></body>
 </html>`;
 
   // Try direct 1-click silent/dialog print first (Electron or Local POS Bridge)
-  const printedDirect = await executeDirectSilentPrint(html);
+  const printedDirect = await executeDirectSilentPrint(html, undefined, {
+    pageSize: `${width}mm`, paperWidthMm: width, paperHeightMm: config.heightMm,
+    scaleFactor: scalePct, margins: { topMm, bottomMm, leftMm, rightMm },
+  });
   if (printedDirect) {
     return;
   }
@@ -344,6 +353,11 @@ export async function printPwaPosReceipt(data: {
   iframe.onload = () => {
     setTimeout(() => {
       try {
+        const doc = iframe.contentDocument;
+        const wrap = doc?.querySelector(".receipt-wrap");
+        if (doc && wrap && config.heightMm === "auto") {
+          setReceiptPageSize(doc, width, Math.ceil(wrap.getBoundingClientRect().height * 25.4 / 96) + 2);
+        }
         iframe.contentWindow?.focus();
         iframe.contentWindow?.print();
       } catch (e) {

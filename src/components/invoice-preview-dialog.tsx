@@ -593,7 +593,7 @@ export function InvoicePreviewDialog({
                     <div className="space-y-1">
                       <div className="flex items-center justify-between text-xs">
                         <span className="font-semibold">{lang === "bn" ? "দোকানের নাম ফন্ট:" : "Shop Title Font:"}</span>
-                        <span className="font-mono font-bold text-primary">{settings.titleFontSizePt || 9.5} pt</span>
+                        <span className="font-mono font-bold text-primary">{settings.titleFontSizePt || 8.8} pt</span>
                       </div>
                       <div className="flex items-center gap-1">
                         <Button
@@ -602,7 +602,7 @@ export function InvoicePreviewDialog({
                           size="sm"
                           className="h-8 px-2.5 text-xs font-bold cursor-pointer"
                           onClick={() => {
-                            const cur = Number(settings.titleFontSizePt) || 9.5;
+                            const cur = Number(settings.titleFontSizePt) || 8.8;
                             updateSettings({ titleFontSizePt: Math.max(6, Number((cur - 0.5).toFixed(1))) });
                           }}
                         >
@@ -613,8 +613,8 @@ export function InvoicePreviewDialog({
                           step="0.5"
                           min="6"
                           max="24"
-                          value={settings.titleFontSizePt || 9.5}
-                          onChange={(e) => updateSettings({ titleFontSizePt: Number(e.target.value) || 9.5 })}
+                          value={settings.titleFontSizePt || 8.8}
+                          onChange={(e) => updateSettings({ titleFontSizePt: Number(e.target.value) || 8.8 })}
                           className="h-8 text-xs font-mono font-bold text-center bg-background"
                         />
                         <Button
@@ -623,7 +623,7 @@ export function InvoicePreviewDialog({
                           size="sm"
                           className="h-8 px-2.5 text-xs font-bold cursor-pointer"
                           onClick={() => {
-                            const cur = Number(settings.titleFontSizePt) || 9.5;
+                            const cur = Number(settings.titleFontSizePt) || 8.8;
                             updateSettings({ titleFontSizePt: Math.min(26, Number((cur + 0.5).toFixed(1))) });
                           }}
                         >

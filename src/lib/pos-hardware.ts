@@ -213,6 +213,7 @@ export interface PosHardwareSettings {
   titleFontSizePt: number;
   /** Internal one-time flag migrating oversized legacy font defaults */
   typographyV3Migrated?: boolean;
+  typographyV4Migrated?: boolean;
   /** Custom header text override */
   customHeaderTitle?: string;
   /** Custom subtitle / tagline */
@@ -278,8 +279,8 @@ export const DEFAULT_HARDWARE_SETTINGS: PosHardwareSettings = {
   paperWidthMm: 80,
   paperHeightMm: "auto",
   fitToWidth: true,
-  fontSizePt: 7.0,
-  titleFontSizePt: 9.5,
+  fontSizePt: 6.5,
+  titleFontSizePt: 8.8,
   typographyV3Migrated: true,
   visibility: DEFAULT_VISIBILITY_SETTINGS,
   invoiceSectionOrder: DEFAULT_INVOICE_SECTION_ORDER,
@@ -365,21 +366,21 @@ export function getPosHardwareSettings(): PosHardwareSettings {
   try {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
     const savedLabel = saved?.labelSettings || {};
-    const needsTypoMigration = !saved?.typographyV3Migrated;
 
     let rawFontPt = saved?.fontSizePt !== undefined && Number.isFinite(Number(saved.fontSizePt))
       ? Math.max(4.5, Math.min(20, Number(saved.fontSizePt)))
-      : 7.0;
+      : 6.5;
     let rawTitlePt = saved?.titleFontSizePt !== undefined && Number.isFinite(Number(saved.titleFontSizePt))
       ? Math.max(6, Math.min(28, Number(saved.titleFontSizePt)))
-      : 9.5;
+      : 8.8;
     let rawScale = saved?.printScale !== undefined && Number.isFinite(Number(saved.printScale))
       ? Math.min(250, Math.max(30, Number(saved.printScale)))
       : 100;
 
+    const needsTypoMigration = !saved?.typographyV4Migrated || saved?.fontSizePt > 7.5 || saved?.titleFontSizePt > 10.0;
     if (needsTypoMigration) {
-      if (rawFontPt >= 8.0) rawFontPt = 7.0;
-      if (rawTitlePt >= 10.5) rawTitlePt = 9.5;
+      if (rawFontPt >= 7.0) rawFontPt = 6.5;
+      if (rawTitlePt >= 9.5) rawTitlePt = 8.8;
       if (rawScale > 100) rawScale = 100;
     }
 
@@ -401,6 +402,7 @@ export function getPosHardwareSettings(): PosHardwareSettings {
       fontSizePt: rawFontPt,
       titleFontSizePt: rawTitlePt,
       typographyV3Migrated: true,
+      typographyV4Migrated: true,
       customHeaderTitle: typeof saved?.customHeaderTitle === "string" ? saved.customHeaderTitle : undefined,
       customSubtitle: typeof saved?.customSubtitle === "string" ? saved.customSubtitle : undefined,
       customAddress: typeof saved?.customAddress === "string" ? saved.customAddress : undefined,

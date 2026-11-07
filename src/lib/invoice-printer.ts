@@ -92,25 +92,25 @@ export function buildInvoiceHtml(data: PrintInvoiceParams, settingsOverride?: Pa
   const scalePct = getPrintScale(hw.printScale);
   const contentWidthMm = Math.max(8, printableWidthMm * 100 / scalePct - leftMm - rightMm);
 
-  const userBasePt = Number(hw.fontSizePt) || 7.0;
-  const userTitlePt = Number(hw.titleFontSizePt) || 9.5;
+  const userBasePt = Number(hw.fontSizePt) || 6.5;
+  const userTitlePt = Number(hw.titleFontSizePt) || 8.8;
 
   // Respect user font adjustments while preventing physical roll overflow when fitToWidth is enabled
   const maxSafeBasePt =
-    widthMm <= 25 ? 5.5 :
-    widthMm <= 50 ? 6.8 :
-    widthMm <= 58 ? 8.0 :
-    widthMm <= 72 ? 9.0 :
-    widthMm < 148 ? 10.5 :
-    13.0;
+    widthMm <= 25 ? 5.2 :
+    widthMm <= 50 ? 6.2 :
+    widthMm <= 58 ? 6.8 :
+    widthMm <= 72 ? 7.5 :
+    widthMm < 148 ? 8.5 :
+    11.0;
 
   const maxSafeTitlePt =
-    widthMm <= 25 ? 7.0 :
-    widthMm <= 50 ? 8.8 :
-    widthMm <= 58 ? 10.5 :
-    widthMm <= 72 ? 12.0 :
-    widthMm < 148 ? 14.5 :
-    18.0;
+    widthMm <= 25 ? 6.5 :
+    widthMm <= 50 ? 7.8 :
+    widthMm <= 58 ? 8.8 :
+    widthMm <= 72 ? 10.0 :
+    widthMm < 148 ? 12.0 :
+    15.0;
 
   const baseFontPt = hw.fitToWidth !== false ? Math.min(userBasePt, maxSafeBasePt) : userBasePt;
   const rawTitlePt = hw.fitToWidth !== false ? Math.min(userTitlePt, maxSafeTitlePt) : userTitlePt;

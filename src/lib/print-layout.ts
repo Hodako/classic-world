@@ -11,9 +11,9 @@ export function getPrintScale(value: number): number {
   return Math.max(20, Math.min(250, Number(value) || 100));
 }
 
-/** Rewrite earlier page rules because Chromium may retain their automatic paper size. */
-export function setReceiptPageSize(doc: Document, widthMm: number, heightMm: number): void {
-  const size = widthMm + "mm " + heightMm + "mm";
+/** Rewrite earlier page rules to ensure continuous thermal roll paper */
+export function setReceiptPageSize(doc: Document, widthMm: number, heightMm?: number): void {
+  const size = heightMm && heightMm > 0 ? `${widthMm}mm ${heightMm}mm` : `${widthMm}mm auto`;
   for (const sheet of Array.from(doc.styleSheets)) {
     try {
       for (const rule of Array.from(sheet.cssRules)) {

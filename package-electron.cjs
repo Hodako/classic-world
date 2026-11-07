@@ -73,7 +73,7 @@ fs.mkdirSync(path.join(resourcesAppDir, "electron"), { recursive: true });
 
 const embeddedPackageJson = {
   name: "classicworld-pos",
-  version: "2.1.0",
+  version: "2.2.0",
   main: "electron/main.cjs",
   description: "Classic World Ultimate Windows POS Terminal",
 };

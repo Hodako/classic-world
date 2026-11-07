@@ -512,59 +512,59 @@ async function performSilentPrint(html, printerName, options = {}) {
         }
       }
 
-      let effectiveHeightMm = userHeightMm;
-      if (!isA4 && (!effectiveHeightMm || effectiveHeightMm <= 0)) {
+      // For thermal roll printing, rasterizing the rendered receipt as an exact bitmap image
+      // guarantees that Chinese thermal printer drivers (Xprinter, POS-58, POS-80) CANNOT
+      // substitute fonts with Chinese hardware characters, and guarantees 0mm blank top/bottom margin!
+      if (!isA4) {
         try {
-          const measuredPx = await printWin.webContents.executeJavaScript(`
+          const dims = await printWin.webContents.executeJavaScript(`
             (function() {
-              const wrap = document.querySelector('.receipt-wrap');
-              if (!wrap) return 40;
+              const wrap = document.querySelector('.receipt-wrap') || document.body;
               const rect = wrap.getBoundingClientRect();
-              const h = Math.ceil(rect.height || wrap.scrollHeight || wrap.offsetHeight);
-              return Math.ceil(h * 0.264583);
+              const w = Math.ceil(rect.width || wrap.offsetWidth || 300);
+              const h = Math.ceil(rect.height || wrap.scrollHeight || wrap.offsetHeight || 400);
+              return { width: Math.max(100, w), height: Math.max(50, h) };
             })()
           `);
-          if (Number.isFinite(measuredPx) && measuredPx > 5) {
-            effectiveHeightMm = measuredPx + topMm + bottomMm;
+          if (dims && dims.width > 0 && dims.height > 0) {
+            printWin.setContentSize(dims.width, dims.height);
+            await new Promise((r) => setTimeout(r, 80));
+            const img = await printWin.webContents.capturePage({
+              x: 0,
+              y: 0,
+              width: dims.width,
+              height: dims.height,
+            });
+            const imgDataUrl = img.toDataURL();
+            const rasterHtml = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    @page { size: auto; margin: 0mm !important; }
+    html, body { margin: 0 !important; padding: 0 !important; background: #ffffff !important; }
+    img { width: 100% !important; max-width: 100% !important; height: auto !important; display: block !important; margin: 0 !important; }
+  </style>
+</head>
+<body>
+  <img src="${imgDataUrl}" />
+</body>
+</html>`;
+            fs.writeFileSync(tempFilePath, rasterHtml, "utf8");
+            await printWin.loadFile(tempFilePath);
+            await new Promise((r) => setTimeout(r, 80));
           }
-        } catch (_) {}
-      }
-      if (!effectiveHeightMm || effectiveHeightMm <= 0) {
-        effectiveHeightMm = 45;
-      }
-
-      const heightMicrons = Math.max(10000, Math.round(effectiveHeightMm * 1000));
-
-      if (!isA4) {
-        await printWin.webContents
-          .executeJavaScript(`
-            (function() {
-              // Appending alone can leave Chromium using an earlier auto/Letter page size.
-              for (const sheet of Array.from(document.styleSheets)) {
-                try {
-                  for (const rule of Array.from(sheet.cssRules)) {
-                    if (rule.type === 6) rule.style.setProperty('size', '${widthMm}mm ${effectiveHeightMm}mm', 'important');
-                  }
-                } catch (_) {}
-              }
-              let st = document.getElementById('pos-exact-page-size');
-              if (!st) {
-                st = document.createElement('style');
-                st.id = 'pos-exact-page-size';
-                document.head.appendChild(st);
-              }
-              st.textContent = '@page { size: ' + ${widthMm} + 'mm ' + ${effectiveHeightMm} + 'mm !important; margin: 0mm !important; }';
-            })()
-          `)
-          .catch(() => {});
+        } catch (rasterErr) {
+          console.warn("[Windows POS] Raster image conversion error:", rasterErr);
+        }
       }
 
       const printConfig = {
         silent: useSilent,
         printBackground: true,
         copies,
-        scaleFactor: 100, // CSS zoom applies scale once, with width compensation.
-        landscape: false, // Strictly force vertical Portrait orientation (prevents horizontal print)
+        scaleFactor: 100,
+        landscape: false,
         margins: {
           marginType: "none",
           top: 0,
@@ -577,8 +577,6 @@ async function performSilentPrint(html, printerName, options = {}) {
 
       if (isA4) {
         printConfig.pageSize = "A4";
-      } else {
-        printConfig.pageSize = { width: widthMicrons, height: heightMicrons };
       }
 
       if (useSilent && targetPrinter) {

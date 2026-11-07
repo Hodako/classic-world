@@ -158,13 +158,6 @@ export default function EmployeesPage() {
   const [shopNote, setShopNote] = useState("");
   const [printSlipItem, setPrintSlipItem] = useState<EmployeeShopping | null>(null);
 
-  // Dialog States: Cycle / Circle Management
-  const [activeCycle, setActiveCycle] = useState<string>(new Date().toISOString().slice(0, 7));
-  const [newCycleOpen, setNewCycleOpen] = useState(false);
-  const [newCycleTargetMonth, setNewCycleTargetMonth] = useState(new Date().toISOString().slice(0, 7));
-  const [newCycleEmpId, setNewCycleEmpId] = useState("all");
-  const [newCycleCarryDebt, setNewCycleCarryDebt] = useState(true);
-
   // Dialog States: Collect Store Debt (কর্মচারীর দোকান পাওনা আদায়)
   const [collectDebtOpen, setCollectDebtOpen] = useState(false);
   const [debtEmpId, setDebtEmpId] = useState("");
@@ -710,7 +703,7 @@ export default function EmployeesPage() {
           amount: val,
           payment_method: debtMethod,
           date: debtDate,
-          month: activeCycle,
+          month: debtDate ? debtDate.slice(0, 7) : salMonth,
           note: debtNote.trim() ? `দোকান পাওনা আদায়: ${debtNote.trim()}` : "দোকানের পাওনা আদায় (Store Debt Repaid)",
         },
       });
@@ -747,7 +740,7 @@ export default function EmployeesPage() {
           amount: val,
           payment_method: "cash",
           date: adjDate,
-          month: activeCycle,
+          month: adjDate ? adjDate.slice(0, 7) : salMonth,
           note: adjNote.trim() || (isAdd ? "ওভারটাইম / বিশেষ ভাতা" : "জরিমানা / বিলম্বে উপস্থিতি কর্তন"),
         },
       });
@@ -758,52 +751,6 @@ export default function EmployeesPage() {
       setAdjNote("");
     } catch (err: any) {
       toast.error(err.message || "Failed to record adjustment");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  // Handle Start New Cycle Submit
-  async function handleStartNewCycle(e: React.FormEvent) {
-    e.preventDefault();
-    if (!newCycleTargetMonth) {
-      toast.error(lang === "bn" ? "সাইকেলের মাস নির্বাচন করুন" : "Select cycle month");
-      return;
-    }
-    setBusy(true);
-    try {
-      if (newCycleCarryDebt) {
-        const debtEmps = employees.map(emp => ({
-          emp,
-          stats: getEmployeeSalaryStats(emp.id, activeCycle, true),
-        })).filter(x => x.stats.owesStore > 0);
-
-        for (const item of debtEmps) {
-          if (newCycleEmpId === "all" || newCycleEmpId === item.emp.id) {
-            await createEmployeeExpenseFn({
-              data: {
-                employee_id: item.emp.id,
-                employee_name: item.emp.name,
-                category: "adjustment_deduct",
-                amount: item.stats.owesStore,
-                payment_method: "cash",
-                date: `${newCycleTargetMonth}-01`,
-                month: newCycleTargetMonth,
-                note: `পূর্ববর্তী সাইকেল (${activeCycle}) থেকে স্থানান্তরিত দোকান পাওনা`,
-              },
-            });
-          }
-        }
-      }
-
-      setActiveCycle(newCycleTargetMonth);
-      setSalMonth(newCycleTargetMonth);
-      qc.invalidateQueries({ queryKey: ["employee_expenses"] });
-      qc.invalidateQueries({ queryKey: ["employee_salaries"] });
-      setNewCycleOpen(false);
-      toast.success(lang === "bn" ? `নতুন সাইকেল (${newCycleTargetMonth}) সফলভাবে চালু হয়েছে!` : `New cycle (${newCycleTargetMonth}) started!`);
-    } catch (err: any) {
-      toast.error(err.message || "Failed to start new cycle");
     } finally {
       setBusy(false);
     }
@@ -1276,19 +1223,16 @@ export default function EmployeesPage() {
 
         {/* ── TAB 2: SALARIES ── */}
         <TabsContent value="salaries" className="space-y-3">
-          {/* Active Cycle Control Bar */}
+          {/* Monthly Salary Navigation & Status Bar */}
           <div className="flex flex-wrap items-center justify-between gap-2.5 p-3 rounded-2xl bg-muted/40 border border-border/80">
             <div className="flex items-center gap-2">
               <span className="text-xs font-bold text-foreground flex items-center gap-1.5">
-                <RefreshCw className="size-3.5 text-primary" />
-                {lang === "bn" ? "চলতি বেতন সাইকেল:" : "Active Cycle:"}
+                <Calendar className="size-3.5 text-primary" />
+                {lang === "bn" ? "বেতনের মাস নির্বাচন:" : "Salary Month:"}
               </span>
               <Select
-                value={activeCycle}
-                onValueChange={(val) => {
-                  setActiveCycle(val);
-                  setSalMonth(val);
-                }}
+                value={salMonth}
+                onValueChange={(val) => setSalMonth(val)}
               >
                 <SelectTrigger className="h-8 text-xs font-bold w-[170px] bg-background">
                   <SelectValue />
@@ -1303,20 +1247,6 @@ export default function EmployeesPage() {
               </Select>
             </div>
             <div className="flex items-center gap-2 flex-wrap">
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-8 text-xs font-bold rounded-xl border-primary/30 text-primary hover:bg-primary/10 cursor-pointer"
-                onClick={() => {
-                  const [y, m] = activeCycle.split("-").map(Number);
-                  const nextM = m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, "0")}`;
-                  setNewCycleTargetMonth(nextM);
-                  setNewCycleOpen(true);
-                }}
-              >
-                <PlusCircle className="size-3.5 mr-1" />
-                {lang === "bn" ? "+ নতুন সাইকেল শুরু" : "+ Start New Cycle"}
-              </Button>
               <Button
                 size="sm"
                 variant="outline"
@@ -1336,14 +1266,14 @@ export default function EmployeesPage() {
           {employees.length > 0 && (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
               {employees.map(emp => {
-                const st = getEmployeeSalaryStats(emp.id, activeCycle, true);
+                const st = getEmployeeSalaryStats(emp.id, salMonth, true);
                 const hasStoreDebt = st.owesStore > 0;
                 return (
                   <Card key={emp.id} className="p-3 rounded-2xl border border-border/80 bg-card shadow-xs space-y-2">
                     <div className="flex items-center justify-between gap-2">
                       <div>
                         <p className="font-bold text-xs sm:text-sm text-foreground">{emp.name}</p>
-                        <span className="text-[10px] text-muted-foreground">{emp.designation || "Staff"} • {activeCycle}</span>
+                        <span className="text-[10px] text-muted-foreground">{emp.designation || "Staff"} • {salMonth}</span>
                       </div>
                       {hasStoreDebt ? (
                         <Badge variant="outline" className="text-[11px] font-bold bg-rose-500/15 text-rose-700 dark:text-rose-300 border-rose-500/30 flex items-center gap-1">
@@ -1351,12 +1281,12 @@ export default function EmployeesPage() {
                           {lang === "bn" ? "দোকান পায়:" : "Owes Store:"} ৳{fmtMoney(st.owesStore)}
                         </Badge>
                       ) : st.remaining > 0 ? (
-                        <Badge variant="outline" className="text-[11px] font-bold bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30">
-                          {lang === "bn" ? "অবশিষ্ট:" : "Rem:"} ৳{fmtMoney(st.remaining)}
+                        <Badge variant="outline" className="text-[11px] font-bold bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30">
+                          {lang === "bn" ? "বকেয়া বেতন:" : "Due Salary:"} ৳{fmtMoney(st.remaining)}
                         </Badge>
                       ) : (
                         <Badge variant="outline" className="text-[11px] font-bold bg-blue-500/15 text-blue-700 dark:text-blue-300 border-blue-500/30">
-                          {lang === "bn" ? "পরিশোধিত" : "Settled"}
+                          {lang === "bn" ? "পরিশোধ সম্পন্ন" : "Settled"}
                         </Badge>
                       )}
                     </div>
@@ -2669,76 +2599,6 @@ export default function EmployeesPage() {
         </DialogContent>
       </Dialog>
 
-      {/* ── Dialog: Start New Salary Cycle (নতুন বেতন সাইকেল শুরু) ── */}
-      <Dialog open={newCycleOpen} onOpenChange={setNewCycleOpen}>
-        <DialogContent className="max-w-md font-balooda">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-base font-bold">
-              <RefreshCw className="size-4 text-primary" />
-              {lang === "bn" ? "নতুন বেতন সাইকেল শুরু করুন" : "Start New Salary Cycle"}
-            </DialogTitle>
-          </DialogHeader>
-          <form onSubmit={handleStartNewCycle} className="space-y-4 pt-2">
-            <div className="p-3 rounded-xl bg-primary/10 border border-primary/20 text-xs space-y-1">
-              <p className="font-bold text-primary">
-                {lang === "bn" ? "💡 সাইকেল রিনিউ ও রোল-ওভার নিয়ম:" : "💡 Cycle Rollover Policy:"}
-              </p>
-              <p className="text-muted-foreground leading-relaxed">
-                {lang === "bn"
-                  ? "নতুন সাইকেল শুরু হলে কর্মচারীদের মূল বেতন স্বয়ংক্রিয়ভাবে প্রদেয় হিসেবে প্রস্তুত হবে। কর্মচারীদের পূর্বের কোনো দোকান পাওনা থাকলে তা নতুন সাইকেলে কর্তন হিসেবে স্থানান্তরিত হবে।"
-                  : "When a new cycle begins, base salaries reset as payable. Any unpaid store debt will be safely rolled over as deduction to the new cycle."}
-              </p>
-            </div>
-
-            <div className="space-y-1.5">
-              <Label className="text-xs font-semibold">{lang === "bn" ? "টার্গেট সাইকেল মাস *" : "Target Cycle Month *"}</Label>
-              <Input
-                type="month"
-                required
-                value={newCycleTargetMonth}
-                onChange={e => setNewCycleTargetMonth(e.target.value)}
-                className="h-9 text-xs"
-              />
-            </div>
-
-            <div className="space-y-1.5">
-              <Label className="text-xs font-semibold">{lang === "bn" ? "কর্মচারী নির্বাচন" : "Select Employee"}</Label>
-              <Select value={newCycleEmpId} onValueChange={setNewCycleEmpId}>
-                <SelectTrigger className="h-9 text-xs">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">{lang === "bn" ? "সকল কর্মচারী (All Employees)" : "All Employees"}</SelectItem>
-                  {employees.map(e => (
-                    <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="flex items-center space-x-2 pt-1 p-2 rounded-xl bg-muted/40 border border-border/60">
-              <Checkbox
-                id="carry_debt"
-                checked={newCycleCarryDebt}
-                onCheckedChange={checked => setNewCycleCarryDebt(Boolean(checked))}
-              />
-              <Label htmlFor="carry_debt" className="text-xs font-semibold cursor-pointer">
-                {lang === "bn" ? "পূর্ববর্তী সাইকেলের বকেয়া দোকান পাওনা নতুন সাইকেলে সমন্বয় করুন" : "Carry forward store debt into new cycle"}
-              </Label>
-            </div>
-
-            <DialogFooter className="gap-2 pt-2">
-              <Button type="button" variant="outline" size="sm" onClick={() => setNewCycleOpen(false)}>
-                {t("cancel")}
-              </Button>
-              <Button type="submit" size="sm" disabled={busy} className="bg-primary text-primary-foreground font-bold cursor-pointer">
-                {busy ? (lang === "bn" ? "চালু হচ্ছে..." : "Starting...") : (lang === "bn" ? "সাইকেল শুরু করুন" : "Start Cycle")}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
-
       {/* ── Dialog: Collect Store Debt (কর্মচারীর দোকান পাওনা আদায়) ── */}
       <Dialog open={collectDebtOpen} onOpenChange={setCollectDebtOpen}>
         <DialogContent className="max-w-md font-balooda">
@@ -2759,7 +2619,7 @@ export default function EmployeesPage() {
               <Label className="text-xs font-semibold">{lang === "bn" ? "কর্মচারী নির্বাচন *" : "Employee *"}</Label>
               <Select value={debtEmpId} onValueChange={(id) => {
                 setDebtEmpId(id);
-                const st = getEmployeeSalaryStats(id, activeCycle, true);
+                const st = getEmployeeSalaryStats(id, salMonth, true);
                 if (st.owesStore > 0) setDebtAmount(String(st.owesStore));
               }}>
                 <SelectTrigger className="h-9 text-xs">
@@ -2767,7 +2627,7 @@ export default function EmployeesPage() {
                 </SelectTrigger>
                 <SelectContent>
                   {employees.map(e => {
-                    const st = getEmployeeSalaryStats(e.id, activeCycle, true);
+                    const st = getEmployeeSalaryStats(e.id, salMonth, true);
                     return (
                       <SelectItem key={e.id} value={e.id}>
                         {e.name} {st.owesStore > 0 ? `(পাওনা: ৳${fmtMoney(st.owesStore)})` : ""}

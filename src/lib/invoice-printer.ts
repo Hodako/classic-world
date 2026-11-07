@@ -549,11 +549,7 @@ export async function printPwaInvoice(data: PrintInvoiceParams, settingsOverride
         try {
           const idoc = iframe.contentWindow?.document || iframe.contentDocument;
           if (idoc && (!hw.paperHeightMm || hw.paperHeightMm === "auto")) {
-            const wrap = idoc.querySelector(".receipt-wrap");
-            if (wrap) {
-              const hMm = Math.ceil(wrap.getBoundingClientRect().height * 25.4 / 96) + 2;
-              setReceiptPageSize(idoc, widthMm, hMm);
-            }
+            setReceiptPageSize(idoc, widthMm);
           }
           iframe.contentWindow?.focus();
           iframe.contentWindow?.print();

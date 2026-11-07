@@ -11,6 +11,8 @@ import {
   DEFAULT_LABEL_SETTINGS,
   type PosLabelSettings,
   type BarcodeSymbology,
+  type LabelElement,
+  type LabelUnit,
 } from "@/lib/pos-hardware";
 
 export interface LabelQueueItem {
@@ -22,6 +24,19 @@ export interface LabelQueueItem {
   mrp?: number;
   category?: string;
   variantText?: string;
+  /** Custom product weight measurement (e.g. "250g", "1.5 kg", "500 gm") */
+  weight?: string;
+  /** Custom product height / length measurement (e.g. "42 in", "110 cm") */
+  heightText?: string;
+  /** Custom product width / chest measurement (e.g. "38 in") */
+  widthText?: string;
+  /** Combined size / measurement tag (e.g. "XL • 42×38 in") */
+  measurement?: string;
+  mfgDate?: string;
+  expDate?: string;
+  serialStart?: number;
+  custom1?: string;
+  custom2?: string;
   copies: number;
 }
 
@@ -121,9 +136,18 @@ export const LABEL_PRESETS: LabelPreset[] = [
     rollColumns: 1,
   },
   {
+    id: "75x50",
+    labelEn: "75×50mm (3×2 inch Tag)",
+    labelBn: "৭৫×৫০ মিমি (৩×২ ইঞ্চি ট্যাগ)",
+    mode: "thermal",
+    widthMm: 75,
+    heightMm: 50,
+    rollColumns: 1,
+  },
+  {
     id: "100x150",
-    labelEn: "100×150mm (Parcel / Shipping)",
-    labelBn: "১০০×১৫০ মিমি (পার্সেল / কুরিয়ার)",
+    labelEn: "100×150mm (4×6 in Shipping)",
+    labelBn: "১০০×১৫০ মিমি (৪×৬ ইঞ্চি কুরিয়ার)",
     mode: "thermal",
     widthMm: 100,
     heightMm: 150,
@@ -157,6 +181,20 @@ export const LABEL_PRESETS: LabelPreset[] = [
     a4Columns: 3,
   },
 ];
+
+/** Unit conversion helpers for Label LIVE mm / cm / inch measurements */
+export function mmToUnit(mm: number, unit: LabelUnit = "mm"): number {
+  if (unit === "cm") return Number((mm / 10).toFixed(2));
+  if (unit === "in") return Number((mm / 25.4).toFixed(2));
+  return Number(mm.toFixed(1));
+}
+
+export function unitToMm(val: number, unit: LabelUnit = "mm"): number {
+  if (!Number.isFinite(val)) return 0;
+  if (unit === "cm") return Number((val * 10).toFixed(2));
+  if (unit === "in") return Number((val * 25.4).toFixed(2));
+  return Number(val.toFixed(2));
+}
 
 // ISO/IEC 15417 Code-128 Bar/Space Width Patterns (0..106)
 const CODE128_PATTERNS: string[] = [
@@ -218,6 +256,38 @@ export function resolveProductVariantText(product: Partial<Product>): string {
 }
 
 /**
+ * Extracts weight or height/size attributes from product.attributes if present
+ */
+export function extractProductMeasurements(product: Partial<Product>): {
+  weight: string;
+  heightText: string;
+  widthText: string;
+  measurement: string;
+} {
+  const attrs = product.attributes && typeof product.attributes === "object" ? product.attributes : {};
+  let weight = "";
+  let heightText = "";
+  let widthText = "";
+  let measurement = "";
+
+  for (const [k, v] of Object.entries(attrs)) {
+    const key = k.trim().toLowerCase();
+    const val = String(v || "").trim();
+    if (!val) continue;
+    if (key.includes("weight") || key.includes("wt") || key.includes("ওজন")) {
+      weight = val;
+    } else if (key.includes("height") || key.includes("length") || key.includes("উচ্চতা") || key.includes("লম্বা")) {
+      heightText = val;
+    } else if (key.includes("width") || key.includes("chest") || key.includes("চওড়া")) {
+      widthText = val;
+    } else if (key.includes("size") || key.includes("সাইজ") || key.includes("মাপ")) {
+      measurement = val;
+    }
+  }
+  return { weight, heightText, widthText, measurement };
+}
+
+/**
  * Resolves a clean, scanner-ready ASCII barcode string for any product,
  * automatically falling back to SKU/code/short-ID when no barcode is set.
  */
@@ -259,7 +329,22 @@ export function normalizeEan13Digits(rawDigits: string): string {
 }
 
 /**
- * Generates a guaranteed-unique barcode for a product (EAN-13 13-digit or compact Code-128 SKU).
+ * Computes valid 12-digit UPC-A string (with modulo-10 check digit) from numeric digits.
+ */
+export function normalizeUpcaDigits(rawDigits: string): string {
+  const digitsOnly = String(rawDigits || "").replace(/\D/g, "");
+  const base11 = (digitsOnly.length >= 11 ? digitsOnly.slice(0, 11) : digitsOnly.padStart(11, "0")).slice(0, 11);
+  let sum = 0;
+  for (let i = 0; i < 11; i++) {
+    const d = Number(base11[i]) || 0;
+    sum += i % 2 === 0 ? d * 3 : d;
+  }
+  const check = (10 - (sum % 10)) % 10;
+  return base11 + String(check);
+}
+
+/**
+ * Generates a guaranteed-unique barcode for a product (EAN-13, UPC-A, Code-39, or compact Code-128).
  */
 export function generateUniqueBarcode(
   format: BarcodeSymbology = "CODE128",
@@ -278,12 +363,14 @@ export function generateUniqueBarcode(
     if (format === "EAN13") {
       const rand9 = String(Math.floor(100000000 + Math.random() * 900000000));
       candidate = normalizeEan13Digits("894" + rand9);
+    } else if (format === "UPCA") {
+      const rand10 = String(Math.floor(1000000000 + Math.random() * 9000000000));
+      candidate = normalizeUpcaDigits("0" + rand10);
     } else if (format === "CODE39") {
       const rand6 = String(Math.floor(100000 + Math.random() * 900000));
       const cleanPfx = prefix.replace(/[^A-Z0-9-]/gi, "").toUpperCase().slice(0, 4) || "SKU";
       candidate = `${cleanPfx}-${rand6}`;
     } else {
-      // Compact 8-digit numeric Code-128C (ultra-wide bars, scans fastest even on tiny 25x15mm stickers!)
       candidate = String(Math.floor(10000000 + Math.random() * 90000000));
     }
     if (!used.has(candidate.toUpperCase())) {
@@ -294,14 +381,89 @@ export function generateUniqueBarcode(
 }
 
 /**
- * Generates a crisp ISO/IEC 15417 Code-128 vector SVG barcode (Code-128C for even digits, Code-128B for ASCII).
+ * Resolves Label LIVE dynamic {variables} against a LabelQueueItem row!
+ * Never injects any default text — returns ONLY what the user wrote / bound.
  */
-export function generateCode128Svg(rawText: string, heightPx = 30, widthPct = 96): string {
+export function resolveLabelVariables(
+  rawExpression: string,
+  row?: Partial<LabelQueueItem> | null,
+  copyIndex = 0,
+  currencyPrefix = "৳"
+): string {
+  if (!rawExpression) return "";
+  if (!rawExpression.includes("{")) return rawExpression;
+
+  const r = row || {};
+  const serialNum = (Number(r.serialStart) || 1) + copyIndex;
+
+  return rawExpression.replace(/\{([a-zA-Z0-9_]+)\}/g, (match, rawKey) => {
+    const key = String(rawKey).toLowerCase();
+    switch (key) {
+      case "name":
+      case "product":
+        return r.name ? String(r.name) : "";
+      case "price":
+        return r.price != null && !Number.isNaN(Number(r.price))
+          ? `${currencyPrefix}${Number(r.price).toLocaleString()}`
+          : "";
+      case "raw_price":
+        return r.price != null && !Number.isNaN(Number(r.price))
+          ? String(r.price)
+          : "";
+      case "mrp":
+        return r.mrp != null && Number(r.mrp) > 0
+          ? `${currencyPrefix}${Number(r.mrp).toLocaleString()}`
+          : "";
+      case "barcode":
+      case "code":
+      case "sku":
+        return r.code ? String(r.code) : "";
+      case "variant":
+      case "attributes":
+        return r.variantText ? String(r.variantText) : "";
+      case "category":
+        return r.category ? String(r.category) : "";
+      case "weight":
+      case "wt":
+        return r.weight ? String(r.weight) : "";
+      case "height":
+        return r.heightText ? String(r.heightText) : "";
+      case "width":
+        return r.widthText ? String(r.widthText) : "";
+      case "measurement":
+      case "size":
+        return r.measurement || r.variantText || "";
+      case "date":
+      case "mfg_date":
+        return r.mfgDate || new Date().toLocaleDateString("en-GB");
+      case "exp_date":
+        return r.expDate || "";
+      case "serial":
+        return String(serialNum).padStart(4, "0");
+      case "custom1":
+        return r.custom1 || "";
+      case "custom2":
+        return r.custom2 || "";
+      default:
+        return match;
+    }
+  });
+}
+
+/**
+ * Generates a crisp ISO/IEC 15417 Code-128 vector SVG barcode.
+ */
+export function generateCode128Svg(
+  rawText: string,
+  heightPx = 30,
+  widthPct = 96,
+  fillContainer = false
+): string {
   const clean =
     String(rawText || "89400001")
       .trim()
       .replace(/[^\x20-\x7E]/g, "")
-      .slice(0, 32) || "89400001";
+      .slice(0, 36) || "89400001";
 
   const codes: number[] = [];
   if (/^\d+$/.test(clean) && clean.length >= 4 && clean.length % 2 === 0) {
@@ -324,7 +486,7 @@ export function generateCode128Svg(rawText: string, heightPx = 30, widthPct = 96
   codes.push(checksum % 103);
   codes.push(106); // Stop
 
-  const quietZone = 10;
+  const quietZone = 8;
   let x = quietZone;
   const rects: string[] = [];
 
@@ -340,7 +502,10 @@ export function generateCode128Svg(rawText: string, heightPx = 30, widthPct = 96
   }
 
   const totalWidth = x + quietZone;
-  const safeH = Math.max(12, Math.min(110, Number(heightPx) || 30));
+  if (fillContainer) {
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${totalWidth} 100" preserveAspectRatio="none" shape-rendering="crispEdges" style="width: 100%; height: 100%; display: block; background: transparent;">${rects.join("")}</svg>`;
+  }
+  const safeH = Math.max(12, Math.min(160, Number(heightPx) || 30));
   const safeW = Math.max(40, Math.min(100, Number(widthPct) || 96));
 
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${totalWidth} 100" preserveAspectRatio="none" shape-rendering="crispEdges" style="width: ${safeW}%; max-width: 100%; height: ${safeH}px; display: block; margin: 0 auto; background: #ffffff;">${rects.join("")}</svg>`;
@@ -349,15 +514,21 @@ export function generateCode128Svg(rawText: string, heightPx = 30, widthPct = 96
 /**
  * Generates an ISO/IEC 16388 Code-39 vector SVG barcode.
  */
-export function generateCode39Svg(rawText: string, heightPx = 30, widthPct = 96): string {
-  const upper = String(rawText || "ITEM01")
-    .trim()
-    .toUpperCase()
-    .replace(/[^0-9A-Z\-. $/+%]/g, "")
-    .slice(0, 20) || "ITEM01";
+export function generateCode39Svg(
+  rawText: string,
+  heightPx = 30,
+  widthPct = 96,
+  fillContainer = false
+): string {
+  const upper =
+    String(rawText || "ITEM01")
+      .trim()
+      .toUpperCase()
+      .replace(/[^0-9A-Z\-. $/+%]/g, "")
+      .slice(0, 24) || "ITEM01";
 
   const full = `*${upper}*`;
-  const quietZone = 10;
+  const quietZone = 8;
   let x = quietZone;
   const rects: string[] = [];
 
@@ -370,23 +541,31 @@ export function generateCode39Svg(rawText: string, heightPx = 30, widthPct = 96)
       }
       x += w;
     }
-    x += 1; // inter-character narrow gap
+    x += 1;
   }
 
   const totalWidth = x + quietZone;
-  const safeH = Math.max(12, Math.min(110, Number(heightPx) || 30));
+  if (fillContainer) {
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${totalWidth} 100" preserveAspectRatio="none" shape-rendering="crispEdges" style="width: 100%; height: 100%; display: block; background: transparent;">${rects.join("")}</svg>`;
+  }
+  const safeH = Math.max(12, Math.min(160, Number(heightPx) || 30));
   const safeW = Math.max(40, Math.min(100, Number(widthPct) || 96));
 
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${totalWidth} 100" preserveAspectRatio="none" shape-rendering="crispEdges" style="width: ${safeW}%; max-width: 100%; height: ${safeH}px; display: block; margin: 0 auto; background: #ffffff;">${rects.join("")}</svg>`;
 }
 
 /**
- * Generates an ISO/IEC 15420 EAN-13 vector SVG barcode (falls back to Code-128 if non-numeric).
+ * Generates an ISO/IEC 15420 EAN-13 (or UPC-A via leading 0) vector SVG barcode.
  */
-export function generateEan13Svg(rawText: string, heightPx = 30, widthPct = 96): string {
+export function generateEan13Svg(
+  rawText: string,
+  heightPx = 30,
+  widthPct = 96,
+  fillContainer = false
+): string {
   const trimmed = String(rawText || "").trim();
   if (!/^\d{6,14}$/.test(trimmed)) {
-    return generateCode128Svg(trimmed || "894000000001", heightPx, widthPct);
+    return generateCode128Svg(trimmed || "894000000001", heightPx, widthPct, fillContainer);
   }
   const ean = normalizeEan13Digits(trimmed);
   const first = Number(ean[0]) || 0;
@@ -404,7 +583,7 @@ export function generateEan13Svg(rawText: string, heightPx = 30, widthPct = 96):
   }
   bits += "101"; // Right guard
 
-  const quietZone = 11;
+  const quietZone = 9;
   let x = quietZone;
   const rects: string[] = [];
   let i = 0;
@@ -422,23 +601,30 @@ export function generateEan13Svg(rawText: string, heightPx = 30, widthPct = 96):
   }
 
   const totalWidth = x + quietZone;
-  const safeH = Math.max(12, Math.min(110, Number(heightPx) || 30));
+  if (fillContainer) {
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${totalWidth} 100" preserveAspectRatio="none" shape-rendering="crispEdges" style="width: 100%; height: 100%; display: block; background: transparent;">${rects.join("")}</svg>`;
+  }
+  const safeH = Math.max(12, Math.min(160, Number(heightPx) || 30));
   const safeW = Math.max(40, Math.min(100, Number(widthPct) || 96));
 
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${totalWidth} 100" preserveAspectRatio="none" shape-rendering="crispEdges" style="width: ${safeW}%; max-width: 100%; height: ${safeH}px; display: block; margin: 0 auto; background: #ffffff;">${rects.join("")}</svg>`;
 }
 
 /**
- * Generates a crisp offline ISO/IEC 18004 QR Code vector SVG using @zxing/library's QRCodeEncoder.
+ * Generates an offline ISO/IEC 18004 QR Code vector SVG using @zxing/library.
  */
-export function generateQrCodeSvg(rawText: string, sizePx = 38): string {
+export function generateQrCodeSvg(
+  rawText: string,
+  sizePx = 38,
+  fillContainer = false
+): string {
   const content = String(rawText || "ITEM001").trim() || "ITEM001";
   try {
     const qr = QRCodeEncoder.encode(content, QRCodeDecoderErrorCorrectionLevel.M);
     const matrix = qr.getMatrix();
     const w = matrix.getWidth();
     const h = matrix.getHeight();
-    const quiet = 2;
+    const quiet = 1;
     const total = w + quiet * 2;
     const rects: string[] = [];
 
@@ -449,35 +635,43 @@ export function generateQrCodeSvg(rawText: string, sizePx = 38): string {
         }
       }
     }
-    const safePx = Math.max(20, Math.min(140, Number(sizePx) || 38));
+    if (fillContainer) {
+      return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${total} ${total}" preserveAspectRatio="xMidYMid meet" shape-rendering="crispEdges" style="width: 100%; height: 100%; display: block; background: transparent;">${rects.join("")}</svg>`;
+    }
+    const safePx = Math.max(20, Math.min(180, Number(sizePx) || 38));
     return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${total} ${total}" shape-rendering="crispEdges" style="width: ${safePx}px; height: ${safePx}px; display: block; margin: 0 auto; background: #ffffff;">${rects.join("")}</svg>`;
   } catch {
-    return generateCode128Svg(content, sizePx, 92);
+    return generateCode128Svg(content, sizePx, 92, fillContainer);
   }
 }
 
 /**
- * Unified Barcode / QR SVG dispatcher supporting CODE128, EAN13, CODE39, and QR.
+ * Unified Barcode / QR SVG dispatcher supporting CODE128, EAN13, UPCA, CODE39, and QR.
  */
 export function generateStickerGraphicSvg(
   rawText: string,
   format: BarcodeSymbology = "CODE128",
   heightPx = 30,
-  widthPct = 94
+  widthPct = 94,
+  fillContainer = false
 ): { svg: string; displayCode: string } {
   const clean = String(rawText || "89400001").trim() || "89400001";
   if (format === "QR") {
-    return { svg: generateQrCodeSvg(clean, heightPx + 10), displayCode: clean };
+    return { svg: generateQrCodeSvg(clean, heightPx + 10, fillContainer), displayCode: clean };
+  }
+  if (format === "UPCA") {
+    const upc = normalizeUpcaDigits(clean);
+    return { svg: generateEan13Svg("0" + upc, heightPx, widthPct, fillContainer), displayCode: upc };
   }
   if (format === "EAN13") {
     const displayCode = /^\d{6,14}$/.test(clean) ? normalizeEan13Digits(clean) : clean;
-    return { svg: generateEan13Svg(clean, heightPx, widthPct), displayCode };
+    return { svg: generateEan13Svg(clean, heightPx, widthPct, fillContainer), displayCode };
   }
   if (format === "CODE39") {
     const displayCode = clean.toUpperCase().replace(/[^0-9A-Z\-. $/+%]/g, "") || "ITEM01";
-    return { svg: generateCode39Svg(displayCode, heightPx, widthPct), displayCode };
+    return { svg: generateCode39Svg(displayCode, heightPx, widthPct, fillContainer), displayCode };
   }
-  return { svg: generateCode128Svg(clean, heightPx, widthPct), displayCode: clean };
+  return { svg: generateCode128Svg(clean, heightPx, widthPct, fillContainer), displayCode: clean };
 }
 
 export interface BuildLabelsOptions {
@@ -487,15 +681,15 @@ export interface BuildLabelsOptions {
 }
 
 /**
- * Computes physical page/row dimensions in millimeters for thermal rolls (1-up, 2-up, 3-up) and A4 sheets.
+ * Computes physical page/row dimensions in millimeters for thermal rolls (1-up..4-up) and A4 sheets.
  */
 export function computeStickerLayoutMetrics(cfg: PosLabelSettings) {
   const isA4 = cfg.mode === "a4_sheet";
-  const widthMm = Math.max(15, Math.min(210, Number(cfg.widthMm) || 38));
-  const heightMm = Math.max(10, Math.min(297, Number(cfg.heightMm) || 25));
+  const widthMm = Math.max(10, Math.min(300, Number(cfg.widthMm) || 50));
+  const heightMm = Math.max(8, Math.min(400, Number(cfg.heightMm) || 30));
   const rollCols = Math.max(1, Math.min(4, Math.floor(Number(cfg.rollColumns) || 1)));
-  const colGapMm = Math.max(0, Math.min(15, Number(cfg.columnGapMm) ?? 2));
-  const rowGapMm = Math.max(0, Math.min(15, Number(cfg.rowGapMm) ?? 2.5));
+  const colGapMm = Math.max(0, Math.min(20, Number(cfg.columnGapMm) ?? 2));
+  const rowGapMm = Math.max(0, Math.min(20, Number(cfg.rowGapMm) ?? 2.5));
   const a4Cols = Math.max(1, Math.min(6, Math.floor(Number(cfg.a4Columns) || 4)));
 
   const totalRowWidthMm = isA4
@@ -514,9 +708,175 @@ export function computeStickerLayoutMetrics(cfg: PosLabelSettings) {
   };
 }
 
+function getFontFamilyStack(family?: LabelElement["fontFamily"]): string {
+  switch (family) {
+    case "mono":
+      return "'Consolas', 'Courier New', monospace";
+    case "serif":
+      return "'Georgia', 'Times New Roman', serif";
+    case "condensed":
+      return "'Arial Narrow', 'Roboto Condensed', 'Nirmala UI', sans-serif";
+    default:
+      return "'Nirmala UI', 'Hind Siliguri', 'Noto Sans Bengali', 'Segoe UI', Arial, sans-serif";
+  }
+}
+
 /**
- * Builds pixel-accurate HTML for Custom-Size Thermal Roll Stickers (1-Up, 2-Up, 3-Up)
- * or A4 Multi-Sticker Sheets with calibration offsets and multi-symbology barcodes.
+ * Computes Label LIVE smart auto-shrink font size so text fits inside its wMm × hMm box cleanly.
+ */
+export function computeEffectiveFontPt(
+  el: LabelElement,
+  resolvedText: string
+): number {
+  const requested = Math.max(4, Math.min(72, Number(el.fontSizePt) || 9));
+  if (el.autoFit === false) return requested;
+
+  const boxWmm = Math.max(2, Number(el.wMm) || 20);
+  const boxHmm = Math.max(2, Number(el.hMm) || 6);
+  const len = Math.max(1, resolvedText.trim().length);
+
+  // 1pt ≈ 0.3528mm; average glyph width ≈ 0.56 * pt in mm
+  const maxByHeight = el.wrap
+    ? (boxHmm / 0.42) * 1.4
+    : (boxHmm / 0.41);
+  const maxByWidth = el.wrap
+    ? (boxWmm * 2.2) / (Math.max(1, len) * 0.2)
+    : boxWmm / (Math.max(1, len) * 0.21);
+
+  return Number(Math.max(4.5, Math.min(requested, maxByHeight, maxByWidth)).toFixed(1));
+}
+
+/**
+ * Renders a single sticker's exact 2D freeform Label LIVE canvas elements as HTML.
+ * Zero default texts are ever injected — ONLY elements in `elements` are rendered!
+ */
+export function renderCanvasElementsHtml(
+  elements: LabelElement[],
+  cfg: PosLabelSettings,
+  row?: Partial<LabelQueueItem> | null,
+  copyIndex = 0
+): string {
+  const visible = (elements || []).filter((el) => !el.hidden);
+  const offsetTopMm = Math.max(-15, Math.min(15, Number(cfg.offsetTopMm) || 0));
+  const offsetLeftMm = Math.max(-15, Math.min(15, Number(cfg.offsetLeftMm) || 0));
+  const currency = cfg.currencyPrefix || "৳";
+  const radius = Math.max(0, Number(cfg.cornerRadiusMm) || 0);
+
+  const renderedChildren = visible
+    .map((el) => {
+      const x = Number(el.xMm) || 0;
+      const y = Number(el.yMm) || 0;
+      const w = Math.max(1, Number(el.wMm) || 10);
+      const h = Math.max(0.4, Number(el.hMm) || 5);
+      const rot = el.rotation || 0;
+
+      const basePosStyle = `position:absolute;left:${x}mm;top:${y}mm;width:${w}mm;height:${h}mm;${
+        rot ? `transform:rotate(${rot}deg);transform-origin:center center;` : ""
+      }`;
+
+      if (el.type === "box") {
+        const bw = Math.max(0.2, Number(el.borderWidthMm) || 0.4);
+        const bs = el.borderStyle || "solid";
+        const br = Math.max(0, Number(el.borderRadiusMm) || 0);
+        const bg = el.filled ? "#000000" : "transparent";
+        return `<div style="${basePosStyle}border:${bw}mm ${bs} #000000;border-radius:${br}mm;background:${bg};pointer-events:none;"></div>`;
+      }
+
+      if (el.type === "line") {
+        const thickness = Math.max(0.2, Number(el.borderWidthMm) || 0.4);
+        const bs = el.borderStyle || "solid";
+        const isVert = el.lineOrientation === "vertical";
+        return isVert
+          ? `<div style="${basePosStyle}display:flex;justify-content:center;"><div style="height:100%;border-left:${thickness}mm ${bs} #000000;"></div></div>`
+          : `<div style="${basePosStyle}display:flex;align-items:center;"><div style="width:100%;border-top:${thickness}mm ${bs} #000000;"></div></div>`;
+      }
+
+      if (el.type === "image") {
+        if (!el.content) return "";
+        return `<div style="${basePosStyle}display:flex;align-items:center;justify-content:center;overflow:hidden;"><img src="${escapeHtml(
+          el.content
+        )}" alt="" style="max-width:100%;max-height:100%;object-fit:contain;filter:contrast(1.35) grayscale(1);" /></div>`;
+      }
+
+      if (el.type === "qrcode") {
+        const resolved = resolveLabelVariables(el.content || "{barcode}", row, copyIndex, currency).trim();
+        if (!resolved) return "";
+        const svg = generateQrCodeSvg(resolved, 60, true);
+        return `<div style="${basePosStyle}display:flex;align-items:center;justify-content:center;overflow:hidden;padding:0.2mm;">${svg}</div>`;
+      }
+
+      if (el.type === "barcode") {
+        const resolved = resolveLabelVariables(el.content || "{barcode}", row, copyIndex, currency).trim();
+        if (!resolved) return "";
+        const sym = el.symbology || cfg.barcodeFormat || "CODE128";
+        const showCode = el.showCodeText !== false;
+        const codeFontPt = Math.max(4.5, Math.min(14, Number(el.fontSizePt) || 6.5));
+        const { svg, displayCode } = generateStickerGraphicSvg(resolved, sym, 40, 100, true);
+        return `<div style="${basePosStyle}display:flex;flex-direction:column;align-items:stretch;justify-content:space-between;overflow:hidden;">
+          <div style="flex:1 1 auto;min-height:0;width:100%;overflow:hidden;">${svg}</div>
+          ${
+            showCode && sym !== "QR"
+              ? `<div style="flex:0 0 auto;text-align:center;font-family:'Consolas','Courier New',monospace !important;font-size:${codeFontPt}pt;font-weight:800;line-height:1.05;letter-spacing:0.3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-top:0.2mm;">${escapeHtml(
+                  displayCode
+                )}</div>`
+              : ""
+          }
+        </div>`;
+      }
+
+      // Text element
+      const resolvedText = resolveLabelVariables(el.content, row, copyIndex, currency);
+      if (!resolvedText.trim()) return "";
+
+      const effPt = computeEffectiveFontPt(el, resolvedText);
+      const weightVal =
+        el.fontWeight === "normal"
+          ? 500
+          : el.fontWeight === "semibold"
+          ? 700
+          : el.fontWeight === "black"
+          ? 900
+          : 800;
+      const align = el.align || "center";
+      const justifyFlex =
+        align === "left" ? "flex-start" : align === "right" ? "flex-end" : "center";
+      const vAlign =
+        el.verticalAlign === "top"
+          ? "flex-start"
+          : el.verticalAlign === "bottom"
+          ? "flex-end"
+          : "center";
+      const decos: string[] = [];
+      if (el.underline) decos.push("underline");
+      if (el.strikethrough) decos.push("line-through");
+      const br = Math.max(0, Number(el.borderRadiusMm) ?? (el.inverted ? 0.8 : 0));
+
+      return `<div class="${el.inverted ? "lbl-inverted" : ""}" style="${basePosStyle}display:flex;align-items:${vAlign};justify-content:${justifyFlex};text-align:${align};overflow:hidden;padding:${
+        el.inverted ? "0.3mm 0.8mm" : "0 0.2mm"
+      };border-radius:${br}mm;${el.inverted ? "background:#000000 !important;" : ""}">
+        <span style="font-family:${getFontFamilyStack(
+          el.fontFamily
+        )} !important;font-size:${effPt}pt;font-weight:${weightVal};font-style:${
+        el.italic ? "italic" : "normal"
+      };text-decoration:${decos.length ? decos.join(" ") : "none"};line-height:1.08;letter-spacing:${
+        el.letterSpacingEm ? `${el.letterSpacingEm}em` : "0"
+      };${
+        el.wrap
+          ? "white-space:pre-wrap;word-break:break-word;"
+          : "white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"
+      }max-width:100%;${el.inverted ? "color:#ffffff !important;" : "color:#000000 !important;"}">${escapeHtml(
+        resolvedText
+      )}</span>
+      </div>`;
+    })
+    .join("\n");
+
+  return `<div class="sticker-canvas-inner ${cfg.showBorder ? "with-outer-border" : ""}" style="width:100%;height:100%;position:relative;overflow:hidden;border-radius:${radius}mm;transform:translate(${offsetLeftMm}mm,${offsetTopMm}mm);">${renderedChildren}</div>`;
+}
+
+/**
+ * Builds pixel-accurate HTML for Custom-Size Thermal Roll Stickers (1-Up..4-Up)
+ * or A4 Multi-Sticker Sheets using the Label LIVE 2D canvas elements.
  */
 export function buildLabelsHtml(items: LabelQueueItem[], options?: BuildLabelsOptions): string {
   const hw = getPosHardwareSettings();
@@ -526,7 +886,6 @@ export function buildLabelsHtml(items: LabelQueueItem[], options?: BuildLabelsOp
     ...(options?.settings || {}),
   };
 
-  const shopName = escapeHtml(options?.shopName || hw.customHeaderTitle || "CLASSIC WORLD");
   const {
     isA4,
     widthMm,
@@ -538,111 +897,43 @@ export function buildLabelsHtml(items: LabelQueueItem[], options?: BuildLabelsOp
     totalRowWidthMm,
   } = computeStickerLayoutMetrics(cfg);
 
-  const offsetTopMm = Math.max(-8, Math.min(12, Number(cfg.offsetTopMm) || 0));
-  const offsetLeftMm = Math.max(-8, Math.min(12, Number(cfg.offsetLeftMm) || 0));
-  const barcodeFormat: BarcodeSymbology = cfg.barcodeFormat || "CODE128";
-  const barcodeWidthPct = Math.max(45, Math.min(100, Number(cfg.barcodeWidthPct) || 94));
-  const customFooter = cfg.customFooterText ? escapeHtml(cfg.customFooterText.trim()) : "";
+  const elements: LabelElement[] = Array.isArray(cfg.canvasElements) ? cfg.canvasElements : [];
 
-  // Smart auto-scaling font bounds relative to custom sticker height
-  const maxFontForSticker =
-    heightMm <= 16
-      ? 5.8
-      : heightMm <= 22
-      ? 6.8
-      : heightMm <= 26
-      ? 8.0
-      : heightMm <= 34
-      ? 9.5
-      : heightMm <= 50
-      ? 12.0
-      : 16.0;
-  const basePt = Math.max(5, Math.min(Number(cfg.fontSizePt) || 8, maxFontForSticker));
-  const shopPt = Math.max(5, Number((basePt - 0.9).toFixed(1)));
-  const pricePt = Number((basePt + 1.4).toFixed(1));
-  const codePt = Math.max(5, Number((basePt - 1.1).toFixed(1)));
-
-  const activeTextRows =
-    (cfg.showShopName ? 1 : 0) +
-    (cfg.showProductName ? 1 : 0) +
-    (cfg.showPrice ? 1 : 0) +
-    (cfg.showCodeText && cfg.showBarcode ? 1 : 0) +
-    (cfg.showCategory || cfg.showVariant ? 1 : 0) +
-    (customFooter ? 1 : 0);
-
-  const maxBarcodePx = Math.max(
-    12,
-    Math.floor(heightMm * 3.78 - activeTextRows * (basePt * 1.42) - (heightMm <= 18 ? 4 : 8))
-  );
-  const effectiveBarcodePx = Math.min(Number(cfg.barcodeHeightPx) || 30, maxBarcodePx);
-
-  const expandedStickers: LabelQueueItem[] = [];
-  for (const item of items) {
-    const count = Math.max(1, Math.min(500, Math.floor(Number(item.copies) || 1)));
-    for (let c = 0; c < count; c++) {
-      expandedStickers.push(item);
+  // Expand copies into individual sticker jobs with copyIndex for auto-incrementing {serial}
+  const expandedStickers: { item: LabelQueueItem; copyIndex: number }[] = [];
+  if (items.length === 0) {
+    // Allow printing pure custom static stickers even when no inventory row is queued!
+    const fallbackCopies = Math.max(1, Math.min(10000, Math.floor(Number(cfg.defaultCopies) || 1)));
+    const blankRow: LabelQueueItem = {
+      id: "static_job",
+      name: "",
+      code: "",
+      price: 0,
+      copies: fallbackCopies,
+    };
+    for (let c = 0; c < fallbackCopies; c++) {
+      expandedStickers.push({ item: blankRow, copyIndex: c });
+    }
+  } else {
+    let globalIdx = 0;
+    for (const item of items) {
+      const count = Math.max(1, Math.min(10000, Math.floor(Number(item.copies) || 1)));
+      for (let c = 0; c < count; c++) {
+        expandedStickers.push({ item, copyIndex: globalIdx++ });
+      }
     }
   }
 
-  const renderSingleStickerInner = (item: LabelQueueItem) => {
-    const { svg: barcodeSvg, displayCode } = cfg.showBarcode
-      ? generateStickerGraphicSvg(item.code, barcodeFormat, effectiveBarcodePx, barcodeWidthPct)
-      : { svg: "", displayCode: item.code };
-    const currency = escapeHtml(cfg.currencyPrefix || "৳");
-
-    const metaParts: string[] = [];
-    if (cfg.showCategory && item.category) metaParts.push(item.category);
-    if (cfg.showVariant && item.variantText) metaParts.push(item.variantText);
-    const metaLine = metaParts.join(" • ");
-
-    const hasMrp = cfg.showMrp && item.mrp && Number(item.mrp) > Number(item.price || 0);
-
-    return `
-      <div class="sticker-inner ${cfg.showBorder ? "with-border" : ""}">
-        ${cfg.showShopName ? `<div class="st-shop">${shopName}</div>` : ""}
-        ${cfg.showProductName ? `<div class="st-name">${escapeHtml(item.name)}</div>` : ""}
-        ${metaLine ? `<div class="st-cat">${escapeHtml(metaLine)}</div>` : ""}
-        ${cfg.showBarcode ? `<div class="st-bar">${barcodeSvg}</div>` : ""}
-        ${cfg.showBarcode && cfg.showCodeText ? `<div class="st-code">${escapeHtml(displayCode)}</div>` : ""}
-        ${
-          cfg.showPrice
-            ? `<div class="st-price">${
-                hasMrp
-                  ? `<span class="st-mrp">${currency}${Number(item.mrp).toLocaleString()}</span> `
-                  : ""
-              }${currency}${Number(item.price || 0).toLocaleString()}</div>`
-            : ""
-        }
-        ${customFooter ? `<div class="st-footer">${customFooter}</div>` : ""}
-      </div>
-    `;
-  };
-
-  const sharedInnerCss = `
-    .sticker-inner {
-      width: 100%;
-      height: 100%;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: space-between;
-      text-align: center;
-      overflow: hidden;
-      padding: ${heightMm <= 18 ? "0.5mm 0.8mm" : "0.9mm 1.2mm"};
-      transform: translate(${offsetLeftMm}mm, ${offsetTopMm}mm);
-    }
-    .sticker-inner.with-border {
+  const sharedCanvasCss = `
+    .sticker-canvas-inner.with-outer-border {
       border: 0.35mm solid #000000 !important;
-      border-radius: 0.8mm;
     }
-    .st-shop { font-size: ${shopPt}pt; font-weight: 900; text-transform: uppercase; letter-spacing: 0.25px; line-height: 1.05; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .st-name { font-size: ${basePt}pt; font-weight: 800; line-height: 1.08; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .st-cat { font-size: ${codePt}pt; font-weight: 700; line-height: 1.04; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .st-bar { width: 100%; margin: 0.3px auto; flex-shrink: 1; overflow: hidden; display: flex; align-items: center; justify-content: center; }
-    .st-code { font-size: ${codePt}pt; font-family: 'Consolas', 'Courier New', monospace !important; font-weight: 800; letter-spacing: 0.35px; line-height: 1; }
-    .st-price { font-size: ${pricePt}pt; font-weight: 900; line-height: 1.08; white-space: nowrap; }
-    .st-mrp { font-size: ${codePt}pt; font-weight: 700; text-decoration: line-through; opacity: 0.85; margin-right: 2px; }
-    .st-footer { font-size: ${Math.max(4.8, codePt - 0.5)}pt; font-weight: 700; line-height: 1; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .lbl-inverted, .lbl-inverted * {
+      background-color: #000000 !important;
+      color: #ffffff !important;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+    }
   `;
 
   if (isA4) {
@@ -650,7 +941,7 @@ export function buildLabelsHtml(items: LabelQueueItem[], options?: BuildLabelsOp
 <html lang="bn" data-pos-label-mode="a4_sheet" style="color-scheme: light !important;">
 <head>
   <meta charset="utf-8" />
-  <title>Product Barcode Labels (A4 Sheet)</title>
+  <title>Label Printing (A4 Sheet)</title>
   <style>
     @page {
       size: A4 portrait !important;
@@ -660,48 +951,49 @@ export function buildLabelsHtml(items: LabelQueueItem[], options?: BuildLabelsOp
       box-sizing: border-box !important;
       margin: 0;
       padding: 0;
-      color: #000000 !important;
-      font-family: 'Nirmala UI', 'Hind Siliguri', 'Noto Sans Bengali', 'Segoe UI', Arial, sans-serif !important;
       -webkit-print-color-adjust: exact !important;
       print-color-adjust: exact !important;
     }
     html, body {
       background: #ffffff !important;
       width: 100% !important;
+      color: #000000;
     }
     .a4-grid {
       display: grid;
-      grid-template-columns: repeat(${a4Cols}, 1fr);
+      grid-template-columns: repeat(${a4Cols}, ${widthMm}mm);
+      justify-content: center;
       column-gap: ${colGapMm}mm;
       row-gap: ${rowGapMm}mm;
       width: 100%;
     }
     .a4-cell {
+      width: ${widthMm}mm;
       height: ${heightMm}mm;
-      border: 0.4px dashed #94a3b8;
-      border-radius: 1.2mm;
-      padding: 0.6mm;
-      display: flex;
-      align-items: center;
-      justify-content: center;
+      border: 0.3px dashed #94a3b8;
+      position: relative;
       overflow: hidden;
       break-inside: avoid;
       page-break-inside: avoid;
       background: #ffffff !important;
     }
-    ${sharedInnerCss}
+    ${sharedCanvasCss}
   </style>
 </head>
 <body>
   <div class="a4-grid">
-    ${expandedStickers.map((st) => `<div class="a4-cell">${renderSingleStickerInner(st)}</div>`).join("\n")}
+    ${expandedStickers
+      .map(
+        ({ item, copyIndex }) =>
+          `<div class="a4-cell">${renderCanvasElementsHtml(elements, cfg, item, copyIndex)}</div>`
+      )
+      .join("\n")}
   </div>
 </body>
 </html>`;
   }
 
-  // Group stickers into rows of `rollCols` (1-Up, 2-Up, or 3-Up across the thermal sticker roll!)
-  const rows: LabelQueueItem[][] = [];
+  const rows: { item: LabelQueueItem; copyIndex: number }[][] = [];
   for (let i = 0; i < expandedStickers.length; i += rollCols) {
     rows.push(expandedStickers.slice(i, i + rollCols));
   }
@@ -710,7 +1002,7 @@ export function buildLabelsHtml(items: LabelQueueItem[], options?: BuildLabelsOp
 <html lang="bn" data-pos-label-mode="thermal" data-label-width-mm="${totalRowWidthMm}" data-label-height-mm="${heightMm}" style="color-scheme: light !important;">
 <head>
   <meta charset="utf-8" />
-  <title>Thermal Barcode Stickers (${totalRowWidthMm}x${heightMm}mm)</title>
+  <title>Thermal Stickers (${totalRowWidthMm}x${heightMm}mm)</title>
   <style>
     @page {
       size: ${totalRowWidthMm}mm ${heightMm}mm !important;
@@ -721,8 +1013,6 @@ export function buildLabelsHtml(items: LabelQueueItem[], options?: BuildLabelsOp
       box-sizing: border-box !important;
       margin: 0;
       padding: 0;
-      color: #000000 !important;
-      font-family: 'Nirmala UI', 'Hind Siliguri', 'Noto Sans Bengali', 'Segoe UI', Arial, sans-serif !important;
       -webkit-print-color-adjust: exact !important;
       print-color-adjust: exact !important;
     }
@@ -731,6 +1021,7 @@ export function buildLabelsHtml(items: LabelQueueItem[], options?: BuildLabelsOp
       margin: 0 !important;
       padding: 0 !important;
       width: ${totalRowWidthMm}mm !important;
+      color: #000000;
     }
     .pos-label-page {
       width: ${totalRowWidthMm}mm !important;
@@ -752,10 +1043,11 @@ export function buildLabelsHtml(items: LabelQueueItem[], options?: BuildLabelsOp
     .thermal-sticker-slot {
       width: ${widthMm}mm !important;
       height: ${heightMm}mm !important;
+      position: relative !important;
       overflow: hidden !important;
       background: #ffffff !important;
     }
-    ${sharedInnerCss}
+    ${sharedCanvasCss}
   </style>
 </head>
 <body>
@@ -765,7 +1057,12 @@ export function buildLabelsHtml(items: LabelQueueItem[], options?: BuildLabelsOp
         `<div class="pos-label-page">${Array.from({ length: rollCols })
           .map((_, idx) =>
             row[idx]
-              ? `<div class="thermal-sticker-slot">${renderSingleStickerInner(row[idx])}</div>`
+              ? `<div class="thermal-sticker-slot">${renderCanvasElementsHtml(
+                  elements,
+                  cfg,
+                  row[idx].item,
+                  row[idx].copyIndex
+                )}</div>`
               : `<div class="thermal-sticker-slot"></div>`
           )
           .join("")}</div>`
@@ -776,11 +1073,9 @@ export function buildLabelsHtml(items: LabelQueueItem[], options?: BuildLabelsOp
 }
 
 /**
- * 1-Click Print Product Barcode / Custom-Size Stickers on Dedicated Sticker Printers or A4 Sheets
+ * 1-Click Print Custom-Size Stickers on Dedicated Sticker Printers or A4 Sheets
  */
 export async function printProductLabels(items: LabelQueueItem[], options?: BuildLabelsOptions): Promise<void> {
-  if (!items.length) return;
-
   const hw = getPosHardwareSettings();
   const cfg: PosLabelSettings = {
     ...DEFAULT_LABEL_SETTINGS,
@@ -847,7 +1142,7 @@ export async function printProductLabels(items: LabelQueueItem[], options?: Buil
 }
 
 /**
- * Prints a 1-Sticker Size & Alignment Calibration Test to verify custom dimensions & gap sensors.
+ * Prints a 1-Sticker Size & Alignment Calibration Test without altering user's canvas.
  */
 export async function printCalibrationSticker(options?: BuildLabelsOptions): Promise<void> {
   const hw = getPosHardwareSettings();
@@ -857,14 +1152,55 @@ export async function printCalibrationSticker(options?: BuildLabelsOptions): Pro
     ...(options?.settings || {}),
   };
 
+  const w = Math.max(15, Number(cfg.widthMm) || 50);
+  const h = Math.max(10, Number(cfg.heightMm) || 30);
+
+  const calibElements: LabelElement[] = [
+    {
+      id: "cal_border",
+      type: "box",
+      xMm: 1,
+      yMm: 1,
+      wMm: w - 2,
+      hMm: h - 2,
+      content: "",
+      borderWidthMm: 0.4,
+      borderStyle: "solid",
+      borderRadiusMm: 0.8,
+    },
+    {
+      id: "cal_size",
+      type: "text",
+      xMm: 2,
+      yMm: 2,
+      wMm: w - 4,
+      hMm: Math.min(6, h * 0.28),
+      content: `${w} × ${h} mm`,
+      fontSizePt: 8,
+      fontWeight: "black",
+      align: "center",
+    },
+    {
+      id: "cal_bar",
+      type: "barcode",
+      xMm: Math.max(2, w * 0.1),
+      yMm: Math.max(6, h * 0.32),
+      wMm: w * 0.8,
+      hMm: Math.max(6, h * 0.52),
+      content: "89401234",
+      symbology: "CODE128",
+      showCodeText: true,
+      fontSizePt: 6.5,
+    },
+  ];
+
   await printProductLabels(
     [
       {
         id: "calibration_test",
-        name: `${cfg.widthMm}×${cfg.heightMm}mm TEST`,
-        code: cfg.barcodeFormat === "EAN13" ? "894123456789" : "TEST1234",
-        price: 990,
-        variantText: "ALIGN OK",
+        name: "",
+        code: "89401234",
+        price: 0,
         copies: Math.max(1, cfg.rollColumns || 1),
       },
     ],
@@ -872,7 +1208,7 @@ export async function printCalibrationSticker(options?: BuildLabelsOptions): Pro
       ...options,
       settings: {
         ...cfg,
-        showBorder: true,
+        canvasElements: calibElements,
       },
     }
   );
@@ -886,7 +1222,7 @@ export async function downloadLabelsPdf(
   options?: BuildLabelsOptions,
   fileName?: string
 ): Promise<void> {
-  if (!items.length || typeof document === "undefined") return;
+  if (typeof document === "undefined") return;
 
   const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
     import("html2canvas"),
@@ -932,7 +1268,7 @@ export async function downloadLabelsPdf(
       const pdfW = 198;
       const pdfH = (canvas.height * pdfW) / canvas.width;
       pdf.addImage(canvas.toDataURL("image/png"), "PNG", 6, 6, pdfW, Math.min(285, pdfH));
-      pdf.save(fileName || `barcode-stickers-a4-${Date.now()}.pdf`);
+      pdf.save(fileName || `labels-a4-${Date.now()}.pdf`);
       return;
     }
 
@@ -958,7 +1294,66 @@ export async function downloadLabelsPdf(
       pdf.addImage(canvas.toDataURL("image/png"), "PNG", 0, 0, totalRowWidthMm, heightMm);
     }
 
-    pdf.save(fileName || `stickers-${cfg.widthMm}x${cfg.heightMm}mm-${Date.now()}.pdf`);
+    pdf.save(fileName || `labels-${cfg.widthMm}x${cfg.heightMm}mm-${Date.now()}.pdf`);
+  } finally {
+    try {
+      if (document.body.contains(host)) document.body.removeChild(host);
+    } catch {}
+  }
+}
+
+/**
+ * Exports High-DPI (300 DPI equivalent) PNG image of the designed sticker — just like Label LIVE!
+ */
+export async function downloadLabelPng(
+  items: LabelQueueItem[],
+  options?: BuildLabelsOptions,
+  fileName?: string
+): Promise<void> {
+  if (typeof document === "undefined") return;
+  const { default: html2canvas } = await import("html2canvas");
+
+  const hw = getPosHardwareSettings();
+  const cfg: PosLabelSettings = {
+    ...DEFAULT_LABEL_SETTINGS,
+    ...(hw.labelSettings || {}),
+    ...(options?.settings || {}),
+  };
+
+  const singleItem = items.length ? [{ ...items[0], copies: 1 }] : [];
+  const html = buildLabelsHtml(singleItem, {
+    ...options,
+    settings: { ...cfg, mode: "thermal", rollColumns: 1, defaultCopies: 1 },
+  });
+
+  const host = document.createElement("iframe");
+  host.style.position = "fixed";
+  host.style.left = "-10000px";
+  host.style.top = "0";
+  host.style.width = `${cfg.widthMm}mm`;
+  host.style.height = `${cfg.heightMm}mm`;
+  host.style.border = "none";
+  document.body.appendChild(host);
+
+  try {
+    const doc = host.contentWindow?.document || host.contentDocument;
+    if (!doc) return;
+    doc.open();
+    doc.write(html);
+    doc.close();
+
+    await new Promise((r) => setTimeout(r, 160));
+    const target = (doc.querySelector(".thermal-sticker-slot") || doc.body) as HTMLElement;
+    const canvas = await html2canvas(target, {
+      scale: 4,
+      backgroundColor: "#ffffff",
+      useCORS: true,
+    });
+
+    const link = document.createElement("a");
+    link.download = fileName || `sticker-${cfg.widthMm}x${cfg.heightMm}mm-${Date.now()}.png`;
+    link.href = canvas.toDataURL("image/png");
+    link.click();
   } finally {
     try {
       if (document.body.contains(host)) document.body.removeChild(host);

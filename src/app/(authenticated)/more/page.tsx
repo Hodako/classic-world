@@ -56,7 +56,7 @@ const businessLinks = [
   { to: "#shop-profile",   labelKey: "shop_profile",    desc: "Update shop name, logo, address & invoice terms", icon: Store, perm: "settings"   as const },
   { to: "/sms",            labelKey: "sms_management",  desc: "Send bulk SMS, offers & auto triggers", icon: MessageSquare, perm: "sales"      as const },
   { to: "/invoices",       labelKey: "invoice_generator", desc: "Create & customize invoices", icon: FileText,     perm: "sales"      as const },
-  { to: "/labels",         labelKey: "label_printer" as any, desc: "Print barcode stickers & custom-size price tags", icon: Barcode, perm: "products" as const },
+  { to: "/labels",         labelKey: "label_printer" as any, desc: "Label LIVE drag-and-drop barcode & custom sticker designer", icon: Barcode, perm: "products" as const },
   { to: "/purchases",      labelKey: "new_purchase",    desc: "Log product inventory buys", icon: ShoppingCart, perm: "purchases"  as const },
   { to: "/online-sells",   labelKey: "online_sell",     desc: "Track web and online sales", icon: DollarSign,   perm: "sales"      as const },
   { to: "/customers",      labelKey: "customers",       desc: "Customer profiles & transaction statistics", icon: Users, perm: "parties" as const },

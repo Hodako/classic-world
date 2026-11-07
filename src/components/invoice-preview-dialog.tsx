@@ -38,6 +38,7 @@ import {
   ZoomIn,
   ZoomOut,
   Settings2,
+  GripVertical,
 } from "lucide-react";
 import {
   getPosHardwareSettings,
@@ -45,6 +46,8 @@ import {
   DEFAULT_HARDWARE_SETTINGS,
   DEFAULT_VISIBILITY_SETTINGS,
   DEFAULT_POLICY_NOTE,
+  DEFAULT_INVOICE_SECTION_ORDER,
+  type InvoiceSectionId,
   type PosHardwareSettings,
   type CustomInvoiceLine,
   type InvoiceVisibilitySettings,
@@ -102,6 +105,8 @@ export function InvoicePreviewDialog({
   const [previewZoom, setPreviewZoom] = useState<number>(100);
   const [iframeAutoHeight, setIframeAutoHeight] = useState<number>(420);
   const previewIframeRef = useRef<HTMLIFrameElement | null>(null);
+  const sectionDragIdxRef = useRef<number | null>(null);
+  const customLineDragIdxRef = useRef<number | null>(null);
 
   // New Custom Line form state
   const [newLineText, setNewLineText] = useState("");
@@ -724,92 +729,207 @@ export function InvoicePreviewDialog({
                 </div>
               </TabsContent>
 
-              {/* Tab 3: Text Editing */}
+              {/* Tab 3: Text Editing & Delete Any Text */}
               <TabsContent value="texts" className="p-4 sm:p-5 flex-1 overflow-y-auto space-y-3.5 m-0">
-                <div className="text-xs text-muted-foreground">
-                  {lang === "bn"
-                    ? "ইনভয়েসে প্রদর্শিত প্রতিটি টেক্সট সরাসরি আপনার পছন্দ অনুযায়ী এডিট করুন:"
-                    : "Directly customize all receipt header, address, phone and footer texts:"}
+                <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                  <span>
+                    {lang === "bn"
+                      ? "ইনভয়েসের যেকোনো টেক্সট এডিট করুন অথবা ডিলিট (Trash) বাটনে চাপ দিয়ে মুছে ফেলুন:"
+                      : "Edit any receipt text below, or click Delete (Trash) to remove any text:"}
+                  </span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => updateSettings({ visibility: { ...DEFAULT_VISIBILITY_SETTINGS } })}
+                    className="h-7 px-2 text-[10.5px] gap-1 shrink-0 cursor-pointer"
+                  >
+                    <RotateCcw className="size-3" />
+                    <span>{lang === "bn" ? "সব ফিরিয়ে আনুন" : "Restore All"}</span>
+                  </Button>
                 </div>
 
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-bold text-foreground">
-                    {lang === "bn" ? "দোকান / ব্যবসার নাম" : "Header / Business Title"}
-                  </Label>
-                  <Input
-                    value={settings.customHeaderTitle ?? effectiveInvoiceData.businessName}
-                    onChange={(e) => updateSettings({ customHeaderTitle: e.target.value })}
-                    placeholder="DREAM FASHION"
-                    className="h-9 text-xs font-bold bg-background"
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-bold text-foreground">
-                    {lang === "bn" ? "ট্যাগলাইন বা স্লোগান" : "Tagline / Subtitle"}
-                  </Label>
-                  <Input
-                    value={settings.customSubtitle ?? (effectiveInvoiceData.tagline || "")}
-                    onChange={(e) => updateSettings({ customSubtitle: e.target.value })}
-                    placeholder="এক্সক্লুসিভ ফ্যাশন কালেকশন"
-                    className="h-9 text-xs bg-background"
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-bold text-foreground">
-                    {lang === "bn" ? "দোকানের ঠিকানা" : "Shop Address"}
-                  </Label>
-                  <Input
-                    value={settings.customAddress ?? (effectiveInvoiceData.shopAddress || "")}
-                    onChange={(e) => updateSettings({ customAddress: e.target.value })}
-                    placeholder="দোকান নং #১২, নিউ মার্কেট, ঢাকা"
-                    className="h-9 text-xs bg-background"
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-bold text-foreground">
-                    {lang === "bn" ? "মোবাইল নম্বর" : "Shop Phone Number(s)"}
-                  </Label>
-                  <Input
-                    value={settings.customPhone ?? (effectiveInvoiceData.shopPhoneNumbers || "")}
-                    onChange={(e) => updateSettings({ customPhone: e.target.value })}
-                    placeholder="01712-345678, 01898-765432"
-                    className="h-9 text-xs font-mono bg-background"
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-bold text-foreground">
-                    {lang === "bn" ? "ফুটার নোট বা ধন্যবাদ বার্তা" : "Footer Note / Thank You Note"}
-                  </Label>
-                  <Input
-                    value={settings.customFooterNote ?? (effectiveInvoiceData.terms || "")}
-                    onChange={(e) => updateSettings({ customFooterNote: e.target.value })}
-                    placeholder="আমাদের সাথে কেনাকাটা করার জন্য ধন্যবাদ!"
-                    className="h-9 text-xs bg-background"
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-bold text-foreground flex items-center justify-between">
-                    <span>{lang === "bn" ? "পণ্য পরিবর্তন সংক্রান্ত পলিসি টেক্সট" : "Exchange Policy Note"}</span>
-                    <span className="text-[10px] text-muted-foreground font-normal">
-                      {lang === "bn" ? "(রসিদের শেষে মুদ্রিত)" : "(Printed at bottom)"}
-                    </span>
-                  </Label>
-                  <Input
-                    value={settings.customPolicyNote ?? DEFAULT_POLICY_NOTE}
-                    onChange={(e) => updateSettings({ customPolicyNote: e.target.value })}
-                    placeholder={DEFAULT_POLICY_NOTE}
-                    className="h-9 text-xs bg-background font-medium"
-                  />
-                </div>
+                {[
+                  {
+                    key: "headerTitle",
+                    visKey: "showShopName" as keyof InvoiceVisibilitySettings,
+                    labelBn: "দোকান / ব্যবসার নাম",
+                    labelEn: "Header / Business Title",
+                    value: settings.customHeaderTitle ?? effectiveInvoiceData.businessName,
+                    placeholder: "CLASSIC WORLD",
+                    onChange: (v: string) => updateSettings({ customHeaderTitle: v }),
+                    bold: true,
+                  },
+                  {
+                    key: "subtitle",
+                    visKey: "showTagline" as keyof InvoiceVisibilitySettings,
+                    labelBn: "ট্যাগলাইন বা স্লোগান",
+                    labelEn: "Tagline / Subtitle",
+                    value: settings.customSubtitle ?? (effectiveInvoiceData.tagline || ""),
+                    placeholder: "এক্সক্লুসিভ কালেকশন",
+                    onChange: (v: string) => updateSettings({ customSubtitle: v }),
+                  },
+                  {
+                    key: "address",
+                    visKey: "showShopAddress" as keyof InvoiceVisibilitySettings,
+                    labelBn: "দোকানের ঠিকানা",
+                    labelEn: "Shop Address",
+                    value: settings.customAddress ?? (effectiveInvoiceData.shopAddress || ""),
+                    placeholder: "দোকান নং #১২, নিউ মার্কেট",
+                    onChange: (v: string) => updateSettings({ customAddress: v }),
+                  },
+                  {
+                    key: "phone",
+                    visKey: "showShopPhone" as keyof InvoiceVisibilitySettings,
+                    labelBn: "মোবাইল নম্বর",
+                    labelEn: "Shop Phone Number(s)",
+                    value: settings.customPhone ?? (effectiveInvoiceData.shopPhoneNumbers || ""),
+                    placeholder: "01712-345678",
+                    onChange: (v: string) => updateSettings({ customPhone: v }),
+                    mono: true,
+                  },
+                  {
+                    key: "footer",
+                    visKey: "showTerms" as keyof InvoiceVisibilitySettings,
+                    labelBn: "ফুটার নোট বা ধন্যবাদ বার্তা",
+                    labelEn: "Footer Note / Thank You Note",
+                    value: settings.customFooterNote ?? (effectiveInvoiceData.terms || ""),
+                    placeholder: "আমাদের সাথে কেনাকাটা করার জন্য ধন্যবাদ!",
+                    onChange: (v: string) => updateSettings({ customFooterNote: v }),
+                  },
+                  {
+                    key: "policy",
+                    visKey: "showPolicyNote" as keyof InvoiceVisibilitySettings,
+                    labelBn: "পণ্য পরিবর্তন সংক্রান্ত পলিসি টেক্সট",
+                    labelEn: "Exchange Policy Note",
+                    value: settings.customPolicyNote ?? DEFAULT_POLICY_NOTE,
+                    placeholder: DEFAULT_POLICY_NOTE,
+                    onChange: (v: string) => updateSettings({ customPolicyNote: v }),
+                  },
+                ].map((field) => {
+                  const isVisible = vis[field.visKey] !== false;
+                  return (
+                    <div key={field.key} className="space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <Label className="text-xs font-bold text-foreground">
+                          {lang === "bn" ? field.labelBn : field.labelEn}
+                        </Label>
+                        {!isVisible && (
+                          <button
+                            type="button"
+                            onClick={() => updateVisibility({ [field.visKey]: true })}
+                            className="text-[10.5px] font-bold text-primary hover:underline cursor-pointer"
+                          >
+                            + {lang === "bn" ? "পুনরায় যোগ করুন" : "Restore Text"}
+                          </button>
+                        )}
+                      </div>
+                      {isVisible ? (
+                        <div className="flex items-center gap-1.5">
+                          <Input
+                            value={field.value}
+                            onChange={(e) => field.onChange(e.target.value)}
+                            placeholder={field.placeholder}
+                            className={`h-9 text-xs bg-background ${field.bold ? "font-bold" : ""} ${
+                              field.mono ? "font-mono" : ""
+                            }`}
+                          />
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="icon"
+                            onClick={() => updateVisibility({ [field.visKey]: false })}
+                            title={lang === "bn" ? "এই টেক্সট মুছে ফেলুন" : "Delete this text from invoice"}
+                            className="size-9 shrink-0 text-destructive hover:bg-destructive/10 border-border cursor-pointer"
+                          >
+                            <Trash2 className="size-3.5" />
+                          </Button>
+                        </div>
+                      ) : (
+                        <div className="h-8 px-3 rounded-lg border border-dashed border-border/70 flex items-center text-[11px] text-muted-foreground">
+                          {lang === "bn" ? "ইনভয়েস থেকে মুছে ফেলা হয়েছে" : "Deleted from invoice"}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </TabsContent>
 
-              {/* Tab 4: Custom Lines & Visibility Toggles */}
+              {/* Tab 4: Drag & Drop Layout, Custom Lines & Visibility Toggles */}
               <TabsContent value="lines" className="p-4 sm:p-5 flex-1 overflow-y-auto space-y-4 m-0">
+                {/* Drag-and-Drop Invoice Section Order */}
+                <div className="p-3.5 rounded-xl bg-muted/30 border border-border/70 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                      <GripVertical className="size-3.5 text-primary" />
+                      <span>
+                        {lang === "bn"
+                          ? "ইনভয়েস সেকশন ড্র্যাগ ও ড্রপ (Drag & Drop Order)"
+                          : "Drag & Drop Invoice Section Order"}
+                      </span>
+                    </Label>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        updateSettings({ invoiceSectionOrder: [...DEFAULT_INVOICE_SECTION_ORDER] })
+                      }
+                      className="text-[10.5px] font-semibold text-primary hover:underline cursor-pointer"
+                    >
+                      {lang === "bn" ? "ডিফল্ট ক্রম" : "Reset Order"}
+                    </button>
+                  </div>
+
+                  <div className="space-y-1">
+                    {(() => {
+                      const rawOrder =
+                        Array.isArray(settings.invoiceSectionOrder) &&
+                        settings.invoiceSectionOrder.length > 0
+                          ? settings.invoiceSectionOrder
+                          : DEFAULT_INVOICE_SECTION_ORDER;
+                      const order: InvoiceSectionId[] = [
+                        ...rawOrder,
+                        ...DEFAULT_INVOICE_SECTION_ORDER.filter((s) => !rawOrder.includes(s)),
+                      ];
+                      const labels: Record<InvoiceSectionId, { bn: string; en: string }> = {
+                        header: { bn: "দোকানের হেডার ও ঠিকানা", en: "Shop Header & Address" },
+                        meta: { bn: "ইনভয়েস নম্বর, তারিখ ও ক্রেতা", en: "Invoice No, Date & Customer" },
+                        before_items: { bn: "আইটেমের পূর্বের কাস্টম টেক্সট", en: "Custom Texts (Before Items)" },
+                        items: { bn: "পণ্যের তালিকা টেবিল (Items)", en: "Purchased Items Table" },
+                        after_items: { bn: "আইটেমের পরের কাস্টম টেক্সট", en: "Custom Texts (After Items)" },
+                        totals: { bn: "হিসাব ও পরিশোধ বিবরণী (Totals)", en: "Subtotal, Total & Payment" },
+                        footer: { bn: "ফুটার নোট ও পরিবর্তন পলিসি", en: "Footer & Exchange Policy" },
+                      };
+                      return order.map((secId, idx) => (
+                        <div
+                          key={secId}
+                          draggable
+                          onDragStart={() => {
+                            sectionDragIdxRef.current = idx;
+                          }}
+                          onDragOver={(e) => e.preventDefault()}
+                          onDrop={() => {
+                            const from = sectionDragIdxRef.current;
+                            sectionDragIdxRef.current = null;
+                            if (from === null || from === idx) return;
+                            const next = [...order];
+                            const [moved] = next.splice(from, 1);
+                            next.splice(idx, 0, moved);
+                            updateSettings({ invoiceSectionOrder: next });
+                          }}
+                          className="flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-background border border-border/70 text-xs font-semibold cursor-grab active:cursor-grabbing hover:border-primary/50"
+                        >
+                          <div className="flex items-center gap-2">
+                            <GripVertical className="size-3.5 text-muted-foreground shrink-0" />
+                            <span>{lang === "bn" ? labels[secId].bn : labels[secId].en}</span>
+                          </div>
+                          <span className="text-[10px] font-mono text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                            #{idx + 1}
+                          </span>
+                        </div>
+                      ));
+                    })()}
+                  </div>
+                </div>
                 {/* Add Custom Line Section */}
                 <div className="p-3.5 rounded-xl bg-muted/30 border border-border/70 space-y-2.5">
                   <Label className="text-xs font-bold text-foreground flex items-center gap-1.5">
@@ -871,30 +991,54 @@ export function InvoicePreviewDialog({
                   </Button>
                 </div>
 
-                {/* Existing Custom Lines List */}
+                {/* Existing Custom Lines List (Drag & Drop + Inline Edit + Delete) */}
                 {settings.customLines && settings.customLines.length > 0 && (
                   <div className="space-y-1.5">
                     <Label className="text-xs font-bold text-foreground">
-                      {lang === "bn" ? "যুক্ত করা কাস্টম লাইনসমূহ:" : "Configured Custom Lines:"}
+                      {lang === "bn"
+                        ? "যুক্ত করা কাস্টম লাইনসমূহ (ড্র্যাগ করে সাজান বা এডিট/মুছুন):"
+                        : "Configured Custom Lines (Drag to reorder, edit, or delete):"}
                     </Label>
                     <div className="space-y-1.5">
-                      {settings.customLines.map((l) => (
+                      {settings.customLines.map((l, idx) => (
                         <div
                           key={l.id}
-                          className="p-2.5 rounded-lg bg-muted/20 border border-border/60 flex items-center justify-between gap-2 text-xs"
+                          draggable
+                          onDragStart={() => {
+                            customLineDragIdxRef.current = idx;
+                          }}
+                          onDragOver={(e) => e.preventDefault()}
+                          onDrop={() => {
+                            const from = customLineDragIdxRef.current;
+                            customLineDragIdxRef.current = null;
+                            if (from === null || from === idx) return;
+                            const nextLines = [...(settings.customLines || [])];
+                            const [moved] = nextLines.splice(from, 1);
+                            nextLines.splice(idx, 0, moved);
+                            updateSettings({ customLines: nextLines });
+                          }}
+                          className="p-2 rounded-lg bg-muted/20 border border-border/60 flex items-center justify-between gap-2 text-xs cursor-grab active:cursor-grabbing"
                         >
-                          <div className="flex items-center gap-2 min-w-0">
-                            <Badge variant="outline" className="text-[10px] shrink-0 font-mono">
-                              {l.position === "header"
-                                ? lang === "bn" ? "হেডার" : "Header"
-                                : l.position === "before_items"
-                                ? lang === "bn" ? "আইটেমের পূর্বে" : "Before Items"
-                                : l.position === "after_items"
-                                ? lang === "bn" ? "আইটেমের পরে" : "After Items"
-                                : lang === "bn" ? "ফুটার" : "Footer"}
-                            </Badge>
-                            <span className={`truncate ${l.bold ? "font-bold" : ""}`}>{l.text}</span>
-                          </div>
+                          <GripVertical className="size-3.5 text-muted-foreground shrink-0" />
+                          <Badge variant="outline" className="text-[10px] shrink-0 font-mono">
+                            {l.position === "header"
+                              ? lang === "bn" ? "হেডার" : "Header"
+                              : l.position === "before_items"
+                              ? lang === "bn" ? "আইটেমের পূর্বে" : "Before Items"
+                              : l.position === "after_items"
+                              ? lang === "bn" ? "আইটেমের পরে" : "After Items"
+                              : lang === "bn" ? "ফুটার" : "Footer"}
+                          </Badge>
+                          <Input
+                            value={l.text}
+                            onChange={(e) => {
+                              const nextLines = (settings.customLines || []).map((item) =>
+                                item.id === l.id ? { ...item, text: e.target.value } : item
+                              );
+                              updateSettings({ customLines: nextLines });
+                            }}
+                            className={`h-7 text-xs flex-1 bg-background ${l.bold ? "font-bold" : ""}`}
+                          />
                           <Button
                             type="button"
                             variant="ghost"

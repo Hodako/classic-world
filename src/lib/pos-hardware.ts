@@ -2,12 +2,32 @@ import type { Product } from "@/lib/queries";
 
 export type ReceiptPrintMode = "manual" | "automatic";
 
+export type InvoiceSectionId =
+  | "header"
+  | "meta"
+  | "before_items"
+  | "items"
+  | "after_items"
+  | "totals"
+  | "footer";
+
+export const DEFAULT_INVOICE_SECTION_ORDER: InvoiceSectionId[] = [
+  "header",
+  "meta",
+  "before_items",
+  "items",
+  "after_items",
+  "totals",
+  "footer",
+];
+
 export interface CustomInvoiceLine {
   id: string;
   text: string;
   position: "header" | "before_items" | "after_items" | "footer";
   align?: "left" | "center" | "right";
   bold?: boolean;
+  fontSizePt?: number;
 }
 
 export interface InvoiceVisibilitySettings {
@@ -35,14 +55,68 @@ export interface InvoiceVisibilitySettings {
 }
 
 export type LabelPrintMode = "thermal" | "a4_sheet";
-export type BarcodeSymbology = "CODE128" | "EAN13" | "CODE39" | "QR";
+export type BarcodeSymbology = "CODE128" | "EAN13" | "UPCA" | "CODE39" | "QR";
+export type LabelUnit = "mm" | "cm" | "in";
+export type LabelElementType = "text" | "barcode" | "qrcode" | "box" | "line" | "image";
+
+export interface LabelElement {
+  id: string;
+  type: LabelElementType;
+  /** User-facing layer label in the Label LIVE Layers list */
+  layerName?: string;
+  /** Millimeter coordinates & dimensions on the physical sticker */
+  xMm: number;
+  yMm: number;
+  wMm: number;
+  hMm: number;
+  rotation?: 0 | 90 | 180 | 270;
+  locked?: boolean;
+  hidden?: boolean;
+  /** Text string, {variable} expression, barcode data, or image dataUrl */
+  content: string;
+  /** Typography properties */
+  fontFamily?: "sans" | "mono" | "serif" | "condensed";
+  fontSizePt?: number;
+  fontWeight?: "normal" | "semibold" | "bold" | "black";
+  italic?: boolean;
+  underline?: boolean;
+  strikethrough?: boolean;
+  align?: "left" | "center" | "right";
+  verticalAlign?: "top" | "middle" | "bottom";
+  inverted?: boolean;
+  autoFit?: boolean;
+  wrap?: boolean;
+  letterSpacingEm?: number;
+  /** Barcode / QR properties */
+  symbology?: BarcodeSymbology;
+  showCodeText?: boolean;
+  /** Shape / Box / Line properties */
+  borderWidthMm?: number;
+  borderStyle?: "solid" | "dashed" | "dotted";
+  borderRadiusMm?: number;
+  filled?: boolean;
+  lineOrientation?: "horizontal" | "vertical";
+}
+
+export interface LabelSavedTemplate {
+  id: string;
+  name: string;
+  widthMm: number;
+  heightMm: number;
+  cornerRadiusMm?: number;
+  elements: LabelElement[];
+  updatedAt: string;
+}
 
 export interface PosLabelSettings {
   mode: LabelPrintMode;
   printerName: string;
   barcodeFormat: BarcodeSymbology;
+  unit: LabelUnit;
   widthMm: number;
   heightMm: number;
+  cornerRadiusMm: number;
+  defaultCopies: number;
   rollColumns: number;
   columnGapMm: number;
   rowGapMm: number;
@@ -64,35 +138,50 @@ export interface PosLabelSettings {
   customFooterText: string;
   currencyPrefix: string;
   silentPrint: boolean;
+  snapToGrid: boolean;
+  gridStepMm: number;
+  feedDirection: "up" | "down" | "left" | "right";
+  /** Label LIVE freeform 2D canvas elements (starts empty — zero forced default texts!) */
+  canvasElements: LabelElement[];
+  /** User's saved custom label designs */
+  savedTemplates: LabelSavedTemplate[];
 }
 
 export const DEFAULT_LABEL_SETTINGS: PosLabelSettings = {
   mode: "thermal",
   printerName: "",
   barcodeFormat: "CODE128",
-  widthMm: 38,
-  heightMm: 25,
+  unit: "mm",
+  widthMm: 50,
+  heightMm: 30,
+  cornerRadiusMm: 1.5,
+  defaultCopies: 1,
   rollColumns: 1,
   columnGapMm: 2,
   rowGapMm: 2.5,
   offsetTopMm: 0,
   offsetLeftMm: 0,
   a4Columns: 4,
-  fontSizePt: 8,
+  fontSizePt: 9,
   barcodeHeightPx: 30,
   barcodeWidthPct: 94,
-  showShopName: true,
-  showProductName: true,
-  showPrice: true,
+  showShopName: false,
+  showProductName: false,
+  showPrice: false,
   showMrp: false,
-  showBarcode: true,
+  showBarcode: false,
   showCodeText: true,
   showCategory: false,
-  showVariant: true,
+  showVariant: false,
   showBorder: false,
   customFooterText: "",
   currencyPrefix: "৳",
   silentPrint: true,
+  snapToGrid: true,
+  gridStepMm: 0.5,
+  feedDirection: "up",
+  canvasElements: [],
+  savedTemplates: [],
 };
 
 export interface PosHardwareSettings {
@@ -136,9 +225,11 @@ export interface PosHardwareSettings {
   customPolicyNote?: string;
   /** Toggle visibility of standard invoice lines */
   visibility: InvoiceVisibilitySettings;
+  /** Drag-and-drop section order for invoice blocks */
+  invoiceSectionOrder?: InvoiceSectionId[];
   /** Custom lines added by admin */
   customLines: CustomInvoiceLine[];
-  /** Barcode / Price Sticker Label printing settings */
+  /** Barcode / Custom-Size Label LIVE Sticker Studio settings */
   labelSettings: PosLabelSettings;
 }
 
@@ -188,6 +279,7 @@ export const DEFAULT_HARDWARE_SETTINGS: PosHardwareSettings = {
   fontSizePt: 8.5,
   titleFontSizePt: 12,
   visibility: DEFAULT_VISIBILITY_SETTINGS,
+  invoiceSectionOrder: DEFAULT_INVOICE_SECTION_ORDER,
   customLines: [],
   labelSettings: DEFAULT_LABEL_SETTINGS,
 };
@@ -209,7 +301,6 @@ export function createHidScanBuffer(suffix: "Enter" | "Tab" | "None" = "Enter", 
       if (flushTimer) clearTimeout(flushTimer);
     },
     push(key: string, at: number): string | null {
-      // Handle Enter / Carriage Return or Tab suffix
       const isSuffix =
         key === suffix ||
         key === "Enter" ||
@@ -270,6 +361,7 @@ export function getPosHardwareSettings(): PosHardwareSettings {
   if (typeof window === "undefined") return DEFAULT_HARDWARE_SETTINGS;
   try {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
+    const savedLabel = saved?.labelSettings || {};
     return {
       printMode: saved?.printMode === "automatic" ? "automatic" : "manual",
       scannerSuffix: saved?.scannerSuffix === "Tab" ? "Tab" : "Enter",
@@ -297,16 +389,24 @@ export function getPosHardwareSettings(): PosHardwareSettings {
         ...DEFAULT_VISIBILITY_SETTINGS,
         ...(saved?.visibility || {}),
       },
+      invoiceSectionOrder: Array.isArray(saved?.invoiceSectionOrder) && saved.invoiceSectionOrder.length > 0
+        ? saved.invoiceSectionOrder
+        : DEFAULT_INVOICE_SECTION_ORDER,
       customLines: Array.isArray(saved?.customLines) ? saved.customLines : [],
       labelSettings: {
         ...DEFAULT_LABEL_SETTINGS,
-        ...(saved?.labelSettings || {}),
-        mode: saved?.labelSettings?.mode === "a4_sheet" ? "a4_sheet" : "thermal",
-        widthMm: Number(saved?.labelSettings?.widthMm) > 10 ? Number(saved.labelSettings.widthMm) : DEFAULT_LABEL_SETTINGS.widthMm,
-        heightMm: Number(saved?.labelSettings?.heightMm) > 10 ? Number(saved.labelSettings.heightMm) : DEFAULT_LABEL_SETTINGS.heightMm,
-        a4Columns: Number(saved?.labelSettings?.a4Columns) >= 1 ? Math.min(6, Math.max(1, Number(saved.labelSettings.a4Columns))) : DEFAULT_LABEL_SETTINGS.a4Columns,
-        fontSizePt: Number(saved?.labelSettings?.fontSizePt) >= 5 ? Math.min(18, Math.max(5, Number(saved.labelSettings.fontSizePt))) : DEFAULT_LABEL_SETTINGS.fontSizePt,
-        barcodeHeightPx: Number(saved?.labelSettings?.barcodeHeightPx) >= 14 ? Math.min(80, Math.max(14, Number(saved.labelSettings.barcodeHeightPx))) : DEFAULT_LABEL_SETTINGS.barcodeHeightPx,
+        ...savedLabel,
+        mode: savedLabel?.mode === "a4_sheet" ? "a4_sheet" : "thermal",
+        unit: savedLabel?.unit === "cm" || savedLabel?.unit === "in" ? savedLabel.unit : "mm",
+        widthMm: Number(savedLabel?.widthMm) >= 10 ? Math.min(300, Number(savedLabel.widthMm)) : DEFAULT_LABEL_SETTINGS.widthMm,
+        heightMm: Number(savedLabel?.heightMm) >= 8 ? Math.min(400, Number(savedLabel.heightMm)) : DEFAULT_LABEL_SETTINGS.heightMm,
+        cornerRadiusMm: Number.isFinite(Number(savedLabel?.cornerRadiusMm)) ? Math.max(0, Math.min(20, Number(savedLabel.cornerRadiusMm))) : DEFAULT_LABEL_SETTINGS.cornerRadiusMm,
+        defaultCopies: Number(savedLabel?.defaultCopies) >= 1 ? Math.min(10000, Math.floor(Number(savedLabel.defaultCopies))) : DEFAULT_LABEL_SETTINGS.defaultCopies,
+        a4Columns: Number(savedLabel?.a4Columns) >= 1 ? Math.min(6, Math.max(1, Number(savedLabel.a4Columns))) : DEFAULT_LABEL_SETTINGS.a4Columns,
+        fontSizePt: Number(savedLabel?.fontSizePt) >= 4 ? Math.min(48, Math.max(4, Number(savedLabel.fontSizePt))) : DEFAULT_LABEL_SETTINGS.fontSizePt,
+        barcodeHeightPx: Number(savedLabel?.barcodeHeightPx) >= 10 ? Math.min(200, Math.max(10, Number(savedLabel.barcodeHeightPx))) : DEFAULT_LABEL_SETTINGS.barcodeHeightPx,
+        canvasElements: Array.isArray(savedLabel?.canvasElements) ? savedLabel.canvasElements : [],
+        savedTemplates: Array.isArray(savedLabel?.savedTemplates) ? savedLabel.savedTemplates : [],
       },
     };
   } catch {

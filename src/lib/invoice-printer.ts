@@ -1,7 +1,14 @@
 import { getPrintableWidthMm, getPrintScale, setReceiptPageSize } from "@/lib/print-layout";
 import { fmtDateTime } from "@/lib/format";
 import { executeDirectSilentPrint } from "@/lib/pos-print";
-import { getPosHardwareSettings, DEFAULT_VISIBILITY_SETTINGS, DEFAULT_POLICY_NOTE, type PosHardwareSettings } from "@/lib/pos-hardware";
+import {
+  getPosHardwareSettings,
+  DEFAULT_VISIBILITY_SETTINGS,
+  DEFAULT_POLICY_NOTE,
+  DEFAULT_INVOICE_SECTION_ORDER,
+  type InvoiceSectionId,
+  type PosHardwareSettings,
+} from "@/lib/pos-hardware";
 
 export interface InvoiceItemData {
   product: {
@@ -215,6 +222,146 @@ export function buildInvoiceHtml(data: PrintInvoiceParams, settingsOverride?: Pa
         </tbody>
       </table>`;
 
+  const headerInner = [
+    vis.showShopName !== false && shopName
+      ? `<div style="font-size: ${titleFontPt}pt; font-weight: 900; text-transform: uppercase; letter-spacing: 0.5px; color: #000000; line-height: 1.2;">${shopName}</div>`
+      : "",
+    vis.showTagline !== false && tagline
+      ? `<div style="font-size: ${smallFontPt}pt; font-weight: 800; color: #000000; margin-top: 1px;">${tagline}</div>`
+      : "",
+    vis.showShopAddress !== false && address
+      ? `<div style="font-size: ${smallFontPt}pt; font-weight: 800; color: #000000; margin-top: 1px;">${address}</div>`
+      : "",
+    vis.showShopPhone !== false && phone
+      ? `<div style="font-size: ${baseFontPt}pt; font-family: monospace; font-weight: 900; color: #000000; margin-top: 1px;">মোবাইল: ${phone}</div>`
+      : "",
+    data.userEmail
+      ? `<div style="font-size: ${smallFontPt}pt; font-weight: 800; color: #000000; margin-top: 1px;">${escapeHtml(data.userEmail)}</div>`
+      : "",
+    renderCustomLines("header"),
+  ]
+    .filter(Boolean)
+    .join("");
+
+  const metaInner = [
+    vis.showInvoiceNo !== false || vis.showDateTime !== false
+      ? `<div class="receipt-row" style="display: flex; justify-content: space-between; align-items: center; font-family: monospace; font-weight: 800;">
+          ${vis.showInvoiceNo !== false ? `<span style="font-weight: 900;">ইনভয়েস: ${escapeHtml(data.invoiceNo)}</span>` : "<span></span>"}
+          ${vis.showDateTime !== false ? `<span style="font-weight: 800;">${dateStr}</span>` : ""}
+        </div>`
+      : "",
+    showCustomerInfo && data.customerName
+      ? `<div class="receipt-row" style="display: flex; justify-content: space-between; align-items: baseline; gap: 4px; margin-top: 2px; font-weight: 800;">
+          <span style="font-weight: 800;">ক্রেতা: <strong style="font-weight: 900;">${escapeHtml(data.customerName)}</strong></span>
+          <span style="font-family: monospace; font-weight: 800;">${escapeHtml(data.customerPhone || "")}</span>
+        </div>`
+      : "",
+    showCashierInfo && data.cashierName
+      ? `<div style="font-size: ${smallFontPt}pt; font-weight: 800; color: #000000; margin-top: 1px;">ক্যাশিয়ার: ${escapeHtml(data.cashierName)}</div>`
+      : "",
+  ]
+    .filter(Boolean)
+    .join("");
+
+  const totalsInner = [
+    vis.showSubtotal !== false
+      ? `<div class="receipt-row" style="display: flex; justify-content: space-between; font-weight: 800;">
+          <span>মোট মূল্য:</span>
+          <span style="font-family: monospace; font-weight: 800;">৳${data.subtotal.toLocaleString()}</span>
+        </div>`
+      : "",
+    vis.showDiscount !== false && data.discountAmount > 0
+      ? `<div class="receipt-row" style="display: flex; justify-content: space-between; font-weight: 800; color: #000000;">
+          <span>বিশেষ ছাড়:</span>
+          <span style="font-family: monospace; font-weight: 800;">-৳${data.discountAmount.toLocaleString()}</span>
+        </div>`
+      : "",
+    vis.showTotal !== false
+      ? `<div class="receipt-row" style="border-top: 1.5px solid #000000; border-bottom: 1.5px solid #000000; padding: 2px 0; margin: 2px 0; display: flex; justify-content: space-between; font-size: ${largeFontPt}pt; font-weight: 900;">
+          <span style="font-weight: 900;">সর্বমোট:</span>
+          <span style="font-family: monospace; font-weight: 900;">৳${data.total.toLocaleString()}</span>
+        </div>`
+      : "",
+    vis.showPaid !== false
+      ? `<div class="receipt-row" style="display: flex; justify-content: space-between; font-weight: 800; color: #000000;">
+          <span>পরিশোধ:</span>
+          <span style="font-family: monospace; font-weight: 800;">৳${data.paidAmount.toLocaleString()}</span>
+        </div>`
+      : "",
+    vis.showPaid !== false && data.splitCash !== undefined && (data.splitCash > 0 || (data.splitBkash && data.splitBkash > 0) || (data.splitBank && data.splitBank > 0))
+      ? `<div style="background: #ffffff; border: 1px dashed #000000; padding: 2px 4px; border-radius: 4px; margin: 2px 0; font-size: ${smallFontPt}pt; font-weight: 800; color: #000000;">
+          ${data.splitCash > 0 ? `<div class="receipt-row" style="display: flex; justify-content: space-between; font-weight: 800;"><span>• নগদ:</span><span style="font-family: monospace; font-weight: 800;">৳${data.splitCash.toLocaleString()}</span></div>` : ""}
+          ${data.splitBkash && data.splitBkash > 0 ? `<div class="receipt-row" style="display: flex; justify-content: space-between; font-weight: 800;"><span>• বিকাশ:</span><span style="font-family: monospace; font-weight: 800;">৳${data.splitBkash.toLocaleString()}</span></div>` : ""}
+          ${data.splitBank && data.splitBank > 0 ? `<div class="receipt-row" style="display: flex; justify-content: space-between; font-weight: 800;"><span>• ব্যাংক:</span><span style="font-family: monospace; font-weight: 800;">৳${data.splitBank.toLocaleString()}</span></div>` : ""}
+        </div>`
+      : "",
+    vis.showDue !== false
+      ? data.due > 0
+        ? `<div class="receipt-row" style="display: flex; justify-content: space-between; font-weight: 900; color: #000000;">
+            <span>বকেয়া:</span>
+            <span style="font-family: monospace; font-weight: 900;">৳${data.due.toLocaleString()}</span>
+          </div>`
+        : `<div class="receipt-row" style="display: flex; justify-content: space-between; font-weight: 800;">
+            <span>বকেয়া:</span>
+            <span style="font-family: monospace; font-weight: 800;">৳0</span>
+          </div>`
+      : "",
+    vis.showChangeReturn !== false && (data.changeAmount || 0) > 0
+      ? `<div class="receipt-row" style="display: flex; justify-content: space-between; font-weight: 800;">
+          <span>ফেরত:</span>
+          <span style="font-family: monospace; font-weight: 800;">৳${data.changeAmount?.toLocaleString()}</span>
+        </div>`
+      : "",
+    vis.showPaymentMode !== false
+      ? `<div class="receipt-row" style="display: flex; justify-content: space-between; font-size: ${smallFontPt}pt; font-weight: 800; color: #000000; margin-top: 2px;">
+          <span>পেমেন্ট মাধ্যম:</span>
+          <span style="font-weight: 900; color: #000000;">${escapeHtml(data.paymentMode || (data.due > 0 ? "বাকী" : "নগদ"))}</span>
+        </div>`
+      : "",
+  ]
+    .filter(Boolean)
+    .join("");
+
+  const footerInner = [
+    renderCustomLines("footer"),
+    vis.showTerms !== false
+      ? termLines
+          .map(
+            (line, i) =>
+              `<div style="font-size: ${i === 0 ? baseFontPt : smallFontPt}pt; font-weight: ${i === 0 ? 900 : 800}; color: #000000; margin-top: ${i === 0 ? 0 : 1}px;">${line}</div>`
+          )
+          .join("")
+      : "",
+    vis.showPolicyNote !== false && policyNote
+      ? `<div style="font-size: ${smallFontPt}pt; font-weight: 800; color: #000000; margin-top: 1px;">${policyNote}</div>`
+      : "",
+  ]
+    .filter(Boolean)
+    .join("");
+
+  const sectionBlocks: Record<InvoiceSectionId, string> = {
+    header: headerInner ? `<div style="text-align: center; margin: 0 0 3px 0; padding-top: 0;">${headerInner}</div>` : "",
+    meta: metaInner ? `<div style="font-size: ${smallFontPt}pt; line-height: 1.35; font-weight: 800; color: #000000;">${metaInner}</div>` : "",
+    before_items: renderCustomLines("before_items"),
+    items: itemsHtml,
+    after_items: renderCustomLines("after_items"),
+    totals: totalsInner ? `<div style="font-size: ${baseFontPt}pt; line-height: 1.4; font-weight: 800; color: #000000;">${totalsInner}</div>` : "",
+    footer: footerInner ? `<div style="text-align: center; margin-top: 3px; font-weight: 800; color: #000000;">${footerInner}</div>` : "",
+  };
+
+  const rawOrder = Array.isArray(hw.invoiceSectionOrder) && hw.invoiceSectionOrder.length > 0
+    ? hw.invoiceSectionOrder
+    : DEFAULT_INVOICE_SECTION_ORDER;
+  const fullOrder: InvoiceSectionId[] = [
+    ...rawOrder,
+    ...DEFAULT_INVOICE_SECTION_ORDER.filter((s) => !rawOrder.includes(s)),
+  ];
+
+  const orderedBodyHtml = fullOrder
+    .map((secId) => sectionBlocks[secId])
+    .filter((html) => html && html.trim().length > 0)
+    .join('\n    <div class="dashed-line"></div>\n    ');
+
   return `<!DOCTYPE html>
 <html lang="bn" style="color-scheme: light !important;">
 <head>
@@ -332,177 +479,7 @@ export function buildInvoiceHtml(data: PrintInvoiceParams, settingsOverride?: Pa
   </style>
 </head>
 <body><div class="receipt-wrap">
-    <!-- Header -->
-    <div style="text-align: center; margin: 0 0 3px 0; padding-top: 0;">
-      ${
-        vis.showShopName !== false
-          ? `<div style="font-size: ${titleFontPt}pt; font-weight: 900; text-transform: uppercase; letter-spacing: 0.5px; color: #000000; line-height: 1.2;">
-              ${shopName}
-            </div>`
-          : ""
-      }
-      ${
-        vis.showTagline !== false && tagline
-          ? `<div style="font-size: ${smallFontPt}pt; font-weight: 800; color: #000000; margin-top: 1px;">${tagline}</div>`
-          : ""
-      }
-      ${
-        vis.showShopAddress !== false && address
-          ? `<div style="font-size: ${smallFontPt}pt; font-weight: 800; color: #000000; margin-top: 1px;">${address}</div>`
-          : ""
-      }
-      ${
-        vis.showShopPhone !== false && phone
-          ? `<div style="font-size: ${baseFontPt}pt; font-family: monospace; font-weight: 900; color: #000000; margin-top: 1px;">মোবাইল: ${phone}</div>`
-          : ""
-      }
-      ${
-        data.userEmail
-          ? `<div style="font-size: ${smallFontPt}pt; font-weight: 800; color: #000000; margin-top: 1px;">${escapeHtml(data.userEmail)}</div>`
-          : ""
-      }
-      ${renderCustomLines("header")}
-    </div>
-
-    <div class="dashed-line"></div>
-
-    <!-- Meta info -->
-    <div style="font-size: ${smallFontPt}pt; line-height: 1.35; font-weight: 800; color: #000000;">
-      <div class="receipt-row" style="display: flex; justify-content: space-between; align-items: center; font-family: monospace; font-weight: 800;">
-        ${vis.showInvoiceNo !== false ? `<span style="font-weight: 900;">ইনভয়েস: ${escapeHtml(data.invoiceNo)}</span>` : "<span></span>"}
-        ${vis.showDateTime !== false ? `<span style="font-weight: 800;">${dateStr}</span>` : ""}
-      </div>
-      ${
-        showCustomerInfo && data.customerName
-          ? `<div class="receipt-row" style="display: flex; justify-content: space-between; align-items: baseline; gap: 4px; margin-top: 2px; font-weight: 800;">
-              <span style="font-weight: 800;">ক্রেতা: <strong style="font-weight: 900;">${escapeHtml(data.customerName)}</strong></span>
-              <span style="font-family: monospace; font-weight: 800;">${escapeHtml(data.customerPhone || "")}</span>
-            </div>`
-          : ""
-      }
-      ${
-        showCashierInfo && data.cashierName
-          ? `<div style="font-size: ${smallFontPt}pt; font-weight: 800; color: #000000; margin-top: 1px;">ক্যাশিয়ার: ${escapeHtml(data.cashierName)}</div>`
-          : ""
-      }
-    </div>
-
-    ${renderCustomLines("before_items")}
-
-    <div class="dashed-line"></div>
-
-    <!-- Items table -->
-    ${itemsHtml}
-
-    ${renderCustomLines("after_items")}
-
-    <div class="dashed-line"></div>
-
-    <!-- Financial Totals -->
-    <div style="font-size: ${baseFontPt}pt; line-height: 1.4; font-weight: 800; color: #000000;">
-      ${
-        vis.showSubtotal !== false
-          ? `<div class="receipt-row" style="display: flex; justify-content: space-between; font-weight: 800;">
-              <span>মোট মূল্য:</span>
-              <span style="font-family: monospace; font-weight: 800;">৳${data.subtotal.toLocaleString()}</span>
-            </div>`
-          : ""
-      }
-
-      ${
-        vis.showDiscount !== false && data.discountAmount > 0
-          ? `<div class="receipt-row" style="display: flex; justify-content: space-between; font-weight: 800; color: #000000;">
-              <span>বিশেষ ছাড়:</span>
-              <span style="font-family: monospace; font-weight: 800;">-৳${data.discountAmount.toLocaleString()}</span>
-            </div>`
-          : ""
-      }
-
-      <!-- Boxed Total Payable -->
-      ${
-        vis.showTotal !== false
-          ? `<div class="receipt-row" style="border-top: 1.5px solid #000000; border-bottom: 1.5px solid #000000; padding: 2px 0; margin: 2px 0; display: flex; justify-content: space-between; font-size: ${largeFontPt}pt; font-weight: 900;">
-              <span style="font-weight: 900;">সর্বমোট:</span>
-              <span style="font-family: monospace; font-weight: 900;">৳${data.total.toLocaleString()}</span>
-            </div>`
-          : ""
-      }
-
-      ${
-        vis.showPaid !== false
-          ? `<div class="receipt-row" style="display: flex; justify-content: space-between; font-weight: 800; color: #000000;">
-              <span>পরিশোধ:</span>
-              <span style="font-family: monospace; font-weight: 800;">৳${data.paidAmount.toLocaleString()}</span>
-            </div>`
-          : ""
-      }
-
-      ${
-        vis.showPaid !== false && data.splitCash !== undefined && (data.splitCash > 0 || (data.splitBkash && data.splitBkash > 0) || (data.splitBank && data.splitBank > 0))
-          ? `
-            <div style="background: #ffffff; border: 1px dashed #000000; padding: 2px 4px; border-radius: 4px; margin: 2px 0; font-size: ${smallFontPt}pt; font-weight: 800; color: #000000;">
-              ${data.splitCash > 0 ? `<div class="receipt-row" style="display: flex; justify-content: space-between; font-weight: 800;"><span>• নগদ:</span><span style="font-family: monospace; font-weight: 800;">৳${data.splitCash.toLocaleString()}</span></div>` : ""}
-              ${data.splitBkash && data.splitBkash > 0 ? `<div class="receipt-row" style="display: flex; justify-content: space-between; font-weight: 800;"><span>• বিকাশ:</span><span style="font-family: monospace; font-weight: 800;">৳${data.splitBkash.toLocaleString()}</span></div>` : ""}
-              ${data.splitBank && data.splitBank > 0 ? `<div class="receipt-row" style="display: flex; justify-content: space-between; font-weight: 800;"><span>• ব্যাংক:</span><span style="font-family: monospace; font-weight: 800;">৳${data.splitBank.toLocaleString()}</span></div>` : ""}
-            </div>
-          `
-          : ""
-      }
-
-      ${
-        vis.showDue !== false
-          ? data.due > 0
-            ? `<div class="receipt-row" style="display: flex; justify-content: space-between; font-weight: 900; color: #000000;">
-                <span>বকেয়া:</span>
-                <span style="font-family: monospace; font-weight: 900;">৳${data.due.toLocaleString()}</span>
-              </div>`
-            : `<div class="receipt-row" style="display: flex; justify-content: space-between; font-weight: 800;">
-                <span>বকেয়া:</span>
-                <span style="font-family: monospace; font-weight: 800;">৳0</span>
-              </div>`
-          : ""
-      }
-
-      ${
-        vis.showChangeReturn !== false && (data.changeAmount || 0) > 0
-          ? `<div class="receipt-row" style="display: flex; justify-content: space-between; font-weight: 800;">
-              <span>ফেরত:</span>
-              <span style="font-family: monospace; font-weight: 800;">৳${data.changeAmount?.toLocaleString()}</span>
-            </div>`
-          : ""
-      }
-
-      ${
-        vis.showPaymentMode !== false
-          ? `<div class="receipt-row" style="display: flex; justify-content: space-between; font-size: ${smallFontPt}pt; font-weight: 800; color: #000000; margin-top: 2px;">
-              <span>পেমেন্ট মাধ্যম:</span>
-              <span style="font-weight: 900; color: #000000;">${escapeHtml(data.paymentMode || (data.due > 0 ? "বাকী" : "নগদ"))}</span>
-            </div>`
-          : ""
-      }
-    </div>
-
-    <div class="dashed-line"></div>
-
-    <!-- Footer -->
-    <div style="text-align: center; margin-top: 3px; font-weight: 800; color: #000000;">
-      ${renderCustomLines("footer")}
-      ${
-        vis.showTerms !== false
-          ? termLines
-              .map(
-                (line, i) =>
-                  `<div style="font-size: ${i === 0 ? baseFontPt : smallFontPt}pt; font-weight: ${i === 0 ? 900 : 800}; color: #000000; margin-top: ${i === 0 ? 0 : 1}px;">${line}</div>`
-              )
-              .join("")
-          : ""
-      }
-      ${
-        vis.showPolicyNote !== false && policyNote
-          ? `<div style="font-size: ${smallFontPt}pt; font-weight: 800; color: #000000; margin-top: 1px;">${policyNote}</div>`
-          : ""
-      }
-    </div>
+    ${orderedBodyHtml}
   </div>
 </body>
 </html>`;

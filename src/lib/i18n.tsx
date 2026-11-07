@@ -208,7 +208,7 @@ const dict = {
   time_range: { bn: "সময়সীমা", en: "Time Range" },
   invoices: { bn: "চালান", en: "Invoices" },
   invoice_generator: { bn: "চালান জেনারেটর", en: "Invoice Generator" },
-  label_printer: { bn: "বারকোড স্টিকার প্রিন্টার", en: "Label & Sticker Printer" },
+  label_printer: { bn: "লেবেল প্রিন্টিং", en: "Label Printing" },
   select_customer: { bn: "গ্রাহক নির্বাচন", en: "Select Customer" },
   add_item: { bn: "আইটেম যোগ", en: "Add Item" },
   discount: { bn: "ছাড়", en: "Discount" },

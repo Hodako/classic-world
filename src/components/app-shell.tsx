@@ -67,6 +67,7 @@ const desktopNavGroups: NavGroup[] = [
     items: [
       { to: "/dashboard", labelKey: "home", icon: CustomHomeIcon, perm: "dashboard" },
       { to: "/products", labelKey: "products", icon: Package, perm: "products" },
+      { to: "/labels", labelKey: "label_printer", icon: Barcode, perm: "products" },
       { to: "/sales", labelKey: "sales", icon: ShoppingBag, perm: "sales" },
       { to: "/customers", labelKey: "customers", icon: Users, perm: "parties" },
       { to: "/dues", labelKey: "due", icon: Banknote, perm: "parties" },
@@ -79,7 +80,6 @@ const desktopNavGroups: NavGroup[] = [
     items: [
       { to: "/sms", labelKey: "sms", icon: MessageSquare, perm: "sales" },
       { to: "/invoices", labelKey: "invoice_generator", icon: FileText, perm: "sales" },
-      { to: "/labels", labelKey: "label_printer", icon: Barcode, perm: "products" },
       { to: "/purchases", labelKey: "new_purchase", icon: ShoppingCart, perm: "purchases" },
       { to: "/bank", labelKey: "bank_management", icon: Landmark, perm: "expenses" },
       { to: "/expenses", labelKey: "expenses", icon: Receipt, perm: "expenses" },

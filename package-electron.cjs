@@ -14,24 +14,27 @@ const oldDistDir = path.join(rootDir, "dist-electron");
 const outputDir = path.join(rootDir, "software");
 const resourcesAppDir = path.join(outputDir, "resources", "app");
 
-console.log("[Electron Packager] Starting standalone Windows package creation in Classic-World/software...");
+console.log("[Electron Packager] Starting fresh standalone Windows package creation in Classic-World/software...");
 
 if (!fs.existsSync(electronDistDir)) {
   console.error("[Electron Packager] ERROR: electron/dist not found!");
   process.exit(1);
 }
 
-// 0. Remove legacy dist-electron folder to save disk space
+// 0. Completely remove old dist-electron and software folders for a clean build
 if (fs.existsSync(oldDistDir)) {
+  console.log("[Electron Packager] Removing legacy dist-electron...");
   fs.rmSync(oldDistDir, { recursive: true, force: true });
 }
-
-// 1. Ensure destination directory exists
-if (!fs.existsSync(outputDir)) {
-  fs.mkdirSync(outputDir, { recursive: true });
+if (fs.existsSync(outputDir)) {
+  console.log("[Electron Packager] Removing old software directory for clean rebuild...");
+  fs.rmSync(outputDir, { recursive: true, force: true });
 }
 
-// 2. Copy all electron dist files if missing
+// 1. Create fresh output directory
+fs.mkdirSync(outputDir, { recursive: true });
+
+// 2. Copy all electron dist files fresh
 function copyDir(src, dest) {
   fs.mkdirSync(dest, { recursive: true });
   const entries = fs.readdirSync(src, { withFileTypes: true });
@@ -42,15 +45,15 @@ function copyDir(src, dest) {
       copyDir(srcPath, destPath);
     } else {
       try {
-        if (!fs.existsSync(destPath)) {
-          fs.copyFileSync(srcPath, destPath);
-        }
-      } catch (_) {}
+        fs.copyFileSync(srcPath, destPath);
+      } catch (err) {
+        console.warn(`[Electron Packager] Warning copying ${entry.name}:`, err.message);
+      }
     }
   }
 }
 
-console.log("[Electron Packager] Verifying Electron Windows binaries...");
+console.log("[Electron Packager] Copying fresh Electron Windows binaries...");
 copyDir(electronDistDir, outputDir);
 
 // 3. Rename electron.exe to ClassicWorld-POS.exe
@@ -58,16 +61,14 @@ const defaultExe = path.join(outputDir, "electron.exe");
 const targetExe = path.join(outputDir, "ClassicWorld-POS.exe");
 if (fs.existsSync(defaultExe)) {
   try {
-    if (fs.existsSync(targetExe)) {
-      fs.unlinkSync(defaultExe);
-    } else {
-      fs.renameSync(defaultExe, targetExe);
-      console.log("[Electron Packager] Renamed electron.exe -> ClassicWorld-POS.exe");
-    }
-  } catch (_) {}
+    fs.renameSync(defaultExe, targetExe);
+    console.log("[Electron Packager] Renamed electron.exe -> ClassicWorld-POS.exe");
+  } catch (err) {
+    console.error("[Electron Packager] Failed to rename executable:", err);
+  }
 }
 
-// 4. Create resources/app
+// 4. Create fresh resources/app
 fs.mkdirSync(resourcesAppDir, { recursive: true });
 fs.mkdirSync(path.join(resourcesAppDir, "electron"), { recursive: true });
 
@@ -83,6 +84,7 @@ fs.writeFileSync(
   "utf8"
 );
 
+// Copy updated electron scripts
 const electronFiles = ["main.cjs", "preload.cjs", "pos-bridge.cjs", "error.html"];
 for (const file of electronFiles) {
   const src = path.join(rootDir, "electron", file);
@@ -91,13 +93,17 @@ for (const file of electronFiles) {
   }
 }
 
-if (fs.existsSync(path.join(rootDir, "public", "logo.png"))) {
-  fs.mkdirSync(path.join(resourcesAppDir, "public"), { recursive: true });
-  fs.copyFileSync(
-    path.join(rootDir, "public", "logo.png"),
-    path.join(resourcesAppDir, "public", "logo.png")
-  );
+// Copy public assets if available
+if (fs.existsSync(path.join(rootDir, "public"))) {
+  copyDir(path.join(rootDir, "public"), path.join(resourcesAppDir, "public"));
 }
 
-console.log("[Electron Packager] SUCCESS: Standalone Windows POS app packaged at:");
-console.log(`  ${outputDir}\\ClassicWorld-POS.exe`);
+// Copy static export out if available
+const outDir = path.join(rootDir, "out");
+if (fs.existsSync(outDir)) {
+  console.log("[Electron Packager] Bundling latest out/ into resources/app/out for offline support...");
+  copyDir(outDir, path.join(resourcesAppDir, "out"));
+}
+
+console.log("[Electron Packager] SUCCESS: Brand new Standalone Windows POS app packaged at:");
+console.log(`  ${targetExe}`);

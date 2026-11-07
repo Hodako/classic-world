@@ -255,7 +255,7 @@ export async function printCustomPosInvoice(data: CustomInvoiceData) {
   <title>POS Invoice ${data.invoiceNo}</title>
   <style>
     @page {
-      size: ${widthMm}mm auto;
+      size: auto;
       margin: 0 ${marginMm}mm;
     }
     *, *:before, *:after {
@@ -266,18 +266,18 @@ export async function printCustomPosInvoice(data: CustomInvoiceData) {
       print-color-adjust: exact !important;
     }
     html, body {
-      width: 100% !important;
-      max-width: ${canvasWidthMm}mm !important;
+      width: auto !important;
       margin: 0 !important;
       padding: 0 !important;
       background: #ffffff !important;
       text-align: left !important;
     }
     .receipt-wrap {
-      width: 100% !important;
+      width: ${widthMm}mm !important;
+      max-width: 100% !important;
     }
     img.receipt-img {
-      width: 100% !important;
+      width: ${widthMm}mm !important;
       max-width: 100% !important;
       height: auto !important;
       display: block !important;

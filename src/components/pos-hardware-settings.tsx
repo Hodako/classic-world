@@ -661,8 +661,8 @@ export function PosHardwareSettings({ lang = "en" }: { lang?: "en" | "bn" | stri
                 marginRightMm: 0,
                 printScale: 100,
                 copies: 1,
-                fontSizePt: 8.5,
-                titleFontSizePt: 12,
+                fontSizePt: 7,
+                titleFontSizePt: 9.5,
               })
             }
             className="h-7 px-2.5 text-[11px] gap-1 text-muted-foreground hover:text-foreground cursor-pointer"
@@ -713,11 +713,11 @@ export function PosHardwareSettings({ lang = "en" }: { lang?: "en" | "bn" | stri
             </Label>
             <Input
               type="number"
-              min="5"
+              min="4.5"
               max="16"
               step="0.5"
-              value={hwConfig.fontSizePt || 8.5}
-              onChange={(e) => updateHw({ fontSizePt: Math.min(16, Math.max(5, Number(e.target.value) || 8.5)) }, true)}
+              value={hwConfig.fontSizePt || 7}
+              onChange={(e) => updateHw({ fontSizePt: Math.min(16, Math.max(4.5, Number(e.target.value) || 7)) }, true)}
               className="h-9 text-xs font-mono font-bold bg-background"
             />
           </div>
@@ -728,11 +728,11 @@ export function PosHardwareSettings({ lang = "en" }: { lang?: "en" | "bn" | stri
             </Label>
             <Input
               type="number"
-              min="7"
+              min="6"
               max="24"
               step="0.5"
-              value={hwConfig.titleFontSizePt || 12}
-              onChange={(e) => updateHw({ titleFontSizePt: Math.min(24, Math.max(7, Number(e.target.value) || 12)) }, true)}
+              value={hwConfig.titleFontSizePt || 9.5}
+              onChange={(e) => updateHw({ titleFontSizePt: Math.min(24, Math.max(6, Number(e.target.value) || 9.5)) }, true)}
               className="h-9 text-xs font-mono font-bold bg-background"
             />
           </div>

@@ -55,3 +55,6 @@ out/
 
 dist-electron/
 software/
+
+*.exe
+*.zip

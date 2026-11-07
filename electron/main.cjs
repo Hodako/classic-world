@@ -414,7 +414,6 @@ async function performSilentPrint(html, printerName, options = {}) {
           html, body {
             background: #ffffff !important;
             color: #000000 !important;
-            font-weight: 800 !important;
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
             margin: 0 !important;
@@ -434,13 +433,12 @@ async function performSilentPrint(html, printerName, options = {}) {
             padding-top: 0 !important;
           }
           *, body, div, span, p, td, th, tr, table, strong, b, h1, h2, h3, h4, small {
-            font-weight: 800 !important;
             color: #000000 !important;
             margin-top: 0;
             word-break: normal !important;
             overflow-wrap: anywhere !important;
             box-sizing: border-box !important;
-            font-family: 'Nirmala UI', 'Hind Siliguri', 'Noto Sans Bengali', 'SolaimanLipi', 'Segoe UI', Arial, sans-serif !important;
+            font-family: 'Hind Siliguri', 'Noto Sans Bengali', 'SolaimanLipi', 'Segoe UI', 'Nirmala UI', Arial, sans-serif !important;
           }
           .receipt-wrap {
             padding-top: ${topMm}mm !important;
@@ -661,38 +659,52 @@ async function performSilentPrint(html, printerName, options = {}) {
         }
       } else if (!isA4) {
         try {
-          const dims = await printWin.webContents.executeJavaScript(`
+          const rasterZoom = 2.0;
+          printWin.webContents.setZoomFactor(rasterZoom);
+          await new Promise((r) => setTimeout(r, 60));
+          const zoomedDims = await printWin.webContents.executeJavaScript(`
             (function() {
               const wrap = document.querySelector('.receipt-wrap') || document.body;
               const rect = wrap.getBoundingClientRect();
-              const w = Math.ceil(rect.width || wrap.offsetWidth || 300);
-              const h = Math.ceil(rect.height || wrap.scrollHeight || wrap.offsetHeight || 400);
-              return { width: Math.max(100, w), height: Math.max(50, h) };
+              const w = Math.ceil(rect.width || wrap.offsetWidth || 260);
+              const h = Math.ceil(rect.height || wrap.scrollHeight || wrap.offsetHeight || 360);
+              return { width: Math.max(80, w), height: Math.max(40, h) };
             })()
           `);
-          if (dims && dims.width > 0 && dims.height > 0) {
-            const rasterZoom = dims.height > 2200 ? 1.35 : 2.0;
-            printWin.webContents.setZoomFactor(rasterZoom);
-            const dipW = Math.ceil(dims.width * rasterZoom);
-            const dipH = Math.ceil(dims.height * rasterZoom);
-            printWin.setContentSize(dipW, dipH);
+          if (zoomedDims && zoomedDims.width > 0 && zoomedDims.height > 0) {
+            const dipW = Math.min(2400, Math.ceil(zoomedDims.width * rasterZoom));
+            const dipH = Math.min(9000, Math.ceil(zoomedDims.height * rasterZoom));
+            printWin.setContentSize(Math.max(dipW + 24, 420), Math.max(dipH + 24, 420));
             await new Promise((r) => setTimeout(r, 100));
+            const exactRect = await printWin.webContents.executeJavaScript(`
+              (function() {
+                const wrap = document.querySelector('.receipt-wrap') || document.body;
+                const r = wrap.getBoundingClientRect();
+                return {
+                  x: Math.max(0, Math.floor(r.left)),
+                  y: Math.max(0, Math.floor(r.top)),
+                  width: Math.max(80, Math.ceil(r.width)),
+                  height: Math.max(40, Math.ceil(r.height)),
+                };
+              })()
+            `);
             const img = await printWin.webContents.capturePage({
-              x: 0,
-              y: 0,
-              width: dipW,
-              height: dipH,
+              x: Math.floor(exactRect.x * rasterZoom),
+              y: Math.floor(exactRect.y * rasterZoom),
+              width: Math.ceil(exactRect.width * rasterZoom),
+              height: Math.ceil(exactRect.height * rasterZoom),
             });
             printWin.webContents.setZoomFactor(1.0);
             const imgDataUrl = img.toDataURL();
+            const rasterPageSize = userHeightMm ? `${widthMm}mm ${userHeightMm}mm` : "auto";
             const rasterHtml = `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
   <style>
-    @page { size: auto; margin: 0mm !important; }
-    html, body { margin: 0 !important; padding: 0 !important; background: #ffffff !important; }
-    img { width: 100% !important; max-width: 100% !important; height: auto !important; display: block !important; margin: 0 !important; image-rendering: -webkit-optimize-contrast; }
+    @page { size: ${rasterPageSize}; margin: 0mm !important; }
+    html, body { margin: 0 !important; padding: 0 !important; background: #ffffff !important; width: auto !important; }
+    img { width: ${printableWidthMm}mm !important; max-width: 100% !important; height: auto !important; display: block !important; margin: 0 !important; image-rendering: -webkit-optimize-contrast; }
   </style>
 </head>
 <body>
@@ -702,6 +714,8 @@ async function performSilentPrint(html, printerName, options = {}) {
             fs.writeFileSync(tempFilePath, rasterHtml, "utf8");
             await printWin.loadFile(tempFilePath);
             await new Promise((r) => setTimeout(r, 80));
+          } else {
+            printWin.webContents.setZoomFactor(1.0);
           }
         } catch (rasterErr) {
           console.warn("[Windows POS] Raster image conversion error:", rasterErr);

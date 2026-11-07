@@ -207,10 +207,12 @@ export interface PosHardwareSettings {
   paperHeightMm: number | "auto";
   /** Auto fit mode to make invoice contents fit inside the roll perfectly */
   fitToWidth: boolean;
-  /** Base font size in points (e.g. 8.5pt, can be increased/decreased e.g. 6 to 16pt) */
+  /** Base font size in points (e.g. 7.0pt default, adjustable 4.5 to 18pt) */
   fontSizePt: number;
-  /** Title font size in points (e.g. 12pt) */
+  /** Title font size in points (e.g. 9.5pt default, adjustable 6 to 26pt) */
   titleFontSizePt: number;
+  /** Internal one-time flag migrating oversized legacy font defaults */
+  typographyV3Migrated?: boolean;
   /** Custom header text override */
   customHeaderTitle?: string;
   /** Custom subtitle / tagline */
@@ -276,8 +278,9 @@ export const DEFAULT_HARDWARE_SETTINGS: PosHardwareSettings = {
   paperWidthMm: 80,
   paperHeightMm: "auto",
   fitToWidth: true,
-  fontSizePt: 8.5,
-  titleFontSizePt: 12,
+  fontSizePt: 7.0,
+  titleFontSizePt: 9.5,
+  typographyV3Migrated: true,
   visibility: DEFAULT_VISIBILITY_SETTINGS,
   invoiceSectionOrder: DEFAULT_INVOICE_SECTION_ORDER,
   customLines: [],
@@ -362,7 +365,25 @@ export function getPosHardwareSettings(): PosHardwareSettings {
   try {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
     const savedLabel = saved?.labelSettings || {};
-    return {
+    const needsTypoMigration = !saved?.typographyV3Migrated;
+
+    let rawFontPt = saved?.fontSizePt !== undefined && Number.isFinite(Number(saved.fontSizePt))
+      ? Math.max(4.5, Math.min(20, Number(saved.fontSizePt)))
+      : 7.0;
+    let rawTitlePt = saved?.titleFontSizePt !== undefined && Number.isFinite(Number(saved.titleFontSizePt))
+      ? Math.max(6, Math.min(28, Number(saved.titleFontSizePt)))
+      : 9.5;
+    let rawScale = saved?.printScale !== undefined && Number.isFinite(Number(saved.printScale))
+      ? Math.min(250, Math.max(30, Number(saved.printScale)))
+      : 100;
+
+    if (needsTypoMigration) {
+      if (rawFontPt >= 8.0) rawFontPt = 7.0;
+      if (rawTitlePt >= 10.5) rawTitlePt = 9.5;
+      if (rawScale > 100) rawScale = 100;
+    }
+
+    const resolved: PosHardwareSettings = {
       printMode: saved?.printMode === "automatic" ? "automatic" : "manual",
       scannerSuffix: saved?.scannerSuffix === "Tab" ? "Tab" : "Enter",
       automatePrinting: saved?.automatePrinting !== undefined ? Boolean(saved.automatePrinting) : true,
@@ -371,14 +392,15 @@ export function getPosHardwareSettings(): PosHardwareSettings {
       marginBottomMm: saved?.marginBottomMm !== undefined && Number.isFinite(Number(saved.marginBottomMm)) ? Math.max(0, Number(saved.marginBottomMm)) : 0,
       marginLeftMm: saved?.marginLeftMm !== undefined && Number.isFinite(Number(saved.marginLeftMm)) ? Math.max(0, Number(saved.marginLeftMm)) : 0,
       marginRightMm: saved?.marginRightMm !== undefined && Number.isFinite(Number(saved.marginRightMm)) ? Math.max(0, Number(saved.marginRightMm)) : 0,
-      printScale: saved?.printScale !== undefined && Number.isFinite(Number(saved.printScale)) ? Math.min(250, Math.max(30, Number(saved.printScale))) : 100,
+      printScale: rawScale,
       copies: saved?.copies !== undefined && Number.isFinite(Number(saved.copies)) ? Math.min(10, Math.max(1, Number(saved.copies))) : 1,
 
       paperWidthMm: saved?.paperWidthMm !== undefined && Number.isFinite(Number(saved.paperWidthMm)) ? Math.max(15, Math.min(300, Number(saved.paperWidthMm))) : 80,
       paperHeightMm: saved?.paperHeightMm !== undefined && saved?.paperHeightMm !== "auto" && Number.isFinite(Number(saved.paperHeightMm)) && Number(saved.paperHeightMm) > 0 ? Number(saved.paperHeightMm) : "auto",
       fitToWidth: saved?.fitToWidth !== undefined ? Boolean(saved.fitToWidth) : true,
-      fontSizePt: saved?.fontSizePt !== undefined && Number.isFinite(Number(saved.fontSizePt)) ? Math.max(5, Math.min(24, Number(saved.fontSizePt))) : 8.5,
-      titleFontSizePt: saved?.titleFontSizePt !== undefined && Number.isFinite(Number(saved.titleFontSizePt)) ? Math.max(8, Math.min(32, Number(saved.titleFontSizePt))) : 12,
+      fontSizePt: rawFontPt,
+      titleFontSizePt: rawTitlePt,
+      typographyV3Migrated: true,
       customHeaderTitle: typeof saved?.customHeaderTitle === "string" ? saved.customHeaderTitle : undefined,
       customSubtitle: typeof saved?.customSubtitle === "string" ? saved.customSubtitle : undefined,
       customAddress: typeof saved?.customAddress === "string" ? saved.customAddress : undefined,
@@ -409,6 +431,12 @@ export function getPosHardwareSettings(): PosHardwareSettings {
         savedTemplates: Array.isArray(savedLabel?.savedTemplates) ? savedLabel.savedTemplates : [],
       },
     };
+    if (needsTypoMigration && localStorage.getItem(STORAGE_KEY)) {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(resolved));
+      } catch {}
+    }
+    return resolved;
   } catch {
     return DEFAULT_HARDWARE_SETTINGS;
   }

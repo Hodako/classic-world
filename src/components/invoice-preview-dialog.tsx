@@ -551,7 +551,7 @@ export function InvoicePreviewDialog({
                     <div className="space-y-1">
                       <div className="flex items-center justify-between text-xs">
                         <span className="font-semibold">{lang === "bn" ? "মূল ফন্ট:" : "Base Font:"}</span>
-                        <span className="font-mono font-bold text-primary">{settings.fontSizePt || 8.5} pt</span>
+                        <span className="font-mono font-bold text-primary">{settings.fontSizePt || 7} pt</span>
                       </div>
                       <div className="flex items-center gap-1">
                         <Button
@@ -560,8 +560,8 @@ export function InvoicePreviewDialog({
                           size="sm"
                           className="h-8 px-2.5 text-xs font-bold cursor-pointer"
                           onClick={() => {
-                            const cur = Number(settings.fontSizePt) || 8.5;
-                            updateSettings({ fontSizePt: Math.max(5.5, Number((cur - 0.5).toFixed(1))) });
+                            const cur = Number(settings.fontSizePt) || 7;
+                            updateSettings({ fontSizePt: Math.max(4.5, Number((cur - 0.5).toFixed(1))) });
                           }}
                         >
                           - A
@@ -569,10 +569,10 @@ export function InvoicePreviewDialog({
                         <Input
                           type="number"
                           step="0.5"
-                          min="5"
+                          min="4.5"
                           max="16"
-                          value={settings.fontSizePt || 8.5}
-                          onChange={(e) => updateSettings({ fontSizePt: Number(e.target.value) || 8.5 })}
+                          value={settings.fontSizePt || 7}
+                          onChange={(e) => updateSettings({ fontSizePt: Number(e.target.value) || 7 })}
                           className="h-8 text-xs font-mono font-bold text-center bg-background"
                         />
                         <Button
@@ -581,7 +581,7 @@ export function InvoicePreviewDialog({
                           size="sm"
                           className="h-8 px-2.5 text-xs font-bold cursor-pointer"
                           onClick={() => {
-                            const cur = Number(settings.fontSizePt) || 8.5;
+                            const cur = Number(settings.fontSizePt) || 7;
                             updateSettings({ fontSizePt: Math.min(18, Number((cur + 0.5).toFixed(1))) });
                           }}
                         >
@@ -593,7 +593,7 @@ export function InvoicePreviewDialog({
                     <div className="space-y-1">
                       <div className="flex items-center justify-between text-xs">
                         <span className="font-semibold">{lang === "bn" ? "দোকানের নাম ফন্ট:" : "Shop Title Font:"}</span>
-                        <span className="font-mono font-bold text-primary">{settings.titleFontSizePt || 12} pt</span>
+                        <span className="font-mono font-bold text-primary">{settings.titleFontSizePt || 9.5} pt</span>
                       </div>
                       <div className="flex items-center gap-1">
                         <Button
@@ -602,8 +602,8 @@ export function InvoicePreviewDialog({
                           size="sm"
                           className="h-8 px-2.5 text-xs font-bold cursor-pointer"
                           onClick={() => {
-                            const cur = Number(settings.titleFontSizePt) || 12;
-                            updateSettings({ titleFontSizePt: Math.max(8, Number((cur - 0.5).toFixed(1))) });
+                            const cur = Number(settings.titleFontSizePt) || 9.5;
+                            updateSettings({ titleFontSizePt: Math.max(6, Number((cur - 0.5).toFixed(1))) });
                           }}
                         >
                           - A
@@ -611,10 +611,10 @@ export function InvoicePreviewDialog({
                         <Input
                           type="number"
                           step="0.5"
-                          min="8"
+                          min="6"
                           max="24"
-                          value={settings.titleFontSizePt || 12}
-                          onChange={(e) => updateSettings({ titleFontSizePt: Number(e.target.value) || 12 })}
+                          value={settings.titleFontSizePt || 9.5}
+                          onChange={(e) => updateSettings({ titleFontSizePt: Number(e.target.value) || 9.5 })}
                           className="h-8 text-xs font-mono font-bold text-center bg-background"
                         />
                         <Button
@@ -623,7 +623,7 @@ export function InvoicePreviewDialog({
                           size="sm"
                           className="h-8 px-2.5 text-xs font-bold cursor-pointer"
                           onClick={() => {
-                            const cur = Number(settings.titleFontSizePt) || 12;
+                            const cur = Number(settings.titleFontSizePt) || 9.5;
                             updateSettings({ titleFontSizePt: Math.min(26, Number((cur + 0.5).toFixed(1))) });
                           }}
                         >

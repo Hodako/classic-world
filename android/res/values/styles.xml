@@ -1,0 +1,8 @@
+<resources>
+  <style name="ClassicWorldTheme" parent="android:style/Theme.Material.NoActionBar">
+    <item name="android:statusBarColor">#0f172a</item>
+    <item name="android:navigationBarColor">#0f172a</item>
+    <item name="android:colorAccent">#3b82f6</item>
+    <item name="android:windowLightStatusBar">false</item>
+  </style>
+</resources>

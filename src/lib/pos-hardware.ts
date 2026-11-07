@@ -34,6 +34,42 @@ export interface InvoiceVisibilitySettings {
   showDue?: boolean;
 }
 
+export type LabelPrintMode = "thermal" | "a4_sheet";
+
+export interface PosLabelSettings {
+  mode: LabelPrintMode;
+  printerName: string;
+  widthMm: number;
+  heightMm: number;
+  a4Columns: number;
+  fontSizePt: number;
+  barcodeHeightPx: number;
+  showShopName: boolean;
+  showProductName: boolean;
+  showPrice: boolean;
+  showBarcode: boolean;
+  showCodeText: boolean;
+  showCategory: boolean;
+  currencyPrefix: string;
+}
+
+export const DEFAULT_LABEL_SETTINGS: PosLabelSettings = {
+  mode: "thermal",
+  printerName: "",
+  widthMm: 38,
+  heightMm: 25,
+  a4Columns: 4,
+  fontSizePt: 8,
+  barcodeHeightPx: 30,
+  showShopName: true,
+  showProductName: true,
+  showPrice: true,
+  showBarcode: true,
+  showCodeText: true,
+  showCategory: false,
+  currencyPrefix: "৳",
+};
+
 export interface PosHardwareSettings {
   printMode: ReceiptPrintMode;
   scannerSuffix: "Enter" | "Tab";
@@ -77,6 +113,8 @@ export interface PosHardwareSettings {
   visibility: InvoiceVisibilitySettings;
   /** Custom lines added by admin */
   customLines: CustomInvoiceLine[];
+  /** Barcode / Price Sticker Label printing settings */
+  labelSettings: PosLabelSettings;
 }
 
 const STORAGE_KEY = "classicworld_pos_hardware_v1";
@@ -126,6 +164,7 @@ export const DEFAULT_HARDWARE_SETTINGS: PosHardwareSettings = {
   titleFontSizePt: 12,
   visibility: DEFAULT_VISIBILITY_SETTINGS,
   customLines: [],
+  labelSettings: DEFAULT_LABEL_SETTINGS,
 };
 
 /** Keyboard/HID scanners need no browser Bluetooth permission: the OS delivers keys. */
@@ -228,11 +267,22 @@ export function getPosHardwareSettings(): PosHardwareSettings {
       customAddress: typeof saved?.customAddress === "string" ? saved.customAddress : undefined,
       customPhone: typeof saved?.customPhone === "string" ? saved.customPhone : undefined,
       customFooterNote: typeof saved?.customFooterNote === "string" ? saved.customFooterNote : undefined,
+      customPolicyNote: typeof saved?.customPolicyNote === "string" ? saved.customPolicyNote : undefined,
       visibility: {
         ...DEFAULT_VISIBILITY_SETTINGS,
         ...(saved?.visibility || {}),
       },
       customLines: Array.isArray(saved?.customLines) ? saved.customLines : [],
+      labelSettings: {
+        ...DEFAULT_LABEL_SETTINGS,
+        ...(saved?.labelSettings || {}),
+        mode: saved?.labelSettings?.mode === "a4_sheet" ? "a4_sheet" : "thermal",
+        widthMm: Number(saved?.labelSettings?.widthMm) > 10 ? Number(saved.labelSettings.widthMm) : DEFAULT_LABEL_SETTINGS.widthMm,
+        heightMm: Number(saved?.labelSettings?.heightMm) > 10 ? Number(saved.labelSettings.heightMm) : DEFAULT_LABEL_SETTINGS.heightMm,
+        a4Columns: Number(saved?.labelSettings?.a4Columns) >= 1 ? Math.min(6, Math.max(1, Number(saved.labelSettings.a4Columns))) : DEFAULT_LABEL_SETTINGS.a4Columns,
+        fontSizePt: Number(saved?.labelSettings?.fontSizePt) >= 5 ? Math.min(18, Math.max(5, Number(saved.labelSettings.fontSizePt))) : DEFAULT_LABEL_SETTINGS.fontSizePt,
+        barcodeHeightPx: Number(saved?.labelSettings?.barcodeHeightPx) >= 14 ? Math.min(80, Math.max(14, Number(saved.labelSettings.barcodeHeightPx))) : DEFAULT_LABEL_SETTINGS.barcodeHeightPx,
+      },
     };
   } catch {
     return DEFAULT_HARDWARE_SETTINGS;
@@ -271,17 +321,19 @@ export function findProductsByScannedCode(products: Product[], code: string): Pr
     if (strippedBarcode.length) return strippedBarcode;
   }
 
-  // 3. Match against QR code, SKU, code, product_number, or ID
+  // 3. Match against QR code, SKU, code, product_number, ID, or auto-generated 8-char label code
   const otherMatches = active.filter((product) => {
+    const shortId = product.id ? product.id.slice(-8) : "";
     return [
       product.qr_code,
       product.code,
       product.sku,
-      product.product_number,
+      product.product_number != null ? String(product.product_number) : undefined,
       product.id,
+      shortId,
     ].some((value) => {
       if (!value) return false;
-      const v = value.trim().toLowerCase();
+      const v = String(value).trim().toLowerCase();
       return v === scanned || (stripped && v.replace(/^0+/, "") === stripped);
     });
   });

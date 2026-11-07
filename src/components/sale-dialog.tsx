@@ -567,7 +567,7 @@ export function SaleDialog({
         invoiceNo: `INV-${cartId.slice(-6).toUpperCase()}`,
         customerName: cust?.name || (lang === "bn" ? "সম্মানিত ক্রেতা" : "Valued Customer"),
         customerPhone: cust?.phone || "",
-        shopName: user.business_name || user.full_name || "Dream Fashion",
+        shopName: user.business_name || user.full_name || "Classic World",
         shopPhone: user.business_phone_numbers || "",
         items: cart.map(c => {
           const prod = products.find(p => p.id === c.productId);
@@ -604,7 +604,7 @@ export function SaleDialog({
 
       if (action === "print" || (action === "none" && printMode === "automatic")) {
         const invoiceParams = {
-          businessName: user.business_name || user.full_name || "Dream Fashion POS",
+          businessName: user.business_name || user.full_name || "Classic World",
           userEmail: user.business_emails || user.email || "",
           shopAddress: user.business_address || "",
           shopPhoneNumbers: user.business_phone_numbers || "",
@@ -616,6 +616,7 @@ export function SaleDialog({
           invoiceLineSpacing: user.invoice_line_spacing || "3px",
           invoiceNo: `INV-${cartId.slice(-6).toUpperCase()}`,
           invoiceDate: fmtDateTime(new Date()),
+          cashierName: user.full_name || undefined,
           customerName: cust?.name || (lang === "bn" ? "সাধারণ কাস্টমার" : "Walk-in Customer"),
           customerPhone: cust?.phone || "",
           paymentMode: paymentModeStr,
@@ -627,7 +628,7 @@ export function SaleDialog({
             return {
               product: { id: prod?.id, name: prod?.name || "Product" },
               qty: Number(c.qty) || 1,
-              sellPrice: Math.max((Number(c.sellPrice) || prod?.sell_price || 0) - (Number(c.discount) || 0), 0),
+              sellPrice: Math.max(Number(c.sellPrice) || prod?.sell_price || 0, 0),
             };
           }),
           subtotal: cartSubtotal + lineDiscountsTotal,
@@ -640,7 +641,7 @@ export function SaleDialog({
         };
 
         try {
-          printPwaInvoice(invoiceParams);
+          await printPwaInvoice(invoiceParams);
           toast.success(lang === "bn" ? "ইনভয়েস প্রিন্ট প্রস্তুত হচ্ছে!" : "Opening invoice print view!");
         } catch {
           toast.error(lang === "bn" ? "বিক্রি সংরক্ষিত হয়েছে, প্রিন্ট হয়নি। বিক্রির ইতিহাস থেকে আবার চেষ্টা করুন।" : "Sale saved, but printing failed. Retry from sales history.");

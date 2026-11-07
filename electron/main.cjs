@@ -17,6 +17,7 @@ const {
   setWindowsDefaultPrinter,
   openWindowsPrinterPreferences,
   openWindowsPrinterProperties,
+  openWindowsCashDrawer,
 } = require("./pos-bridge.cjs");
 
 // Find project root containing server.js whether running from electron/ or software/resources/app/electron/
@@ -188,7 +189,10 @@ async function createWindow() {
           }
           if (window.electronPOS && typeof window.electronPOS.printSilent === "function") {
             window.print = function() {
-              const prefs = getDevicePrintPrefs();
+              const isReceiptPage = Boolean(document.querySelector(".receipt-wrap, .invoice-print-container, [data-pos-receipt]"));
+              const prefs = isReceiptPage
+                ? getDevicePrintPrefs()
+                : { printerName: "", silent: false, copies: 1, scaleFactor: 100, pageSize: "a4", paperWidthMm: 210, paperHeightMm: "auto" };
               window.electronPOS.printSilent({
                 html: document.documentElement.outerHTML,
                 ...prefs,
@@ -201,9 +205,11 @@ async function createWindow() {
                     const doc = iframe.contentDocument || iframe.contentWindow.document;
                     if (doc && doc.documentElement) {
                       const prefs = getDevicePrintPrefs();
+                      const isLabelDoc = Boolean(doc.querySelector(".pos-label-page") || doc.documentElement.getAttribute("data-pos-label-mode"));
                       window.electronPOS.printSilent({
                         html: doc.documentElement.outerHTML,
                         ...prefs,
+                        isLabel: isLabelDoc,
                       });
                     }
                   };
@@ -328,7 +334,7 @@ ipcMain.handle("pos:open-windows-printers-settings", async () => {
   return { success: true };
 });
 
-// 7. Reliable Thermal Receipt Print (Supports both Silent 1-Click Print AND Windows Printing Preferences Dialog)
+// 7. Reliable Thermal Receipt & Barcode Label Print (Supports both Silent 1-Click Print AND Windows Printing Preferences Dialog)
 async function performSilentPrint(html, printerName, options = {}) {
   return new Promise(async (resolve) => {
     const useSilent = options.silent !== undefined ? Boolean(options.silent) : true;
@@ -340,14 +346,22 @@ async function performSilentPrint(html, printerName, options = {}) {
     const leftMm = margins.leftMm !== undefined ? Number(margins.leftMm) : 0;
     const rightMm = margins.rightMm !== undefined ? Number(margins.rightMm) : 0;
 
+    let preparedHtml = String(html || "");
+    preparedHtml = preparedHtml.replace(/display=swap/g, "display=optional");
+
     const rawPageSize = String(options.pageSize || "").toLowerCase();
-    const isA4 = rawPageSize.includes("a4");
-    const parsedMmMatch = rawPageSize.match(/(\d+)\s*mm/i);
+    const isA4 = rawPageSize.includes("a4") || preparedHtml.includes('data-pos-label-mode="a4_sheet"');
+    const isLabel = Boolean(options.isLabel) || preparedHtml.includes("data-pos-label-mode=");
+    const isThermalLabel = isLabel && !isA4;
+
+    const parsedMmMatch = rawPageSize.match(/(\d+(?:\.\d+)?)\s*mm/i);
     const parsedMm = Number(options.paperWidthMm) || (parsedMmMatch ? Number(parsedMmMatch[1]) : 80);
     const widthMm = isA4 ? 210 : (Number.isFinite(parsedMm) && parsedMm > 0 ? parsedMm : 80);
-    const widthMicrons = Math.max(15000, widthMm * 1000);
-    // Match the browser renderer's physical print-head limits.
-    const printableWidthMm = widthMm >= 148 ? widthMm
+
+    // Match the browser renderer's physical print-head limits for receipts; keep exact width for die-cut labels.
+    const printableWidthMm = isThermalLabel
+      ? widthMm
+      : widthMm >= 148 ? widthMm
       : widthMm >= 80 ? Math.min(72, widthMm - 6)
       : widthMm >= 70 ? Math.min(63, widthMm - 6)
       : widthMm >= 56 ? Math.min(48, widthMm - 8)
@@ -363,73 +377,75 @@ async function performSilentPrint(html, printerName, options = {}) {
         ? Number(options.paperHeightMm)
         : null;
 
+    const heightLabel = userHeightMm ? `${userHeightMm}mm` : "auto";
+
     const cssPageRule = isA4
       ? "size: A4 portrait !important;"
       : userHeightMm
       ? `size: ${widthMm}mm ${userHeightMm}mm !important;`
       : "size: auto !important;";
 
-    // Prepare HTML: remove external font blocking that causes blank pages & enforce all-bold pure black thermal styling + margins
-    let preparedHtml = String(html || "");
-    preparedHtml = preparedHtml.replace(/display=swap/g, "display=optional");
+    if (!isThermalLabel && !isA4) {
+      const thermalOverrideStyle = `
+        <style id="pos-thermal-override">
+          @page {
+            ${cssPageRule}
+            margin: 0mm !important;
+            padding: 0mm !important;
+          }
+          html, body {
+            background: #ffffff !important;
+            color: #000000 !important;
+            font-weight: 800 !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            height: auto !important;
+            min-height: 0 !important;
+            width: ${layoutWidthMm}mm !important;
+            max-width: ${layoutWidthMm}mm !important;
+            vertical-align: top !important;
+          }
+          html { zoom: 1 !important; }
+          body { zoom: ${scaleFactor}% !important; }
+          table { table-layout: fixed !important; width: 100% !important; max-width: 100% !important; }
+          td, th { white-space: normal !important; }
+          .receipt-wrap > *:first-child {
+            margin-top: 0 !important;
+            padding-top: 0 !important;
+          }
+          *, body, div, span, p, td, th, tr, table, strong, b, h1, h2, h3, h4, small {
+            font-weight: 800 !important;
+            color: #000000 !important;
+            margin-top: 0;
+            word-break: normal !important;
+            overflow-wrap: anywhere !important;
+            box-sizing: border-box !important;
+            font-family: 'Nirmala UI', 'Hind Siliguri', 'Noto Sans Bengali', 'SolaimanLipi', 'Segoe UI', Arial, sans-serif !important;
+          }
+          .receipt-wrap {
+            padding-top: ${topMm}mm !important;
+            padding-bottom: ${bottomMm}mm !important;
+            padding-left: ${leftMm}mm !important;
+            padding-right: ${rightMm}mm !important;
+            box-sizing: border-box !important;
+            width: ${layoutWidthMm}mm !important;
+            max-width: 100% !important;
+            margin: 0 !important;
+            display: flow-root !important;
+            overflow: visible !important;
+          }
+        </style>
+      `;
 
-    const thermalOverrideStyle = `
-      <style id="pos-thermal-override">
-        @page {
-          ${cssPageRule}
-          margin: 0mm !important;
-          padding: 0mm !important;
-        }
-        html, body {
-          background: #ffffff !important;
-          color: #000000 !important;
-          font-weight: 800 !important;
-          -webkit-print-color-adjust: exact !important;
-          print-color-adjust: exact !important;
-          margin: 0 !important;
-          padding: 0 !important;
-          height: auto !important;
-          min-height: 0 !important;
-          width: ${layoutWidthMm}mm !important;
-          max-width: ${layoutWidthMm}mm !important;
-          vertical-align: top !important;
-        }
-        html { zoom: 1 !important; }
-        body { zoom: ${scaleFactor}% !important; }
-        table { table-layout: fixed !important; width: 100% !important; max-width: 100% !important; }
-        td, th { white-space: normal !important; }
-        .receipt-wrap > *:first-child {
-          margin-top: 0 !important;
-          padding-top: 0 !important;
-        }
-        *, body, div, span, p, td, th, tr, table, strong, b, h1, h2, h3, h4, small {
-          font-weight: 800 !important;
-          color: #000000 !important;
-          margin-top: 0;
-          word-break: normal !important;
-          overflow-wrap: anywhere !important;
-          box-sizing: border-box !important;
-          font-family: 'Nirmala UI', 'Hind Siliguri', 'Noto Sans Bengali', 'SolaimanLipi', 'Segoe UI', Arial, sans-serif !important;
-        }
-        .receipt-wrap {
-          padding-top: ${topMm}mm !important;
-          padding-bottom: ${bottomMm}mm !important;
-          padding-left: ${leftMm}mm !important;
-          padding-right: ${rightMm}mm !important;
-          box-sizing: border-box !important;
-          width: ${layoutWidthMm}mm !important;
-          max-width: 100% !important;
-          margin: 0 !important; /* Left-aligned: never auto-center (prevents big left margin) */
-          display: flow-root !important; /* Prevents top and bottom margin collapse */
-          overflow: visible !important;
-        }
-      </style>
-    `;
-
-    if (preparedHtml.includes("</head>")) {
-      preparedHtml = preparedHtml.replace("</head>", `${thermalOverrideStyle}</head>`);
-    } else {
-      preparedHtml = `<!DOCTYPE html><html><head><meta charset="utf-8">${thermalOverrideStyle}</head><body>${preparedHtml}</body></html>`;
+      if (preparedHtml.includes("</head>")) {
+        preparedHtml = preparedHtml.replace("</head>", `${thermalOverrideStyle}</head>`);
+      } else {
+        preparedHtml = `<!DOCTYPE html><html><head><meta charset="utf-8">${thermalOverrideStyle}</head><body>${preparedHtml}</body></html>`;
+      }
+    } else if (!preparedHtml.includes("<html")) {
+      preparedHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body>${preparedHtml}</body></html>`;
     }
 
     const tempFilePath = path.join(
@@ -438,7 +454,14 @@ async function performSilentPrint(html, printerName, options = {}) {
     );
 
     let printWin = null;
+    let settled = false;
+    let safetyTimer = null;
+
     const cleanup = () => {
+      if (safetyTimer) {
+        clearTimeout(safetyTimer);
+        safetyTimer = null;
+      }
       if (printWin && !printWin.isDestroyed()) {
         try {
           printWin.close();
@@ -450,6 +473,19 @@ async function performSilentPrint(html, printerName, options = {}) {
       } catch (_) {}
     };
 
+    const finishOnce = (result) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve(result);
+    };
+
+    // Safety timeout so print job never hangs indefinitely
+    safetyTimer = setTimeout(() => {
+      console.warn("[Windows POS] Print operation timed out; cleaning up offscreen window.");
+      finishOnce({ success: false, error: "Print timeout" });
+    }, useSilent ? 35000 : 120000);
+
     try {
       fs.writeFileSync(tempFilePath, preparedHtml, "utf8");
 
@@ -458,9 +494,11 @@ async function performSilentPrint(html, printerName, options = {}) {
         show: isInteractive,
         x: isInteractive ? undefined : -20000,
         y: isInteractive ? undefined : -20000,
-        width: 440,
-        height: 780,
-        title: "POS Receipt Print",
+        width: 520,
+        height: 820,
+        useContentSize: true,
+        enableLargerThanScreen: true,
+        title: isLabel ? "POS Label Print" : "POS Receipt Print",
         autoHideMenuBar: true,
         focusable: isInteractive,
         frame: isInteractive,
@@ -471,7 +509,6 @@ async function performSilentPrint(html, printerName, options = {}) {
         },
       });
 
-      // Positioned offscreen but active so Windows GDI compositor fully renders all text and lines!
       if (!isInteractive) {
         printWin.showInactive();
       }
@@ -495,7 +532,7 @@ async function performSilentPrint(html, printerName, options = {}) {
         `)
         .catch(() => {});
 
-      await new Promise((r) => setTimeout(r, 250));
+      await new Promise((r) => setTimeout(r, 200));
 
       const printers = await printWin.webContents.getPrintersAsync();
       const defaultP = printers.find((p) => p.isDefault)?.name || printers[0]?.name || "";
@@ -512,10 +549,99 @@ async function performSilentPrint(html, printerName, options = {}) {
         }
       }
 
-      // For thermal roll printing, rasterizing the rendered receipt as an exact bitmap image
-      // guarantees that Chinese thermal printer drivers (Xprinter, POS-58, POS-80) CANNOT
-      // substitute fonts with Chinese hardware characters, and guarantees 0mm blank top/bottom margin!
-      if (!isA4) {
+      // High-DPI Thermal Rasterization (~200+ DPI):
+      // Guarantees Chinese thermal/label drivers (Xprinter, Rongta, POS-58, POS-80) CANNOT substitute
+      // hardware GBK Chinese characters, preserves crisp SVG barcodes, and enforces 0mm blank margins!
+      if (isThermalLabel) {
+        try {
+          const labelBoxes = await printWin.webContents.executeJavaScript(`
+            (function() {
+              const pages = Array.from(document.querySelectorAll('.pos-label-page'));
+              if (!pages.length) return null;
+              return pages.map((el) => {
+                const r = el.getBoundingClientRect();
+                return {
+                  x: Math.max(0, Math.floor(r.left)),
+                  y: Math.max(0, Math.floor(r.top + window.scrollY)),
+                  width: Math.max(60, Math.ceil(r.width)),
+                  height: Math.max(40, Math.ceil(r.height)),
+                };
+              });
+            })()
+          `);
+          if (Array.isArray(labelBoxes) && labelBoxes.length > 0) {
+            const labelZoom = 2.0;
+            printWin.webContents.setZoomFactor(labelZoom);
+            const totalHeightCss = labelBoxes[labelBoxes.length - 1].y + labelBoxes[labelBoxes.length - 1].height + 20;
+            const maxWidthCss = Math.max(...labelBoxes.map((b) => b.width)) + 10;
+            printWin.setContentSize(
+              Math.ceil(maxWidthCss * labelZoom),
+              Math.min(8000, Math.ceil(totalHeightCss * labelZoom))
+            );
+            await new Promise((r) => setTimeout(r, 100));
+
+            const capturedUrls = [];
+            for (const box of labelBoxes) {
+              // Scroll into view if batch has many stickers exceeding window height
+              await printWin.webContents.executeJavaScript(`window.scrollTo(0, ${box.y});`);
+              await new Promise((r) => setTimeout(r, 35));
+              const relRect = await printWin.webContents.executeJavaScript(`
+                (function() {
+                  const el = document.querySelectorAll('.pos-label-page')[${capturedUrls.length}];
+                  const r = el.getBoundingClientRect();
+                  return { x: Math.max(0, Math.floor(r.left)), y: Math.max(0, Math.floor(r.top)), width: Math.ceil(r.width), height: Math.ceil(r.height) };
+                })()
+              `);
+              const img = await printWin.webContents.capturePage({
+                x: Math.floor(relRect.x * labelZoom),
+                y: Math.floor(relRect.y * labelZoom),
+                width: Math.max(40, Math.ceil(relRect.width * labelZoom)),
+                height: Math.max(30, Math.ceil(relRect.height * labelZoom)),
+              });
+              capturedUrls.push(img.toDataURL());
+            }
+
+            printWin.webContents.setZoomFactor(1.0);
+            const labelH = userHeightMm || 25;
+            const labelRasterHtml = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    @page { size: ${widthMm}mm ${labelH}mm !important; margin: 0mm !important; }
+    html, body { margin: 0 !important; padding: 0 !important; background: #ffffff !important; width: ${widthMm}mm !important; }
+    .label-raster-page {
+      width: ${widthMm}mm !important;
+      height: ${labelH}mm !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      overflow: hidden !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      page-break-after: always !important;
+      break-after: page !important;
+    }
+    .label-raster-page:last-child {
+      page-break-after: auto !important;
+      break-after: auto !important;
+    }
+    img { width: 100% !important; height: 100% !important; object-fit: contain !important; display: block !important; image-rendering: -webkit-optimize-contrast; }
+  </style>
+</head>
+<body>
+  ${capturedUrls.map((u) => `<div class="label-raster-page"><img src="${u}" /></div>`).join("\n")}
+</body>
+</html>`;
+            fs.writeFileSync(tempFilePath, labelRasterHtml, "utf8");
+            await printWin.loadFile(tempFilePath);
+            await new Promise((r) => setTimeout(r, 80));
+          }
+        } catch (labelRasterErr) {
+          console.warn("[Windows POS] Label raster conversion error:", labelRasterErr);
+          try { printWin.webContents.setZoomFactor(1.0); } catch (_) {}
+        }
+      } else if (!isA4) {
         try {
           const dims = await printWin.webContents.executeJavaScript(`
             (function() {
@@ -527,14 +653,19 @@ async function performSilentPrint(html, printerName, options = {}) {
             })()
           `);
           if (dims && dims.width > 0 && dims.height > 0) {
-            printWin.setContentSize(dims.width, dims.height);
-            await new Promise((r) => setTimeout(r, 80));
+            const rasterZoom = dims.height > 2200 ? 1.35 : 2.0;
+            printWin.webContents.setZoomFactor(rasterZoom);
+            const dipW = Math.ceil(dims.width * rasterZoom);
+            const dipH = Math.ceil(dims.height * rasterZoom);
+            printWin.setContentSize(dipW, dipH);
+            await new Promise((r) => setTimeout(r, 100));
             const img = await printWin.webContents.capturePage({
               x: 0,
               y: 0,
-              width: dims.width,
-              height: dims.height,
+              width: dipW,
+              height: dipH,
             });
+            printWin.webContents.setZoomFactor(1.0);
             const imgDataUrl = img.toDataURL();
             const rasterHtml = `<!DOCTYPE html>
 <html>
@@ -543,7 +674,7 @@ async function performSilentPrint(html, printerName, options = {}) {
   <style>
     @page { size: auto; margin: 0mm !important; }
     html, body { margin: 0 !important; padding: 0 !important; background: #ffffff !important; }
-    img { width: 100% !important; max-width: 100% !important; height: auto !important; display: block !important; margin: 0 !important; }
+    img { width: 100% !important; max-width: 100% !important; height: auto !important; display: block !important; margin: 0 !important; image-rendering: -webkit-optimize-contrast; }
   </style>
 </head>
 <body>
@@ -556,6 +687,7 @@ async function performSilentPrint(html, printerName, options = {}) {
           }
         } catch (rasterErr) {
           console.warn("[Windows POS] Raster image conversion error:", rasterErr);
+          try { printWin.webContents.setZoomFactor(1.0); } catch (_) {}
         }
       }
 
@@ -584,26 +716,29 @@ async function performSilentPrint(html, printerName, options = {}) {
       }
 
       printWin.webContents.print(printConfig, (success, failureReason) => {
-        cleanup();
-        if (success) {
-          console.log(
-            `[Windows POS] Receipt printed (${useSilent ? "SILENT" : "DIALOG"}) to: ${targetPrinter || "Windows Printer"} [Size: ${widthMm}mm x ${effectiveHeightMm}mm]`
-          );
-          resolve({ success: true, printer: targetPrinter, silent: useSilent });
-        } else {
-          console.warn(`[Windows POS] Print cancelled or failed: ${failureReason}`);
-          resolve({ success: false, error: failureReason });
+        try {
+          if (success) {
+            console.log(
+              `[Windows POS] ${isLabel ? "Labels" : "Receipt"} printed (${useSilent ? "SILENT" : "DIALOG"}) to: ${targetPrinter || "Windows Printer"} [Size: ${widthMm}mm x ${heightLabel}]`
+            );
+            finishOnce({ success: true, printer: targetPrinter, silent: useSilent });
+          } else {
+            console.warn(`[Windows POS] Print cancelled or failed: ${failureReason}`);
+            finishOnce({ success: false, error: failureReason || "Print cancelled" });
+          }
+        } catch (cbErr) {
+          console.error("[Windows POS] Print callback warning:", cbErr);
+          finishOnce({ success: Boolean(success), printer: targetPrinter, silent: useSilent });
         }
       });
     } catch (e) {
-      cleanup();
-      resolve({ success: false, error: e.message });
+      finishOnce({ success: false, error: e.message });
     }
   });
 }
 
 ipcMain.handle("pos:print-silent", async (event, options = {}) => {
-  const { html, printerName, silent, margins, copies, scaleFactor, pageSize, paperWidthMm, paperHeightMm } = options;
+  const { html, printerName, silent, margins, copies, scaleFactor, pageSize, paperWidthMm, paperHeightMm, isLabel } = options;
   if (!html) return { success: false, error: "Empty HTML" };
   return await performSilentPrint(html, printerName, {
     silent,
@@ -613,18 +748,13 @@ ipcMain.handle("pos:print-silent", async (event, options = {}) => {
     pageSize,
     paperWidthMm,
     paperHeightMm,
+    isLabel,
   });
 });
 
-// 8. Open cash drawer via ESC/POS command
+// 8. Open cash drawer via raw ESC/POS WinSpool pulse
 ipcMain.handle("pos:open-cash-drawer", async (event, { printerName } = {}) => {
-  const drawerKickHtml = `
-    <html>
-      <head><style>@page { size: 10mm 10mm; margin: 0; }</style></head>
-      <body>\x1b\x70\x00\x19\xfa</body>
-    </html>
-  `;
-  return await performSilentPrint(drawerKickHtml, printerName, { silent: true });
+  return await openWindowsCashDrawer(printerName);
 });
 
 app.whenReady().then(() => {

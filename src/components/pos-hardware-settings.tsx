@@ -25,8 +25,10 @@ import {
   FileText,
   Type,
   Layers,
+  Barcode,
 } from "lucide-react";
 import { executeDirectSilentPrint } from "@/lib/pos-print";
+import { buildInvoiceHtml } from "@/lib/invoice-printer";
 import {
   getPosHardwareSettings,
   savePosHardwareSettings,
@@ -45,6 +47,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { InvoicePreviewDialog } from "@/components/invoice-preview-dialog";
+import { LabelPrintDialog } from "@/components/label-print-dialog";
 import { toast } from "sonner";
 
 interface PrinterItem {
@@ -60,6 +63,7 @@ export function PosHardwareSettings({ lang = "en" }: { lang?: "en" | "bn" | stri
   const [testingDrawer, setTestingDrawer] = useState(false);
   const [settingOsDefault, setSettingOsDefault] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [labelDialogOpen, setLabelDialogOpen] = useState(false);
 
   const [hwConfig, setHwConfig] = useState<PosHwConfig>(DEFAULT_HARDWARE_SETTINGS);
 
@@ -309,60 +313,48 @@ export function PosHardwareSettings({ lang = "en" }: { lang?: "en" | "bn" | stri
     } catch (_) {}
   };
 
-  const buildTestReceiptHtml = () => `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <meta charset="utf-8">
-      <style>
-        @page { size: 80mm auto; margin: 0mm !important; }
-        *, body, div, span, p, strong {
-          font-family: 'Nirmala UI', 'Hind Siliguri', 'Segoe UI', Arial, sans-serif !important;
-          font-weight: 800 !important;
-          color: #000000 !important;
-          box-sizing: border-box !important;
-        }
-        body {
-          width: 100%;
-          max-width: 74mm;
-          margin: 0 auto;
-          padding: ${hwConfig.marginTopMm}mm ${hwConfig.marginRightMm}mm ${hwConfig.marginBottomMm}mm ${hwConfig.marginLeftMm}mm !important;
-          background: #ffffff !important;
-          color: #000000 !important;
-          font-size: 12px;
-          text-align: center;
-          zoom: ${hwConfig.printScale || 100}%;
-        }
-        .title { font-size: 16px; font-weight: 900 !important; margin-bottom: 4px; }
-        .divider { border-top: 1.5px dashed #000000; margin: 6px 0; }
-        .row { display: flex; justify-content: space-between; font-size: 11px; font-weight: 800 !important; margin: 3px 0; }
-      </style>
-    </head>
-    <body>
-      <div class="title">POS THERMAL PRINT TEST</div>
-      <div style="font-size: 11px; font-weight: 800;">ALL TEXTS BOLD & CRISP</div>
-      <div class="divider"></div>
-      <div class="row"><span>Printer:</span><span>${activeTargetPrinter || "Windows Default"}</span></div>
-      <div class="row"><span>Mode:</span><span>${hwConfig.automatePrinting ? "AUTO SILENT" : "PREFERENCE DIALOG"}</span></div>
-      <div class="row"><span>Margins (T/B/L/R):</span><span>${hwConfig.marginTopMm}/${hwConfig.marginBottomMm}/${hwConfig.marginLeftMm}/${hwConfig.marginRightMm}mm</span></div>
-      <div class="row"><span>Scale / Copies:</span><span>${hwConfig.printScale}% / ${hwConfig.copies}x</span></div>
-      <div class="row"><span>Time:</span><span>${new Date().toLocaleTimeString()}</span></div>
-      <div class="divider"></div>
-      <div style="font-size: 10.5px; font-weight: 800; margin-top: 6px;">Windows OS Thermal Printer Ready!</div>
-    </body>
-    </html>
-  `;
+  const buildTestReceiptHtml = () =>
+    buildInvoiceHtml(
+      {
+        businessName: hwConfig.customHeaderTitle || "CLASSIC WORLD",
+        tagline: hwConfig.customSubtitle || "POS Thermal Printer Ready",
+        shopAddress: hwConfig.customAddress || "123 Retail Street",
+        shopPhoneNumbers: hwConfig.customPhone || "01700-000000",
+        invoiceNo: "TEST-001",
+        invoiceDate: new Date().toLocaleString("en-GB"),
+        cashierName: "Admin",
+        customerName: lang === "bn" ? "টেস্ট ক্রেতা" : "Test Customer",
+        customerPhone: "01800-000000",
+        paymentMode: "CASH (নগদ)",
+        items: [
+          { product: { name: lang === "bn" ? "টেস্ট পণ্য ১ (প্রিন্ট চেক)" : "Test Product 1" }, qty: 1, sellPrice: 500 },
+          { product: { name: lang === "bn" ? "টেস্ট পণ্য ২" : "Test Product 2" }, qty: 2, sellPrice: 250 },
+        ],
+        subtotal: 1000,
+        discountAmount: 50,
+        total: 950,
+        paidAmount: 1000,
+        due: 0,
+        changeAmount: 50,
+        terms: hwConfig.customFooterNote || "আমাদের সাথে কেনাকাটা করার জন্য ধন্যবাদ!",
+      },
+      hwConfig
+    );
 
   const handleTestPrint = async (forceDialog = false) => {
     if (forceDialog) setTestingDialogPrint(true);
     else setTestingPrint(true);
 
     const html = buildTestReceiptHtml();
+    const widthMm = Number(hwConfig.paperWidthMm) || 80;
     try {
       const success = await executeDirectSilentPrint(html, activeTargetPrinter, {
         silent: forceDialog ? false : hwConfig.automatePrinting !== false,
         copies: hwConfig.copies,
         scaleFactor: hwConfig.printScale,
+        pageSize: widthMm >= 180 ? "a4" : `${widthMm}mm`,
+        paperWidthMm: widthMm,
+        paperHeightMm: hwConfig.paperHeightMm || "auto",
         margins: {
           topMm: hwConfig.marginTopMm,
           bottomMm: hwConfig.marginBottomMm,
@@ -395,7 +387,11 @@ export function PosHardwareSettings({ lang = "en" }: { lang?: "en" | "bn" | stri
           doc.close();
           setTimeout(() => {
             iframe.contentWindow?.print();
-            setTimeout(() => document.body.removeChild(iframe), 1500);
+            setTimeout(() => {
+              try {
+                if (document.body.contains(iframe)) document.body.removeChild(iframe);
+              } catch (_) {}
+            }, 1500);
           }, 250);
         }
       }
@@ -412,10 +408,18 @@ export function PosHardwareSettings({ lang = "en" }: { lang?: "en" | "bn" | stri
     try {
       const electronPOS = (window as any).electronPOS;
       if (electronPOS?.openCashDrawer) {
-        await electronPOS.openCashDrawer(activeTargetPrinter);
-        toast.success(lang === "bn" ? "ক্যাশ ড্রয়ার সিগন্যাল পাঠানো হয়েছে!" : "Cash drawer kick pulse sent!");
+        const res = await electronPOS.openCashDrawer(activeTargetPrinter);
+        if (res && res.success === false) {
+          toast.error(lang === "bn" ? "ক্যাশ ড্রয়ার সংযুক্ত নেই বা প্রিন্টার পাওয়া যায়নি।" : (res.error || "Cash drawer pulse failed"));
+        } else {
+          toast.success(lang === "bn" ? "ক্যাশ ড্রয়ার সিগন্যাল পাঠানো হয়েছে!" : "Cash drawer kick pulse sent!");
+        }
       } else {
-        const res = await fetch("http://127.0.0.1:9123/open-drawer", { method: "POST" });
+        const res = await fetch("http://127.0.0.1:9123/open-drawer", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ printerName: activeTargetPrinter }),
+        });
         if (res.ok) {
           toast.success(lang === "bn" ? "ক্যাশ ড্রয়ার সিগন্যাল পাঠানো হয়েছে!" : "Cash drawer kick pulse sent!");
         } else {
@@ -463,16 +467,27 @@ export function PosHardwareSettings({ lang = "en" }: { lang?: "en" | "bn" | stri
             </p>
           </div>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={checkHardware}
-          disabled={loading}
-          className="rounded-xl h-8 text-xs gap-1.5 cursor-pointer"
-        >
-          <RefreshCw className={`size-3.5 ${loading ? "animate-spin" : ""}`} />
-          {lang === "bn" ? "প্রিন্টার রিফ্রেশ" : "Refresh Printers"}
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            size="sm"
+            onClick={() => setLabelDialogOpen(true)}
+            className="rounded-xl h-8 text-xs font-bold gap-1.5 bg-indigo-600 hover:bg-indigo-500 text-white cursor-pointer shadow-xs"
+          >
+            <Barcode className="size-3.5" />
+            {lang === "bn" ? "বারকোড লেবেল প্রিন্ট" : "Label Printing"}
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={checkHardware}
+            disabled={loading}
+            className="rounded-xl h-8 text-xs gap-1.5 cursor-pointer"
+          >
+            <RefreshCw className={`size-3.5 ${loading ? "animate-spin" : ""}`} />
+            {lang === "bn" ? "প্রিন্টার রিফ্রেশ" : "Refresh Printers"}
+          </Button>
+        </div>
       </div>
 
       {/* Row 1: Automated Printing Toggles (Admin / Owner Control) */}
@@ -979,24 +994,24 @@ export function PosHardwareSettings({ lang = "en" }: { lang?: "en" | "bn" | stri
               <label className="flex items-center justify-between p-2.5 rounded-xl bg-background border border-border/60 cursor-pointer">
                 <span className="font-semibold">{lang === "bn" ? "ক্যাশিয়ার নাম" : "Cashier Name"}</span>
                 <Switch
-                  checked={vis.showCashierName !== false}
-                  onCheckedChange={(c) => updateVisibility({ showCashierName: c })}
+                  checked={vis.showCashierName !== false && vis.showCashier !== false}
+                  onCheckedChange={(c) => updateVisibility({ showCashierName: c, showCashier: c })}
                 />
               </label>
 
               <label className="flex items-center justify-between p-2.5 rounded-xl bg-background border border-border/60 cursor-pointer">
                 <span className="font-semibold">{lang === "bn" ? "ক্রেতার তথ্য" : "Customer Details"}</span>
                 <Switch
-                  checked={vis.showCustomerDetails !== false}
-                  onCheckedChange={(c) => updateVisibility({ showCustomerDetails: c })}
+                  checked={vis.showCustomerDetails !== false && vis.showCustomer !== false}
+                  onCheckedChange={(c) => updateVisibility({ showCustomerDetails: c, showCustomer: c })}
                 />
               </label>
 
               <label className="flex items-center justify-between p-2.5 rounded-xl bg-background border border-border/60 cursor-pointer">
                 <span className="font-semibold">{lang === "bn" ? "আইটেম টেবিল হেডার" : "Item Table Header"}</span>
                 <Switch
-                  checked={vis.showItemHeader !== false}
-                  onCheckedChange={(c) => updateVisibility({ showItemHeader: c })}
+                  checked={vis.showItemHeader !== false && vis.showItemsHeader !== false}
+                  onCheckedChange={(c) => updateVisibility({ showItemHeader: c, showItemsHeader: c })}
                 />
               </label>
 
@@ -1209,6 +1224,19 @@ export function PosHardwareSettings({ lang = "en" }: { lang?: "en" | "bn" | stri
 
           <Button
             type="button"
+            onClick={() => setLabelDialogOpen(true)}
+            className="rounded-xl h-9 text-xs font-bold gap-2 bg-indigo-600 hover:bg-indigo-500 text-white cursor-pointer shadow-sm"
+          >
+            <Barcode className="size-3.5" />
+            <span>
+              {lang === "bn"
+                ? "বারকোড ও প্রাইস লেবেল প্রিন্ট"
+                : "Barcode & Price Label Print"}
+            </span>
+          </Button>
+
+          <Button
+            type="button"
             onClick={() => handleTestPrint(false)}
             disabled={testingPrint}
             className="rounded-xl h-9 text-xs font-bold gap-2 bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer"
@@ -1261,6 +1289,14 @@ export function PosHardwareSettings({ lang = "en" }: { lang?: "en" | "bn" | stri
       <InvoicePreviewDialog
         open={previewOpen}
         onOpenChange={setPreviewOpen}
+        lang={lang}
+      />
+
+      {/* Easy Product Barcode & Price Label Printing Dialog */}
+      <LabelPrintDialog
+        open={labelDialogOpen}
+        onOpenChange={setLabelDialogOpen}
+        shopName={hwConfig.customHeaderTitle || "CLASSIC WORLD"}
         lang={lang}
       />
     </Card>

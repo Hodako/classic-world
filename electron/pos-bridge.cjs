@@ -97,6 +97,78 @@ function openWindowsPrinterProperties(printerName) {
   });
 }
 
+function openWindowsCashDrawer(printerName) {
+  return new Promise((resolve) => {
+    const runKick = async () => {
+      let target = printerName;
+      if (!target) {
+        const list = await getWindowsPrinters();
+        const def = list.find((p) => p.isDefault) || list[0];
+        target = def?.name || "";
+      }
+      if (!target) {
+        return resolve({ success: false, error: "No printer available for cash drawer" });
+      }
+      const escapedTarget = String(target).replace(/'/g, "''");
+      const psScript = `
+$code = @'
+using System;
+using System.Runtime.InteropServices;
+public class RawPosHelper {
+  [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+  public class DOCINFOW {
+    [MarshalAs(UnmanagedType.LPWStr)] public string pDocName;
+    [MarshalAs(UnmanagedType.LPWStr)] public string pOutputFile;
+    [MarshalAs(UnmanagedType.LPWStr)] public string pDataType;
+  }
+  [DllImport("winspool.Drv", EntryPoint = "OpenPrinterW", SetLastError = true, CharSet = CharSet.Unicode)]
+  public static extern bool OpenPrinter(string szPrinter, out IntPtr hPrinter, IntPtr pd);
+  [DllImport("winspool.Drv", EntryPoint = "ClosePrinter", SetLastError = true)]
+  public static extern bool ClosePrinter(IntPtr hPrinter);
+  [DllImport("winspool.Drv", EntryPoint = "StartDocPrinterW", SetLastError = true, CharSet = CharSet.Unicode)]
+  public static extern bool StartDocPrinter(IntPtr hPrinter, int level, [In] DOCINFOW di);
+  [DllImport("winspool.Drv", EntryPoint = "EndDocPrinter", SetLastError = true)]
+  public static extern bool EndDocPrinter(IntPtr hPrinter);
+  [DllImport("winspool.Drv", EntryPoint = "StartPagePrinter", SetLastError = true)]
+  public static extern bool StartPagePrinter(IntPtr hPrinter);
+  [DllImport("winspool.Drv", EntryPoint = "EndPagePrinter", SetLastError = true)]
+  public static extern bool EndPagePrinter(IntPtr hPrinter);
+  [DllImport("winspool.Drv", EntryPoint = "WritePrinter", SetLastError = true)]
+  public static extern bool WritePrinter(IntPtr hPrinter, byte[] pBytes, int dwCount, out int dwWritten);
+  public static bool Kick(string printerName) {
+    IntPtr hPrinter;
+    if (!OpenPrinter(printerName, out hPrinter, IntPtr.Zero)) return false;
+    DOCINFOW di = new DOCINFOW { pDocName = "POS Cash Drawer Kick", pDataType = "RAW" };
+    bool ok = false;
+    if (StartDocPrinter(hPrinter, 1, di)) {
+      if (StartPagePrinter(hPrinter)) {
+        byte[] bytes = new byte[] { 27, 112, 0, 25, 250 };
+        int written = 0;
+        ok = WritePrinter(hPrinter, bytes, bytes.Length, out written);
+        EndPagePrinter(hPrinter);
+      }
+      EndDocPrinter(hPrinter);
+    }
+    ClosePrinter(hPrinter);
+    return ok;
+  }
+}
+'@
+Add-Type -TypeDefinition $code -ErrorAction SilentlyContinue
+if ([RawPosHelper]::Kick('${escapedTarget}')) { Write-Output 'OK' } else { Write-Output 'FAIL' }
+`;
+      const encoded = Buffer.from(psScript, "utf16le").toString("base64");
+      exec(`powershell -NoProfile -EncodedCommand ${encoded}`, (err, stdout) => {
+        if (err || !String(stdout || "").includes("OK")) {
+          return resolve({ success: false, printer: target, error: err ? err.message : "RAW drawer kick failed" });
+        }
+        resolve({ success: true, printer: target });
+      });
+    };
+    runKick();
+  });
+}
+
 function startBridgeServer(customPrintHandler) {
   const server = http.createServer(async (req, res) => {
     // Enable CORS for localhost & hakim.qzz.io / classicworld-pos.web.app
@@ -184,6 +256,23 @@ function startBridgeServer(customPrintHandler) {
       return;
     }
 
+    if (req.url === "/open-drawer" && req.method === "POST") {
+      let body = "";
+      req.on("data", (chunk) => (body += chunk));
+      req.on("end", async () => {
+        try {
+          const payload = JSON.parse(body || "{}");
+          const result = await openWindowsCashDrawer(payload.printerName);
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify(result));
+        } catch (e) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ success: false, error: e.message }));
+        }
+      });
+      return;
+    }
+
     if (req.url === "/print" && req.method === "POST") {
       let body = "";
       req.on("data", (chunk) => {
@@ -192,7 +281,7 @@ function startBridgeServer(customPrintHandler) {
       req.on("end", async () => {
         try {
           const payload = JSON.parse(body || "{}");
-          const { html, printerName, silent, margins, copies, scaleFactor, pageSize, paperWidthMm, paperHeightMm } = payload;
+          const { html, printerName, silent, margins, copies, scaleFactor, pageSize, paperWidthMm, paperHeightMm, isLabel } = payload;
 
           if (typeof customPrintHandler === "function") {
             const result = await customPrintHandler(html, printerName, {
@@ -203,6 +292,7 @@ function startBridgeServer(customPrintHandler) {
               pageSize,
               paperWidthMm,
               paperHeightMm,
+              isLabel,
             });
             res.writeHead(200, { "Content-Type": "application/json" });
             res.end(JSON.stringify(result));
@@ -251,4 +341,5 @@ module.exports = {
   setWindowsDefaultPrinter,
   openWindowsPrinterPreferences,
   openWindowsPrinterProperties,
+  openWindowsCashDrawer,
 };

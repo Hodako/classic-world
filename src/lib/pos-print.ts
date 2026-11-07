@@ -61,6 +61,7 @@ export interface DirectPrintOptions {
   pageSize?: string;
   paperWidthMm?: number;
   paperHeightMm?: number | "auto";
+  isLabel?: boolean;
 }
 
 /**
@@ -104,8 +105,9 @@ export async function executeDirectSilentPrint(
         pageSize: overrideOptions?.pageSize,
         paperWidthMm: overrideOptions?.paperWidthMm || hw.paperWidthMm || 80,
         paperHeightMm: overrideOptions?.paperHeightMm !== undefined ? overrideOptions.paperHeightMm : (hw.paperHeightMm || "auto"),
+        isLabel: Boolean(overrideOptions?.isLabel),
       });
-      if (res && res.success) return true;
+      if (res && (res.success || !effectiveSilent)) return true;
     } catch (e) {
       console.warn("[POS Print] Electron print error:", e);
     }
@@ -113,8 +115,14 @@ export async function executeDirectSilentPrint(
 
   // 2. Check if Local Windows POS Hardware Bridge is running on http://127.0.0.1:9123
   try {
+    const pingCtrl = new AbortController();
+    const pingTimer = setTimeout(() => pingCtrl.abort(), 750);
+    const statusRes = await fetch("http://127.0.0.1:9123/status", { signal: pingCtrl.signal });
+    clearTimeout(pingTimer);
+    if (!statusRes.ok) return false;
+
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 3500);
+    const timeoutId = setTimeout(() => controller.abort(), effectiveSilent ? 15000 : 120000);
     const res = await fetch("http://127.0.0.1:9123/print", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -128,13 +136,14 @@ export async function executeDirectSilentPrint(
         pageSize: overrideOptions?.pageSize,
         paperWidthMm: overrideOptions?.paperWidthMm || hw.paperWidthMm || 80,
         paperHeightMm: overrideOptions?.paperHeightMm !== undefined ? overrideOptions.paperHeightMm : (hw.paperHeightMm || "auto"),
+        isLabel: Boolean(overrideOptions?.isLabel),
       }),
       signal: controller.signal,
     });
     clearTimeout(timeoutId);
     if (res.ok) {
       const data = await res.json();
-      if (data && data.success) return true;
+      if (data && (data.success || !effectiveSilent)) return true;
     }
   } catch (_) {
     // Bridge not running, fall back to browser print

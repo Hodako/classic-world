@@ -178,6 +178,23 @@
     background-color: #1E1F24;
     color: #F5F6F8;
   }
+
+  /* Keep paper receipt & barcode sticker previews pure white with crisp black text even in Dark Mode */
+  .invoice-print-container,
+  .pos-paper-preview {
+    background-color: #ffffff !important;
+    color: #000000 !important;
+  }
+  .invoice-print-container *,
+  .pos-paper-preview * {
+    color: #000000 !important;
+  }
+  .invoice-print-container .bg-white,
+  .invoice-print-container .bg-zinc-50,
+  .invoice-print-container .bg-gray-50,
+  .pos-paper-preview .bg-white {
+    background-color: #ffffff !important;
+  }
 }
 
 @layer base {

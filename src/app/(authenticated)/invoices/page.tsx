@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useState, useMemo, useRef } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCachedQuery } from "@/hooks/use-cached-query";
 import { getProducts, getCustomers, type Product, type Customer } from "@/lib/queries";
 import { useT } from "@/lib/i18n";
@@ -31,12 +31,15 @@ import {
   FileDown,
   Loader2,
   Download,
+  Sliders,
 } from "lucide-react";
 import Link from "next/link";
 import { getBusinessSettingsFn } from "@/lib/rpc-admin";
 import { createSaleFn } from "@/lib/rpc";
 import { safeUUID } from "@/lib/utils";
 import { printPwaInvoice, downloadPwaInvoicePdf } from "@/lib/invoice-printer";
+import { getPosHardwareSettings, DEFAULT_POLICY_NOTE } from "@/lib/pos-hardware";
+import { InvoicePreviewDialog } from "@/components/invoice-preview-dialog";
 
 type InvoiceItem = {
   product: Product;
@@ -245,11 +248,13 @@ function InvoiceDocumentView({
         ) : (
           <div className="space-y-0.5">
             <p className="text-[11px] font-black text-black">
-              আমাদের সাথে কেনাকাটা করার জন্য ধন্যবাদ!
+              {getPosHardwareSettings().customFooterNote || "আমাদের সাথে কেনাকাটা করার জন্য ধন্যবাদ!"}
             </p>
-            <p className="text-[9.5px] text-zinc-600 font-medium">
-              * ৭ দিনের মধ্যে ইনভয়েস সহ পণ্য পরিবর্তন প্রযোজ্য *
-            </p>
+            {(getPosHardwareSettings().visibility?.showPolicyNote !== false) && (
+              <p className="text-[9.5px] text-zinc-600 font-medium">
+                {getPosHardwareSettings().customPolicyNote ?? DEFAULT_POLICY_NOTE}
+              </p>
+            )}
           </div>
         )}
       </div>
@@ -291,6 +296,9 @@ export default function InvoicePage() {
     queryFn: getBusinessSettingsFn,
   });
   const biz = settingsQuery.data?.business;
+  const qc = useQueryClient();
+  const savedInvoiceSigRef = useRef<string | null>(null);
+  const [previewCustomizerOpen, setPreviewCustomizerOpen] = useState(false);
 
   // Auto-fill sell price when selecting a product
   function handleProductChange(prodId: string) {
@@ -432,7 +440,7 @@ export default function InvoicePage() {
     return `INV-${Date.now().toString().slice(-6)}`;
   }, [invoiceItems.length === 0]);
 
-  const businessName = user?.business_name || "Dream IT";
+  const businessName = biz?.shop_name || biz?.name || user?.business_name || "Classic World";
   const userEmail = user?.email || "";
   const tagline = t("tagline") || "Quality Products & Service";
   const invoiceDate = fmtDateTime(new Date().toISOString());
@@ -440,57 +448,84 @@ export default function InvoicePage() {
   async function handlePrint() {
     if (invoiceItems.length === 0) return toast.error(t("no_items_in_cart"));
 
-    // Save sales record to database for all items in the invoice
-    try {
-      const cartId = safeUUID();
-      let remainingPaid = due > 0 ? paidAmount : total;
-      let remainingDue = due > 0 ? due : 0;
+    const currentSig = JSON.stringify({
+      invoiceNo,
+      selectedCustomerId,
+      discountAmount,
+      paidAmount,
+      items: invoiceItems.map((i) => ({ id: i.product.id, name: i.product.name, qty: i.qty, p: i.sellPrice })),
+    });
 
-      for (let i = 0; i < invoiceItems.length; i++) {
-        const item = invoiceItems[i];
-        const lineSell = item.sellPrice * item.qty;
-        const buyPrice = item.product.buy_price || 0;
-        const profit = (item.sellPrice - buyPrice) * item.qty;
+    // Save sales record to database once per unique invoice state (prevents duplicate stock deduction on re-print)
+    if (savedInvoiceSigRef.current !== currentSig) {
+      try {
+        const cartId = safeUUID();
+        const effectivePaidTotal = Math.min(Math.max(paidAmount, 0), total);
+        let remainingPaid = due > 0 ? effectivePaidTotal : total;
+        let remainingDue = due > 0 ? due : 0;
+        let remainingDisc = discountAmount;
 
-        let linePaid = lineSell;
-        let lineDue = 0;
-
-        if (due > 0) {
-          if (i === invoiceItems.length - 1) {
-            linePaid = Math.max(0, remainingPaid);
-            lineDue = Math.max(0, remainingDue);
-          } else {
-            const ratio = total > 0 ? lineSell / total : 1 / invoiceItems.length;
-            linePaid = Math.min(Math.round(paidAmount * ratio), remainingPaid);
-            lineDue = Math.max(0, lineSell - linePaid);
-            remainingPaid -= linePaid;
-            remainingDue -= lineDue;
+        for (let i = 0; i < invoiceItems.length; i++) {
+          const item = invoiceItems[i];
+          const rawLineSell = item.sellPrice * item.qty;
+          let lineDisc = 0;
+          if (discountAmount > 0 && subtotal > 0) {
+            if (i === invoiceItems.length - 1) {
+              lineDisc = Math.max(0, remainingDisc);
+            } else {
+              lineDisc = Math.min(Math.round(discountAmount * (rawLineSell / subtotal)), remainingDisc);
+              remainingDisc -= lineDisc;
+            }
           }
-        }
+          const lineSell = Math.max(0, rawLineSell - lineDisc);
+          const buyPrice = item.product.buy_price || 0;
+          const profit = lineSell - buyPrice * item.qty;
 
-        await createSaleFn({
-          data: {
-            product_id: item.product.id || null,
-            product_name: item.product.name,
-            qty: item.qty,
-            buy_price: buyPrice,
-            sell_price: item.sellPrice,
-            profit,
-            type: due > 0 ? "credit" : "cash",
-            party_id: selectedCustomerId !== "walk-in" ? selectedCustomerId : null,
-            paid_amount: linePaid,
-            due_amount: lineDue,
-            cart_id: cartId,
-          },
-        });
+          let linePaid = lineSell;
+          let lineDue = 0;
+
+          if (due > 0) {
+            if (i === invoiceItems.length - 1) {
+              linePaid = Math.min(Math.max(0, remainingPaid), lineSell);
+              lineDue = Math.max(0, lineSell - linePaid);
+            } else {
+              const ratio = total > 0 ? lineSell / total : 1 / invoiceItems.length;
+              linePaid = Math.min(Math.round(effectivePaidTotal * ratio), remainingPaid, lineSell);
+              lineDue = Math.max(0, lineSell - linePaid);
+              remainingPaid -= linePaid;
+              remainingDue -= lineDue;
+            }
+          }
+
+          await createSaleFn({
+            data: {
+              product_id: item.product.id || null,
+              product_name: item.product.name,
+              qty: item.qty,
+              buy_price: buyPrice,
+              sell_price: item.sellPrice,
+              discount: lineDisc,
+              profit,
+              type: due > 0 ? "credit" : "cash",
+              party_id: selectedCustomerId !== "walk-in" ? selectedCustomerId : null,
+              paid_amount: linePaid,
+              due_amount: lineDue,
+              cart_id: cartId,
+            },
+          });
+        }
+        savedInvoiceSigRef.current = currentSig;
+        qc.invalidateQueries({ queryKey: ["sales"] });
+        qc.invalidateQueries({ queryKey: ["products"] });
+        qc.invalidateQueries({ queryKey: ["cashbox"] });
+        toast.success(t("record_sale"));
+      } catch (err) {
+        console.warn("Failed to automatically persist sale record:", err);
       }
-      toast.success(t("record_sale"));
-    } catch (err) {
-      console.warn("Failed to automatically persist sale record:", err);
     }
 
     try {
-      printPwaInvoice({
+      await printPwaInvoice({
         businessName,
         userEmail: biz?.emails || user?.business_emails || userEmail,
         shopAddress: biz?.address || user?.business_address || "",
@@ -504,6 +539,7 @@ export default function InvoicePage() {
         tagline,
         invoiceNo,
         invoiceDate,
+        cashierName: user?.full_name || undefined,
         customerName: activeCustomerName,
         customerPhone: activeCustomerPhone,
         items: invoiceItems,
@@ -678,6 +714,16 @@ export default function InvoicePage() {
                 <Download className="size-3.5 mr-1" />
               )}
               {isDownloadingPdf ? (lang === "bn" ? "ডাউনলোড..." : "Downloading...") : (lang === "bn" ? "PDF ডাউনলোড" : "Download PDF")}
+            </Button>
+
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setPreviewCustomizerOpen(true)}
+              className="h-8 px-2.5 text-xs border-primary/40 text-primary hover:bg-primary/10"
+            >
+              <Sliders className="size-3.5 mr-1" />
+              {lang === "bn" ? "প্রিন্ট সাইজ ও কাস্টমাইজ" : "Customize Print"}
             </Button>
 
             <Button size="sm" onClick={handlePrint} disabled={invoiceItems.length === 0} className="h-8 px-3 text-xs bg-primary text-primary-foreground font-bold shadow-xs">
@@ -1096,6 +1142,36 @@ export default function InvoicePage() {
           isPrintOnly
         />
       </div>
+      <InvoicePreviewDialog
+        open={previewCustomizerOpen}
+        onOpenChange={setPreviewCustomizerOpen}
+        lang={lang}
+        invoiceData={
+          invoiceItems.length > 0
+            ? {
+                businessName,
+                userEmail: biz?.emails || user?.business_emails || userEmail,
+                shopAddress: biz?.address || user?.business_address || "",
+                shopPhoneNumbers: biz?.phone_numbers || user?.business_phone_numbers || "",
+                tagline,
+                invoiceNo,
+                invoiceDate,
+                cashierName: user?.full_name || undefined,
+                customerName: activeCustomerName,
+                customerPhone: activeCustomerPhone,
+                items: invoiceItems,
+                subtotal,
+                discountAmount,
+                total,
+                paidAmount,
+                due,
+                changeAmount,
+                paymentStatus,
+                terms: biz?.invoice_terms || "",
+              }
+            : undefined
+        }
+      />
     </div>
   );
 }

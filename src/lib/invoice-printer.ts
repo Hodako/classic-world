@@ -47,6 +47,15 @@ export interface PrintInvoiceParams {
   forcePrintDialog?: boolean;
 }
 
+function escapeHtml(value: unknown): string {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 /**
  * Clean Thermal POS Receipt Print Engine (Optimized for 20mm/50mm/58mm/70mm/80mm Thermal Printers & A4)
  * All texts are rendered BOLD & pure black (#000000) for crisp thermal printing.
@@ -56,7 +65,8 @@ export function buildInvoiceHtml(data: PrintInvoiceParams, settingsOverride?: Pa
   const hw = { ...getPosHardwareSettings(), ...(settingsOverride || {}) };
   const vis = { ...DEFAULT_VISIBILITY_SETTINGS, ...(hw.visibility || {}) };
 
-  const widthMm = Number(hw.paperWidthMm) || (data.pageSize === "58mm" ? 58 : 80);
+  const isExplicitA4 = String(data.pageSize || "").toLowerCase() === "a4" && !settingsOverride?.paperWidthMm && hw.paperWidthMm === 80;
+  const widthMm = isExplicitA4 ? 210 : (Number(hw.paperWidthMm) || (data.pageSize === "58mm" ? 58 : 80));
 
   const printableWidthMm = getPrintableWidthMm(widthMm);
   // Reflow larger text inside the same physical head width.
@@ -66,73 +76,83 @@ export function buildInvoiceHtml(data: PrintInvoiceParams, settingsOverride?: Pa
     hw.paperHeightMm !== undefined && hw.paperHeightMm !== "auto" && Number(hw.paperHeightMm) > 0
       ? Number(hw.paperHeightMm)
       : undefined;
-  const pageSizeRule = heightMm ? `${widthMm}mm ${heightMm}mm` : "auto";
+  const pageSizeRule = widthMm >= 180 ? "A4 portrait" : (heightMm ? `${widthMm}mm ${heightMm}mm` : "auto");
 
   const topMm = hw.marginTopMm ?? 0;
   const bottomMm = hw.marginBottomMm ?? 0;
   const leftMm = hw.marginLeftMm ?? 0;
   const rightMm = hw.marginRightMm ?? 0;
   const scalePct = getPrintScale(hw.printScale);
+  const contentWidthMm = Math.max(8, printableWidthMm * 100 / scalePct - leftMm - rightMm);
 
-  // Auto-decrease font size if text exceeds the roll boundary
   const userBasePt = Number(hw.fontSizePt) || 8.5;
   const userTitlePt = Number(hw.titleFontSizePt) || 12;
 
-  // Maximum safe font size based on roll width
+  // Respect user font adjustments while preventing physical roll overflow when fitToWidth is enabled
   const maxSafeBasePt =
-    widthMm <= 25 ? 5.5 :
-    widthMm <= 50 ? 6.5 :
-    widthMm <= 58 ? 7.2 :
-    widthMm <= 72 ? 8.0 :
-    8.5;
+    widthMm <= 25 ? 6.0 :
+    widthMm <= 50 ? 7.8 :
+    widthMm <= 58 ? 9.5 :
+    widthMm <= 72 ? 10.8 :
+    widthMm < 148 ? 12.5 :
+    15.0;
 
   const maxSafeTitlePt =
-    widthMm <= 25 ? 7.5 :
-    widthMm <= 50 ? 8.5 :
-    widthMm <= 58 ? 9.5 :
-    widthMm <= 72 ? 10.5 :
-    12.0;
+    widthMm <= 25 ? 8.0 :
+    widthMm <= 50 ? 10.5 :
+    widthMm <= 58 ? 13.5 :
+    widthMm <= 72 ? 15.5 :
+    widthMm < 148 ? 18.0 :
+    24.0;
 
-  // Decrease font size if it exceeds the roll boundary limit
-  const baseFontPt = Math.min(userBasePt, maxSafeBasePt);
-  const titleFontPt = Math.min(userTitlePt, maxSafeTitlePt);
+  const baseFontPt = hw.fitToWidth !== false ? Math.min(userBasePt, maxSafeBasePt) : userBasePt;
+  const rawTitlePt = hw.fitToWidth !== false ? Math.min(userTitlePt, maxSafeTitlePt) : userTitlePt;
+  const shopNameRaw = String(hw.customHeaderTitle || data.businessName || "CLASSIC WORLD");
+  const longestTitleWord = Math.max(1, ...shopNameRaw.split(/\s+/).map((w) => w.length));
+  const autoTitleCapPt = hw.fitToWidth !== false
+    ? Math.max(baseFontPt + 1, Math.floor((contentWidthMm / (longestTitleWord * 0.62)) * (72 / 25.4) * 10) / 10)
+    : rawTitlePt;
+  const titleFontPt = Math.min(rawTitlePt, autoTitleCapPt);
   const smallFontPt = Math.max(5.0, Number((baseFontPt - 1.2).toFixed(1)));
   const largeFontPt = Number((baseFontPt + 1.5).toFixed(1));
 
   // Choose columns from usable space at the requested text scale, not roll size alone.
-  // Keep numbers together when their column can hold them; otherwise use a full-width item row.
-  const contentWidthMm = Math.max(1, printableWidthMm * 100 / scalePct - leftMm - rightMm);
   const amountChars = Math.max(6, ...data.items.map(item => ("৳" + (item.qty * item.sellPrice).toLocaleString()).length));
   const qtyChars = Math.max(3, ...data.items.map(item => String(item.qty).length));
-  const charWidthMm = baseFontPt * 25.4 / 72 * 0.65;
-  const isNarrow = contentWidthMm < 60 || amountChars * charWidthMm > contentWidthMm * 0.28
+  const charWidthMm = baseFontPt * 25.4 / 72 * 0.62;
+  const isNarrow = contentWidthMm < 52 || amountChars * charWidthMm > contentWidthMm * 0.30
     || qtyChars * charWidthMm + 1 > contentWidthMm * 0.20;
 
-  const shopName = hw.customHeaderTitle || data.businessName;
-  const tagline = hw.customSubtitle !== undefined ? hw.customSubtitle : data.tagline;
-  const address = hw.customAddress !== undefined ? hw.customAddress : data.shopAddress;
-  const phone = hw.customPhone !== undefined ? hw.customPhone : data.shopPhoneNumbers;
+  const shopName = escapeHtml(shopNameRaw);
+  const tagline = escapeHtml(hw.customSubtitle !== undefined ? hw.customSubtitle : (data.tagline || ""));
+  const address = escapeHtml(hw.customAddress !== undefined ? hw.customAddress : (data.shopAddress || ""));
+  const phone = escapeHtml(hw.customPhone !== undefined ? hw.customPhone : (data.shopPhoneNumbers || ""));
   const terms = hw.customFooterNote !== undefined ? hw.customFooterNote : data.terms;
-  const policyNote = (hw.customPolicyNote !== undefined ? hw.customPolicyNote : DEFAULT_POLICY_NOTE).trim();
+  const rawPolicyNote = (hw.customPolicyNote !== undefined ? hw.customPolicyNote : DEFAULT_POLICY_NOTE).trim();
+  const policyNote = escapeHtml(rawPolicyNote);
   const normalizeLine = (s: string) => s.replace(/[*\s]/g, "");
   const termLines = (terms !== undefined && terms !== null ? String(terms) : "আমাদের সাথে কেনাকাটা করার জন্য ধন্যবাদ!")
     .split(/\r?\n/)
     .map((l) => l.trim())
     .filter((l) => l.length > 0)
-    // Avoid printing the policy line twice when it is also part of the footer note
-    .filter((l) => !policyNote || normalizeLine(l) !== normalizeLine(policyNote));
-  const dateStr = data.invoiceDate || fmtDateTime(new Date());
+    .filter((l) => !rawPolicyNote || normalizeLine(l) !== normalizeLine(rawPolicyNote))
+    .map((l) => escapeHtml(l));
+  const dateStr = escapeHtml(data.invoiceDate || fmtDateTime(new Date()));
+
+  const showItemsHeader = vis.showItemsHeader !== false && vis.showItemHeader !== false;
+  const showCustomerInfo = vis.showCustomer !== false && vis.showCustomerDetails !== false;
+  const showCashierInfo = vis.showCashier !== false && vis.showCashierName !== false;
 
   const customLines = hw.customLines || [];
   const renderCustomLines = (pos: "header" | "before_items" | "after_items" | "footer") => {
-    const lines = customLines.filter((l) => l.position === pos);
+    const lines = customLines.filter((l) => l.position === pos && String(l.text || "").trim().length > 0);
     if (!lines.length) return "";
     return lines
       .map(
         (l) =>
           `<div style="text-align: ${l.align || "center"}; font-weight: ${
             l.bold ? "900" : "800"
-          }; font-size: ${baseFontPt}pt; color: #000000; margin: 1.5px 0; word-break: break-word;">${l.text}</div>`
+          }; font-size: ${baseFontPt}pt; color: #000000; margin: 1.5px 0; word-break: break-word;">${escapeHtml(l.text)}</div>`
       )
       .join("");
   };
@@ -143,11 +163,11 @@ export function buildInvoiceHtml(data: PrintInvoiceParams, settingsOverride?: Pa
           (item, idx) => `
       <div class="receipt-item" style="padding: 2.5px 0; border-bottom: 1px dotted #000000;">
         <div style="font-weight: 800; font-size: ${baseFontPt}pt; word-break: break-word; line-height: 1.2;">
-          ${idx + 1}. ${item.product.name}
+          ${idx + 1}. ${escapeHtml(item.product.name)}
         </div>
         <div class="receipt-row" style="display: flex; justify-content: space-between; font-size: ${smallFontPt}pt; font-family: monospace; margin-top: 1.5px;">
-          <span>${item.qty} × ৳${item.sellPrice.toLocaleString()}</span>
-          <span style="font-weight: 900;">৳${(item.qty * item.sellPrice).toLocaleString()}</span>
+          <span>${item.qty} × ৳${Number(item.sellPrice || 0).toLocaleString()}</span>
+          <span style="font-weight: 900;">৳${(Number(item.qty || 0) * Number(item.sellPrice || 0)).toLocaleString()}</span>
         </div>
       </div>`
         )
@@ -160,7 +180,7 @@ export function buildInvoiceHtml(data: PrintInvoiceParams, settingsOverride?: Pa
           <col style="width: 28%;" />
         </colgroup>
         ${
-          vis.showItemsHeader !== false
+          showItemsHeader
             ? `<thead>
                 <tr style="border-bottom: 1.5px dashed #000000;">
                   <th style="text-align: left; font-size: ${smallFontPt}pt; width: 52%; word-break: break-word;">বিবরণ</th>
@@ -176,13 +196,13 @@ export function buildInvoiceHtml(data: PrintInvoiceParams, settingsOverride?: Pa
               (item, idx) => `
             <tr>
               <td style="padding: 2.5px 0; text-align: left; vertical-align: top; font-weight: 800; font-size: ${baseFontPt}pt; color: #000000; width: 52%; word-break: break-word; overflow-wrap: break-word; line-height: 1.2;">
-                ${idx + 1}. ${item.product.name}
+                ${idx + 1}. ${escapeHtml(item.product.name)}
               </td>
               <td style="padding: 2.5px 2px; text-align: center; vertical-align: top; font-family: monospace; font-size: ${baseFontPt}pt; font-weight: 800; color: #000000; width: 20%;">
                 ${item.qty}
               </td>
               <td style="padding: 2.5px 0; text-align: right; vertical-align: top; font-family: monospace; font-weight: 800; font-size: ${baseFontPt}pt; color: #000000; width: 28%; white-space: nowrap;">
-                ৳${(item.qty * item.sellPrice).toLocaleString()}
+                ৳${(Number(item.qty || 0) * Number(item.sellPrice || 0)).toLocaleString()}
               </td>
             </tr>
             ${
@@ -338,7 +358,7 @@ export function buildInvoiceHtml(data: PrintInvoiceParams, settingsOverride?: Pa
       }
       ${
         data.userEmail
-          ? `<div style="font-size: ${smallFontPt}pt; font-weight: 800; color: #000000; margin-top: 1px;">${data.userEmail}</div>`
+          ? `<div style="font-size: ${smallFontPt}pt; font-weight: 800; color: #000000; margin-top: 1px;">${escapeHtml(data.userEmail)}</div>`
           : ""
       }
       ${renderCustomLines("header")}
@@ -349,20 +369,20 @@ export function buildInvoiceHtml(data: PrintInvoiceParams, settingsOverride?: Pa
     <!-- Meta info -->
     <div style="font-size: ${smallFontPt}pt; line-height: 1.35; font-weight: 800; color: #000000;">
       <div class="receipt-row" style="display: flex; justify-content: space-between; align-items: center; font-family: monospace; font-weight: 800;">
-        ${vis.showInvoiceNo !== false ? `<span style="font-weight: 900;">ইনভয়েস: ${data.invoiceNo}</span>` : "<span></span>"}
+        ${vis.showInvoiceNo !== false ? `<span style="font-weight: 900;">ইনভয়েস: ${escapeHtml(data.invoiceNo)}</span>` : "<span></span>"}
         ${vis.showDateTime !== false ? `<span style="font-weight: 800;">${dateStr}</span>` : ""}
       </div>
       ${
-        vis.showCustomer !== false && data.customerName
+        showCustomerInfo && data.customerName
           ? `<div class="receipt-row" style="display: flex; justify-content: space-between; align-items: baseline; gap: 4px; margin-top: 2px; font-weight: 800;">
-              <span style="font-weight: 800;">ক্রেতা: <strong style="font-weight: 900;">${data.customerName}</strong></span>
-              <span style="font-family: monospace; font-weight: 800;">${data.customerPhone || ""}</span>
+              <span style="font-weight: 800;">ক্রেতা: <strong style="font-weight: 900;">${escapeHtml(data.customerName)}</strong></span>
+              <span style="font-family: monospace; font-weight: 800;">${escapeHtml(data.customerPhone || "")}</span>
             </div>`
           : ""
       }
       ${
-        vis.showCashier !== false && data.cashierName
-          ? `<div style="font-size: ${smallFontPt}pt; font-weight: 800; color: #000000; margin-top: 1px;">ক্যাশিয়ার: ${data.cashierName}</div>`
+        showCashierInfo && data.cashierName
+          ? `<div style="font-size: ${smallFontPt}pt; font-weight: 800; color: #000000; margin-top: 1px;">ক্যাশিয়ার: ${escapeHtml(data.cashierName)}</div>`
           : ""
       }
     </div>
@@ -456,7 +476,7 @@ export function buildInvoiceHtml(data: PrintInvoiceParams, settingsOverride?: Pa
         vis.showPaymentMode !== false
           ? `<div class="receipt-row" style="display: flex; justify-content: space-between; font-size: ${smallFontPt}pt; font-weight: 800; color: #000000; margin-top: 2px;">
               <span>পেমেন্ট মাধ্যম:</span>
-              <span style="font-weight: 900; color: #000000;">${data.paymentMode || (data.due > 0 ? "বাকী" : "নগদ")}</span>
+              <span style="font-weight: 900; color: #000000;">${escapeHtml(data.paymentMode || (data.due > 0 ? "বাকী" : "নগদ"))}</span>
             </div>`
           : ""
       }
@@ -497,8 +517,9 @@ export async function printPwaInvoice(data: PrintInvoiceParams, settingsOverride
   const hw = { ...getPosHardwareSettings(), ...(settingsOverride || {}) };
   const html = buildInvoiceHtml(data, hw);
 
-  const widthMm = Number(hw.paperWidthMm) || (data.pageSize === "58mm" ? 58 : 80);
-  const resolvedSize = `${widthMm}mm`;
+  const isExplicitA4 = String(data.pageSize || "").toLowerCase() === "a4" && !settingsOverride?.paperWidthMm && hw.paperWidthMm === 80;
+  const widthMm = isExplicitA4 ? 210 : (Number(hw.paperWidthMm) || (data.pageSize === "58mm" ? 58 : 80));
+  const resolvedSize = widthMm >= 180 ? "a4" : `${widthMm}mm`;
 
   const topMm = hw.marginTopMm ?? 0;
   const bottomMm = hw.marginBottomMm ?? 0;
@@ -585,11 +606,78 @@ export async function printPwaInvoice(data: PrintInvoiceParams, settingsOverride
 }
 
 /**
- * Generate and Download Standalone Clean Vector PDF Invoice (Zero Web-Preview)
- * Supports Thermal POS formats (58mm, 80mm) and standard (A4, A5) formats.
+ * Generate and Download High-Resolution Bangla + English PDF Invoice
+ * Renders exact customized POS receipt via html2canvas (supporting full Bangla Unicode, ৳ symbol, and custom lines),
+ * with vector fallback if offscreen DOM capture is unavailable.
  */
 export async function downloadPwaInvoicePdf(data: PrintInvoiceParams, openInNewTab = false): Promise<void> {
   const { default: jsPDF } = await import("jspdf");
+
+  if (typeof document !== "undefined") {
+    try {
+      const { default: html2canvas } = await import("html2canvas");
+      const hw = getPosHardwareSettings();
+      const html = buildInvoiceHtml(data, hw);
+      const widthMm = Number(hw.paperWidthMm) || (data.pageSize === "58mm" ? 58 : data.pageSize === "A4" ? 210 : 80);
+
+      const iframe = document.createElement("iframe");
+      iframe.style.position = "fixed";
+      iframe.style.left = "-9999px";
+      iframe.style.top = "0";
+      iframe.style.width = `${Math.max(320, Math.ceil(widthMm * 4.2))}px`;
+      iframe.style.height = "1600px";
+      iframe.style.border = "none";
+      document.body.appendChild(iframe);
+
+      try {
+        const doc = iframe.contentDocument || iframe.contentWindow?.document;
+        if (doc) {
+          doc.open();
+          doc.write(html);
+          doc.close();
+
+          await new Promise((r) => setTimeout(r, 220));
+          const targetEl = (doc.querySelector(".receipt-wrap") || doc.body) as HTMLElement;
+          const canvas = await html2canvas(targetEl, {
+            scale: 3,
+            backgroundColor: "#ffffff",
+            useCORS: true,
+            logging: false,
+          });
+
+          const imgData = canvas.toDataURL("image/png");
+          const pdfWidthMm = Math.max(48, widthMm);
+          const padMm = pdfWidthMm >= 180 ? 10 : 3;
+          const innerW = pdfWidthMm - padMm * 2;
+          const innerH = (canvas.height / canvas.width) * innerW;
+          const pdfHeightMm = Math.max(innerH + padMm * 2, pdfWidthMm >= 180 ? 297 : innerH + padMm * 2);
+
+          const pdf = new jsPDF({
+            orientation: "portrait",
+            unit: "mm",
+            format: [pdfWidthMm, pdfHeightMm],
+          });
+          pdf.addImage(imgData, "PNG", padMm, padMm, innerW, innerH);
+
+          const filename = `Invoice_${data.invoiceNo}.pdf`;
+          if (openInNewTab) {
+            const blobUrl = pdf.output("bloburl");
+            window.open(blobUrl, "_blank");
+          } else {
+            pdf.save(filename);
+          }
+          return;
+        }
+      } finally {
+        try {
+          if (document.body.contains(iframe)) document.body.removeChild(iframe);
+        } catch (_) {}
+      }
+    } catch (canvasErr) {
+      console.warn("Canvas PDF generation fallback:", canvasErr);
+    }
+  }
+
   const { default: autoTable } = await import("jspdf-autotable");
 
   const isThermal80 = data.pageSize === "80mm";

@@ -100,6 +100,8 @@ export function InvoicePreviewDialog({
   const [activeTab, setActiveTab] = useState<string>("format");
   const [printing, setPrinting] = useState<boolean>(false);
   const [previewZoom, setPreviewZoom] = useState<number>(100);
+  const [iframeAutoHeight, setIframeAutoHeight] = useState<number>(420);
+  const previewIframeRef = useRef<HTMLIFrameElement | null>(null);
 
   // New Custom Line form state
   const [newLineText, setNewLineText] = useState("");
@@ -960,22 +962,22 @@ export function InvoicePreviewDialog({
                     <label className="flex items-center justify-between p-2 rounded-lg bg-background border border-border/50 cursor-pointer">
                       <span>{lang === "bn" ? "ক্যাশিয়ার নাম" : "Cashier Name"}</span>
                       <Switch
-                        checked={vis.showCashierName !== false}
-                        onCheckedChange={(c) => updateVisibility({ showCashierName: c })}
+                        checked={vis.showCashierName !== false && vis.showCashier !== false}
+                        onCheckedChange={(c) => updateVisibility({ showCashierName: c, showCashier: c })}
                       />
                     </label>
                     <label className="flex items-center justify-between p-2 rounded-lg bg-background border border-border/50 cursor-pointer">
                       <span>{lang === "bn" ? "ক্রেতার তথ্য" : "Customer Details"}</span>
                       <Switch
-                        checked={vis.showCustomerDetails !== false}
-                        onCheckedChange={(c) => updateVisibility({ showCustomerDetails: c })}
+                        checked={vis.showCustomerDetails !== false && vis.showCustomer !== false}
+                        onCheckedChange={(c) => updateVisibility({ showCustomerDetails: c, showCustomer: c })}
                       />
                     </label>
                     <label className="flex items-center justify-between p-2 rounded-lg bg-background border border-border/50 cursor-pointer">
                       <span>{lang === "bn" ? "আইটেম টেবিল হেডার" : "Item Table Header"}</span>
                       <Switch
-                        checked={vis.showItemHeader !== false}
-                        onCheckedChange={(c) => updateVisibility({ showItemHeader: c })}
+                        checked={vis.showItemHeader !== false && vis.showItemsHeader !== false}
+                        onCheckedChange={(c) => updateVisibility({ showItemHeader: c, showItemsHeader: c })}
                       />
                     </label>
                     <label className="flex items-center justify-between p-2 rounded-lg bg-background border border-border/50 cursor-pointer">
@@ -1114,11 +1116,22 @@ export function InvoicePreviewDialog({
                   className="bg-white text-black p-0 shadow-2xl transition-all duration-200 border-x border-slate-200 select-none overflow-hidden"
                 >
                   <iframe
+                    ref={previewIframeRef}
                     title="Invoice Live Preview"
                     srcDoc={invoiceHtml}
+                    onLoad={() => {
+                      try {
+                        const doc = previewIframeRef.current?.contentDocument || previewIframeRef.current?.contentWindow?.document;
+                        const wrap = doc?.querySelector(".receipt-wrap") || doc?.body;
+                        if (wrap) {
+                          const measured = Math.ceil(wrap.getBoundingClientRect().height || (wrap as HTMLElement).scrollHeight || 420);
+                          setIframeAutoHeight(Math.max(180, measured + 16));
+                        }
+                      } catch (_) {}
+                    }}
                     className="w-full border-none pointer-events-none"
                     style={{
-                      height: currentHeightMm ? `${currentHeightMm * 3.78}px` : "580px",
+                      height: currentHeightMm ? `${currentHeightMm * 3.78}px` : `${iframeAutoHeight}px`,
                       background: "#ffffff",
                     }}
                   />

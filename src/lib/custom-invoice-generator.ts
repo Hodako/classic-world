@@ -1,6 +1,6 @@
 "use client";
 
-import { getPosPaperConfig } from "./pos-print";
+import { getPosPaperConfig, executeDirectSilentPrint } from "./pos-print";
 
 export interface CustomInvoiceData {
   businessName: string;
@@ -240,7 +240,7 @@ export function generateCustomPosInvoiceCanvas(data: CustomInvoiceData): HTMLCan
  * Custom-made Invoice Printing Pipeline
  * Renders the canvas invoice as an image and triggers pixel-perfect printing
  */
-export function printCustomPosInvoice(data: CustomInvoiceData) {
+export async function printCustomPosInvoice(data: CustomInvoiceData) {
   const canvas = generateCustomPosInvoiceCanvas(data);
   const dataUrl = canvas.toDataURL("image/png");
   const config = getPosPaperConfig();
@@ -268,24 +268,35 @@ export function printCustomPosInvoice(data: CustomInvoiceData) {
     html, body {
       width: 100% !important;
       max-width: ${canvasWidthMm}mm !important;
-      margin: 0 auto !important;
+      margin: 0 !important;
       padding: 0 !important;
       background: #ffffff !important;
-      text-align: center !important;
+      text-align: left !important;
+    }
+    .receipt-wrap {
+      width: 100% !important;
     }
     img.receipt-img {
       width: 100% !important;
       max-width: 100% !important;
       height: auto !important;
       display: block !important;
-      margin: 0 auto !important;
+      margin: 0 !important;
     }
   </style>
 </head>
 <body>
-  <img src="${dataUrl}" class="receipt-img" alt="POS Invoice" />
+  <div class="receipt-wrap">
+    <img src="${dataUrl}" class="receipt-img" alt="POS Invoice" />
+  </div>
 </body>
 </html>`;
+
+  const printedDirect = await executeDirectSilentPrint(html, undefined, {
+    paperWidthMm: widthMm,
+    pageSize: `${widthMm}mm`,
+  });
+  if (printedDirect) return;
 
   const iframe = document.createElement("iframe");
   iframe.style.position = "fixed";

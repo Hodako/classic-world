@@ -89,6 +89,7 @@ import {
 } from "lucide-react";
 import { getPosPaperConfig, savePosPaperConfig, DEFAULT_POS_CONFIG, type PosPaperSettings } from "@/lib/pos-print";
 import { PosHardwareSettings } from "@/components/pos-hardware-settings";
+import { LabelPrintingStudio } from "@/components/label-print-dialog";
 import { findProductsByScannedCode, getPosHardwareSettings, savePosHardwareSettings, type ReceiptPrintMode } from "@/lib/pos-hardware";
 import { printPwaInvoice } from "@/lib/invoice-printer";
 import { getProducts } from "@/lib/queries";
@@ -153,7 +154,7 @@ export default function SettingsPage() {
   const [scannerSuffix, setScannerSuffix] = useState<"Enter" | "Tab">("Enter");
   const [scannerTestCode, setScannerTestCode] = useState("");
   const [scannerTestResult, setScannerTestResult] = useState("");
-  const hardwareProducts = useQuery({ queryKey: ["products"], queryFn: getProducts, enabled: settingsTab === "hardware" });
+  const hardwareProducts = useQuery({ queryKey: ["products"], queryFn: getProducts, enabled: settingsTab === "hardware" || settingsTab === "printing" });
 
   useEffect(() => {
     setPrintMode(getPosHardwareSettings().printMode);
@@ -176,12 +177,14 @@ export default function SettingsPage() {
     setScannerTestCode("");
   };
 
-  const testPrinter = () => {
-    printPwaInvoice({
+  const testPrinter = async () => {
+    const hw = getPosHardwareSettings();
+    const w = hw.paperWidthMm || 80;
+    await printPwaInvoice({
       businessName: settings.data?.business?.name || "Classic World",
       shopAddress: settings.data?.business?.address || "",
       shopPhoneNumbers: settings.data?.business?.phone_numbers || "",
-      pageSize: getPosPaperConfig().widthMm === 58 ? "58mm" : getPosPaperConfig().widthMm === 80 ? "80mm" : "A4",
+      pageSize: w <= 62 ? "58mm" : w <= 105 ? "80mm" : "A4",
       invoiceNo: "TEST-RECEIPT",
       invoiceDate: new Date().toLocaleString(),
       customerName: "Printer test",
@@ -2078,144 +2081,20 @@ export default function SettingsPage() {
             </div>
           )}
 
-          {/* ── TAB 2: POS PRINTING & INVOICE CUSTOMIZATION ───────────────────── */}
+          {/* ── TAB 2: POS PRINTING, INVOICE CUSTOMIZATION & LABEL PRINTING ───── */}
           {settingsTab === "printing" && (
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
               <div className="lg:col-span-12">
                 <PosHardwareSettings lang={lang} />
               </div>
-              <Card className="lg:col-span-7 p-5 sm:p-6 rounded-3xl bg-card border-border/80 shadow-xs space-y-5">
-                <div className="flex items-center justify-between border-b border-border/60 pb-3">
-                  <div className="flex items-center gap-2.5 text-primary">
-                    <div className="p-2 rounded-xl bg-primary/10 border border-primary/20">
-                      <Printer className="size-5" />
-                    </div>
-                    <div>
-                      <h2 className="text-base font-bold text-foreground">POS Thermal Printer & Paper Size</h2>
-                      <p className="text-xs text-muted-foreground">Configure receipt paper width, thermal margins, and typography</p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Paper Size Selector */}
-                <div className="space-y-2">
-                  <Label className="text-xs font-semibold">Receipt Paper Size</Label>
-                  <div className="grid grid-cols-3 gap-2">
-                    {[
-                      { width: 58, label: "58 mm", desc: "Small POS" },
-                      { width: 80, label: "80 mm", desc: "Standard POS (Recommended)" },
-                      { width: 210, label: "A4 Page", desc: "Standard PDF Invoice" },
-                    ].map((p) => {
-                      const isSelected = posConfig.widthMm === p.width;
-                      return (
-                        <button
-                          key={p.width}
-                          type="button"
-                          onClick={() => updatePosConfig({ widthMm: p.width })}
-                          className={`p-3 rounded-2xl border text-left transition-all cursor-pointer ${
-                            isSelected
-                              ? "bg-primary/10 border-primary text-primary shadow-xs"
-                              : "bg-muted/30 border-border/80 text-foreground hover:bg-muted/60"
-                          }`}
-                        >
-                          <p className="font-bold text-xs">{p.label}</p>
-                          <p className="text-[10px] text-muted-foreground mt-0.5">{p.desc}</p>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* Typography Controls */}
-                <form onSubmit={saveInvoiceStyling} className="space-y-4 pt-2 border-t border-border/60">
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <div className="space-y-1.5">
-                      <Label className="text-xs font-semibold">Store Title Size</Label>
-                      <select
-                        value={fontSize}
-                        onChange={e => setFontSize(e.target.value)}
-                        className="w-full h-9 rounded-xl border border-input bg-input px-2 text-xs"
-                      >
-                        <option value="18px">18px (Compact)</option>
-                        <option value="20px">20px (Normal)</option>
-                        <option value="22px">22px (Default)</option>
-                        <option value="26px">26px (Large)</option>
-                        <option value="30px">30px (Extra Large)</option>
-                      </select>
-                    </div>
-
-                    <div className="space-y-1.5">
-                      <Label className="text-xs font-semibold">Receipt Scale</Label>
-                      <select
-                        value={fontScale}
-                        onChange={e => setFontScale(e.target.value)}
-                        className="w-full h-9 rounded-xl border border-input bg-input px-2 text-xs"
-                      >
-                        <option value="90%">90% (Dense)</option>
-                        <option value="100%">100% (Normal)</option>
-                        <option value="110%">110% (Spacious)</option>
-                      </select>
-                    </div>
-
-                    <div className="space-y-1.5">
-                      <Label className="text-xs font-semibold">Line Spacing</Label>
-                      <select
-                        value={lineSpacing}
-                        onChange={e => setLineSpacing(e.target.value)}
-                        className="w-full h-9 rounded-xl border border-input bg-input px-2 text-xs"
-                      >
-                        <option value="4px">4px (Tight)</option>
-                        <option value="6px">6px (Standard)</option>
-                        <option value="8px">8px (Relaxed)</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  <Button type="submit" disabled={busy} className="h-9 px-5 rounded-xl bg-primary text-primary-foreground font-bold text-xs shadow-sm">
-                    {busy ? "Saving..." : "Save Print Formatting"}
-                  </Button>
-                </form>
-              </Card>
-
-              {/* Receipt Preview */}
-              <Card className="lg:col-span-5 p-5 sm:p-6 rounded-3xl bg-card border-border/80 shadow-xs space-y-4">
-                <h3 className="font-bold text-sm text-foreground flex items-center gap-2">
-                  <Printer className="size-4 text-primary" />
-                  <span>Live Receipt Preview ({posConfig.widthMm}mm)</span>
-                </h3>
-                
-                <div className="p-4 rounded-2xl bg-white text-black font-mono text-[11px] border border-border shadow-xs space-y-2">
-                  <div className="text-center space-y-0.5">
-                    <p className="font-bold text-xs" style={{ fontSize }}>{biz.name || "Dream IT Shop"}</p>
-                    <p className="text-[10px] text-gray-600">{biz.address || "Road #1, Dhaka"}</p>
-                    <p className="text-[10px] text-gray-600">Mob: {biz.phone_numbers || "+8801700000000"}</p>
-                  </div>
-                  <div className="border-b border-dashed border-gray-400 my-1" />
-                  <div className="flex justify-between text-[10px]">
-                    <span>Inv: #INV-2026-001</span>
-                    <span>Date: 23/08/2026</span>
-                  </div>
-                  <div className="border-b border-dashed border-gray-400 my-1" />
-                  <div className="space-y-1">
-                    <div className="flex justify-between">
-                      <span>1x Premium T-Shirt</span>
-                      <span className="font-bold">৳850</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>2x Casual Denim Pants</span>
-                      <span className="font-bold">৳2,400</span>
-                    </div>
-                  </div>
-                  <div className="border-b border-dashed border-gray-400 my-1" />
-                  <div className="flex justify-between font-bold text-xs">
-                    <span>Total Amount:</span>
-                    <span>৳3,250</span>
-                  </div>
-                  <div className="text-center text-[9px] text-gray-500 pt-1">
-                    {biz.invoice_terms || "Thank you for shopping with us!"}
-                  </div>
-                </div>
-              </Card>
+              <div className="lg:col-span-12">
+                <LabelPrintingStudio
+                  embedded
+                  products={hardwareProducts.data || []}
+                  shopName={biz.name || user?.business_name || "CLASSIC WORLD"}
+                  lang={lang}
+                />
+              </div>
             </div>
           )}
 

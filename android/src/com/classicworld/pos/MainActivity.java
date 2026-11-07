@@ -11,17 +11,22 @@ import android.view.KeyEvent;
 import android.webkit.JsResult;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
-import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
+import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.FrameLayout;
+import java.io.ByteArrayInputStream;
+import java.io.InputStream;
+import java.util.HashMap;
+import java.util.Map;
 
 public class MainActivity extends Activity {
     private WebView webView;
     private ValueCallback<Uri[]> fileCallback;
-    private static final String APP_URL = "https://classicworld-pos.web.app";
+    private static final String HOST = "appassets.classicworld.net";
+    private static final String APP_URL = "https://" + HOST + "/index.html";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -51,27 +56,77 @@ public class MainActivity extends Activity {
         settings.setDisplayZoomControls(false);
         settings.setUseWideViewPort(true);
         settings.setLoadWithOverviewMode(true);
-        settings.setCacheMode(WebSettings.LOAD_DEFAULT);
+        settings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
 
         webView.setWebViewClient(new WebViewClient() {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 if (request == null || request.getUrl() == null) return false;
                 Uri uri = request.getUrl();
+                String host = uri.getHost();
                 String scheme = uri.getScheme();
-                if ("http".equalsIgnoreCase(scheme) || "https".equalsIgnoreCase(scheme)) {
+
+                if (HOST.equalsIgnoreCase(host)) {
                     return false;
                 }
-                try {
-                    startActivity(new Intent(Intent.ACTION_VIEW, uri));
-                } catch (Exception ignored) {}
-                return true;
+                if ("http".equalsIgnoreCase(scheme) || "https".equalsIgnoreCase(scheme)) {
+                    // Allow Firebase, Google Auth, external domains in browser or webview
+                    if (host != null && (host.contains("firebase") || host.contains("google") || host.contains("web.app"))) {
+                        return false;
+                    }
+                    try {
+                        startActivity(new Intent(Intent.ACTION_VIEW, uri));
+                    } catch (Exception ignored) {}
+                    return true;
+                }
+                return false;
             }
 
             @Override
-            public void onReceivedError(WebView view, WebResourceRequest req, WebResourceError err) {
-                if (req != null && req.isForMainFrame()) {
-                    view.loadUrl("file:///android_asset/www/index.html");
+            public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest req) {
+                if (req == null || req.getUrl() == null) return null;
+                Uri uri = req.getUrl();
+                if (!HOST.equalsIgnoreCase(uri.getHost())) {
+                    return null;
+                }
+
+                String path = uri.getPath();
+                if (path == null || path.contains("..")) {
+                    return new WebResourceResponse("text/plain", "UTF-8", new ByteArrayInputStream(new byte[0]));
+                }
+                if (path.equals("/")) {
+                    path = "/index.html";
+                } else if (!path.contains(".") && !path.endsWith("/")) {
+                    path = path + ".html";
+                }
+
+                String assetPath = "www" + (path.startsWith("/") ? path : "/" + path);
+                try {
+                    InputStream stream = getAssets().open(assetPath);
+                    String mime = "application/octet-stream";
+                    if (path.endsWith(".html")) mime = "text/html";
+                    else if (path.endsWith(".js") || path.endsWith(".mjs")) mime = "application/javascript";
+                    else if (path.endsWith(".css")) mime = "text/css";
+                    else if (path.endsWith(".json")) mime = "application/json";
+                    else if (path.endsWith(".png")) mime = "image/png";
+                    else if (path.endsWith(".jpg") || path.endsWith(".jpeg")) mime = "image/jpeg";
+                    else if (path.endsWith(".svg")) mime = "image/svg+xml";
+                    else if (path.endsWith(".ico")) mime = "image/x-icon";
+                    else if (path.endsWith(".avif")) mime = "image/avif";
+                    else if (path.endsWith(".txt")) mime = "text/plain";
+
+                    Map<String, String> headers = new HashMap<String, String>();
+                    headers.put("Access-Control-Allow-Origin", "*");
+                    return new WebResourceResponse(mime, "UTF-8", 200, "OK", headers, stream);
+                } catch (Exception ex) {
+                    // Try fallback to index.html for client-side routing
+                    try {
+                        InputStream fallback = getAssets().open("www/index.html");
+                        Map<String, String> headers = new HashMap<String, String>();
+                        headers.put("Access-Control-Allow-Origin", "*");
+                        return new WebResourceResponse("text/html", "UTF-8", 200, "OK", headers, fallback);
+                    } catch (Exception ignored) {}
+                    return new WebResourceResponse("text/plain", "UTF-8", 404, "Not Found", null, new ByteArrayInputStream(new byte[0]));
                 }
             }
         });

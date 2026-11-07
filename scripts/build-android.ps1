@@ -18,13 +18,22 @@ $tools = Join-Path $Sdk 'build-tools\35.0.0'
 $platform = Join-Path $Sdk 'platforms\android-35\android.jar'
 $build = Join-Path $projectRoot 'android\build'
 $output = Join-Path $projectRoot 'software'
+$assetsWww = Join-Path $projectRoot 'android\assets\www'
 
-New-Item -ItemType Directory -Force "$build\classes", "$build\dex", $output, "$projectRoot\public" | Out-Null
+New-Item -ItemType Directory -Force "$build\classes", "$build\dex", $output, "$projectRoot\public", $assetsWww | Out-Null
 
 function Run-Checked($exe, [string[]]$arguments) {
   & $exe @arguments
   if ($LASTEXITCODE -ne 0) { throw "$exe failed ($LASTEXITCODE)" }
 }
+
+# 1. Sync full web application out/ to android/assets/www
+Write-Host "[Build] Syncing web app assets from out/ to android/assets/www..."
+if (Test-Path "$projectRoot\out") {
+  Get-ChildItem -Path "$projectRoot\out" -Exclude software,*.zip,*.exe,*.apk | Copy-Item -Destination $assetsWww -Recurse -Force
+}
+
+$env:ANDROID_AAPT_IGNORE = "!*.svn:!*.git:!.*:!CVS:!thumbs.db:!picasa.ini:!*.scc:*~"
 
 Write-Host "[Build] 1/7 Packaging Android resources with AAPT..."
 Run-Checked "$tools\aapt.exe" @(
@@ -34,6 +43,7 @@ Run-Checked "$tools\aapt.exe" @(
   '-S', "$projectRoot\android\res",
   '-A', "$projectRoot\android\assets",
   '-I', $platform,
+  '--ignore-assets', '!*.svn:!*.git:!.*:!CVS:!thumbs.db:!picasa.ini:!*.scc:*~',
   '-F', "$build\base.apk"
 )
 
@@ -87,7 +97,8 @@ Copy-Item $apkOut "$projectRoot\classic-world.apk" -Force
 
 $item = Get-Item $apkOut
 Write-Host "=========================================================="
-Write-Host "[SUCCESS] Classic World APK built in $([Math]::Round($item.Length / 1MB, 2)) MB!"
+Write-Host "[SUCCESS] Classic World Standalone One-File APK ready!"
+Write-Host "File Size: $([Math]::Round($item.Length / 1MB, 2)) MB"
 Write-Host "Available at:"
 Write-Host "  $apkOut"
 Write-Host "  $projectRoot\public\$apkName"

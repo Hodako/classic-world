@@ -1,0 +1,70 @@
+{
+  "name": "Classic World POS & Billing",
+  "short_name": "Classic World",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "description": "Classic World POS software — Automated inventory, sales, accounting, and store management system.",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone", "minimal-ui"],
+  "background_color": "#ffffff",
+  "theme_color": "#059669",
+  "prefer_related_applications": false,
+  "orientation": "any",
+  "categories": ["business", "finance", "productivity", "utilities"],
+  "icons": [
+    {
+      "src": "/icon-512.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/logo.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "নতুন বিক্রয় (New Sale)",
+      "short_name": "বিক্রয়",
+      "description": "Quick Sale Point of Sale",
+      "url": "/sales",
+      "icons": [{ "src": "/logo.png", "sizes": "512x512" }]
+    },
+    {
+      "name": "দোকান খরচ (Expenses)",
+      "short_name": "খরচ",
+      "description": "Record Shop Expense",
+      "url": "/expenses",
+      "icons": [{ "src": "/logo.png", "sizes": "512x512" }]
+    },
+    {
+      "name": "হিসাব প্রতিবেদন (Reports)",
+      "short_name": "প্রতিবেদন",
+      "description": "Business Accounting Statement",
+      "url": "/reports",
+      "icons": [{ "src": "/logo.png", "sizes": "512x512" }]
+    }
+  ]
+}

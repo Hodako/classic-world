@@ -1,4 +1,5 @@
 /** Lightweight localStorage cache for instant UI hydration. */
+import { clearQueryCache } from "./query-cache";
 
 const AUTH_KEY = "classicworld_auth_profile";
 const LEGACY_AUTH_KEY = "cw-auth-profile";
@@ -79,7 +80,6 @@ export function clearAuthProfile() {
     localStorage.removeItem("app_pin_unlocked");
     sessionStorage.clear();
     try {
-      const { clearQueryCache } = require("./query-cache");
       clearQueryCache();
     } catch (_) {}
   }
@@ -92,4 +92,3 @@ export function readBrand(): BrandCache | null {
 export function writeBrand(brand: { name: string; logo_url: string }) {
   write(BRAND_KEY, brand);
 }
-

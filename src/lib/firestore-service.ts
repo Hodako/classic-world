@@ -4027,7 +4027,7 @@ export async function fsGetEmployees() {
       id: d.id,
       ...d.data(),
       created_at: d.data().created_at?.toDate?.()?.toISOString() || new Date().toISOString(),
-    }));
+    })).filter((d: any) => belongsToCurrentTenant(d));
     if (typeof window !== "undefined") {
       try {
         localStorage.setItem("cw_employee_accounts", JSON.stringify(emps));
@@ -4041,7 +4041,7 @@ export async function fsGetEmployees() {
         id: d.id,
         ...d.data(),
         created_at: d.data().created_at?.toDate?.()?.toISOString() || new Date().toISOString(),
-      }));
+      })).filter((d: any) => belongsToCurrentTenant(d));
       if (typeof window !== "undefined") {
         try {
           localStorage.setItem("cw_employee_accounts", JSON.stringify(emps));
@@ -4183,7 +4183,7 @@ export async function fsGetEmployeeSalaries() {
       id: d.id,
       ...d.data(),
       created_at: d.data().created_at?.toDate?.()?.toISOString() || new Date().toISOString(),
-    }));
+    })).filter((d: any) => belongsToCurrentTenant(d));
   } catch (_) {
     try {
       const snap = await getDocs(collection(db, "employee_salaries"));
@@ -4191,7 +4191,7 @@ export async function fsGetEmployeeSalaries() {
         id: d.id,
         ...d.data(),
         created_at: d.data().created_at?.toDate?.()?.toISOString() || new Date().toISOString(),
-      }));
+      })).filter((d: any) => belongsToCurrentTenant(d));
     } catch (_) {
       return [];
     }
@@ -4199,6 +4199,9 @@ export async function fsGetEmployeeSalaries() {
 }
 
 export async function fsCreateEmployeeSalary(data: any) {
+  const scope = getTenantScope();
+  const currentUser = scope.user;
+  const ownerId = scope.effectiveOwnerId || scope.rootOwnerId || auth.currentUser?.uid || currentUser?.id;
   const amount = Number(data.amount) || 0;
   const empName = data.employee_name || "Employee";
   const month = data.month || new Date().toISOString().slice(0, 7);
@@ -4206,9 +4209,14 @@ export async function fsCreateEmployeeSalary(data: any) {
   const createdAtTs = toFirestoreTimestamp(data.created_at || data.payment_date);
 
   const salaryDoc = cleanFirestoreData({
+    owner_id: ownerId,
+    owner_uid: ownerId,
+    profile_id: scope.activeProfile || "default",
+    business_id: currentUser?.business_id || ownerId,
     employee_id: data.employee_id,
     employee_name: empName,
     month,
+    cycle_id: data.cycle_id || month,
     amount,
     base_salary: Number(data.base_salary) || 0,
     deductions: Number(data.deductions) || 0,
@@ -4306,7 +4314,7 @@ export async function fsGetEmployeeExpenses() {
       id: d.id,
       ...d.data(),
       created_at: d.data().created_at?.toDate?.()?.toISOString() || new Date().toISOString(),
-    }));
+    })).filter((d: any) => belongsToCurrentTenant(d));
   } catch (_) {
     try {
       const snap = await getDocs(collection(db, "employee_expenses"));
@@ -4314,7 +4322,7 @@ export async function fsGetEmployeeExpenses() {
         id: d.id,
         ...d.data(),
         created_at: d.data().created_at?.toDate?.()?.toISOString() || new Date().toISOString(),
-      }));
+      })).filter((d: any) => belongsToCurrentTenant(d));
     } catch (_) {
       return [];
     }
@@ -4322,54 +4330,78 @@ export async function fsGetEmployeeExpenses() {
 }
 
 export async function fsCreateEmployeeExpense(data: any) {
+  const scope = getTenantScope();
+  const currentUser = scope.user;
+  const ownerId = scope.effectiveOwnerId || scope.rootOwnerId || auth.currentUser?.uid || currentUser?.id;
   const amount = Number(data.amount) || 0;
   const empName = data.employee_name || "Employee";
-  const category = data.category || "food"; // food, travel, tea, bonus, other
+  const category = data.category || "food"; // food, travel, tea, bonus, advance, debt_repayment, adjustment_add, adjustment_deduct, other
   const note = data.note || "";
   const paymentMethod = data.payment_method || "cash";
   const ts = toFirestoreTimestamp(data.created_at || data.date);
 
-  const catLabel = category === "food" ? "খাবার ভাতা" : category === "travel" ? "যাতায়াত" : category === "tea" ? "নাস্তা/চা" : category === "bonus" ? "বোনাস" : "অন্যান্য";
-  const title = `[কর্মচারী খরচ] ${empName} (${catLabel}): ${note}`;
+  const isDebtRepayment = category === "debt_repayment";
+  const isAdjustment = category === "adjustment_add" || category === "adjustment_deduct";
+
+  const catLabel = category === "food" ? "খাবার ভাতা" : category === "travel" ? "যাতায়াত" : category === "tea" ? "নাস্তা/চা" : category === "bonus" ? "বোনাস" : category === "advance" || category === "salary_advance" ? "অগ্রিম বেতন" : isDebtRepayment ? "দোকান পাওনা আদায়" : category === "adjustment_add" ? "বেতন বৃদ্ধি/সমন্বয়" : category === "adjustment_deduct" ? "বেতন কর্তন/সমন্বয়" : "অন্যান্য";
+  const title = `[কর্মচারী ${isDebtRepayment ? "পাওনা আদায়" : isAdjustment ? "সমন্বয়" : "খরচ"}] ${empName} (${catLabel}): ${note}`;
 
   const docId = data.id ? String(data.id) : undefined;
   const colRef = collection(db, "employee_expenses");
   const docRef = docId ? doc(db, "employee_expenses", docId) : doc(colRef);
 
   await setDoc(docRef, {
+    owner_id: ownerId,
+    owner_uid: ownerId,
+    profile_id: scope.activeProfile || "default",
+    business_id: currentUser?.business_id || ownerId,
     employee_id: data.employee_id || null,
     employee_name: empName,
     category,
     amount,
     payment_method: paymentMethod,
     date: data.date || new Date().toISOString().slice(0, 10),
+    month: data.month || (data.date || new Date().toISOString().slice(0, 10)).slice(0, 7),
     note: note || null,
     created_at: ts,
   });
 
-  // Log in expenses
   if (amount > 0) {
-    try {
-      await addDoc(collection(db, "expenses"), {
-        title,
-        amount,
-        category: "employee_expense",
-        note: `Employee Expense ID: ${docRef.id}`,
-        created_at: ts,
-      });
-    } catch (_) {}
-
-    // Deduct from cashbox if paid via cash
-    if (paymentMethod === "cash") {
+    if (isDebtRepayment) {
+      if (paymentMethod === "cash") {
+        try {
+          await addDoc(collection(db, "cashbox_logs"), {
+            kind: "deposit",
+            amount,
+            note: title,
+            ref_id: docRef.id,
+            created_at: ts,
+          });
+        } catch (_) {}
+      }
+    } else if (!isAdjustment) {
       try {
-        await addDoc(collection(db, "cashbox_logs"), {
-          kind: "withdraw",
+        await addDoc(collection(db, "expenses"), {
+          title,
           amount,
-          note: title,
-          ref_id: docRef.id,
+          category: category === "advance" || category === "salary_advance" ? "salary_advance" : "employee_expense",
+          note: `Employee Expense ID: ${docRef.id}`,
           created_at: ts,
         });
       } catch (_) {}
+
+      // Deduct from cashbox if paid via cash
+      if (paymentMethod === "cash") {
+        try {
+          await addDoc(collection(db, "cashbox_logs"), {
+            kind: "withdraw",
+            amount,
+            note: title,
+            ref_id: docRef.id,
+            created_at: ts,
+          });
+        } catch (_) {}
+      }
     }
   }
 
@@ -4395,7 +4427,7 @@ export async function fsGetEmployeeShoppings() {
       id: d.id,
       ...d.data(),
       created_at: d.data().created_at?.toDate?.()?.toISOString() || new Date().toISOString(),
-    }));
+    })).filter((d: any) => belongsToCurrentTenant(d));
   } catch (_) {
     try {
       const snap = await getDocs(collection(db, "employee_shoppings"));
@@ -4403,7 +4435,7 @@ export async function fsGetEmployeeShoppings() {
         id: d.id,
         ...d.data(),
         created_at: d.data().created_at?.toDate?.()?.toISOString() || new Date().toISOString(),
-      }));
+      })).filter((d: any) => belongsToCurrentTenant(d));
     } catch (_) {
       return [];
     }
@@ -4411,6 +4443,9 @@ export async function fsGetEmployeeShoppings() {
 }
 
 export async function fsCreateEmployeeShopping(data: any) {
+  const scope = getTenantScope();
+  const currentUser = scope.user;
+  const ownerId = scope.effectiveOwnerId || scope.rootOwnerId || auth.currentUser?.uid || currentUser?.id;
   const empName = data.employee_name || "Employee";
   const items = Array.isArray(data.items) ? data.items : [];
   const totalAmount = Number(data.total_amount) || 0;
@@ -4445,6 +4480,10 @@ export async function fsCreateEmployeeShopping(data: any) {
   const docRef = docId ? doc(db, "employee_shoppings", docId) : doc(colRef);
 
   await setDoc(docRef, {
+    owner_id: ownerId,
+    owner_uid: ownerId,
+    profile_id: scope.activeProfile || "default",
+    business_id: currentUser?.business_id || ownerId,
     employee_id: data.employee_id || null,
     employee_name: empName,
     items,

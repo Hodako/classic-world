@@ -10,10 +10,12 @@ import { useAuth } from "@/hooks/use-auth";
 import { useT } from "@/lib/i18n";
 import { toast } from "sonner";
 import { getProducts, type Product } from "@/lib/queries";
-import { ImagePlus, Plus, Trash2, Scan } from "lucide-react";
+import { ImagePlus, Plus, Trash2, Scan, Barcode, Wand2 } from "lucide-react";
 import { createProductFn, updateProductFn, uploadImageFn } from "@/lib/rpc";
 import { useCachedQuery } from "@/hooks/use-cached-query";
 import { BarcodeScannerDialog } from "@/components/barcode-scanner-dialog";
+import { LabelPrintDialog } from "@/components/label-print-dialog";
+import { generateUniqueBarcode } from "@/lib/label-printer";
 
 export function ProductDialog({
   open, onOpenChange, product,
@@ -33,6 +35,7 @@ export function ProductDialog({
   const [category, setCategory] = useState("");
   const [barcode, setBarcode] = useState("");
   const [scannerOpen, setScannerOpen] = useState(false);
+  const [labelDialogOpen, setLabelDialogOpen] = useState(false);
   const [attrs, setAttrs] = useState<{ key: string; val: string }[]>([]);
   const [file, setFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
@@ -134,16 +137,70 @@ export function ProductDialog({
             
             {/* Barcode & QR Code Field */}
             <Field label={lang === "bn" ? "বারকোড / QR কোড (ঐচ্ছিক)" : "Barcode / QR Code (Optional)"}>
-              <Input
-                type="text"
-                className="font-mono text-xs"
-                placeholder={lang === "bn" ? "বারকোড স্ক্যান করুন অথবা লিখুন..." : "Scan or enter barcode..."}
-                value={barcode}
-                onChange={e => setBarcode(e.target.value)}
-                onKeyDown={e => {
-                  if (e.key === "Enter") e.preventDefault();
-                }}
-              />
+              <div className="flex items-center gap-1.5">
+                <Input
+                  type="text"
+                  className="font-mono text-xs flex-1"
+                  placeholder={lang === "bn" ? "বারকোড স্ক্যান করুন অথবা লিখুন..." : "Scan or enter barcode..."}
+                  value={barcode}
+                  onChange={e => setBarcode(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === "Enter") e.preventDefault();
+                  }}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  className="size-9 shrink-0 cursor-pointer"
+                  title={lang === "bn" ? "ক্যামেরা দিয়ে স্ক্যান করুন" : "Scan Barcode"}
+                  onClick={() => setScannerOpen(true)}
+                >
+                  <Scan className="size-4" />
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  className="size-9 shrink-0 text-indigo-600 border-indigo-500/30 hover:bg-indigo-500/10 cursor-pointer"
+                  title={lang === "bn" ? "নতুন বারকোড তৈরি করুন" : "Auto-Generate Barcode"}
+                  onClick={() => {
+                    const nextCode = generateUniqueBarcode(
+                      "CODE128",
+                      products.map((p) => p.barcode || ""),
+                      "CW"
+                    );
+                    setBarcode(nextCode);
+                    toast.success(
+                      lang === "bn"
+                        ? `নতুন বারকোড তৈরি হয়েছে: ${nextCode}`
+                        : `Generated barcode: ${nextCode}`
+                    );
+                  }}
+                >
+                  <Wand2 className="size-4" />
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  className="size-9 shrink-0 text-emerald-600 border-emerald-500/30 hover:bg-emerald-500/10 cursor-pointer"
+                  title={lang === "bn" ? "বারকোড স্টিকার প্রিন্ট করুন" : "Print Barcode Sticker"}
+                  onClick={() => {
+                    if (!barcode.trim()) {
+                      const nextCode = generateUniqueBarcode(
+                        "CODE128",
+                        products.map((p) => p.barcode || ""),
+                        "CW"
+                      );
+                      setBarcode(nextCode);
+                    }
+                    setLabelDialogOpen(true);
+                  }}
+                >
+                  <Barcode className="size-4" />
+                </Button>
+              </div>
             </Field>
 
             <div className="grid grid-cols-2 gap-3">
@@ -231,6 +288,31 @@ export function ProductDialog({
           toast.success(lang === "bn" ? `বারকোড যোগ করা হয়েছে: ${code}` : `Barcode set: ${code}`);
         }}
         title={lang === "bn" ? "পণ্য বারকোড স্ক্যান করুন" : "Scan Product Barcode"}
+      />
+
+      <LabelPrintDialog
+        open={labelDialogOpen}
+        onOpenChange={setLabelDialogOpen}
+        products={products}
+        initialProducts={[
+          {
+            id: product?.id || "draft_product",
+            name: name.trim() || product?.name || (lang === "bn" ? "নতুন পণ্য" : "New Product"),
+            image_url: product?.image_url ?? null,
+            buy_price: Number(buy) || 0,
+            sell_price: Number(sellPrice) || 0,
+            stock: Math.max(1, Number(stock) || 1),
+            barcode: barcode.trim() || product?.barcode || "89400001",
+            category: category.trim(),
+            attributes: Object.fromEntries(
+              attrs.filter((a) => a.key.trim()).map((a) => [a.key.trim(), a.val.trim()])
+            ),
+            created_at: product?.created_at || new Date().toISOString(),
+            initialCopies: Math.max(1, Math.min(200, Number(stock) || 1)),
+          },
+        ]}
+        shopName={user?.business_name || "CLASSIC WORLD"}
+        lang={lang}
       />
     </>
   );

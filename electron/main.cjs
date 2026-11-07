@@ -205,7 +205,25 @@ async function createWindow() {
                     const doc = iframe.contentDocument || iframe.contentWindow.document;
                     if (doc && doc.documentElement) {
                       const prefs = getDevicePrintPrefs();
-                      const isLabelDoc = Boolean(doc.querySelector(".pos-label-page") || doc.documentElement.getAttribute("data-pos-label-mode"));
+                      const labelMode = doc.documentElement.getAttribute("data-pos-label-mode");
+                      const isLabelDoc = Boolean(doc.querySelector(".pos-label-page") || labelMode);
+                      if (isLabelDoc) {
+                        const attrW = Number(doc.documentElement.getAttribute("data-label-width-mm"));
+                        const attrH = Number(doc.documentElement.getAttribute("data-label-height-mm"));
+                        if (labelMode === "a4_sheet") {
+                          prefs.pageSize = "a4";
+                          prefs.paperWidthMm = 210;
+                          prefs.paperHeightMm = "auto";
+                        } else {
+                          if (attrW > 0) {
+                            prefs.paperWidthMm = attrW;
+                            prefs.pageSize = attrW + "mm";
+                          }
+                          if (attrH > 0) {
+                            prefs.paperHeightMm = attrH;
+                          }
+                        }
+                      }
                       window.electronPOS.printSilent({
                         html: doc.documentElement.outerHTML,
                         ...prefs,
@@ -570,7 +588,7 @@ async function performSilentPrint(html, printerName, options = {}) {
             })()
           `);
           if (Array.isArray(labelBoxes) && labelBoxes.length > 0) {
-            const labelZoom = 2.0;
+            const labelZoom = 2.8;
             printWin.webContents.setZoomFactor(labelZoom);
             const totalHeightCss = labelBoxes[labelBoxes.length - 1].y + labelBoxes[labelBoxes.length - 1].height + 20;
             const maxWidthCss = Math.max(...labelBoxes.map((b) => b.width)) + 10;
@@ -709,28 +727,52 @@ async function performSilentPrint(html, printerName, options = {}) {
 
       if (isA4) {
         printConfig.pageSize = "A4";
+      } else if (isThermalLabel) {
+        const stickerH = Math.max(10, Number(userHeightMm) || 25);
+        const stickerW = Math.max(12, Number(widthMm) || 38);
+        printConfig.pageSize = {
+          width: Math.round(stickerW * 1000),
+          height: Math.round(stickerH * 1000),
+        };
       }
 
       if (useSilent && targetPrinter) {
         printConfig.deviceName = targetPrinter;
       }
 
-      printWin.webContents.print(printConfig, (success, failureReason) => {
-        try {
-          if (success) {
-            console.log(
-              `[Windows POS] ${isLabel ? "Labels" : "Receipt"} printed (${useSilent ? "SILENT" : "DIALOG"}) to: ${targetPrinter || "Windows Printer"} [Size: ${widthMm}mm x ${heightLabel}]`
-            );
-            finishOnce({ success: true, printer: targetPrinter, silent: useSilent });
-          } else {
+      const runPrintWithFallback = (cfg, allowSizeFallback) => {
+        printWin.webContents.print(cfg, (success, failureReason) => {
+          try {
+            if (success) {
+              console.log(
+                `[Windows POS] ${isLabel ? "Labels" : "Receipt"} printed (${useSilent ? "SILENT" : "DIALOG"}) to: ${targetPrinter || "Windows Printer"} [Size: ${widthMm}mm x ${heightLabel}]`
+              );
+              finishOnce({ success: true, printer: targetPrinter, silent: useSilent });
+              return;
+            }
+            const reasonStr = String(failureReason || "");
+            if (
+              allowSizeFallback &&
+              cfg.pageSize &&
+              typeof cfg.pageSize === "object" &&
+              /size|page|invalid|parameter/i.test(reasonStr)
+            ) {
+              console.warn(`[Windows POS] Custom sticker pageSize rejected by driver (${reasonStr}); retrying with CSS @page size...`);
+              const retryCfg = { ...cfg };
+              delete retryCfg.pageSize;
+              runPrintWithFallback(retryCfg, false);
+              return;
+            }
             console.warn(`[Windows POS] Print cancelled or failed: ${failureReason}`);
             finishOnce({ success: false, error: failureReason || "Print cancelled" });
+          } catch (cbErr) {
+            console.error("[Windows POS] Print callback warning:", cbErr);
+            finishOnce({ success: Boolean(success), printer: targetPrinter, silent: useSilent });
           }
-        } catch (cbErr) {
-          console.error("[Windows POS] Print callback warning:", cbErr);
-          finishOnce({ success: Boolean(success), printer: targetPrinter, silent: useSilent });
-        }
-      });
+        });
+      };
+
+      runPrintWithFallback(printConfig, isThermalLabel);
     } catch (e) {
       finishOnce({ success: false, error: e.message });
     }

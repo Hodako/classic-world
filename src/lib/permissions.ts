@@ -60,6 +60,7 @@ export const ROUTE_PERMISSIONS: { prefix: string; perm: keyof PermissionSet }[] 
   { prefix: "/settings", perm: "settings" },
   { prefix: "/employees", perm: "settings" },
   { prefix: "/purchases", perm: "purchases" },
+  { prefix: "/labels", perm: "products" },
 ];
 
 /** Return required permission for a pathname, if any. */

@@ -35,39 +35,64 @@ export interface InvoiceVisibilitySettings {
 }
 
 export type LabelPrintMode = "thermal" | "a4_sheet";
+export type BarcodeSymbology = "CODE128" | "EAN13" | "CODE39" | "QR";
 
 export interface PosLabelSettings {
   mode: LabelPrintMode;
   printerName: string;
+  barcodeFormat: BarcodeSymbology;
   widthMm: number;
   heightMm: number;
+  rollColumns: number;
+  columnGapMm: number;
+  rowGapMm: number;
+  offsetTopMm: number;
+  offsetLeftMm: number;
   a4Columns: number;
   fontSizePt: number;
   barcodeHeightPx: number;
+  barcodeWidthPct: number;
   showShopName: boolean;
   showProductName: boolean;
   showPrice: boolean;
+  showMrp: boolean;
   showBarcode: boolean;
   showCodeText: boolean;
   showCategory: boolean;
+  showVariant: boolean;
+  showBorder: boolean;
+  customFooterText: string;
   currencyPrefix: string;
+  silentPrint: boolean;
 }
 
 export const DEFAULT_LABEL_SETTINGS: PosLabelSettings = {
   mode: "thermal",
   printerName: "",
+  barcodeFormat: "CODE128",
   widthMm: 38,
   heightMm: 25,
+  rollColumns: 1,
+  columnGapMm: 2,
+  rowGapMm: 2.5,
+  offsetTopMm: 0,
+  offsetLeftMm: 0,
   a4Columns: 4,
   fontSizePt: 8,
   barcodeHeightPx: 30,
+  barcodeWidthPct: 94,
   showShopName: true,
   showProductName: true,
   showPrice: true,
+  showMrp: false,
   showBarcode: true,
   showCodeText: true,
   showCategory: false,
+  showVariant: true,
+  showBorder: false,
+  customFooterText: "",
   currencyPrefix: "৳",
+  silentPrint: true,
 };
 
 export interface PosHardwareSettings {

@@ -2,19 +2,20 @@
 
 import { useQueryClient } from "@tanstack/react-query";
 import { useState, useMemo } from "react";
-import { Trash2, Pencil, Download, ShoppingBag, DollarSign, Tag, Info, Plus, Search } from "lucide-react";
+import { Trash2, Pencil, Download, ShoppingBag, DollarSign, Tag, Info, Plus, Search, Barcode } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
-import { getPurchases } from "@/lib/queries";
-import type { Purchase } from "@/lib/queries";
+import { getPurchases, getProducts } from "@/lib/queries";
+import type { Purchase, Product } from "@/lib/queries";
 import { useCachedQuery } from "@/hooks/use-cached-query";
 import { useT } from "@/lib/i18n";
 import { fmtMoney, fmtDateTime } from "@/lib/format";
 import { FAB } from "@/components/ui/fab";
 import { PurchaseDialog } from "@/components/purchase-dialog";
 import { EditPurchaseDialog } from "@/components/edit-purchase-dialog";
+import { LabelPrintDialog } from "@/components/label-print-dialog";
 import { deletePurchaseFn } from "@/lib/rpc";
 import { toast } from "sonner";
 import { setCachedData, refreshQueries } from "@/lib/optimistic-cache";
@@ -27,7 +28,10 @@ export default function PurchasesPage() {
   const isMobile = useIsMobile();
   const qc = useQueryClient();
   const { data } = useCachedQuery(["purchases"], getPurchases);
+  const { data: productsData = [] } = useCachedQuery(["products"], getProducts);
   const [open, setOpen] = useState(false);
+  const [labelPrintOpen, setLabelPrintOpen] = useState(false);
+  const [labelTargets, setLabelTargets] = useState<(Product & { initialCopies?: number })[]>([]);
   const [filterDate, setFilterDate] = useState(() => new Date().toLocaleDateString("en-CA"));
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
@@ -129,6 +133,32 @@ export default function PurchasesPage() {
 
   function handleDelete(purchase: Purchase) {
     setPurchaseToDelete(purchase);
+  }
+
+  function handlePrintPurchaseStickers(purchase: Purchase) {
+    const matched = productsData.find(
+      (prod) =>
+        (purchase.product_id && prod.id === purchase.product_id) ||
+        prod.name.toLowerCase() === (purchase.product_name || "").toLowerCase()
+    );
+    const copies = Math.max(1, Math.min(500, Math.floor(Number(purchase.qty) || 1)));
+    if (matched) {
+      setLabelTargets([{ ...matched, initialCopies: copies }]);
+    } else {
+      setLabelTargets([
+        {
+          id: purchase.product_id || purchase.id,
+          name: purchase.product_name || "Item",
+          image_url: null,
+          buy_price: Number(purchase.unit_cost) || 0,
+          sell_price: Number(purchase.unit_cost) || 0,
+          stock: copies,
+          created_at: purchase.created_at,
+          initialCopies: copies,
+        },
+      ]);
+    }
+    setLabelPrintOpen(true);
   }
 
   return (
@@ -308,6 +338,15 @@ export default function PurchasesPage() {
                 <Button
                   size="sm"
                   variant="ghost"
+                  className="h-7 w-7 p-0 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-500/10 rounded-lg cursor-pointer"
+                  onClick={() => handlePrintPurchaseStickers(p)}
+                  title={lang === "bn" ? `${p.qty}টি বারকোড স্টিকার প্রিন্ট করুন` : `Print ${p.qty} Barcode Stickers`}
+                >
+                  <Barcode className="size-3.5" />
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
                   className="h-7 w-7 p-0 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-lg cursor-pointer"
                   onClick={() => setPurchaseToEdit(p)}
                   title={lang === "bn" ? "সম্পাদনা করুন" : "Edit"}
@@ -351,6 +390,14 @@ export default function PurchasesPage() {
         onOpenChange={(v) => {
           if (!v) setPurchaseToEdit(null);
         }}
+      />
+
+      <LabelPrintDialog
+        open={labelPrintOpen}
+        onOpenChange={setLabelPrintOpen}
+        products={productsData}
+        initialProducts={labelTargets}
+        lang={lang}
       />
 
       <ConfirmDeleteDialog

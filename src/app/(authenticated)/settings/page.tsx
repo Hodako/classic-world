@@ -561,7 +561,7 @@ export default function SettingsPage() {
 
   async function handleSaveOwnerPin(customPin?: string) {
     const cleanPin = (customPin !== undefined ? customPin : pinCodeVal).trim();
-    if (!/^\d{4,6}$/.test(cleanPin)) {
+    if (!/^\d{4,9}$/.test(cleanPin)) {
       toast.error(lang === "bn" ? "মালিক পিন কোড ৪ থেকে ৯ সংখ্যার হতে হবে।" : "Owner PIN must be 4 to 9 digits.");
       return;
     }

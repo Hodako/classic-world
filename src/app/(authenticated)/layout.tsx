@@ -113,7 +113,7 @@ export default function AuthenticatedLayout({
   }
 
   return (
-    <SidebarProvider>
+    <SidebarProvider defaultOpen={true}>
       <PinLockModal />
       <AppShell>{children}</AppShell>
     </SidebarProvider>

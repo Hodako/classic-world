@@ -10,7 +10,7 @@ import {
   LogOut, Languages, Banknote, DollarSign, Settings,
   BarChart3, Receipt, PiggyBank, ShoppingCart, Moon, Sun, FileText,
   TrendingUp, TrendingDown, Sparkles, Palette, MessageSquare, HelpCircle,
-  RefreshCw, Lock, Wallet, Plus, ChevronDown, Check, Crown, User, Shirt,
+  RefreshCw, Lock, KeyRound, ShieldCheck, Wallet, Plus, ChevronDown, Check, Crown, User, Shirt,
   Landmark, CalendarPlus, Calendar, ArrowDownLeft, ArrowUpRight, HandCoins, Barcode, Printer,
 } from "lucide-react";
 import { useTheme } from "@/hooks/use-theme";
@@ -248,6 +248,56 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   // Profile / ID Switcher State
   const [modeSwitcherOpen, setModeSwitcherOpen] = useState(false);
+
+  // Admin / Owner Change PIN Modal State
+  const [changePinOpen, setChangePinOpen] = useState(false);
+  const [currentPinInput, setCurrentPinInput] = useState("");
+  const [newPinInput, setNewPinInput] = useState("");
+  const [confirmPinInput, setConfirmPinInput] = useState("");
+  const [pinChangeBusy, setPinChangeBusy] = useState(false);
+
+  const handleUpdateAdminPin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const storedPin = (localStorage.getItem("app_pin_code_val") || "1234").trim();
+    if (currentPinInput.trim() && currentPinInput.trim() !== storedPin) {
+      toast.error(lang === "bn" ? "বর্তমান পিন কোড সঠিক নয়!" : "Current PIN is incorrect!");
+      return;
+    }
+    const cleanNewPin = newPinInput.trim();
+    if (!/^\d{4,9}$/.test(cleanNewPin)) {
+      toast.error(lang === "bn" ? "নতুন পিন কোড ৪ থেকে ৯ সংখ্যার হতে হবে!" : "New PIN must be 4 to 9 digits!");
+      return;
+    }
+    if (cleanNewPin !== confirmPinInput.trim()) {
+      toast.error(lang === "bn" ? "নতুন পিন এবং নিশ্চিতকরণ পিন মিলছে না!" : "New PIN and Confirm PIN do not match!");
+      return;
+    }
+
+    setPinChangeBusy(true);
+    try {
+      localStorage.setItem("app_pin_code_val", cleanNewPin);
+      localStorage.setItem("app_pin_code_enabled", "true");
+      window.dispatchEvent(new Event("storage"));
+
+      const { updateBusinessSettingsFn } = await import("@/lib/rpc-admin");
+      await updateBusinessSettingsFn({ data: { owner_pin: cleanNewPin } });
+      try {
+        const { fsUpdateBusinessSettings } = await import("@/lib/firestore-service");
+        await fsUpdateBusinessSettings({ owner_pin: cleanNewPin });
+      } catch (_) {}
+
+      qc.invalidateQueries({ queryKey: ["business-settings"] });
+      toast.success(lang === "bn" ? "অ্যাডমিন পিন কোড সফলভাবে পরিবর্তন হয়েছে!" : "Admin PIN updated successfully!");
+      setChangePinOpen(false);
+      setCurrentPinInput("");
+      setNewPinInput("");
+      setConfirmPinInput("");
+    } catch (err: any) {
+      toast.error(err.message || "Failed to update PIN");
+    } finally {
+      setPinChangeBusy(false);
+    }
+  };
   const [createProfileOpen, setCreateProfileOpen] = useState(false);
   const [newProfileName, setNewProfileName] = useState("");
   const [isSwitchingProfile, setIsSwitchingProfile] = useState(false);
@@ -314,7 +364,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     "/employees",
   ]);
 
-  const sidebarGroups = filterGroups(desktopNavGroups, perms).map(group => ({
+  const sidebarGroups = desktopNavGroups.map(group => ({
     ...group,
     items: group.items.filter(item => {
       if (isEmployee) {
@@ -324,11 +374,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           return allowedPages.includes(item.to);
         }
       }
-      return true;
+      return !item.perm || Boolean(perms?.[item.perm]);
     })
   })).filter(group => group.items.length > 0);
 
-  const bottomNav = filterNav(mobileNav, perms).filter(item => {
+  const bottomNav = mobileNav.filter(item => {
     if (isEmployee) {
       if (EMPLOYEE_ALWAYS_ALLOWED.has(item.to)) return true;
       if (EMPLOYEE_DEFAULT_HIDDEN.has(item.to)) return false;
@@ -336,7 +386,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         return allowedPages.includes(item.to) || item.to === "/more";
       }
     }
-    return true;
+    return !item.perm || Boolean(perms?.[item.perm]);
   });
 
   const brandName = user.business_name || "Classic World";
@@ -450,6 +500,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={() => setLang("bn")}>বাংলা {lang === "bn" && "✓"}</DropdownMenuItem>
                   <DropdownMenuItem onClick={() => setLang("en")}>English {lang === "en" && "✓"}</DropdownMenuItem>
+                  {!isEmployee && (
+                    <>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem onClick={() => setChangePinOpen(true)} className="cursor-pointer font-medium gap-2 text-amber-600 dark:text-amber-400">
+                        <KeyRound className="size-3.5 text-amber-500" />
+                        <span>{lang === "bn" ? "অ্যাডমিন পিন পরিবর্তন" : "Change Admin PIN"}</span>
+                      </DropdownMenuItem>
+                    </>
+                  )}
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={handleSignOut} className="text-destructive focus:text-destructive">
                     <LogOut className="icon-sm mr-2" />
@@ -777,6 +836,79 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <FloatingAiChat />
       )}
       <AdminPopupDialog />
+
+      {/* Change Admin PIN Modal Dialog */}
+      <Dialog open={changePinOpen} onOpenChange={setChangePinOpen}>
+        <DialogContent className="sm:max-w-md rounded-2xl">
+          <DialogHeader>
+            <DialogTitle className="text-base font-bold flex items-center gap-2">
+              <div className="p-2 rounded-xl bg-amber-500/10 text-amber-600">
+                <KeyRound className="size-4" />
+              </div>
+              <div>
+                <span>{lang === "bn" ? "অ্যাডমিন পিন পরিবর্তন করুন" : "Change Admin PIN"}</span>
+                <p className="text-xs font-normal text-muted-foreground mt-0.5">
+                  {lang === "bn" ? "দোকান মালিকের ৪ থেকে ৯ সংখ্যার গোপন সিকিউরিটি পিন সেট করুন" : "Set your 4 to 9-digit Owner PIN code"}
+                </p>
+              </div>
+            </DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleUpdateAdminPin} className="space-y-4 pt-2">
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">
+                {lang === "bn" ? "বর্তমান পিন (যদি জানা থাকে)" : "Current PIN (Optional)"}
+              </Label>
+              <Input
+                type="password"
+                maxLength={9}
+                placeholder="****"
+                value={currentPinInput}
+                onChange={e => setCurrentPinInput(e.target.value.replace(/[^0-9]/g, ""))}
+                className="h-9 text-sm font-mono tracking-widest text-center"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold text-foreground">
+                {lang === "bn" ? "নতুন পিন কোড (৪-৯ সংখ্যা)" : "New PIN (4 to 9 digits)"} <span className="text-destructive">*</span>
+              </Label>
+              <Input
+                required
+                type="password"
+                maxLength={9}
+                placeholder="4 to 9 digits (e.g. 123456789)"
+                value={newPinInput}
+                onChange={e => setNewPinInput(e.target.value.replace(/[^0-9]/g, ""))}
+                className="h-10 text-base font-mono tracking-widest text-center font-bold"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold text-foreground">
+                {lang === "bn" ? "নতুন পিন নিশ্চিত করুন" : "Confirm New PIN"} <span className="text-destructive">*</span>
+              </Label>
+              <Input
+                required
+                type="password"
+                maxLength={9}
+                placeholder="Repeat new PIN"
+                value={confirmPinInput}
+                onChange={e => setConfirmPinInput(e.target.value.replace(/[^0-9]/g, ""))}
+                className="h-10 text-base font-mono tracking-widest text-center font-bold"
+              />
+            </div>
+
+            <DialogFooter className="pt-2 gap-2">
+              <Button type="button" variant="outline" onClick={() => setChangePinOpen(false)} className="rounded-xl">
+                {t("cancel")}
+              </Button>
+              <Button type="submit" disabled={pinChangeBusy} className="bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-xl shadow-xs">
+                {pinChangeBusy ? (lang === "bn" ? "সংরক্ষণ হচ্ছে..." : "Saving...") : (lang === "bn" ? "পিন সংরক্ষণ করুন" : "Save PIN")}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       {/* Create New Profile / ID Modal Dialog */}
       <Dialog open={createProfileOpen} onOpenChange={setCreateProfileOpen}>

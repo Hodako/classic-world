@@ -133,6 +133,7 @@ async function createWindow() {
 
   // Hide default menu bar for clean, professional POS screen
   mainWindow.setMenuBarVisibility(false);
+  mainWindow.maximize();
 
   // Keyboard shortcuts: F12 / Ctrl+Shift+I (DevTools), F5 / Ctrl+R (Reload), Ctrl+Shift+R (Hard Reload)
   mainWindow.webContents.on("before-input-event", (event, input) => {

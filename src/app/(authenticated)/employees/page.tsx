@@ -54,6 +54,9 @@ import {
 import { useT } from "@/lib/i18n";
 import { useAuth } from "@/hooks/use-auth";
 import { fmtMoney, fmtDate, fmtDateTime } from "@/lib/format";
+import { useCashboxQuery } from "@/hooks/use-cashbox-query";
+import { cashboxBalance } from "@/lib/cashbox-utils";
+import { Wallet } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -88,8 +91,6 @@ export default function EmployeesPage() {
   const [activeTab, setActiveTab] = useState<"accounts" | "salaries" | "expenses" | "shoppings">(
     (paramTab === "shoppings" || paramTab === "expenses" || paramTab === "salaries" || paramTab === "accounts")
       ? (paramTab as any)
-      : user?.role === "employee"
-      ? "shoppings"
       : "accounts"
   );
   const [search, setSearch] = useState("");
@@ -100,6 +101,38 @@ export default function EmployeesPage() {
   const { data: expenses = [], isLoading: expLoading } = useCachedQuery(["employee_expenses"], getEmployeeExpenses);
   const { data: shoppings = [], isLoading: shopLoading } = useCachedQuery(["employee_shoppings"], getEmployeeShoppings);
   const { data: products = [] } = useCachedQuery(["products"], getProducts);
+  const { data: cashEntries = [] } = useCashboxQuery();
+  const liveCashBalance = useMemo(() => cashboxBalance(cashEntries), [cashEntries]);
+
+  const activeEmployeesCount = useMemo(() => employees.filter(e => e.status === "active").length, [employees]);
+
+  const totalBaseSalaries = useMemo(() => {
+    return employees
+      .filter(e => e.status === "active")
+      .reduce((sum, e) => sum + (Number(e.base_salary) || 0), 0);
+  }, [employees]);
+
+  const totalMonthlyAdvances = useMemo(() => {
+    return expenses
+      .filter(e =>
+        (e.category === "advance" || e.category === "salary_advance") &&
+        (e.date || "").startsWith(currentMonthStr)
+      )
+      .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+  }, [expenses, currentMonthStr]);
+
+  const totalMonthlySalariesPaid = useMemo(() => {
+    return salaries
+      .filter(s => (s.month || "").startsWith(currentMonthStr) && s.status !== "bonus")
+      .reduce((sum, s) => sum + (Number(s.amount) || 0), 0);
+  }, [salaries, currentMonthStr]);
+
+  const totalRemainingPayable = Math.max(0, totalBaseSalaries - totalMonthlyAdvances - totalMonthlySalariesPaid);
+
+  const myEmployeeStats = useMemo(() => {
+    if (!currentEmployee) return null;
+    return getEmployeeSalaryStats(currentEmployee.id, currentMonthStr, true);
+  }, [currentEmployee, currentMonthStr, employees, shoppings, salaries, expenses]);
 
   // Dialog States: Employee Account
   const [addEmpOpen, setAddEmpOpen] = useState(false);
@@ -962,44 +995,186 @@ export default function EmployeesPage() {
         </div>
       </div>
 
-      {/* Summary KPI Cards - Minimalist & responsive typography */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
-        <Card className="p-2 sm:p-3 rounded-xl sm:rounded-2xl bg-card border-border/80 space-y-0.5 sm:space-y-1">
-          <div className="flex items-center justify-between text-muted-foreground">
-            <span className="text-[10px] sm:text-[11px] font-semibold">{lang === "bn" ? "মোট কর্মচারী" : "Total Staff"}</span>
-            <Users className="size-3 sm:size-3.5 text-primary" />
+            {/* Top Quick Action Banner */}
+      <div className="bg-gradient-to-r from-emerald-500/10 via-teal-500/10 to-primary/10 border border-emerald-500/20 rounded-2xl p-3 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
+        <div className="flex items-center gap-3">
+          <div className="size-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-md">
+            <DollarSign className="size-5" />
           </div>
-          <p className="text-xs sm:text-lg font-bold font-charukola text-foreground">{employees.length} {lang === "bn" ? "জন" : ""}</p>
-          <span className="text-[9px] sm:text-[10px] text-emerald-600 block">{employees.filter(e => e.status === "active").length} {lang === "bn" ? "সক্রিয়" : "Active"}</span>
-        </Card>
+          <div>
+            <div className="flex items-center gap-2">
+              <h2 className="text-sm sm:text-base font-bold font-charukola text-foreground">
+                {lang === "bn" ? "এমপ্লয়ি হাব ও ক্যাশবক্স থেকে টাকা উত্তোলন" : "Employee Hub & Cashbox Advance Draw"}
+              </h2>
+              <Badge variant="outline" className="text-[10px] bg-emerald-600 text-white border-transparent">
+                {lang === "bn" ? "সক্রিয়" : "Active"}
+              </Badge>
+            </div>
+            <p className="text-xs text-muted-foreground font-balooda">
+              {lang === "bn"
+                ? "কর্মচারী এখান থেকে ক্যাশবক্স থেকে অগ্রিম টাকা নিতে পারবে যা খরচ হিসেবে যুক্ত হবে এবং অবশিষ্ট বেতন থেকে স্বয়ংক্রিয়ভাবে বাদ যাবে।"
+                : "Employees can take advance money directly from cashbox which records as expense and deducts from remaining salary."}
+            </p>
+          </div>
+        </div>
 
-        <Card className="p-2 sm:p-3 rounded-xl sm:rounded-2xl bg-card border-border/80 space-y-0.5 sm:space-y-1">
-          <div className="flex items-center justify-between text-muted-foreground">
-            <span className="text-[10px] sm:text-[11px] font-semibold">{lang === "bn" ? "পরিশোধিত বেতন" : "Salaries Paid"}</span>
-            <DollarSign className="size-3 sm:size-3.5 text-emerald-600" />
-          </div>
-          <p className="text-xs sm:text-lg font-bold font-charukola text-emerald-600">{fmtMoney(totalSalariesPaid)}</p>
-          <span className="text-[9px] sm:text-[10px] text-muted-foreground block">{salaries.length} {lang === "bn" ? "টি রসিদ" : "Records"}</span>
-        </Card>
-
-        <Card className="p-2 sm:p-3 rounded-xl sm:rounded-2xl bg-card border-border/80 space-y-0.5 sm:space-y-1">
-          <div className="flex items-center justify-between text-muted-foreground">
-            <span className="text-[10px] sm:text-[11px] font-semibold">{lang === "bn" ? "খরচ ও ভাতা" : "Staff Expenses"}</span>
-            <Receipt className="size-3 sm:size-3.5 text-orange-600" />
-          </div>
-          <p className="text-xs sm:text-lg font-bold font-charukola text-orange-600">{fmtMoney(totalEmployeeExpenses)}</p>
-          <span className="text-[9px] sm:text-[10px] text-muted-foreground block">{expenses.length} {lang === "bn" ? "টি খরচ" : "Vouchers"}</span>
-        </Card>
-
-        <Card className="p-2 sm:p-3 rounded-xl sm:rounded-2xl bg-card border-border/80 space-y-0.5 sm:space-y-1">
-          <div className="flex items-center justify-between text-muted-foreground">
-            <span className="text-[10px] sm:text-[11px] font-semibold">{lang === "bn" ? "কর্মচারী কেনাকাটা" : "Staff Shopping"}</span>
-            <Shirt className="size-3 sm:size-3.5 text-pink-600" />
-          </div>
-          <p className="text-xs sm:text-lg font-bold font-charukola text-pink-600">{fmtMoney(totalEmployeeShoppings)}</p>
-          <span className="text-[9px] sm:text-[10px] text-muted-foreground block">{shoppings.length} {lang === "bn" ? "বার কেনাকাটা" : "Draws"}</span>
-        </Card>
+        <div className="flex items-center gap-2 shrink-0">
+          <Link href="/employee-hub">
+            <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold h-9 rounded-xl px-3.5 gap-1.5 shadow-sm cursor-pointer text-xs">
+              <DollarSign className="size-4" />
+              <span>{lang === "bn" ? "টাকা উত্তোলন করুন / হাব" : "Take Advance / Hub"}</span>
+            </Button>
+          </Link>
+          <Link href="/cash-management">
+            <Button size="sm" variant="outline" className="font-bold h-9 rounded-xl px-3 gap-1.5 border-border cursor-pointer text-xs">
+              <Banknote className="size-3.5 text-primary" />
+              <span>{lang === "bn" ? "ক্যাশবক্স" : "Cashbox"}</span>
+            </Button>
+          </Link>
+        </div>
       </div>
+
+      {/* Employee Personal KPI Cards (if user is logged in as employee) */}
+      {user?.role === "employee" && (
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-foreground flex items-center gap-1.5">
+              <Users className="size-3.5 text-primary" />
+              {lang === "bn" ? "আমার বেতন ও অগ্রিম হিসাব (" + (currentEmployee?.name || user?.full_name || "Employee") + ")" : "My Salary & Advance Breakdown"}
+            </span>
+            <Badge variant="outline" className="text-[10px] bg-primary/10 text-primary border-primary/20">
+              {currentEmployee?.designation || "Staff"}
+            </Badge>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 sm:gap-3">
+            <Card className="p-2.5 sm:p-3 rounded-xl sm:rounded-2xl bg-card border-border/80 space-y-1 shadow-2xs">
+              <div className="flex items-center justify-between text-muted-foreground">
+                <span className="text-[10px] sm:text-[11px] font-semibold">{lang === "bn" ? "মূল বেতন" : "Base Salary"}</span>
+                <DollarSign className="size-3.5 text-primary" />
+              </div>
+              <p className="text-xs sm:text-base font-bold font-charukola text-foreground">
+                ৳{fmtMoney(currentEmployee?.base_salary || 0)}
+              </p>
+              <span className="text-[9px] text-muted-foreground block">{lang === "bn" ? "মাসিক চুক্তি" : "Per Month"}</span>
+            </Card>
+
+            <Card className="p-2.5 sm:p-3 rounded-xl sm:rounded-2xl bg-card border-border/80 space-y-1 shadow-2xs">
+              <div className="flex items-center justify-between text-muted-foreground">
+                <span className="text-[10px] sm:text-[11px] font-semibold">{lang === "bn" ? "চলতি মাসে নেওয়া অগ্রিম" : "Advance Taken"}</span>
+                <TrendingDown className="size-3.5 text-orange-500" />
+              </div>
+              <p className="text-xs sm:text-base font-bold font-charukola text-orange-600">
+                ৳{fmtMoney(myEmployeeStats?.advancesInMonth || 0)}
+              </p>
+              <span className="text-[9px] text-orange-600/80 block">{lang === "bn" ? "বেতন থেকে কর্তনযোগ্য" : "Deductible"}</span>
+            </Card>
+
+            <Card className="p-2.5 sm:p-3 rounded-xl sm:rounded-2xl bg-card border-border/80 space-y-1 shadow-2xs">
+              <div className="flex items-center justify-between text-muted-foreground">
+                <span className="text-[10px] sm:text-[11px] font-semibold">{lang === "bn" ? "অবশিষ্ট বেতন" : "Remaining"}</span>
+                <Wallet className="size-3.5 text-emerald-600" />
+              </div>
+              <p className="text-xs sm:text-base font-bold font-charukola text-emerald-600">
+                ৳{fmtMoney(myEmployeeStats?.remaining || (Number(currentEmployee?.base_salary || 0) - (myEmployeeStats?.advancesInMonth || 0)))}
+              </p>
+              <span className="text-[9px] text-emerald-600/80 block">{lang === "bn" ? "প্রদেয় বাকি আছে" : "Payable"}</span>
+            </Card>
+
+            <Card className="p-2.5 sm:p-3 rounded-xl sm:rounded-2xl bg-card border-border/80 space-y-1 shadow-2xs">
+              <div className="flex items-center justify-between text-muted-foreground">
+                <span className="text-[10px] sm:text-[11px] font-semibold">{lang === "bn" ? "ক্যাশবক্স ব্যালেন্স" : "Cashbox Live"}</span>
+                <Banknote className="size-3.5 text-blue-600" />
+              </div>
+              <p className="text-xs sm:text-base font-bold font-charukola text-blue-600">
+                ৳{fmtMoney(liveCashBalance)}
+              </p>
+              <span className="text-[9px] text-muted-foreground block">{lang === "bn" ? "দোকানের নগদ ক্যাশ" : "Live In-Store"}</span>
+            </Card>
+
+            <Card className="p-2.5 sm:p-3 rounded-xl sm:rounded-2xl bg-card border-border/80 space-y-1 shadow-2xs">
+              <div className="flex items-center justify-between text-muted-foreground">
+                <span className="text-[10px] sm:text-[11px] font-semibold">{lang === "bn" ? "পোশাক কেনাকাটা" : "Shopping Draw"}</span>
+                <Shirt className="size-3.5 text-pink-600" />
+              </div>
+              <p className="text-xs sm:text-base font-bold font-charukola text-pink-600">
+                ৳{fmtMoney(myEmployeeStats?.shopDed || 0)}
+              </p>
+              <span className="text-[9px] text-muted-foreground block">{lang === "bn" ? "বকেয়া পোশাক" : "Shopping Due"}</span>
+            </Card>
+
+            <Card className="p-2.5 sm:p-3 rounded-xl sm:rounded-2xl bg-card border-border/80 space-y-1 shadow-2xs">
+              <div className="flex items-center justify-between text-muted-foreground">
+                <span className="text-[10px] sm:text-[11px] font-semibold">{lang === "bn" ? "বোনাস প্রাপ্তি" : "Bonus"}</span>
+                <Sparkles className="size-3.5 text-amber-500" />
+              </div>
+              <p className="text-xs sm:text-base font-bold font-charukola text-amber-600">
+                ৳{fmtMoney(myEmployeeStats?.totalBonus || 0)}
+              </p>
+              <span className="text-[9px] text-muted-foreground block">{lang === "bn" ? "চলতি মাসে" : "This Month"}</span>
+            </Card>
+          </div>
+        </div>
+      )}
+
+      {/* Summary KPI Cards for Owner / Full View */}
+      {user?.role !== "employee" && (
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 sm:gap-3">
+          <Card className="p-2 sm:p-3 rounded-xl sm:rounded-2xl bg-card border-border/80 space-y-0.5 sm:space-y-1 shadow-2xs">
+            <div className="flex items-center justify-between text-muted-foreground">
+              <span className="text-[10px] sm:text-[11px] font-semibold">{lang === "bn" ? "মোট কর্মচারী" : "Total Staff"}</span>
+              <Users className="size-3 sm:size-3.5 text-primary" />
+            </div>
+            <p className="text-xs sm:text-base font-bold font-charukola text-foreground">{employees.length} {lang === "bn" ? "জন" : ""}</p>
+            <span className="text-[9px] sm:text-[10px] text-emerald-600 block">{activeEmployeesCount} {lang === "bn" ? "সক্রিয়" : "Active"}</span>
+          </Card>
+
+          <Card className="p-2 sm:p-3 rounded-xl sm:rounded-2xl bg-card border-border/80 space-y-0.5 sm:space-y-1 shadow-2xs">
+            <div className="flex items-center justify-between text-muted-foreground">
+              <span className="text-[10px] sm:text-[11px] font-semibold">{lang === "bn" ? "মাসিক মোট বেতন" : "Total Salary Budget"}</span>
+              <DollarSign className="size-3 sm:size-3.5 text-primary" />
+            </div>
+            <p className="text-xs sm:text-base font-bold font-charukola text-primary">{fmtMoney(totalBaseSalaries)}</p>
+            <span className="text-[9px] sm:text-[10px] text-muted-foreground block">{lang === "bn" ? "নির্ধারিত বাজেট" : "Monthly Fixed"}</span>
+          </Card>
+
+          <Card className="p-2 sm:p-3 rounded-xl sm:rounded-2xl bg-card border-border/80 space-y-0.5 sm:space-y-1 shadow-2xs">
+            <div className="flex items-center justify-between text-muted-foreground">
+              <span className="text-[10px] sm:text-[11px] font-semibold">{lang === "bn" ? "উত্তোলিত অগ্রিম" : "Advances Drawn"}</span>
+              <TrendingDown className="size-3 sm:size-3.5 text-orange-600" />
+            </div>
+            <p className="text-xs sm:text-base font-bold font-charukola text-orange-600">{fmtMoney(totalMonthlyAdvances)}</p>
+            <span className="text-[9px] sm:text-[10px] text-orange-600/80 block">{lang === "bn" ? "চলতি মাসে কাটা" : "Deductions"}</span>
+          </Card>
+
+          <Card className="p-2 sm:p-3 rounded-xl sm:rounded-2xl bg-card border-border/80 space-y-0.5 sm:space-y-1 shadow-2xs">
+            <div className="flex items-center justify-between text-muted-foreground">
+              <span className="text-[10px] sm:text-[11px] font-semibold">{lang === "bn" ? "অবশিষ্ট প্রদেয়" : "Remaining Payable"}</span>
+              <Wallet className="size-3 sm:size-3.5 text-emerald-600" />
+            </div>
+            <p className="text-xs sm:text-base font-bold font-charukola text-emerald-600">{fmtMoney(totalRemainingPayable)}</p>
+            <span className="text-[9px] sm:text-[10px] text-emerald-600/80 block">{lang === "bn" ? "মাসের বাকি বেতন" : "Net Due"}</span>
+          </Card>
+
+          <Card className="p-2 sm:p-3 rounded-xl sm:rounded-2xl bg-card border-border/80 space-y-0.5 sm:space-y-1 shadow-2xs">
+            <div className="flex items-center justify-between text-muted-foreground">
+              <span className="text-[10px] sm:text-[11px] font-semibold">{lang === "bn" ? "ক্যাশবক্স ব্যালেন্স" : "Cashbox Live"}</span>
+              <Banknote className="size-3.5 text-blue-600" />
+            </div>
+            <p className="text-xs sm:text-base font-bold font-charukola text-blue-600">{fmtMoney(liveCashBalance)}</p>
+            <span className="text-[9px] sm:text-[10px] text-muted-foreground block">{lang === "bn" ? "দোকানের নগদ ক্যাশ" : "Live Cash"}</span>
+          </Card>
+
+          <Card className="p-2 sm:p-3 rounded-xl sm:rounded-2xl bg-card border-border/80 space-y-0.5 sm:space-y-1 shadow-2xs">
+            <div className="flex items-center justify-between text-muted-foreground">
+              <span className="text-[10px] sm:text-[11px] font-semibold">{lang === "bn" ? "পরিশোধিত বেতন" : "Salaries Paid"}</span>
+              <Receipt className="size-3.5 text-indigo-600" />
+            </div>
+            <p className="text-xs sm:text-base font-bold font-charukola text-indigo-600">{fmtMoney(totalMonthlySalariesPaid)}</p>
+            <span className="text-[9px] sm:text-[10px] text-muted-foreground block">{salaries.length} {lang === "bn" ? "টি রসিদ" : "Vouchers"}</span>
+          </Card>
+        </div>
+      )}
 
       {/* Main Tabs Navigation */}
       <Tabs value={activeTab} onValueChange={v => setActiveTab(v as any)} className="space-y-3">

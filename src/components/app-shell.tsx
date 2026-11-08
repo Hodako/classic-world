@@ -11,7 +11,7 @@ import {
   BarChart3, Receipt, PiggyBank, ShoppingCart, Moon, Sun, FileText,
   TrendingUp, TrendingDown, Sparkles, Palette, MessageSquare, HelpCircle,
   RefreshCw, Lock, Wallet, Plus, ChevronDown, Check, Crown, User, Shirt,
-  Landmark, CalendarPlus, Calendar, ArrowDownLeft, ArrowUpRight, HandCoins, Barcode,
+  Landmark, CalendarPlus, Calendar, ArrowDownLeft, ArrowUpRight, HandCoins, Barcode, Printer,
 } from "lucide-react";
 import { useTheme } from "@/hooks/use-theme";
 import { useT } from "@/lib/i18n";
@@ -66,29 +66,31 @@ const desktopNavGroups: NavGroup[] = [
     labelKey: "navigation",
     items: [
       { to: "/dashboard", labelKey: "home", icon: CustomHomeIcon, perm: "dashboard" },
-      { to: "/products", labelKey: "products", icon: Package, perm: "products" },
-      { to: "/labels", labelKey: "label_printer", icon: Barcode, perm: "products" },
-      { to: "/sales/today", labelKey: "sales", icon: ShoppingBag, perm: "sales", customLabel: "Today's Sale" },
-      { to: "/employee-hub", labelKey: "employees", icon: Users, perm: "sales", customLabel: "Employee Hub" },
       { to: "/sales", labelKey: "sales", icon: ShoppingBag, perm: "sales" },
-      { to: "/customers", labelKey: "customers", icon: Users, perm: "parties" },
+      { to: "/sales/today", labelKey: "sales", icon: TrendingUp, perm: "sales", customLabel: "Today's Sale" },
+      { to: "/products", labelKey: "products", icon: Package, perm: "products" },
+      { to: "/invoices", labelKey: "invoice_generator", icon: FileText, perm: "sales" },
+      { to: "/labels", labelKey: "label_printer", icon: Barcode, perm: "products" },
+      { to: "/printer-settings", labelKey: "settings", icon: Printer, perm: "sales", customLabel: "Printer Settings" },
+      { to: "/cash-management", labelKey: "cash_management", icon: Banknote, perm: "expenses" },
+      { to: "/expenses", labelKey: "expenses", icon: Receipt, perm: "expenses" },
+      { to: "/employee-hub", labelKey: "employees", icon: Users, perm: "sales", customLabel: "Employee Hub" },
+      { to: "/employees", labelKey: "employees", icon: Users, perm: "sales" },
+      { to: "/invoices", labelKey: "invoice_generator", icon: FileText, perm: "sales" },
+  { to: "/employees", labelKey: "employees", icon: Users, perm: "sales" },
       { to: "/dues", labelKey: "due", icon: Banknote, perm: "parties" },
       { to: "/parties", labelKey: "parties", icon: Users, perm: "parties" },
-      { to: "/employees", labelKey: "employees", icon: Users, perm: "sales" },
     ],
   },
   {
     labelKey: "more",
     items: [
       { to: "/sms", labelKey: "sms", icon: MessageSquare, perm: "sales" },
-      { to: "/invoices", labelKey: "invoice_generator", icon: FileText, perm: "sales" },
       { to: "/purchases", labelKey: "new_purchase", icon: ShoppingCart, perm: "purchases" },
       { to: "/bank", labelKey: "bank_management", icon: Landmark, perm: "expenses" },
-      { to: "/expenses", labelKey: "expenses", icon: Receipt, perm: "expenses" },
       { to: "/owners-wallet", labelKey: "owner_expense", icon: Wallet, perm: "expenses" },
       { to: "/somiti", labelKey: "somiti", icon: PiggyBank, perm: "expenses" },
       { to: "/online-sells", labelKey: "online_sell", icon: DollarSign, perm: "sales" },
-      { to: "/cash-management", labelKey: "cash_management", icon: Banknote, perm: "expenses" },
     ],
   },
   {
@@ -296,7 +298,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const EMPLOYEE_DEFAULT_HIDDEN = new Set([
     "/trackback", "/profits", "/losses", "/reports", "/ai-audits",
     "/purchase-reports", "/somiti", "/parties",
-    "/dues", "/customers", "/bank",
+    "/dues", "/customers", "/bank", "/owners-wallet", "/settings",
   ]);
 
   const sidebarGroups = filterGroups(desktopNavGroups, perms).map(group => ({
@@ -378,7 +380,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen min-h-dvh bg-transparent flex w-full app-shell">
-      <Sidebar collapsible="icon" className="hidden md:flex" style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}>
+      <Sidebar collapsible="icon" style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}>
         <SidebarHeader className="border-b border-sidebar-border px-3 py-3 space-y-2">
           <div className="flex items-center overflow-hidden group-data-[collapsible=icon]:justify-center">
             <AppLogo size="md" className="h-11 max-w-[210px]" />
@@ -457,7 +459,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           )}
           <div className="flex items-center h-12 px-3 gap-2">
             <div className="flex items-center gap-2 min-w-0 flex-1">
-              <SidebarTrigger className="hidden md:inline-flex size-7 shrink-0 cursor-pointer" />
+              <SidebarTrigger className="inline-flex size-7 shrink-0 cursor-pointer" />
               <div className="min-w-0 flex items-center gap-2">
                 <AppLogo size="sm" className="h-8 max-h-8 w-auto" />
                 <h1 className="font-serif font-semibold text-sm sm:text-base truncate leading-none text-foreground">{brandName}</h1>

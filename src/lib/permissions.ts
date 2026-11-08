@@ -38,9 +38,45 @@ export const DEFAULT_EMPLOYEE_PERMISSIONS: PermissionSet = {
 };
 
 /** Resolve effective permissions for the current user. */
-export function resolvePermissions(role: string, permissions?: PermissionSet): PermissionSet {
+export function resolvePermissions(role: string, permissions?: any): PermissionSet {
   if (role === "owner" || role === "admin" || role === "superadmin") return OWNER_PERMISSIONS;
-  return permissions ?? DEFAULT_EMPLOYEE_PERMISSIONS;
+
+  // Base default permissions for staff
+  const base: PermissionSet = { ...DEFAULT_EMPLOYEE_PERMISSIONS };
+  if (!permissions || typeof permissions !== "object") return base;
+
+  // Normalize legacy "can_*" keys and standard keys
+  const has = (k: string) => k in permissions;
+
+  base.dashboard = true;
+
+  if (has("sales")) base.sales = Boolean(permissions.sales);
+  else if (has("can_sales")) base.sales = Boolean(permissions.can_sales);
+  else base.sales = true;
+
+  if (has("products")) base.products = Boolean(permissions.products);
+  else if (has("can_products")) base.products = Boolean(permissions.can_products);
+  else base.products = true;
+
+  if (has("expenses")) base.expenses = Boolean(permissions.expenses);
+  else if (has("can_expenses")) base.expenses = Boolean(permissions.can_expenses);
+  else base.expenses = true;
+
+  if (has("cashbox")) base.cashbox = Boolean(permissions.cashbox);
+  else if (has("can_cashbox")) base.cashbox = Boolean(permissions.can_cashbox);
+  else base.cashbox = true;
+
+  if (has("parties")) base.parties = Boolean(permissions.parties);
+  else if (has("can_customers")) base.parties = Boolean(permissions.can_customers);
+
+  if (has("purchases")) base.purchases = Boolean(permissions.purchases);
+  else if (has("can_purchases")) base.purchases = Boolean(permissions.can_purchases);
+
+  if (has("settings")) base.settings = Boolean(permissions.settings);
+  if (has("reports")) base.reports = Boolean(permissions.reports);
+  else if (has("can_reports")) base.reports = Boolean(permissions.can_reports);
+
+  return base;
 }
 
 /** Check if user permissions allow a module. */

@@ -1973,7 +1973,19 @@ export async function fsGenerateEmployeeLicenseKey(data: {
     owner_uid: user?.id || user?.email || "owner",
     business_name: user?.business_name || "Classic World",
     employee_name: data.employeeName || "Employee",
-    allowed_pages: data.allowedPages || ["/dashboard", "/sales", "/products"],
+    allowed_pages: data.allowedPages || [
+      "/dashboard",
+      "/sales",
+      "/sales/today",
+      "/products",
+      "/invoices",
+      "/labels",
+      "/printer-settings",
+      "/cash-management",
+      "/expenses",
+      "/employee-hub",
+      "/employees",
+    ],
     allowed_kpis: data.allowedKpis || ["sell_kpi", "total_stock", "today_sales"],
     permissions: data.permissions || {
       dashboard: true,
@@ -1981,10 +1993,10 @@ export async function fsGenerateEmployeeLicenseKey(data: {
       products: true,
       parties: false,
       purchases: false,
-      expenses: false,
+      expenses: true,
       reports: false,
       settings: false,
-      cashbox: false,
+      cashbox: true,
     },
     note: data.note || "",
     created_at: now,
@@ -2072,7 +2084,19 @@ export async function fsValidateAndActivateLicense(licenseKey: string, userUid?:
     ? (licenseData?.permissions || defaultEmployeePerms)
     : defaultOwnerPerms;
 
-  const allowedPages = licenseData?.allowed_pages || (isEmployeeKey ? ["/dashboard", "/sales", "/products"] : undefined);
+  const allowedPages = licenseData?.allowed_pages || (isEmployeeKey ? [
+    "/dashboard",
+    "/sales",
+    "/sales/today",
+    "/products",
+    "/invoices",
+    "/labels",
+    "/printer-settings",
+    "/cash-management",
+    "/expenses",
+    "/employee-hub",
+    "/employees",
+  ] : undefined);
   const allowedKpis = licenseData?.allowed_kpis || (isEmployeeKey ? ["sell_kpi", "total_stock", "today_sales"] : undefined);
 
   // Update user document in Firestore

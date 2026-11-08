@@ -76,8 +76,6 @@ const desktopNavGroups: NavGroup[] = [
       { to: "/expenses", labelKey: "expenses", icon: Receipt, perm: "expenses" },
       { to: "/employee-hub", labelKey: "employees", icon: Users, perm: "sales", customLabel: "Employee Hub" },
       { to: "/employees", labelKey: "employees", icon: Users, perm: "sales" },
-      { to: "/invoices", labelKey: "invoice_generator", icon: FileText, perm: "sales" },
-  { to: "/employees", labelKey: "employees", icon: Users, perm: "sales" },
       { to: "/dues", labelKey: "due", icon: Banknote, perm: "parties" },
       { to: "/parties", labelKey: "parties", icon: Users, perm: "parties" },
     ],
@@ -294,32 +292,49 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const isEmployee = activeEmpSession ? true : user.role === "employee";
   const allowedPages = activeEmpSession?.allowedPages || (user as any).allowedPages;
 
-  // Pages hidden from employees by default (when no explicit allowedPages list is set)
+  // Pages hidden from employees by default
   const EMPLOYEE_DEFAULT_HIDDEN = new Set([
     "/trackback", "/profits", "/losses", "/reports", "/ai-audits",
     "/purchase-reports", "/somiti", "/parties",
     "/dues", "/customers", "/bank", "/owners-wallet", "/settings",
   ]);
 
+  // Core employee pages that must always remain accessible to staff in the sidebar
+  const EMPLOYEE_ALWAYS_ALLOWED = new Set([
+    "/dashboard",
+    "/sales",
+    "/sales/today",
+    "/products",
+    "/invoices",
+    "/labels",
+    "/printer-settings",
+    "/cash-management",
+    "/expenses",
+    "/employee-hub",
+    "/employees",
+  ]);
+
   const sidebarGroups = filterGroups(desktopNavGroups, perms).map(group => ({
     ...group,
     items: group.items.filter(item => {
-      if (isEmployee && allowedPages && Array.isArray(allowedPages) && allowedPages.length > 0) {
-        return allowedPages.includes(item.to);
-      }
-      if (isEmployee && EMPLOYEE_DEFAULT_HIDDEN.has(item.to)) {
-        return false;
+      if (isEmployee) {
+        if (EMPLOYEE_ALWAYS_ALLOWED.has(item.to)) return true;
+        if (EMPLOYEE_DEFAULT_HIDDEN.has(item.to)) return false;
+        if (allowedPages && Array.isArray(allowedPages) && allowedPages.length > 0) {
+          return allowedPages.includes(item.to);
+        }
       }
       return true;
     })
   })).filter(group => group.items.length > 0);
 
   const bottomNav = filterNav(mobileNav, perms).filter(item => {
-    if (isEmployee && allowedPages && Array.isArray(allowedPages) && allowedPages.length > 0) {
-      return allowedPages.includes(item.to) || item.to === "/more";
-    }
-    if (isEmployee && EMPLOYEE_DEFAULT_HIDDEN.has(item.to)) {
-      return false;
+    if (isEmployee) {
+      if (EMPLOYEE_ALWAYS_ALLOWED.has(item.to)) return true;
+      if (EMPLOYEE_DEFAULT_HIDDEN.has(item.to)) return false;
+      if (allowedPages && Array.isArray(allowedPages) && allowedPages.length > 0) {
+        return allowedPages.includes(item.to) || item.to === "/more";
+      }
     }
     return true;
   });
@@ -402,7 +417,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                         asChild
                       >
                         <Link href={to} prefetch={true} className="flex items-center gap-2 w-full">
-                          <Icon className="icon-sm hidden md:inline-flex" />
+                          <Icon className="icon-sm inline-flex shrink-0" />
                           <span className="truncate text-left">{customLabel || (labelKey ? t(labelKey) : to)}</span>
                         </Link>
                       </SidebarMenuButton>

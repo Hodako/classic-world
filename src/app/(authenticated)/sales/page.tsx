@@ -654,6 +654,16 @@ export default function SalesPage() {
             </div>
           </div>
 
+          <Link href="/sales/today">
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 sm:h-8.5 px-2.5 sm:px-3 text-xs font-bold font-balooda rounded-xl gap-1.5 border-primary/40 bg-primary/5 hover:bg-primary/10 text-primary shrink-0"
+            >
+              <ShoppingBag className="size-3.5" />
+              <span>{lang === "bn" ? "আজকের বিবরণ" : "Today's Sale"}</span>
+            </Button>
+          </Link>
           <Button
             onClick={() => setOpen(true)}
             size="sm"

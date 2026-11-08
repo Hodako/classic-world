@@ -291,7 +291,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       window.localStorage.setItem("auth_token", token);
     }
     if (typeof window !== "undefined") {
-      window.sessionStorage.setItem("app_pin_unlocked", "true");
+      window.sessionStorage.removeItem("app_pin_unlocked");
     }
     setUser(newUser);
     cacheUser(newUser);

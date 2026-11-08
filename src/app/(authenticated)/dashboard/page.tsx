@@ -13,7 +13,7 @@ import {
   AlertTriangle, ArrowRight
 } from "lucide-react";
 import { useT } from "@/lib/i18n";
-import { getExpenses, getSales, getWithdrawals, getProducts, getParties, getReminders, getAllPayments, getAllPartyReceivables, getAllPartyPayables, getAllPayableSettlements, getPurchases, getSomiti, getReturns, getOwnerWallet } from "@/lib/queries";
+import { getExpenses, getSales, getWithdrawals, getProducts, getEmployeeExpenses, getParties, getReminders, getAllPayments, getAllPartyReceivables, getAllPartyPayables, getAllPayableSettlements, getPurchases, getSomiti, getReturns, getOwnerWallet } from "@/lib/queries";
 import type { Reminder } from "@/lib/queries";
 import { cashboxBalance, cashboxDelta } from "@/lib/cashbox-utils";
 import { fmtMoney, fmtDateTime } from "@/lib/format";
@@ -422,7 +422,7 @@ function ChartTooltip({ active, payload, label }: any) {
 const DEFAULT_KPI_ORDER = [
   "total_sales",
   "cash_sale",
-  "sell_kpi",
+  "employee_hub",
   "online_sell",
   "owner_wallet",
   "purchases",
@@ -438,7 +438,7 @@ const DEFAULT_HIDDEN_KPIS = [
   "total_sales",
   "cash_sale",
   "credit_sale",
-  "sell_kpi",
+  "employee_hub",
   "bkash_bank",
   "online_sell",
   "owner_wallet",
@@ -477,6 +477,11 @@ export default function Dashboard() {
   const { data: reminders = [] } = useCachedQuery(["reminders"], getReminders);
   const returnsQuery = useCachedQuery(["returns"], getReturns);
 
+  const employeeExpenses = useCachedQuery(["employee_expenses"], getEmployeeExpenses);
+  const totalStaffAdvances = useMemo(() => {
+    const list = employeeExpenses.data || [];
+    return list.reduce((sum: number, it: any) => sum + (Number(it.amount) || 0), 0);
+  }, [employeeExpenses.data]);
   const allSales      = sales.data ?? [];
   const allExpenses   = expenses.data ?? [];
   const allWithdrawals = withdrawals.data ?? [];
@@ -507,7 +512,7 @@ export default function Dashboard() {
     }
     lastPrivacyToggleRef.current = Date.now();
     playTapSound();
-    const normalizedKey = key === "bkash_bank" ? "sell_kpi" : key === "owners_wallet" ? "owner_wallet" : key;
+    const normalizedKey = key === "bkash_bank" ? "employee_hub" : key === "owners_wallet" ? "owner_wallet" : key;
     const hiddenList = (kpiConfig.hiddenKpis && kpiConfig.hiddenKpis.length > 0) ? kpiConfig.hiddenKpis : DEFAULT_HIDDEN_KPIS;
     const isHidden = hiddenList.includes(key) || hiddenList.includes(normalizedKey);
     const currentlyRevealed = revealedKpis[normalizedKey] ?? !isHidden;
@@ -533,7 +538,7 @@ export default function Dashboard() {
       return;
     }
     if (!key) return;
-    const normalizedKey = key === "bkash_bank" ? "sell_kpi" : key === "owners_wallet" ? "owner_wallet" : key;
+    const normalizedKey = key === "bkash_bank" ? "employee_hub" : key === "owners_wallet" ? "owner_wallet" : key;
     const hiddenList = (kpiConfig.hiddenKpis && kpiConfig.hiddenKpis.length > 0) ? kpiConfig.hiddenKpis : DEFAULT_HIDDEN_KPIS;
     const isHidden = hiddenList.includes(key) || hiddenList.includes(normalizedKey);
     const currentlyRevealed = revealedKpis[normalizedKey] ?? !isHidden;
@@ -672,7 +677,7 @@ export default function Dashboard() {
   > = {
     total_sales: { nameEn: "Total Sales", nameBn: "আজকের মোট বিক্রয়", badge: "Total", bg: "bg-blue-500/10 border-blue-500/30 text-blue-600 dark:text-blue-400" },
     cash_sale: { nameEn: "Cash Sale", nameBn: "নগদ বিক্রয়", badge: "Cash", bg: "bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-400" },
-    sell_kpi: { nameEn: "Sell", nameBn: "বিক্রয়", badge: "Sell", bg: "bg-pink-500/10 border-pink-500/30 text-pink-600 dark:text-pink-400" },
+    employee_hub: { nameEn: "Employee Hub", nameBn: "এমপ্লয়ি হাব / অগ্রিম", badge: "Staff", bg: "bg-indigo-500/10 border-indigo-500/30 text-indigo-600 dark:text-indigo-400" },
     credit_sale: { nameEn: "Credit Sale", nameBn: "বাকি বিক্রয়", badge: "Credit", bg: "bg-amber-500/10 border-amber-500/30 text-amber-600 dark:text-amber-400" },
     online_sell: { nameEn: "Online Sale", nameBn: "অনলাইন বিক্রয়", badge: "Online", bg: "bg-purple-500/10 border-purple-500/30 text-purple-600 dark:text-purple-400" },
     owner_wallet: { nameEn: "Owner's Expense", nameBn: "মালিকের খরচ", badge: "Owner", bg: "bg-amber-600/10 border-amber-600/30 text-amber-600 dark:text-amber-400" },
@@ -699,7 +704,7 @@ export default function Dashboard() {
     if (!order || !Array.isArray(order) || order.length === 0) return defaultList;
     const list = order
       .filter(k => k !== "credit_sale")
-      .map(k => (k === "bkash_bank" ? "sell_kpi" : k === "owners_wallet" ? "owner_wallet" : k));
+      .map(k => (k === "bkash_bank" ? "employee_hub" : k === "owners_wallet" ? "owner_wallet" : k));
     for (const key of defaultList) {
       if (!list.includes(key)) list.push(key);
     }
@@ -993,7 +998,7 @@ export default function Dashboard() {
         if (!isNaN(keyIndex) && keyIndex >= 1 && keyIndex <= activeOrder.length) {
           e.preventDefault();
           const targetKpiKey = activeOrder[keyIndex - 1];
-          const normalizedKey = targetKpiKey === "bkash_bank" ? "sell_kpi" : targetKpiKey === "owners_wallet" ? "owner_wallet" : targetKpiKey;
+          const normalizedKey = targetKpiKey === "bkash_bank" ? "employee_hub" : targetKpiKey === "owners_wallet" ? "owner_wallet" : targetKpiKey;
           const isHidden = (kpiConfig.hiddenKpis || []).includes(targetKpiKey) || (kpiConfig.hiddenKpis || []).includes(normalizedKey);
           if (isHidden && !revealedKpis[normalizedKey]) {
             playTapSound();
@@ -1625,7 +1630,7 @@ export default function Dashboard() {
 
     const renderKpiCard = (key: string, index: number) => {
     const hotkey = index + 1 <= 9 ? index + 1 : undefined;
-    const normalizedKey = key === "bkash_bank" ? "sell_kpi" : key === "owners_wallet" ? "owner_wallet" : key;
+    const normalizedKey = key === "bkash_bank" ? "employee_hub" : key === "owners_wallet" ? "owner_wallet" : key;
     const isHidden = (kpiConfig.hiddenKpis || []).includes(key) || (kpiConfig.hiddenKpis || []).includes(normalizedKey);
     const isRevealed = revealedKpis[normalizedKey] ?? !isHidden;
 
@@ -1653,8 +1658,7 @@ export default function Dashboard() {
             size={kpiConfig.size as any}
             {...privacyProps}
             onClick={(e) => handlePrivacyKpiClick(e, "total_sales", undefined, () => {
-              setSalePresetType("cash");
-              setSaleOpen(true);
+              router.push("/sales/today");
             })}
           />
         );
@@ -1702,35 +1706,28 @@ export default function Dashboard() {
             })}
           />
         );
-      case "sell_kpi":
+      case "employee_hub":
         return (
           <KPICard
-            key="sell_kpi"
-            label={lang === "bn" ? "বিক্রয়" : "Sell"}
-            value={fmtMoney(totalSalesToday)}
+            key="employee_hub"
+            label={lang === "bn" ? "এমপ্লয়ি হাব / অগ্রিম" : "Employee Hub"}
+            value={fmtMoney(totalStaffAdvances)}
             sub={
               isHidden && !isRevealed
                 ? (lang === "bn" ? "ট্যাপ করে দেখুন" : "Tap to reveal")
-                : (bkashPending > 0 || bankPending > 0 || onlinePendingToday > 0
-                    ? (lang === "bn"
-                        ? `পেন্ডিং: বিকাশ ${fmtMoney(bkashPending)} • ব্যাংক ${fmtMoney(bankPending)} • অনলাইন ${fmtMoney(onlinePendingToday)}`
-                        : `Pending: bKash ${fmtMoney(bkashPending)} • Bank ${fmtMoney(bankPending)} • Online ${fmtMoney(onlinePendingToday)}`)
-                    : (lang === "bn"
-                        ? `নগদ আদায়: ${fmtMoney(cashToday + bkashBankCollected)}`
-                        : `Collected: ${fmtMoney(cashToday + bkashBankCollected)}`))
+                : (lang === "bn" ? "টাকা উত্তোলন ও বেতন রেকর্ড →" : "Take money & salary logs →")
             }
-            imageUrl="/icons/sales-kpi.svg"
-            icon={ShoppingBag}
-            color="bg-pink-600"
+            imageUrl="/icons/users_icon.png"
+            icon={Users}
+            color="bg-indigo-600"
             isDesktop={true}
             hotkey={hotkey}
             className="h-full cursor-pointer"
             align={kpiConfig.align as any}
             size={kpiConfig.size as any}
             {...privacyProps}
-            onClick={(e) => handlePrivacyKpiClick(e, "sell_kpi", undefined, () => {
-              setSalePresetType("cash");
-              setSaleOpen(true);
+            onClick={(e) => handlePrivacyKpiClick(e, "employee_hub", undefined, () => {
+              router.push("/employee-hub");
             })}
           />
         );

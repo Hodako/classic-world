@@ -562,7 +562,7 @@ export default function SettingsPage() {
   async function handleSaveOwnerPin(customPin?: string) {
     const cleanPin = (customPin !== undefined ? customPin : pinCodeVal).trim();
     if (!/^\d{4,6}$/.test(cleanPin)) {
-      toast.error(lang === "bn" ? "মালিক পিন কোড ৪ থেকে ৬ সংখ্যার হতে হবে।" : "Owner PIN must be 4 to 6 digits.");
+      toast.error(lang === "bn" ? "মালিক পিন কোড ৪ থেকে ৯ সংখ্যার হতে হবে।" : "Owner PIN must be 4 to 9 digits.");
       return;
     }
     setPinCodeVal(cleanPin);
@@ -588,7 +588,7 @@ export default function SettingsPage() {
   async function handleSaveDefaultStaffPin() {
     const cleanPin = defaultStaffPin.trim();
     if (!/^\d{4,6}$/.test(cleanPin)) {
-      toast.error(lang === "bn" ? "স্টাফ পিন কোড ৪ সংখ্যার হতে হবে।" : "Staff PIN must be 4 digits.");
+      toast.error(lang === "bn" ? "স্টাফ পিন কোড ৪ থেকে ৯ সংখ্যার হতে হবে।" : "Staff PIN must be 4 digits.");
       return;
     }
     if (typeof window !== "undefined") {
@@ -610,7 +610,7 @@ export default function SettingsPage() {
     if (!selectedEmpForPin) return;
     const cleanPin = newEmpPin.trim();
     if (!/^\d{4,6}$/.test(cleanPin)) {
-      toast.error(lang === "bn" ? "কর্মচারীর পিন কোড ৪ থেকে ৬ সংখ্যার হতে হবে।" : "Employee PIN must be 4 to 6 digits.");
+      toast.error(lang === "bn" ? "কর্মচারীর পিন কোড ৪ থেকে ৯ সংখ্যার হতে হবে।" : "Employee PIN must be 4 to 9 digits.");
       return;
     }
     setSavingEmpPin(true);
@@ -3141,7 +3141,7 @@ export default function SettingsPage() {
                     <div>
                       <div className="flex items-center gap-2">
                         <h2 className="font-bold text-base sm:text-lg text-foreground">
-                          {lang === "bn" ? "দোকান মালিকের ৪-সংখ্যার পিন ও স্ক্রিন সিকিউরিটি" : "Owner 4-Digit PIN & Screen Security"}
+                          {lang === "bn" ? "দোকান মালিকের ৪ থেকে ৯ সংখ্যার পিন ও স্ক্রিন সিকিউরিটি" : "Owner 4 to 9-digit PIN & Screen Security"}
                         </h2>
                         <Badge variant="outline" className="bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30 text-[10px] font-bold">
                           OWNER ACCESS
@@ -3149,8 +3149,8 @@ export default function SettingsPage() {
                       </div>
                       <p className="text-xs text-muted-foreground mt-0.5">
                         {lang === "bn"
-                          ? "দোকান মালিক হিসেবে আপনার নিজস্ব ৪-সংখ্যার পিন কোড সেট করুন এবং স্ক্রিন লক সক্রিয় রাখুন।"
-                          : "Set your personal 4-digit Owner PIN to protect your POS and enable auto screen locking."}
+                          ? "দোকান মালিক হিসেবে আপনার নিজস্ব ৪ থেকে ৯ সংখ্যার পিন কোড সেট করুন এবং স্ক্রিন লক সক্রিয় রাখুন।"
+                          : "Set your personal 4 to 9-digit Owner PIN to protect your POS and enable auto screen locking."}
                       </p>
                     </div>
                   </div>
@@ -3196,7 +3196,7 @@ export default function SettingsPage() {
                     <div className="flex gap-2">
                       <Input
                         type={showOwnerPin ? "text" : "password"}
-                        maxLength={6}
+                        maxLength={9}
                         value={pinCodeVal}
                         onChange={(e) => setPinCodeVal(e.target.value.replace(/[^0-9]/g, ""))}
                         placeholder="1234"
@@ -3308,8 +3308,8 @@ export default function SettingsPage() {
                       </div>
                       <p className="text-xs text-muted-foreground mt-0.5">
                         {lang === "bn"
-                          ? "দোকান মালিক হিসেবে প্রতিটি কর্মচারীর ৪-সংখ্যার পিন কোড দেখুন ও সরাসরি পরিবর্তন করুন। কর্মচারী এই পিন দিয়ে লগইন করতে পারবে।"
-                          : "View and update 4-digit PIN codes for your staff members. Employees can log in directly using this PIN."}
+                          ? "দোকান মালিক হিসেবে প্রতিটি কর্মচারীর ৪ থেকে ৯ সংখ্যার পিন কোড দেখুন ও সরাসরি পরিবর্তন করুন। কর্মচারী এই পিন দিয়ে লগইন করতে পারবে।"
+                          : "View and update 4 to 9-digit PIN codes for your staff members. Employees can log in directly using this PIN."}
                       </p>
                     </div>
                   </div>
@@ -3339,8 +3339,8 @@ export default function SettingsPage() {
                     </p>
                     <p className="text-[11px] text-muted-foreground leading-relaxed">
                       {lang === "bn"
-                        ? "কর্মচারী সাইন-ইন পেজে মোবাইল নম্বর বা ইউজারনেম লিখে আপনার সেট করা ৪-সংখ্যার পিন প্রবেশ করলেই সরাসরি তার কর্মচারী একাউন্ট ওপেন হবে।"
-                        : "Staff members can enter their registered phone/username and the 4-digit PIN configured below to immediately log in."}
+                        ? "কর্মচারী সাইন-ইন পেজে মোবাইল নম্বর বা ইউজারনেম লিখে আপনার সেট করা ৪ থেকে ৯ সংখ্যার পিন প্রবেশ করলেই সরাসরি তার কর্মচারী একাউন্ট ওপেন হবে।"
+                        : "Staff members can enter their registered phone/username and the 4 to 9-digit PIN configured below to immediately log in."}
                     </p>
                   </div>
                 </div>
@@ -3904,8 +3904,8 @@ export default function SettingsPage() {
               {selectedEmpForPin && (
                 <span>
                   {lang === "bn"
-                    ? `"${selectedEmpForPin.name || selectedEmpForPin.full_name || selectedEmpForPin.email}" এর জন্য ৪-সংখ্যার সিকিউরিটি পিন সেট করুন।`
-                    : `Set new 4-digit security PIN for "${selectedEmpForPin.name || selectedEmpForPin.full_name || selectedEmpForPin.email}".`}
+                    ? `"${selectedEmpForPin.name || selectedEmpForPin.full_name || selectedEmpForPin.email}" এর জন্য ৪ থেকে ৯ সংখ্যার সিকিউরিটি পিন সেট করুন।`
+                    : `Set new 4 to 9-digit security PIN for "${selectedEmpForPin.name || selectedEmpForPin.full_name || selectedEmpForPin.email}".`}
                 </span>
               )}
             </DialogDescription>
@@ -3922,7 +3922,7 @@ export default function SettingsPage() {
               <div className="flex items-center justify-between">
                 <Label className="text-xs font-semibold flex items-center gap-1.5">
                   <Lock className="size-3.5 text-amber-500" />
-                  <span>{lang === "bn" ? "নতুন ৪-সংখ্যার পিন কোড" : "New 4-Digit PIN"}</span>
+                  <span>{lang === "bn" ? "নতুন ৪ থেকে ৯ সংখ্যার পিন কোড" : "New 4 to 9-digit PIN"}</span>
                 </Label>
                 <button
                   type="button"
@@ -3936,7 +3936,7 @@ export default function SettingsPage() {
 
               <Input
                 type={showNewEmpPin ? "text" : "password"}
-                maxLength={6}
+                maxLength={9}
                 required
                 value={newEmpPin}
                 onChange={(e) => setNewEmpPin(e.target.value.replace(/[^0-9]/g, ""))}

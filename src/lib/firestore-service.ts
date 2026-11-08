@@ -3018,7 +3018,7 @@ export async function fsFirebaseAuthSync(data: { email: string; fullName?: strin
     }
     clearAuthProfile();
     clearQueryCache();
-    sessionStorage.setItem("app_pin_unlocked", "true");
+    sessionStorage.removeItem("app_pin_unlocked");
     if (userObj.role !== "employee") {
       localStorage.removeItem("cw_active_employee_session");
       localStorage.removeItem("cw_active_session_role");
@@ -3192,7 +3192,7 @@ export async function fsLogin(data: { identifier?: string; email?: string; phone
     }
     clearAuthProfile();
     clearQueryCache();
-    sessionStorage.setItem("app_pin_unlocked", "true");
+    sessionStorage.removeItem("app_pin_unlocked");
     if (userDoc.role !== "employee") {
       localStorage.removeItem("cw_active_employee_session");
       localStorage.removeItem("cw_active_session_role");
@@ -3258,7 +3258,7 @@ export async function fsRegister(data: { identifier?: string; email?: string; ph
   if (typeof window !== "undefined") {
     clearAuthProfile();
     clearQueryCache();
-    sessionStorage.setItem("app_pin_unlocked", "true");
+    sessionStorage.removeItem("app_pin_unlocked");
     localStorage.setItem("user", JSON.stringify(userDoc));
     localStorage.setItem("classicworld_auth_profile", JSON.stringify(userDoc));
     localStorage.setItem("cw-auth-profile", JSON.stringify(userDoc));
@@ -4728,7 +4728,7 @@ export async function fsEmployeeLogin(data: { username?: string; identifier?: st
     localStorage.setItem("cw_active_session_role", "employee");
     localStorage.setItem("auth_token", `token_emp_${employeeUser.id}`);
     localStorage.setItem("active_profile", "default");
-    sessionStorage.setItem("app_pin_unlocked", "true");
+    sessionStorage.removeItem("app_pin_unlocked");
     window.dispatchEvent(new Event("hz-employee-switched"));
     window.dispatchEvent(new Event("storage"));
   }

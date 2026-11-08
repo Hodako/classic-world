@@ -89,7 +89,7 @@ export default function AuthPage() {
       return;
     }
     if (typeof window !== "undefined") {
-      sessionStorage.setItem("app_pin_unlocked", "true");
+      sessionStorage.removeItem("app_pin_unlocked");
     }
     login(u, token);
     if (u.role === "owner" && !u.business_name) {

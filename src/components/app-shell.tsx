@@ -68,6 +68,8 @@ const desktopNavGroups: NavGroup[] = [
       { to: "/dashboard", labelKey: "home", icon: CustomHomeIcon, perm: "dashboard" },
       { to: "/products", labelKey: "products", icon: Package, perm: "products" },
       { to: "/labels", labelKey: "label_printer", icon: Barcode, perm: "products" },
+      { to: "/sales/today", labelKey: "sales", icon: ShoppingBag, perm: "sales", customLabel: "Today's Sale" },
+      { to: "/employee-hub", labelKey: "employees", icon: Users, perm: "sales", customLabel: "Employee Hub" },
       { to: "/sales", labelKey: "sales", icon: ShoppingBag, perm: "sales" },
       { to: "/customers", labelKey: "customers", icon: Users, perm: "parties" },
       { to: "/dues", labelKey: "due", icon: Banknote, perm: "parties" },
@@ -294,7 +296,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const EMPLOYEE_DEFAULT_HIDDEN = new Set([
     "/trackback", "/profits", "/losses", "/reports", "/ai-audits",
     "/purchase-reports", "/somiti", "/parties",
-    "/dues", "/customers", "/bank", "/cash-management",
+    "/dues", "/customers", "/bank",
   ]);
 
   const sidebarGroups = filterGroups(desktopNavGroups, perms).map(group => ({

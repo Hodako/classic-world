@@ -24,8 +24,8 @@ export function PinLockModal() {
   const checkLockState = useCallback(() => {
     if (typeof window === "undefined") return;
 
-    // PIN protection is active only if explicitly turned on in Settings
-    const enabled = localStorage.getItem("app_pin_code_enabled") === "true";
+    // PIN protection is active by default (unless explicitly turned off)
+    const enabled = localStorage.getItem("app_pin_code_enabled") !== "false";
 
     if (enabled) {
       const unlocked = sessionStorage.getItem("app_pin_unlocked") === "true";
@@ -336,7 +336,7 @@ export function PinLockModal() {
         verifyPin(nextVal);
         return;
       }
-      if (nextVal.length === 6) {
+      if (nextVal.length === 9) {
         verifyPin(nextVal);
         return;
       }
@@ -347,7 +347,7 @@ export function PinLockModal() {
   const handleDigit = (digit: string) => {
     if (lockCooldown > 0) return;
     playTapSound();
-    if (pinInput.length < 6) {
+    if (pinInput.length < 9) {
       const next = pinInput + digit;
       setPinInput(next);
       if (next.length >= 4) {

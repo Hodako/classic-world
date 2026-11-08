@@ -26,6 +26,7 @@ const TENANT_COLLECTIONS = new Set([
   "purchases",
   "expenses",
   "cashbox_logs",
+  "cashbox_entries",
   "withdrawals",
   "owner_wallet",
   "somiti",
@@ -50,6 +51,13 @@ const TENANT_COLLECTIONS = new Set([
   "employee_shoppings",
   "sms_logs",
   "recycle_bin",
+  "categories",
+  "brands",
+  "labels",
+  "label_designs",
+  "invoice_designs",
+  "invoice_settings",
+  "assets",
 ]);
 
 export function getTenantScope() {
@@ -59,7 +67,7 @@ export function getTenantScope() {
       user: null as any,
       rootOwnerId: null as string | null,
       activeProfile: "default",
-      isIsolatedTenant: false,
+      isIsolatedTenant: true,
       effectiveOwnerId: null as string | null,
     };
   }
@@ -67,20 +75,21 @@ export function getTenantScope() {
     (typeof window !== "undefined" ? localStorage.getItem("active_profile") : null) ||
     user.activeProfile ||
     "default";
-  const rawOwner = String(user.owner_id || user.owner_uid || user.id || "default");
-  const rootOwnerId = rawOwner.split(":")[0];
-  const isIsolatedTenant = Boolean(
-    user.is_isolated_tenant === true ||
-      (user.business_id &&
-        user.business_id !== "classic-world-default" &&
-        user.business_id !== "classic-world-settings")
-  );
+  const rawOwner = String(user.owner_id || user.owner_uid || user.id || "");
+  const rootOwnerId = rawOwner ? rawOwner.split(":")[0] : user.id;
+
+  const isLegacyRoot =
+    Boolean(user.email && user.email.toLowerCase() === "classicworld@gmail.com") ||
+    user.id === "classic-world-default" ||
+    user.is_legacy_root === true;
+
+  // EVERY business account is strictly isolated! Only legacy classicworld@gmail.com has legacy data.
+  const isIsolatedTenant = !isLegacyRoot;
+
   const effectiveOwnerId =
     activeProfile !== "default"
       ? `${rootOwnerId}:${activeProfile}`
-      : isIsolatedTenant
-      ? rootOwnerId
-      : null;
+      : rootOwnerId;
 
   return {
     user,
@@ -94,7 +103,7 @@ export function getTenantScope() {
 export function getBusinessDocIdForScope(
   rootOwnerId?: string | null,
   activeProfile: string = "default",
-  isIsolatedTenant: boolean = false,
+  isIsolatedTenant: boolean = true,
   userBusinessId?: string | null
 ): string {
   const cleanRoot = (rootOwnerId || "default").replace(/[^a-zA-Z0-9_-]/g, "_");
@@ -117,33 +126,44 @@ export function getBusinessDocIdForScope(
 
 export function belongsToCurrentTenant(docData: any, _colName?: string): boolean {
   const scope = getTenantScope();
-  if (!scope.user) return true;
+  // NEVER show private tenant data if not logged in or scope is missing!
+  if (!scope.user || !scope.rootOwnerId) return false;
 
   const docOwner = docData?.owner_id || docData?.owner_uid || null;
+  const docBusiness = docData?.business_id || null;
   const docProfile = docData?.profile_id || "default";
 
-  // 1. Secondary profile (e.g., "roki"): strictly show ONLY items created in this profile
+  // 1. Branch / secondary profile isolation (e.g. "Branch 2" or "prof_xxx"):
   if (scope.activeProfile !== "default") {
     return (
       docOwner === scope.effectiveOwnerId ||
-      (docProfile === scope.activeProfile && (!docOwner || docOwner === scope.rootOwnerId))
+      (docProfile === scope.activeProfile && (docOwner === scope.rootOwnerId || !docOwner))
     );
   }
 
-  // 2. Isolated tenant account on "default" profile: strictly show ONLY items owned by this business
-  if (scope.isIsolatedTenant) {
-    return (
-      (docOwner === scope.rootOwnerId ||
-        (scope.user.business_id && docData?.business_id === scope.user.business_id)) &&
-      docProfile === "default"
-    );
-  }
-
-  // 3. Original Classic World root account on "default" profile:
-  // Exclude any secondary profile items and exclude any isolated tenant items
+  // 2. Default profile check
   if (docProfile !== "default") return false;
-  if (docData?.is_isolated_tenant === true) return false;
-  if (docOwner && typeof docOwner === "string" && docOwner.includes(":")) return false;
+
+  // 3. Isolated Tenant Account (ANY standard business account):
+  // Strictly show ONLY documents that belong to this business or this owner
+  if (scope.isIsolatedTenant) {
+    const isOwnerMatch =
+      docOwner === scope.rootOwnerId ||
+      docOwner === scope.effectiveOwnerId ||
+      docOwner === scope.user.id;
+
+    const isBusinessMatch = Boolean(
+      scope.user.business_id &&
+      scope.user.business_id !== "classic-world-default" &&
+      docBusiness === scope.user.business_id
+    );
+
+    return isOwnerMatch || isBusinessMatch;
+  }
+
+  // 4. Legacy root admin account fallback (classicworld@gmail.com only)
+  if (docData?.is_isolated_tenant === true && docOwner !== scope.rootOwnerId) return false;
+  if (docBusiness && docBusiness.startsWith("biz_") && docBusiness !== scope.user.business_id) return false;
   if (
     docOwner &&
     docOwner !== scope.rootOwnerId &&
@@ -158,15 +178,19 @@ export function belongsToCurrentTenant(docData: any, _colName?: string): boolean
 function withTenantScope<T extends Record<string, any>>(data: T): T {
   if (!data || typeof data !== "object" || Array.isArray(data)) return data;
   const scope = getTenantScope();
-  if (!scope.user || !scope.effectiveOwnerId) return data;
+  if (!scope.user || !scope.rootOwnerId) return data;
+  const businessId =
+    data.business_id ||
+    scope.user.business_id ||
+    (scope.isIsolatedTenant ? `biz_${scope.rootOwnerId}` : "classic-world-default");
+
   const enriched: Record<string, any> = {
     ...data,
-    owner_id: data.owner_id || scope.effectiveOwnerId,
-    profile_id: data.profile_id || scope.activeProfile,
+    owner_id: data.owner_id || scope.effectiveOwnerId || scope.rootOwnerId,
+    business_id: businessId,
+    profile_id: data.profile_id || scope.activeProfile || "default",
+    is_isolated_tenant: scope.isIsolatedTenant,
   };
-  if (scope.isIsolatedTenant) {
-    enriched.is_isolated_tenant = true;
-  }
   return enriched as T;
 }
 
@@ -174,9 +198,10 @@ async function getDocs(
   q: any
 ): Promise<{ docs: any[]; empty: boolean; size: number; forEach: (cb: (doc: any) => void) => void }> {
   const snap = await fbGetDocs(q);
+  const qSegments = q?._query?.path?.segments || q?._path?.segments || [];
   const colName =
     q?.id ||
-    q?._query?.path?.segments?.[0] ||
+    (qSegments.length > 0 ? qSegments[qSegments.length - 1] : null) ||
     snap.docs?.[0]?.ref?.parent?.id ||
     "";
   if (!colName || !TENANT_COLLECTIONS.has(colName)) {
@@ -2487,15 +2512,18 @@ export function fsGetCurrentUser() {
   } catch (_) {}
   const authUser = auth.currentUser;
   if (authUser && !authUser.isAnonymous) {
+    const isRootDefault = authUser.email?.toLowerCase().trim() === "classicworld@gmail.com";
     return {
       id: authUser.uid,
-      email: authUser.email || "user@classicworld.com",
-      full_name: authUser.displayName || "Classic World User",
+      owner_id: authUser.uid,
+      email: authUser.email || `${authUser.uid}@classicworld.com`,
+      full_name: authUser.displayName || "Store Owner",
       role: "owner",
       activated: true,
-      business_id: "classic-world-default",
-      business_name: "Classic World",
-      logo_url: authUser.photoURL || "/logo.png",
+      is_isolated_tenant: !isRootDefault,
+      business_id: isRootDefault ? "classic-world-default" : `biz_${authUser.uid}`,
+      business_name: isRootDefault ? "Classic World" : (authUser.displayName ? `${authUser.displayName}'s Shop` : "My Business"),
+      logo_url: authUser.photoURL || "",
       avatar_url: authUser.photoURL || undefined,
     };
   }
@@ -2888,15 +2916,9 @@ export async function fsFirebaseAuthSync(data: { email: string; fullName?: strin
     } catch (_) {}
   }
 
-  const isExistingIsolated = Boolean(
-    existingUser &&
-      (existingUser.is_isolated_tenant === true ||
-        (existingUser.business_id &&
-          existingUser.business_id !== "classic-world-default" &&
-          existingUser.business_id !== "classic-world-settings"))
-  );
+  const isLegacyRoot = cleanEmail === "classicworld@gmail.com" || existingUser?.id === "classic-world-default";
+  const isIsolated = !isLegacyRoot && (!matchedEmp || Boolean(matchedEmp.is_isolated_tenant));
   const isNewOwnerAccount = !existingUser && !matchedEmp;
-  const isIsolated = isExistingIsolated || isNewOwnerAccount;
 
   const activeProfile = existingUser?.activeProfile || "default";
   const rootOwnerId = existingUser?.id || userId;
@@ -3132,12 +3154,8 @@ export async function fsLogin(data: { identifier?: string; email?: string; phone
     }
   }
 
-  const isIsolated = Boolean(
-    userDoc.is_isolated_tenant === true ||
-      (userDoc.business_id &&
-        userDoc.business_id !== "classic-world-default" &&
-        userDoc.business_id !== "classic-world-settings")
-  );
+  const isLegacyRoot = (userDoc.email || ident).toLowerCase().trim() === "classicworld@gmail.com" || userDoc.id === "classic-world-default";
+  const isIsolated = !isLegacyRoot;
   const activeProfile = userDoc.activeProfile || "default";
   const activeProfObj =
     activeProfile !== "default" && Array.isArray(userDoc.profiles)

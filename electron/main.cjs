@@ -657,6 +657,8 @@ async function performSilentPrint(html, printerName, options = {}) {
           console.warn("[Windows POS] Label raster conversion error:", labelRasterErr);
           try { printWin.webContents.setZoomFactor(1.0); } catch (_) {}
         }
+      }
+
       let measuredReceiptHeightMm = null;
       if (!isThermalLabel && !isA4) {
         try {

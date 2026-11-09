@@ -339,7 +339,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   if (!user) return null;
 
   const perms = resolvePermissions(user.role, user.permissions);
-  const isEmployee = activeEmpSession ? true : user.role === "employee";
+  const isEmployee = Boolean(activeEmpSession || user.role === "employee" || (user as any).employee_id);
   const allowedPages = activeEmpSession?.allowedPages || (user as any).allowedPages;
 
   // Pages hidden from employees by default
@@ -373,21 +373,21 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         if (allowedPages && Array.isArray(allowedPages) && allowedPages.length > 0) {
           return allowedPages.includes(item.to);
         }
+        return false;
       }
       return !item.perm || Boolean(perms?.[item.perm]);
     })
   })).filter(group => group.items.length > 0);
 
-  const bottomNav = mobileNav.filter(item => {
-    if (isEmployee) {
-      if (EMPLOYEE_ALWAYS_ALLOWED.has(item.to)) return true;
-      if (EMPLOYEE_DEFAULT_HIDDEN.has(item.to)) return false;
-      if (allowedPages && Array.isArray(allowedPages) && allowedPages.length > 0) {
-        return allowedPages.includes(item.to) || item.to === "/more";
-      }
-    }
-    return !item.perm || Boolean(perms?.[item.perm]);
-  });
+  const bottomNav = isEmployee
+    ? [
+        { to: "/dashboard", labelKey: "home" as const, icon: CustomHomeIcon },
+        { to: "/sales", labelKey: "sales" as const, icon: ShoppingBag },
+        { to: "/products", labelKey: "products" as const, icon: Package },
+        { to: "/employee-hub", labelKey: "employees" as const, icon: Users, customLabel: "Hub" },
+        { to: "/more", labelKey: "more" as const, icon: MoreHorizontal },
+      ]
+    : mobileNav.filter(item => !item.perm || Boolean(perms?.[item.perm]));
 
   const brandName = user.business_name || "Classic World";
   const userInitials = user.email?.slice(0, 2).toUpperCase() ?? "CW";

@@ -138,13 +138,13 @@ function InvoiceDocumentView({
           )}
         </div>
 
-        {/* Dashed Separator */}
-        <div className="border-t border-dashed border-black my-1.5" />
+        {/* Single Header Separator */}
+        <div className="border-t border-dashed border-black my-1" />
 
         {/* Invoice Meta Section */}
         <div className="text-[11px] leading-snug space-y-0.5 text-black">
           <div className="flex justify-between items-center font-mono">
-            <span className="font-bold">ইনভয়েস: {invoiceNo || "#INV-928174"}</span>
+            <span className="font-bold">বিল: #{invoiceNo ? invoiceNo.replace(/^INV-?/i, "").slice(-8) : "928174"}</span>
             <span className="text-[10.5px]">{invoiceDate}</span>
           </div>
           {customerName && (
@@ -155,35 +155,35 @@ function InvoiceDocumentView({
           )}
         </div>
 
-        {/* Dashed Separator */}
-        <div className="border-t border-dashed border-black my-1.5" />
+        {/* Single Table Top Separator */}
+        <div className="border-t border-dashed border-black my-1" />
 
         {/* Items Table */}
         <table className="w-full text-left border-collapse text-[11px]">
           <thead>
             <tr className="border-b border-dashed border-black">
-              <th className="py-1 text-left font-bold text-[10.5px]">বিবরণ (Item)</th>
-              <th className="py-1 text-center font-bold text-[10.5px] w-12">পরিমাণ</th>
-              <th className="py-1 text-right font-bold text-[10.5px] w-16">মূল্য</th>
+              <th className="py-1 text-left font-bold text-[10.5px]">পণ্য</th>
+              <th className="py-1 text-center font-bold text-[10.5px] w-12">পরি.</th>
+              <th className="py-1 text-right font-bold text-[10.5px] w-16">টাকা</th>
             </tr>
           </thead>
           <tbody>
             {items.length === 0 ? (
               <tr>
-                <td colSpan={3} className="py-6 text-center text-zinc-500 italic text-[11px]">
+                <td colSpan={3} className="py-4 text-center text-zinc-500 italic text-[11px]">
                   কোন পণ্য যুক্ত করা হয়নি।
                 </td>
               </tr>
             ) : (
               items.map((item, index) => (
-                <tr key={`${item.product.id}-${index}`} className="border-b border-dotted border-zinc-300">
-                  <td className="py-1.5 pr-1 font-bold text-black break-words leading-tight" style={{ wordBreak: "normal", overflowWrap: "break-word" }}>
+                <tr key={`${item.product.id}-${index}`}>
+                  <td className="py-1 pr-1 font-bold text-black break-words leading-tight" style={{ wordBreak: "normal", overflowWrap: "break-word" }}>
                     {index + 1}. {item.product.name}
                   </td>
-                  <td className="py-1.5 px-1 text-center font-mono font-medium text-black">
+                  <td className="py-1 px-1 text-center font-mono font-medium text-black">
                     {item.qty}
                   </td>
-                  <td className="py-1.5 text-right font-mono font-bold text-black">
+                  <td className="py-1 text-right font-mono font-bold text-black">
                     ৳{(item.qty * item.sellPrice).toLocaleString()}
                   </td>
                 </tr>
@@ -192,49 +192,52 @@ function InvoiceDocumentView({
           </tbody>
         </table>
 
-        {/* Dashed Separator */}
-        <div className="border-t border-dashed border-black my-1.5" />
+        {/* Single Totals Separator */}
+        <div className="border-t border-dashed border-black my-1" />
 
         {/* Totals Section */}
-        <div className="space-y-1 text-[11.5px] text-black">
-          <div className="flex justify-between font-bold">
-            <span>মোট মূল্য (Subtotal):</span>
-            <span className="font-mono">৳{subtotal.toLocaleString()}</span>
-          </div>
-
+        <div className="space-y-0.5 text-[11.5px] text-black">
           {discountAmount > 0 && (
-            <div className="flex justify-between font-bold text-red-600">
-              <span>বিশেষ ছাড় (Discount):</span>
-              <span className="font-mono">-৳{discountAmount.toLocaleString()}</span>
-            </div>
+            <>
+              <div className="flex justify-between font-bold">
+                <span>মোট:</span>
+                <span className="font-mono">৳{subtotal.toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between font-bold text-red-600">
+                <span>ছাড়:</span>
+                <span className="font-mono">-৳{discountAmount.toLocaleString()}</span>
+              </div>
+            </>
           )}
 
-          {/* Boxed Total Payable */}
-          <div className="border-y-2 border-black py-1 my-1 flex justify-between font-black text-xs sm:text-[13px]">
-            <span>সর্বমোট (Total Payable):</span>
+          {/* Clean Total Payable */}
+          <div className="border-t border-dashed border-black py-0.5 my-0.5 flex justify-between font-black text-xs sm:text-[13px]">
+            <span>সর্বমোট:</span>
             <span className="font-mono">৳{total.toLocaleString()}</span>
           </div>
 
           <div className="flex justify-between font-bold text-emerald-600">
-            <span>পরিশোধ (Cash Paid):</span>
+            <span>জমা:</span>
             <span className="font-mono">৳{paidAmount.toLocaleString()}</span>
           </div>
 
-          <div className={`flex justify-between font-bold ${due > 0 ? "text-red-600" : "text-black"}`}>
-            <span>বকেয়া (Due):</span>
-            <span className="font-mono">৳{due.toLocaleString()}</span>
-          </div>
+          {due > 0 && (
+            <div className="flex justify-between font-bold text-red-600">
+              <span>বকেয়া:</span>
+              <span className="font-mono">৳{due.toLocaleString()}</span>
+            </div>
+          )}
 
           {changeAmount > 0 && (
             <div className="flex justify-between font-semibold text-zinc-700">
-              <span>ফেরত (Change Return):</span>
+              <span>ফেরত:</span>
               <span className="font-mono">৳{changeAmount.toLocaleString()}</span>
             </div>
           )}
 
-          <div className="flex justify-between text-[10.5px] pt-1 text-zinc-600">
-            <span>পেমেন্ট মাধ্যম:</span>
-            <span className="font-bold uppercase text-black">{paymentStatus === "DUE" ? "CREDIT (বাকী)" : "CASH (নগদ)"}</span>
+          <div className="flex justify-between text-[10px] pt-0.5 text-zinc-600">
+            <span>মাধ্যম:</span>
+            <span className="font-bold uppercase text-black">{paymentStatus === "DUE" ? "বাকী" : "নগদ"}</span>
           </div>
         </div>
       </div>

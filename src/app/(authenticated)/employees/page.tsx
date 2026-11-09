@@ -142,6 +142,7 @@ export default function EmployeesPage() {
   const [empEmail, setEmpEmail] = useState("");
   const [empDesignation, setEmpDesignation] = useState("Sales Staff");
   const [empSalary, setEmpSalary] = useState("");
+  const [empAdvanceLimit, setEmpAdvanceLimit] = useState("");
   const [empStatus, setEmpStatus] = useState<"active" | "inactive">("active");
   const [empPassword, setEmpPassword] = useState("1234");
   const [empPin, setEmpPin] = useState("1234");
@@ -209,18 +210,40 @@ export default function EmployeesPage() {
 
   const [busy, setBusy] = useState(false);
 
+  const activeEmpSession = useMemo(() => {
+    if (typeof window === "undefined") return null;
+    try {
+      return JSON.parse(localStorage.getItem("cw_active_employee_session") || "null");
+    } catch {
+      return null;
+    }
+  }, []);
+
+  const isEmployeeRole = user?.role === "employee" || Boolean(activeEmpSession);
+
   // Identify currently logged-in employee
   const currentEmployee = useMemo(() => {
     if (!user) return null;
+    const targetId = activeEmpSession?.id || (user as any)?.employee_id || user.id;
     return employees.find(e =>
+      e.id === targetId ||
       (e.email && user.email && e.email.toLowerCase() === user.email.toLowerCase()) ||
       (e.phone && (user as any)?.phone && e.phone.replace(/[^0-9]/g, "") === (user as any).phone.replace(/[^0-9]/g, "")) ||
-      (e.name && user.full_name && e.name.toLowerCase() === user.full_name.toLowerCase()) ||
-      e.id === user.id
-    ) || null;
-  }, [employees, user]);
+      (e.name && user.full_name && e.name.toLowerCase() === user.full_name.toLowerCase())
+    ) || (isEmployeeRole ? {
+      id: targetId,
+      name: user.full_name || "Employee",
+      base_salary: (user as any)?.base_salary || 0,
+      monthly_salary: (user as any)?.monthly_salary || 0,
+      advance_limit: (user as any)?.advance_limit,
+      designation: "Staff",
+      status: "active",
+      role: "employee",
+      created_at: new Date().toISOString(),
+    } as any : null);
+  }, [employees, user, activeEmpSession, isEmployeeRole]);
 
-  const [shopFilter, setShopFilter] = useState<"all" | "my">(user?.role === "employee" ? "my" : "all");
+  const [shopFilter, setShopFilter] = useState<"all" | "my">(isEmployeeRole ? "my" : "all");
 
   const [customItemOpen, setCustomItemOpen] = useState(false);
   const [customItemName, setCustomItemName] = useState("");
@@ -563,6 +586,8 @@ export default function EmployeesPage() {
             email: empEmail.trim() || null,
             designation: empDesignation,
             base_salary: Number(empSalary) || 0,
+            monthly_salary: Number(empSalary) || 0,
+            advance_limit: empAdvanceLimit ? Number(empAdvanceLimit) : (Number(empSalary) || 0),
             status: empStatus,
             password: empPassword.trim() || "1234",
             plain_password: empPassword.trim() || "1234",
@@ -579,6 +604,8 @@ export default function EmployeesPage() {
             email: empEmail.trim() || null,
             designation: empDesignation,
             base_salary: Number(empSalary) || 0,
+            monthly_salary: Number(empSalary) || 0,
+            advance_limit: empAdvanceLimit ? Number(empAdvanceLimit) : (Number(empSalary) || 0),
             status: empStatus,
             password: empPassword.trim() || "1234",
             plain_password: empPassword.trim() || "1234",
@@ -596,6 +623,7 @@ export default function EmployeesPage() {
       setEmpPhone("");
       setEmpEmail("");
       setEmpSalary("");
+      setEmpAdvanceLimit("");
       setEmpPassword("1234");
       setEmpPin("1234");
     } catch (err: any) {
@@ -857,6 +885,7 @@ export default function EmployeesPage() {
                 setEmpPhone("");
                 setEmpEmail("");
                 setEmpSalary("");
+                setEmpAdvanceLimit("");
                 setEmpPassword("1234");
                 setEmpPin("1234");
                 setAddEmpOpen(true);
@@ -944,6 +973,7 @@ export default function EmployeesPage() {
                 setEmpPhone("");
                 setEmpEmail("");
                 setEmpSalary("");
+                setEmpAdvanceLimit("");
                 setEmpPassword("1234");
                 setEmpPin("1234");
                 setAddEmpOpen(true);
@@ -1035,16 +1065,21 @@ export default function EmployeesPage() {
       </div>
 
       {/* Employee Personal KPI Cards (if user is logged in as employee) */}
-      {user?.role === "employee" && (
+      {isEmployeeRole && (
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-foreground flex items-center gap-1.5">
               <Users className="size-3.5 text-primary" />
               {lang === "bn" ? "আমার বেতন ও অগ্রিম হিসাব (" + (currentEmployee?.name || user?.full_name || "Employee") + ")" : "My Salary & Advance Breakdown"}
             </span>
-            <Badge variant="outline" className="text-[10px] bg-primary/10 text-primary border-primary/20">
-              {currentEmployee?.designation || "Staff"}
-            </Badge>
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] text-muted-foreground">
+                {lang === "bn" ? `উত্তোলনের সীমা: ৳${fmtMoney(currentEmployee?.advance_limit ?? currentEmployee?.base_salary ?? 0)}` : `Advance Limit: ৳${fmtMoney(currentEmployee?.advance_limit ?? currentEmployee?.base_salary ?? 0)}`}
+              </span>
+              <Badge variant="outline" className="text-[10px] bg-primary/10 text-primary border-primary/20">
+                {currentEmployee?.designation || "Staff"}
+              </Badge>
+            </div>
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 sm:gap-3">
@@ -1059,15 +1094,37 @@ export default function EmployeesPage() {
               <span className="text-[9px] text-muted-foreground block">{lang === "bn" ? "মাসিক চুক্তি" : "Per Month"}</span>
             </Card>
 
+            <Card className="p-2.5 sm:p-3 rounded-xl sm:rounded-2xl bg-card border-amber-500/20 bg-amber-500/5 space-y-1 shadow-2xs">
+              <div className="flex items-center justify-between text-muted-foreground">
+                <span className="text-[10px] sm:text-[11px] font-semibold">{lang === "bn" ? "অগ্রিম সীমা" : "Advance Limit"}</span>
+                <Banknote className="size-3.5 text-amber-500" />
+              </div>
+              <p className="text-xs sm:text-base font-bold font-charukola text-amber-600 dark:text-amber-400">
+                ৳{fmtMoney(currentEmployee?.advance_limit ?? currentEmployee?.base_salary ?? 0)}
+              </p>
+              <span className="text-[9px] text-muted-foreground block">{lang === "bn" ? "সর্বোচ্চ বরাদ্দ" : "Max Limit"}</span>
+            </Card>
+
             <Card className="p-2.5 sm:p-3 rounded-xl sm:rounded-2xl bg-card border-border/80 space-y-1 shadow-2xs">
               <div className="flex items-center justify-between text-muted-foreground">
-                <span className="text-[10px] sm:text-[11px] font-semibold">{lang === "bn" ? "চলতি মাসে নেওয়া অগ্রিম" : "Advance Taken"}</span>
+                <span className="text-[10px] sm:text-[11px] font-semibold">{lang === "bn" ? "চলতি মাসে নেওয়া" : "Advance Taken"}</span>
                 <TrendingDown className="size-3.5 text-orange-500" />
               </div>
               <p className="text-xs sm:text-base font-bold font-charukola text-orange-600">
                 ৳{fmtMoney(myEmployeeStats?.advancesInMonth || 0)}
               </p>
               <span className="text-[9px] text-orange-600/80 block">{lang === "bn" ? "বেতন থেকে কর্তনযোগ্য" : "Deductible"}</span>
+            </Card>
+
+            <Card className="p-2.5 sm:p-3 rounded-xl sm:rounded-2xl bg-card border-border/80 space-y-1 shadow-2xs">
+              <div className="flex items-center justify-between text-muted-foreground">
+                <span className="text-[10px] sm:text-[11px] font-semibold">{lang === "bn" ? "অবশিষ্ট সুযোগ" : "Available Quota"}</span>
+                <Sparkles className="size-3.5 text-purple-600" />
+              </div>
+              <p className="text-xs sm:text-base font-bold font-charukola text-purple-600">
+                ৳{fmtMoney(Math.max(0, (Number(currentEmployee?.advance_limit ?? currentEmployee?.base_salary ?? 0)) - (myEmployeeStats?.advancesInMonth || 0)))}
+              </p>
+              <span className="text-[9px] text-purple-600/80 block">{lang === "bn" ? "এখন তুলতে পারবেন" : "Can withdraw"}</span>
             </Card>
 
             <Card className="p-2.5 sm:p-3 rounded-xl sm:rounded-2xl bg-card border-border/80 space-y-1 shadow-2xs">
@@ -1083,7 +1140,7 @@ export default function EmployeesPage() {
 
             <Card className="p-2.5 sm:p-3 rounded-xl sm:rounded-2xl bg-card border-border/80 space-y-1 shadow-2xs">
               <div className="flex items-center justify-between text-muted-foreground">
-                <span className="text-[10px] sm:text-[11px] font-semibold">{lang === "bn" ? "ক্যাশবক্স ব্যালেন্স" : "Cashbox Live"}</span>
+                <span className="text-[10px] sm:text-[11px] font-semibold">{lang === "bn" ? "ক্যাশবক্স" : "Cashbox Live"}</span>
                 <Banknote className="size-3.5 text-blue-600" />
               </div>
               <p className="text-xs sm:text-base font-bold font-charukola text-blue-600">
@@ -1354,6 +1411,7 @@ export default function EmployeesPage() {
                             setEmpEmail(e.email || "");
                             setEmpDesignation(e.designation || "Sales Staff");
                             setEmpSalary(e.base_salary ? String(e.base_salary) : "");
+                            setEmpAdvanceLimit(e.advance_limit !== undefined ? String(e.advance_limit) : (e.base_salary ? String(e.base_salary) : ""));
                             setEmpStatus(e.status || "active");
                             setEmpPassword((e as any).plain_password || (e as any).password || (e as any).pin || "1234");
                             setEmpPin((e as any).pin || (e as any).plain_password || (e as any).password || "1234");
@@ -1906,7 +1964,7 @@ export default function EmployeesPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div className="space-y-1">
                 <Label className="text-xs">{lang === "bn" ? "মাসিক মূল বেতন (৳)" : "Base Monthly Salary (৳)"}</Label>
                 <Input
@@ -1916,6 +1974,18 @@ export default function EmployeesPage() {
                   onChange={e => setEmpSalary(e.target.value)}
                   className="h-9 text-xs font-charukola"
                 />
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-xs">{lang === "bn" ? "অগ্রিম তোলার সর্বোচ্চ সীমা (৳)" : "Advance Limit (৳)"}</Label>
+                <Input
+                  type="number"
+                  placeholder={empSalary || "12000"}
+                  value={empAdvanceLimit}
+                  onChange={e => setEmpAdvanceLimit(e.target.value)}
+                  className="h-9 text-xs font-charukola"
+                />
+                <span className="text-[9px] text-muted-foreground block">{lang === "bn" ? "খালি রাখলে মূল বেতনই সীমা" : "Default is base salary"}</span>
               </div>
 
               <div className="space-y-1">

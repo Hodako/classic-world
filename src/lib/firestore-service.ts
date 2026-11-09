@@ -4124,7 +4124,9 @@ export async function fsAddEmployee(data: any) {
     phone: phone || null,
     email: email || null,
     designation: (data.designation || "Staff").trim(),
-    base_salary: Number(data.base_salary) || 0,
+    base_salary: Number(data.base_salary || data.monthly_salary) || 0,
+    monthly_salary: Number(data.monthly_salary || data.base_salary) || 0,
+    advance_limit: Number(data.advance_limit) || (Number(data.base_salary || data.monthly_salary) || 0),
     status: data.status || "active",
     permissions: data.permissions || {
       can_sales: true,
@@ -4174,7 +4176,14 @@ export async function fsUpdateEmployee(id: string, data: any) {
     if (phone !== undefined) updatePayload.phone = phone || null;
     if (email !== undefined) updatePayload.email = email || null;
     if (data.designation !== undefined) updatePayload.designation = data.designation;
-    if (data.base_salary !== undefined) updatePayload.base_salary = Number(data.base_salary) || 0;
+    if (data.base_salary !== undefined || data.monthly_salary !== undefined) {
+      const sal = Number(data.base_salary ?? data.monthly_salary) || 0;
+      updatePayload.base_salary = sal;
+      updatePayload.monthly_salary = sal;
+    }
+    if (data.advance_limit !== undefined) {
+      updatePayload.advance_limit = Number(data.advance_limit) || 0;
+    }
     if (data.status !== undefined) updatePayload.status = data.status;
     if (data.permissions !== undefined) updatePayload.permissions = data.permissions;
     if (data.notes !== undefined) updatePayload.notes = data.notes;
@@ -4718,6 +4727,9 @@ export async function fsEmployeeLogin(data: { username?: string; identifier?: st
     phone: matchedEmp.phone || undefined,
     full_name: matchedEmp.name || matchedEmp.full_name || ident || "Shop Staff",
     role: "employee",
+    base_salary: Number(matchedEmp.base_salary || matchedEmp.monthly_salary) || 0,
+    monthly_salary: Number(matchedEmp.monthly_salary || matchedEmp.base_salary) || 0,
+    advance_limit: matchedEmp.advance_limit !== undefined ? Number(matchedEmp.advance_limit) : (Number(matchedEmp.base_salary || matchedEmp.monthly_salary) || 0),
     permissions: matchedEmp.permissions || {
       can_sales: true,
       can_customers: true,

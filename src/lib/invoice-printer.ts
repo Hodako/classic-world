@@ -190,9 +190,9 @@ export function buildInvoiceHtml(data: PrintInvoiceParams, settingsOverride?: Pa
           showItemsHeader
             ? `<thead>
                 <tr style="border-bottom: 1px dashed #000000;">
-                  <th style="text-align: left; font-size: ${smallFontPt}pt; width: 52%; word-break: break-word;">বিবরণ</th>
-                  <th style="text-align: center; font-size: ${smallFontPt}pt; width: 20%;">পরিমাণ</th>
-                  <th style="text-align: right; font-size: ${smallFontPt}pt; width: 28%;">মূল্য</th>
+                  <th style="text-align: left; font-size: ${smallFontPt}pt; width: 54%; word-break: break-word;">পণ্য</th>
+                  <th style="text-align: center; font-size: ${smallFontPt}pt; width: 18%;">পরি.</th>
+                  <th style="text-align: right; font-size: ${smallFontPt}pt; width: 28%;">টাকা</th>
                 </tr>
               </thead>`
             : ""
@@ -202,21 +202,16 @@ export function buildInvoiceHtml(data: PrintInvoiceParams, settingsOverride?: Pa
             .map(
               (item, idx) => `
             <tr>
-              <td style="padding: 1.5px 0; text-align: left; vertical-align: top; font-weight: 600; font-size: ${baseFontPt}pt; color: #000000; width: 52%; word-break: break-word; overflow-wrap: break-word; line-height: 1.18;">
+              <td style="padding: 1px 0; text-align: left; vertical-align: top; font-weight: 600; font-size: ${baseFontPt}pt; color: #000000; width: 54%; word-break: break-word; overflow-wrap: break-word; line-height: 1.15;">
                 ${idx + 1}. ${escapeHtml(item.product.name)}
               </td>
-              <td style="padding: 1.5px 2px; text-align: center; vertical-align: top; font-family: monospace; font-size: ${baseFontPt}pt; font-weight: 600; color: #000000; width: 20%;">
+              <td style="padding: 1px 2px; text-align: center; vertical-align: top; font-family: monospace; font-size: ${baseFontPt}pt; font-weight: 600; color: #000000; width: 18%;">
                 ${item.qty}
               </td>
-              <td style="padding: 1.5px 0; text-align: right; vertical-align: top; font-family: monospace; font-weight: 600; font-size: ${baseFontPt}pt; color: #000000; width: 28%; white-space: nowrap;">
+              <td style="padding: 1px 0; text-align: right; vertical-align: top; font-family: monospace; font-weight: 600; font-size: ${baseFontPt}pt; color: #000000; width: 28%; white-space: nowrap;">
                 ৳${(Number(item.qty || 0) * Number(item.sellPrice || 0)).toLocaleString()}
               </td>
-            </tr>
-            ${
-              idx < data.items.length - 1
-                ? `<tr><td colspan="3" style="border-top: 1px dotted #000000; height: 1px; padding: 0; margin: 0;"></td></tr>`
-                : ""
-            }`
+            </tr>`
             )
             .join("")}
         </tbody>
@@ -243,10 +238,12 @@ export function buildInvoiceHtml(data: PrintInvoiceParams, settingsOverride?: Pa
     .filter(Boolean)
     .join("");
 
+  const cleanShortInv = String(data.invoiceNo || "").replace(/^INV-?/i, "").slice(-8);
+
   const metaInner = [
     vis.showInvoiceNo !== false || vis.showDateTime !== false
       ? `<div class="receipt-row" style="display: flex; justify-content: space-between; align-items: center; font-family: monospace; font-weight: 600;">
-          ${vis.showInvoiceNo !== false ? `<span style="font-weight: 700;">ইনভয়েস: ${escapeHtml(data.invoiceNo)}</span>` : "<span></span>"}
+          ${vis.showInvoiceNo !== false ? `<span style="font-weight: 700;">বিল: #${escapeHtml(cleanShortInv || data.invoiceNo)}</span>` : "<span></span>"}
           ${vis.showDateTime !== false ? `<span style="font-weight: 600;">${dateStr}</span>` : ""}
         </div>`
       : "",
@@ -264,27 +261,27 @@ export function buildInvoiceHtml(data: PrintInvoiceParams, settingsOverride?: Pa
     .join("");
 
   const totalsInner = [
-    vis.showSubtotal !== false
+    vis.showSubtotal !== false && data.discountAmount > 0
       ? `<div class="receipt-row" style="display: flex; justify-content: space-between; font-weight: 600;">
-          <span>মোট মূল্য:</span>
+          <span>মোট:</span>
           <span style="font-family: monospace; font-weight: 600;">৳${data.subtotal.toLocaleString()}</span>
         </div>`
       : "",
     vis.showDiscount !== false && data.discountAmount > 0
       ? `<div class="receipt-row" style="display: flex; justify-content: space-between; font-weight: 600; color: #000000;">
-          <span>বিশেষ ছাড়:</span>
+          <span>ছাড়:</span>
           <span style="font-family: monospace; font-weight: 600;">-৳${data.discountAmount.toLocaleString()}</span>
         </div>`
       : "",
     vis.showTotal !== false
-      ? `<div class="receipt-row" style="border-top: 1px solid #000000; border-bottom: 1px solid #000000; padding: 1.5px 0; margin: 1.5px 0; display: flex; justify-content: space-between; font-size: ${largeFontPt}pt; font-weight: 700;">
+      ? `<div class="receipt-row" style="border-top: 1px dashed #000000; padding: 1.5px 0; margin-top: 1.5px; display: flex; justify-content: space-between; font-size: ${largeFontPt}pt; font-weight: 700;">
           <span style="font-weight: 700;">সর্বমোট:</span>
           <span style="font-family: monospace; font-weight: 700;">৳${data.total.toLocaleString()}</span>
         </div>`
       : "",
     vis.showPaid !== false
       ? `<div class="receipt-row" style="display: flex; justify-content: space-between; font-weight: 600; color: #000000;">
-          <span>পরিশোধ:</span>
+          <span>জমা:</span>
           <span style="font-family: monospace; font-weight: 600;">৳${data.paidAmount.toLocaleString()}</span>
         </div>`
       : "",
@@ -295,16 +292,11 @@ export function buildInvoiceHtml(data: PrintInvoiceParams, settingsOverride?: Pa
           ${data.splitBank && data.splitBank > 0 ? `<div class="receipt-row" style="display: flex; justify-content: space-between; font-weight: 600;"><span>• ব্যাংক:</span><span style="font-family: monospace; font-weight: 600;">৳${data.splitBank.toLocaleString()}</span></div>` : ""}
         </div>`
       : "",
-    vis.showDue !== false
-      ? data.due > 0
-        ? `<div class="receipt-row" style="display: flex; justify-content: space-between; font-weight: 700; color: #000000;">
-            <span>বকেয়া:</span>
-            <span style="font-family: monospace; font-weight: 700;">৳${data.due.toLocaleString()}</span>
-          </div>`
-        : `<div class="receipt-row" style="display: flex; justify-content: space-between; font-weight: 600;">
-            <span>বকেয়া:</span>
-            <span style="font-family: monospace; font-weight: 600;">৳0</span>
-          </div>`
+    vis.showDue !== false && data.due > 0
+      ? `<div class="receipt-row" style="display: flex; justify-content: space-between; font-weight: 700; color: #000000;">
+          <span>বকেয়া:</span>
+          <span style="font-family: monospace; font-weight: 700;">৳${data.due.toLocaleString()}</span>
+        </div>`
       : "",
     vis.showChangeReturn !== false && (data.changeAmount || 0) > 0
       ? `<div class="receipt-row" style="display: flex; justify-content: space-between; font-weight: 600;">
@@ -314,7 +306,7 @@ export function buildInvoiceHtml(data: PrintInvoiceParams, settingsOverride?: Pa
       : "",
     vis.showPaymentMode !== false
       ? `<div class="receipt-row" style="display: flex; justify-content: space-between; font-size: ${smallFontPt}pt; font-weight: 600; color: #000000; margin-top: 1px;">
-          <span>পেমেন্ট মাধ্যম:</span>
+          <span>মাধ্যম:</span>
           <span style="font-weight: 700; color: #000000;">${escapeHtml(data.paymentMode || (data.due > 0 ? "বাকী" : "নগদ"))}</span>
         </div>`
       : "",

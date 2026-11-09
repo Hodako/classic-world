@@ -130,6 +130,8 @@ export function generateCustomPosInvoiceCanvas(data: CustomInvoiceData): HTMLCan
   y += 12 * scale;
 
   // 2. INVOICE META
+  const shortInv = `#${(data.invoiceNo || "").replace(/^INV-?/i, "").slice(-8)}`;
+  drawText(`Bill: ${shortInv}`, pad, y, { weight: "bold", font: "monospace", sizePx: 10 * scale });
   drawText(data.date, canvas.width - pad, y, { align: "right", font: "monospace", sizePx: 10 * scale });
   y += 14 * scale;
 
@@ -139,88 +141,96 @@ export function generateCustomPosInvoiceCanvas(data: CustomInvoiceData): HTMLCan
     y += 14 * scale;
   }
 
-  drawDashedLine(y);
-  y += 12 * scale;
+  drawSolidLine(y, 1);
+  y += 10 * scale;
 
   // 3. TABLE HEADERS
   drawText("ITEM", pad, y, { weight: "bold", sizePx: 10 * scale });
   drawText("PRICE", canvas.width - pad, y, { align: "right", weight: "bold", sizePx: 10 * scale });
   y += 6 * scale;
 
-  drawSolidLine(y, 1);
-  y += 12 * scale;
+  drawDashedLine(y);
+  y += 10 * scale;
 
-  // 4. ITEMS LIST
+  // 4. ITEMS LIST (Compact, without duplicate dashed dividers between every row)
   data.items.forEach((item, idx) => {
-    // Truncate long item names with 1. , 2. numbering
     let name = `${idx + 1}. ${item.name}`;
     if (name.length > 28) name = name.substring(0, 26) + "..";
 
-    drawText(name, pad, y, { weight: "bold", sizePx: 10.5 * scale });
+    drawText(name, pad, y, { weight: "bold", sizePx: 10 * scale });
     
     const lineTotal = (item.qty * item.price).toLocaleString();
     drawText(`৳${lineTotal}`, canvas.width - pad, y, {
       align: "right",
       weight: "bold",
       font: "monospace",
-      sizePx: 10.5 * scale,
+      sizePx: 10 * scale,
     });
-    y += 12 * scale;
+    y += 11 * scale;
 
-    drawText(`${item.qty} x ৳${item.price.toLocaleString()}`, pad, y, {
-      sizePx: 9 * scale,
+    drawText(`${item.qty} × ৳${item.price.toLocaleString()}`, pad, y, {
+      sizePx: 8.5 * scale,
       font: "monospace",
       color: "#4b5563",
     });
-    y += 16 * scale;
-
-    drawDashedLine(y - 6 * scale);
+    y += 12 * scale;
   });
 
-  y += 4 * scale;
+  y += 2 * scale;
+  drawDashedLine(y);
+  y += 10 * scale;
 
-  // 5. SUMMARY SECTION
-  drawText("Subtotal:", pad, y, { weight: "bold", sizePx: 10 * scale, color: "#111827" });
-  drawText(`৳${data.subtotal.toLocaleString()}`, canvas.width - pad, y, {
-    align: "right",
-    font: "monospace",
-    weight: "bold",
-    sizePx: 10 * scale,
-  });
-  y += 14 * scale;
-
+  // 5. SUMMARY SECTION (Short forms & no duplicate lines)
   if (data.discount > 0) {
-    drawText("Discount:", pad, y, { sizePx: 10 * scale, color: "#dc2626" });
+    drawText("Sub:", pad, y, { weight: "bold", sizePx: 9.5 * scale, color: "#111827" });
+    drawText(`৳${data.subtotal.toLocaleString()}`, canvas.width - pad, y, {
+      align: "right",
+      font: "monospace",
+      weight: "bold",
+      sizePx: 9.5 * scale,
+    });
+    y += 13 * scale;
+
+    drawText("Disc:", pad, y, { sizePx: 9.5 * scale, color: "#dc2626" });
     drawText(`-৳${data.discount.toLocaleString()}`, canvas.width - pad, y, {
       align: "right",
       font: "monospace",
       color: "#dc2626",
-      sizePx: 10 * scale,
+      sizePx: 9.5 * scale,
     });
-    y += 14 * scale;
+    y += 13 * scale;
   }
 
-  // PAID & DUE
-  drawText("Paid Amount:", pad, y, { weight: "bold", sizePx: 10 * scale, color: "#059669" });
+  // TOTAL & PAID & DUE
+  drawText("Total:", pad, y, { weight: "900", sizePx: 11 * scale, color: "#000000" });
+  drawText(`৳${data.total.toLocaleString()}`, canvas.width - pad, y, {
+    align: "right",
+    font: "monospace",
+    weight: "900",
+    sizePx: 11 * scale,
+  });
+  y += 14 * scale;
+
+  drawText("Paid:", pad, y, { weight: "bold", sizePx: 9.5 * scale, color: "#059669" });
   drawText(`৳${data.paid.toLocaleString()}`, canvas.width - pad, y, {
     align: "right",
     font: "monospace",
     weight: "bold",
-    sizePx: 10 * scale,
+    sizePx: 9.5 * scale,
     color: "#059669",
   });
-  y += 14 * scale;
+  y += 13 * scale;
 
   if (data.due > 0) {
-    drawText("Due Amount:", pad, y, { weight: "bold", sizePx: 10 * scale, color: "#dc2626" });
+    drawText("Due:", pad, y, { weight: "bold", sizePx: 9.5 * scale, color: "#dc2626" });
     drawText(`৳${data.due.toLocaleString()}`, canvas.width - pad, y, {
       align: "right",
       font: "monospace",
       weight: "bold",
-      sizePx: 10 * scale,
+      sizePx: 9.5 * scale,
       color: "#dc2626",
     });
-    y += 14 * scale;
+    y += 13 * scale;
   }
 
   drawSolidLine(y, 1);

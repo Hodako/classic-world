@@ -115,7 +115,11 @@ export default function EmployeeHubPage() {
       .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
   }, [employeeAdvances, currentMonth]);
 
-  const baseSalary = Number(activeEmployee?.monthly_salary) || 0;
+  const baseSalary = Number(activeEmployee?.monthly_salary || activeEmployee?.base_salary) || 0;
+  const advanceLimit = activeEmployee?.advance_limit !== undefined && activeEmployee?.advance_limit !== null
+    ? Number(activeEmployee.advance_limit)
+    : baseSalary;
+  const remainingLimit = Math.max(0, advanceLimit - thisMonthTaken);
   const remainingSalary = Math.max(0, baseSalary - thisMonthTaken);
 
   // Form states for taking money
@@ -136,6 +140,24 @@ export default function EmployeeHubPage() {
     const amountNum = Number(takeAmount);
     if (!amountNum || amountNum <= 0) {
       toast.error(lang === "bn" ? "সঠিক টাকার পরিমাণ লিখুন" : "Please enter a valid amount");
+      return;
+    }
+
+    if (!isOwner && remainingLimit <= 0) {
+      toast.error(
+        lang === "bn"
+          ? `আপনার এই মাসের টাকা তোলার নির্ধারিত সীমা শেষ হয়ে গেছে! (সর্বোচ্চ সীমা: ৳${advanceLimit.toLocaleString()}, উত্তোলিত: ৳${thisMonthTaken.toLocaleString()})`
+          : `You have reached your advance withdrawal limit for this month!`
+      );
+      return;
+    }
+
+    if (!isOwner && amountNum > remainingLimit) {
+      toast.error(
+        lang === "bn"
+          ? `আপনার অনুমোদিত উত্তোলনের সীমা (৳${remainingLimit.toLocaleString()}) অতিক্রম করেছে! সর্বোচ্চ ৳${remainingLimit.toLocaleString()} নিতে পারবেন।`
+          : `Exceeds your allowed advance withdrawal limit of ৳${remainingLimit.toLocaleString()}!`
+      );
       return;
     }
 
@@ -264,56 +286,71 @@ export default function EmployeeHubPage() {
       </div>
 
       {/* ── Employee Salary & Advance Balance Cards ── */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <Card className="p-4 rounded-2xl border-indigo-500/20 bg-indigo-500/5 relative overflow-hidden">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+        <Card className="p-3.5 rounded-2xl border-indigo-500/20 bg-indigo-500/5 relative overflow-hidden">
           <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
-            <span className="font-semibold">{lang === "bn" ? "কর্মচারী" : "Staff Name"}</span>
+            <span className="font-semibold">{lang === "bn" ? "কর্মচারী" : "Staff"}</span>
             <User className="size-4 text-indigo-500" />
           </div>
           <div className="text-base sm:text-lg font-black text-foreground truncate">
             {activeEmployee?.name || user?.full_name || "Employee"}
           </div>
-          <div className="text-[10px] text-muted-foreground mt-1">
-            {lang === "bn" ? "বর্তমান সক্রিয় একাউন্ট" : "Current employee profile"}
+          <div className="text-[10px] text-muted-foreground mt-0.5">
+            {lang === "bn" ? "মূল বেতন:" : "Salary:"} {fmtMoney(baseSalary)}
           </div>
         </Card>
 
-        <Card className="p-4 rounded-2xl border-blue-500/20 bg-blue-500/5 relative overflow-hidden">
+        <Card className="p-3.5 rounded-2xl border-amber-500/20 bg-amber-500/5 relative overflow-hidden">
           <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
-            <span className="font-semibold">{lang === "bn" ? "মাসিক মূল বেতন" : "Monthly Base Salary"}</span>
-            <DollarSign className="size-4 text-blue-500" />
+            <span className="font-semibold">{lang === "bn" ? "উত্তোলনের মোট সীমা" : "Advance Limit"}</span>
+            <DollarSign className="size-4 text-amber-500" />
           </div>
-          <div className="text-lg sm:text-xl font-black text-blue-600 dark:text-blue-400">
-            {fmtMoney(baseSalary)}
+          <div className="text-lg sm:text-xl font-black text-amber-600 dark:text-amber-400">
+            {fmtMoney(advanceLimit)}
           </div>
-          <div className="text-[10px] text-muted-foreground mt-1">
-            {currentMonth} {lang === "bn" ? "মাসের বেতন কাঠামো" : "salary scale"}
+          <div className="text-[10px] text-muted-foreground mt-0.5">
+            {lang === "bn" ? "নির্ধারিত অগ্রিম সীমা" : "Max allowed per month"}
           </div>
         </Card>
 
-        <Card className="p-4 rounded-2xl border-rose-500/20 bg-rose-500/5 relative overflow-hidden">
+        <Card className="p-3.5 rounded-2xl border-rose-500/20 bg-rose-500/5 relative overflow-hidden">
           <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
-            <span className="font-semibold">{lang === "bn" ? "উত্তোলিত মোট টাকা" : "Total Taken (Advance)"}</span>
+            <span className="font-semibold">{lang === "bn" ? "উত্তোলিত মোট টাকা" : "Total Taken"}</span>
             <TrendingDown className="size-4 text-rose-500" />
           </div>
           <div className="text-lg sm:text-xl font-black text-rose-600 dark:text-rose-400">
             {fmtMoney(thisMonthTaken)}
           </div>
-          <div className="text-[10px] text-rose-600 dark:text-rose-400 font-semibold mt-1">
-            {lang === "bn" ? "ক্যাশবক্স থেকে কাটা হয়েছে" : "Deducted from cashbox"}
+          <div className="text-[10px] text-rose-600 dark:text-rose-400 font-semibold mt-0.5">
+            {lang === "bn" ? "এই মাসে নিয়েছেন" : "Taken this month"}
           </div>
         </Card>
 
-        <Card className="p-4 rounded-2xl border-emerald-500/20 bg-emerald-500/5 relative overflow-hidden">
+        <Card className="p-3.5 rounded-2xl border-purple-500/20 bg-purple-500/5 relative overflow-hidden">
           <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
-            <span className="font-semibold">{lang === "bn" ? "অবশিষ্ট বেতন (মাসের)" : "Remaining Salary"}</span>
+            <span className="font-semibold">{lang === "bn" ? "এখন তুলতে পারবেন" : "Allowed to Take"}</span>
+            <Banknote className="size-4 text-purple-500" />
+          </div>
+          <div className="text-lg sm:text-xl font-black text-purple-600 dark:text-purple-400">
+            {fmtMoney(remainingLimit)}
+          </div>
+          <div className="text-[10px] text-muted-foreground mt-0.5">
+            {remainingLimit <= 0
+              ? (lang === "bn" ? "সীমা শেষ" : "Limit reached")
+              : (lang === "bn" ? "অবশিষ্ট উত্তোলনের সুযোগ" : "Available to withdraw")}
+          </div>
+        </Card>
+
+        <Card className="p-3.5 rounded-2xl border-emerald-500/20 bg-emerald-500/5 relative overflow-hidden col-span-2 sm:col-span-1">
+          <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
+            <span className="font-semibold">{lang === "bn" ? "অবশিষ্ট বেতন" : "Remaining Salary"}</span>
             <Wallet className="size-4 text-emerald-500" />
           </div>
           <div className="text-lg sm:text-xl font-black text-emerald-600 dark:text-emerald-400">
             {fmtMoney(remainingSalary)}
           </div>
-          <div className="text-[10px] text-muted-foreground mt-1 flex items-center justify-between">
-            <span>{lang === "bn" ? "মাস শেষে প্রাপ্য" : "Payable balance"}</span>
+          <div className="text-[10px] text-muted-foreground mt-0.5 flex items-center justify-between">
+            <span>{lang === "bn" ? "মাস শেষে প্রাপ্য" : "Month end"}</span>
             <span className="text-teal-600 font-bold">ক্যাশ: {fmtMoney(currentCashBalance)}</span>
           </div>
         </Card>
@@ -445,15 +482,38 @@ export default function EmployeeHubPage() {
           </DialogHeader>
 
           <form onSubmit={handleTakeMoneySubmit} className="space-y-4 pt-2">
+            {/* Advance Limit Status Banner */}
+            <div className={`p-3 rounded-xl border text-xs flex items-center justify-between ${
+              remainingLimit > 0
+                ? "bg-purple-500/10 border-purple-500/25 text-purple-700 dark:text-purple-300"
+                : "bg-rose-500/10 border-rose-500/25 text-rose-700 dark:text-rose-300"
+            }`}>
+              <div className="flex items-center gap-1.5 font-bold">
+                <Banknote className="size-4 shrink-0" />
+                <span>{lang === "bn" ? "টাকা তোলার অবশিষ্ট সুযোগ:" : "Available Advance Limit:"}</span>
+              </div>
+              <span className="font-black text-sm font-mono">
+                {fmtMoney(remainingLimit)}
+              </span>
+            </div>
+
             <div className="space-y-1.5">
-              <Label className="text-xs font-semibold">
-                {lang === "bn" ? "উত্তোলনের পরিমাণ (টাকা)" : "Withdrawal Amount (৳)"}
-              </Label>
+              <div className="flex items-center justify-between">
+                <Label className="text-xs font-semibold">
+                  {lang === "bn" ? "উত্তোলনের পরিমাণ (টাকা) *" : "Withdrawal Amount (৳) *"}
+                </Label>
+                {!isOwner && (
+                  <span className="text-[10px] text-muted-foreground">
+                    {lang === "bn" ? `সর্বোচ্চ সীমা: ${fmtMoney(remainingLimit)}` : `Max Limit: ${fmtMoney(remainingLimit)}`}
+                  </span>
+                )}
+              </div>
               <div className="relative">
                 <span className="absolute left-3 top-1/2 -translate-y-1/2 font-bold text-muted-foreground">৳</span>
                 <Input
                   type="number"
                   min="1"
+                  max={!isOwner ? remainingLimit : undefined}
                   required
                   placeholder="0"
                   value={takeAmount}
@@ -464,7 +524,7 @@ export default function EmployeeHubPage() {
               </div>
               <div className="flex items-center justify-between text-[11px] text-muted-foreground pt-1">
                 <span>{lang === "bn" ? "ক্যাশবক্স ব্যালেন্স:" : "Cashbox:"} {fmtMoney(currentCashBalance)}</span>
-                <span>{lang === "bn" ? "অবশিষ্ট বেতন:" : "Remaining:"} {fmtMoney(remainingSalary)}</span>
+                <span>{lang === "bn" ? "অবশিষ্ট বেতন:" : "Remaining Salary:"} {fmtMoney(remainingSalary)}</span>
               </div>
             </div>
 

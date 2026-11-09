@@ -113,6 +113,8 @@ export type Employee = {
   role: string;
   designation?: string;
   base_salary?: number;
+  monthly_salary?: number;
+  advance_limit?: number;
   salary_type?: "monthly" | "daily" | "hourly";
   daily_allowance?: number;
   status: "active" | "inactive";

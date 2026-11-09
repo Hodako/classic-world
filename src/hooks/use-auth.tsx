@@ -31,6 +31,10 @@ export type AuthUser = {
   status?: string;
   frozen_reason?: string;
   subscription_expires_at?: string;
+  employee_id?: string;
+  base_salary?: number;
+  monthly_salary?: number;
+  advance_limit?: number;
   sms_credits?: number;
   admin_whatsapp?: string;
 };

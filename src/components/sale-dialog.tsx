@@ -427,6 +427,9 @@ export function SaleDialog({
 
       let remainingFinalDisc = finalDiscountAmount;
       const salePayloads: any[] = [];
+      const activeEmpSession = typeof window !== "undefined" ? JSON.parse(localStorage.getItem("cw_active_employee_session") || "null") : null;
+      const employeeId = activeEmpSession?.id || (user?.role === "employee" ? ((user as any)?.employee_id || user.id) : null);
+      const employeeName = activeEmpSession?.name || (user?.role === "employee" ? (user.full_name || user.name) : null);
 
       for (let i = 0; i < cart.length; i++) {
         const line = cart[i];
@@ -528,6 +531,8 @@ export function SaleDialog({
           tracking_code: type === "online" ? trackingCode : undefined,
           courier_status: type === "online" ? "pending" : undefined,
           note: customerAddress ? `Address: ${customerAddress}` : undefined,
+          employee_id: employeeId || undefined,
+          employee_name: employeeName || undefined,
         });
       }
 

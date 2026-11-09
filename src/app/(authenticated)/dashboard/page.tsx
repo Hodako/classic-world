@@ -497,6 +497,71 @@ export default function Dashboard() {
 
   const currentMonthStr = useMemo(() => new Date().toISOString().slice(0, 7), []);
 
+  // Individual employee KPI metrics for owner
+  const employeeKpis = useMemo(() => {
+    const now = new Date();
+    const todayStr = now.toISOString().slice(0, 10);
+    const monthStr = now.toISOString().slice(0, 7);
+
+    return allEmployees.map(emp => {
+      const matchEmp = (empId?: string | null, empName?: string | null) => {
+        if (empId && empId === emp.id) return true;
+        if (empName && emp.name && empName.trim().toLowerCase() === emp.name.trim().toLowerCase()) return true;
+        return false;
+      };
+
+      // Sales made by this employee
+      const empSales = allSales.filter(s => matchEmp((s as any).employee_id, (s as any).employee_name));
+      const todaySales = empSales.filter(s => {
+        const d = (s.created_at ? s.created_at.slice(0, 10) : "");
+        return d === todayStr;
+      });
+      const monthSales = empSales.filter(s => {
+        const d = (s.created_at ? s.created_at.slice(0, 7) : "");
+        return d === monthStr;
+      });
+
+      const todaySalesTotal = todaySales.reduce((sum, s) => sum + (s.returned ? 0 : Number(s.sell_price || 0) * (Number(s.qty) || 1)), 0);
+      const monthSalesTotal = monthSales.reduce((sum, s) => sum + (s.returned ? 0 : Number(s.sell_price || 0) * (Number(s.qty) || 1)), 0);
+      const monthProfitTotal = monthSales.reduce((sum, s) => sum + (s.returned ? 0 : Number(s.profit || 0)), 0);
+
+      // Salary & Advances
+      const baseSalary = Number(emp.monthly_salary || emp.base_salary) || 0;
+      const advances = (employeeExpenses.data || [])
+        .filter(e => {
+          const isAdv = e.category === "advance" || e.category === "salary_advance" || (e as any).type === "advance";
+          if (!isAdv) return false;
+          const d = e.date || (e.created_at ? e.created_at.slice(0, 7) : "");
+          return d.startsWith(monthStr) && matchEmp(e.employee_id, e.employee_name);
+        })
+        .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+
+      const paidSalary = (employeeSalaries.data || [])
+        .filter(s => s.month === monthStr && matchEmp(s.employee_id, s.employee_name))
+        .reduce((sum, s) => sum + (Number(s.amount) || 0), 0);
+
+      const netRemainingDue = Math.max(0, baseSalary - advances - paidSalary);
+
+      return {
+        id: emp.id,
+        name: emp.name,
+        role: emp.role || "Staff",
+        designation: (emp as any).designation || (lang === "bn" ? "বিক্রয় কর্মী" : "Sales Staff"),
+        phone: emp.phone,
+        status: emp.status || "active",
+        baseSalary,
+        advances,
+        paidSalary,
+        netRemainingDue,
+        todaySalesCount: todaySales.length,
+        todaySalesTotal,
+        monthSalesCount: monthSales.length,
+        monthSalesTotal,
+        monthProfitTotal,
+      };
+    });
+  }, [allEmployees, allSales, employeeExpenses.data, employeeSalaries.data, lang]);
+
   const mySalaryCalc = useMemo(() => {
     if (!currentEmployeeProfile?.id) return null;
     return calculateEmployeeSalaryWithRollover(
@@ -1916,26 +1981,26 @@ export default function Dashboard() {
             onClick={(e) => handlePrivacyKpiClick(e, "due", "/dues")}
           />
         ) : <div key="due" className="hidden" />;
-      case "cashbox":
+            case "cashbox":
         const todayCashboxNet = filteredCashbox.reduce((sum, c) => sum + cashboxDelta(c.kind, c.amount), 0);
-        const displayedCashbox = (!dateFilter.from && !dateFilter.to) ? todayCashboxNet : cashboxTotal;
+        const displayedCashbox = cashboxTotal;
         const cashboxSubText = isHidden && !isRevealed
           ? (lang === "bn" ? "ট্যাপ করে দেখুন" : "Tap to reveal")
           : (!dateFilter.from && !dateFilter.to)
-          ? (lang === "bn" ? `আজকের নিট ক্যাশ (মোট: ${fmtMoney(cashboxTotal)})` : `Today's Net Cash (Total: ${fmtMoney(cashboxTotal)})`)
+          ? (lang === "bn" ? `আজকের নিট পরিবর্তন: ${todayCashboxNet >= 0 ? "+" : "−"}${fmtMoney(Math.abs(todayCashboxNet))}` : `Today's Net: ${todayCashboxNet >= 0 ? "+" : "−"}${fmtMoney(Math.abs(todayCashboxNet))}`)
           : dateRangeLabel;
 
         return canAccess(perms, "cashbox") ? (
           <KPICard
             key="cashbox"
-            label={lang === "bn" ? "ক্যাশ বক্স / নগদ" : t("cashbox")}
+            label={lang === "bn" ? "মোট ক্যাশবক্স ব্যালেন্স" : t("cashbox")}
             value={fmtMoney(displayedCashbox)}
             sub={cashboxSubText}
             imageUrl="/icons/cashbox_icon.png"
             icon={Banknote}
             color="bg-emerald-600"
             trendUp={displayedCashbox >= 0}
-            trend={(!dateFilter.from && !dateFilter.to) ? (lang === "bn" ? "নিট ক্যাশ" : "Net Cash") : (lang === "bn" ? "ব্যালেন্স" : t("balance"))}
+            trend={lang === "bn" ? "ড্রয়ার ব্যালেন্স" : t("balance")}
             isDesktop={true}
             hotkey={hotkey}
             className="h-full cursor-pointer"
@@ -1971,7 +2036,113 @@ export default function Dashboard() {
     }
   };
 
-const renderWidget = (widgetId: string) => {
+
+  const renderEmployeeKpisSection = () => {
+    if (employeeKpis.length === 0 || isEmployeeRole) return null;
+    return (
+      <div className="space-y-3 pt-2 font-balooda">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 rounded-lg bg-indigo-500/10 text-indigo-600 dark:text-indigo-400">
+              <Users className="size-4" />
+            </div>
+            <div>
+              <h3 className="text-sm font-bold text-foreground">
+                {lang === "bn" ? "কর্মচারীদের ব্যক্তিগত KPI ও পারফর্মেন্স (ম্যানেজমেন্ট)" : "Employee Individual KPIs & Performance Management"}
+              </h3>
+              <p className="text-[11px] text-muted-foreground">
+                {lang === "bn" ? "প্রতিটি কর্মচারীর আজকের ও চলতি মাসের বিক্রয় এবং বেতন স্থিতি" : "Today's & monthly sales performance and salary ledger for each employee"}
+              </p>
+            </div>
+          </div>
+          <Link href="/employees">
+            <Button variant="ghost" size="sm" className="h-7 text-xs font-bold text-primary gap-1">
+              <span>{lang === "bn" ? "কর্মচারী ব্যবস্থাপনা" : "Manage Employees"}</span>
+              <ChevronRight className="size-3.5" />
+            </Button>
+          </Link>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          {employeeKpis.map(emp => (
+            <Card 
+              key={emp.id} 
+              className="p-3.5 rounded-2xl border border-border/80 bg-card hover:border-primary/40 hover:shadow-md transition-all space-y-3 relative overflow-hidden"
+            >
+              <div className="flex items-center justify-between gap-2 border-b border-border/50 pb-2">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="size-8.5 rounded-xl bg-gradient-to-br from-indigo-500 to-primary text-white font-extrabold text-xs grid place-items-center shrink-0 shadow-xs">
+                    {emp.name.slice(0, 1).toUpperCase()}
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-xs font-bold text-foreground truncate">{emp.name}</div>
+                    <div className="text-[10px] text-muted-foreground truncate">{emp.designation} • {emp.phone || "No phone"}</div>
+                  </div>
+                </div>
+                <Badge variant="outline" className={`text-[10px] h-5 px-1.5 shrink-0 ${emp.status === "active" ? "border-emerald-500/30 text-emerald-600 bg-emerald-500/10" : "border-muted text-muted-foreground"}`}>
+                  {emp.status === "active" ? (lang === "bn" ? "সক্রিয়" : "Active") : (lang === "bn" ? "নিষ্ক্রিয়" : "Inactive")}
+                </Badge>
+              </div>
+
+              {/* KPI Metrics Grid */}
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="p-2 rounded-xl bg-emerald-500/5 border border-emerald-500/20">
+                  <div className="text-[10px] text-emerald-700 dark:text-emerald-400 font-medium">
+                    {lang === "bn" ? "আজকের বিক্রি" : "Today's Sales"}
+                  </div>
+                  <div className="text-sm font-extrabold text-emerald-600 font-mono mt-0.5">
+                    {fmtMoney(emp.todaySalesTotal)}
+                  </div>
+                  <div className="text-[9px] text-muted-foreground mt-0.5">
+                    {emp.todaySalesCount} {lang === "bn" ? "টি ইনভয়েস" : "orders"}
+                  </div>
+                </div>
+
+                <div className="p-2 rounded-xl bg-sky-500/5 border border-sky-500/20">
+                  <div className="text-[10px] text-sky-700 dark:text-sky-400 font-medium">
+                    {lang === "bn" ? "চলতি মাসের বিক্রি" : "Month's Sales"}
+                  </div>
+                  <div className="text-sm font-extrabold text-sky-600 font-mono mt-0.5">
+                    {fmtMoney(emp.monthSalesTotal)}
+                  </div>
+                  <div className="text-[9px] text-muted-foreground mt-0.5">
+                    {emp.monthSalesCount} {lang === "bn" ? "টি ইনভয়েস" : "orders"}
+                  </div>
+                </div>
+              </div>
+
+              {/* Salary & Advance summary */}
+              <div className="p-2 rounded-xl bg-muted/50 border border-border/60 text-[11px] space-y-1">
+                <div className="flex items-center justify-between text-muted-foreground">
+                  <span>{lang === "bn" ? "মূল বেতন:" : "Base Salary:"}</span>
+                  <span className="font-bold text-foreground font-mono">{fmtMoney(emp.baseSalary)}</span>
+                </div>
+                <div className="flex items-center justify-between text-muted-foreground">
+                  <span>{lang === "bn" ? "উত্তোলিত অগ্রিম:" : "Advances Taken:"}</span>
+                  <span className="font-bold text-rose-500 font-mono">{fmtMoney(emp.advances)}</span>
+                </div>
+                <div className="flex items-center justify-between pt-1 border-t border-border/60 font-bold">
+                  <span className="text-foreground">{lang === "bn" ? "প্রাপ্য অবশিষ্ট:" : "Net Remaining:"}</span>
+                  <span className="text-indigo-600 dark:text-indigo-400 font-mono">{fmtMoney(emp.netRemainingDue)}</span>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end pt-1">
+                <Link href={`/employees?search=${encodeURIComponent(emp.name)}&tab=salaries`} className="w-full">
+                  <Button variant="outline" size="sm" className="w-full h-7 text-xs font-bold gap-1 rounded-xl">
+                    <span>{lang === "bn" ? "ম্যানেজ ও পেমেন্ট" : "Manage & Pay"}</span>
+                    <ChevronRight className="size-3" />
+                  </Button>
+                </Link>
+              </div>
+            </Card>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
+  const renderWidget = (widgetId: string) => {
     switch (widgetId) {
       case "kpis": {
         const gridClass = kpiConfig.columns === 1 ? "grid-cols-1" : kpiConfig.columns === 3 ? "grid-cols-3" : kpiConfig.columns === 4 ? "grid-cols-2 md:grid-cols-4" : "grid-cols-2 md:grid-cols-3 lg:grid-cols-4";

@@ -520,6 +520,8 @@ export async function fsCreateSale(data: any) {
   if (data.courier_name) rawDoc.courier_name = data.courier_name;
   if (data.courier_status) rawDoc.courier_status = data.courier_status;
   if (data.tracking_code) rawDoc.tracking_code = data.tracking_code;
+  if (data.employee_id) rawDoc.employee_id = data.employee_id;
+  if (data.employee_name) rawDoc.employee_name = data.employee_name;
 
   const saleDoc = cleanFirestoreData(rawDoc);
   let saleId: string;

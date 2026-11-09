@@ -50,6 +50,7 @@ import {
   getEmployeeExpenses,
   getEmployeeShoppings,
   getProducts,
+  getSales,
   type Employee,
   type EmployeeSalary,
   type EmployeeExpense,
@@ -108,6 +109,7 @@ export default function EmployeesPage() {
   const { data: expenses = [], isLoading: expLoading } = useCachedQuery(["employee_expenses"], getEmployeeExpenses);
   const { data: shoppings = [], isLoading: shopLoading } = useCachedQuery(["employee_shoppings"], getEmployeeShoppings);
   const { data: products = [] } = useCachedQuery(["products"], getProducts);
+  const { data: sales = [] } = useCachedQuery(["sales"], getSales);
   const { data: cashEntries = [] } = useCashboxQuery();
   const liveCashBalance = useMemo(() => cashboxBalance(cashEntries), [cashEntries]);
 

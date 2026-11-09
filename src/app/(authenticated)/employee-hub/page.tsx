@@ -32,6 +32,7 @@ import { cashboxBalance } from "@/lib/cashbox-utils";
 import { calculateEmployeeSalaryWithRollover } from "@/lib/salary-utils";
 import {
   getEmployees,
+  getSales,
   getEmployeeExpenses,
   getEmployeeSalaries,
   type Employee,
@@ -70,6 +71,7 @@ export default function EmployeeHubPage() {
   const employeesQuery = useCachedQuery(["employees"], getEmployees);
   const employeeExpensesQuery = useCachedQuery(["employee_expenses"], getEmployeeExpenses);
   const employeeSalariesQuery = useCachedQuery(["employee_salaries"], getEmployeeSalaries);
+  const { data: allSales = [] } = useCachedQuery(["sales"], getSales);
   const { data: cashEntries = [] } = useCashboxQuery();
 
   const currentCashBalance = useMemo(() => cashboxBalance(cashEntries), [cashEntries]);
@@ -143,6 +145,35 @@ export default function EmployeeHubPage() {
 
   const salariesQuery = useCachedQuery(["employee_salaries"], getEmployeeSalaries);
   const allSalaries = salariesQuery.data ?? [];
+
+  // Active Employee Sales Performance
+  const empSalesStats = useMemo(() => {
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const monthStr = new Date().toISOString().slice(0, 7);
+
+    const matchEmp = (recId?: string | null, recName?: string | null) => {
+      if (!activeEmployee) return false;
+      if (recId && recId === activeEmployee.id) return true;
+      if (recName && activeEmployee.name && recName.trim().toLowerCase() === activeEmployee.name.trim().toLowerCase()) return true;
+      return false;
+    };
+
+    const mySales = allSales.filter(s => matchEmp((s as any).employee_id, (s as any).employee_name));
+    const todaySales = mySales.filter(s => (s.created_at || "").slice(0, 10) === todayStr);
+    const monthSales = mySales.filter(s => (s.created_at || "").slice(0, 7) === monthStr);
+
+    const todayTotal = todaySales.reduce((sum, s) => sum + (s.returned ? 0 : Number(s.sell_price || 0) * (Number(s.qty) || 1)), 0);
+    const monthTotal = monthSales.reduce((sum, s) => sum + (s.returned ? 0 : Number(s.sell_price || 0) * (Number(s.qty) || 1)), 0);
+    const monthProfit = monthSales.reduce((sum, s) => sum + (s.returned ? 0 : Number(s.profit || 0)), 0);
+
+    return {
+      todayCount: todaySales.length,
+      todayTotal,
+      monthCount: monthSales.length,
+      monthTotal,
+      monthProfit,
+    };
+  }, [allSales, activeEmployee]);
 
   const salaryRollover = useMemo(() => {
     if (!activeEmployee) return null;
@@ -338,7 +369,34 @@ export default function EmployeeHubPage() {
           </Badge>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+        {/* Sales Today Card */}
+        <Card className="p-3.5 rounded-2xl border-emerald-500/20 bg-emerald-500/5 relative overflow-hidden">
+          <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
+            <span className="font-semibold text-emerald-700 dark:text-emerald-400">{lang === "bn" ? "আজকের বিক্রি" : "Today's Sales"}</span>
+            <span className="size-2 rounded-full bg-emerald-500 animate-pulse" />
+          </div>
+          <div className="text-lg sm:text-xl font-black text-emerald-600 font-mono">
+            {fmtMoney(empSalesStats.todayTotal)}
+          </div>
+          <div className="text-[10px] text-muted-foreground mt-0.5">
+            {empSalesStats.todayCount} {lang === "bn" ? "টি ইনভয়েস" : "orders"}
+          </div>
+        </Card>
+
+        {/* Sales This Month Card */}
+        <Card className="p-3.5 rounded-2xl border-sky-500/20 bg-sky-500/5 relative overflow-hidden">
+          <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
+            <span className="font-semibold text-sky-700 dark:text-sky-400">{lang === "bn" ? "চলতি মাসের বিক্রি" : "Month's Sales"}</span>
+            <span className="size-2 rounded-full bg-sky-500" />
+          </div>
+          <div className="text-lg sm:text-xl font-black text-sky-600 font-mono">
+            {fmtMoney(empSalesStats.monthTotal)}
+          </div>
+          <div className="text-[10px] text-muted-foreground mt-0.5">
+            {empSalesStats.monthCount} {lang === "bn" ? "টি ইনভয়েস" : "orders"}
+          </div>
+        </Card>
         <Card className="p-3.5 rounded-2xl border-indigo-500/20 bg-indigo-500/5 relative overflow-hidden">
           <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
             <span className="font-semibold">{lang === "bn" ? "কর্মচারী" : "Staff"}</span>

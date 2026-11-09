@@ -104,111 +104,8 @@ export default function EmployeesPage() {
   const { data: cashEntries = [] } = useCashboxQuery();
   const liveCashBalance = useMemo(() => cashboxBalance(cashEntries), [cashEntries]);
 
-  const activeEmployeesCount = useMemo(() => employees.filter(e => e.status === "active").length, [employees]);
-
-  const totalBaseSalaries = useMemo(() => {
-    return employees
-      .filter(e => e.status === "active")
-      .reduce((sum, e) => sum + (Number(e.base_salary) || 0), 0);
-  }, [employees]);
-
-  const totalMonthlyAdvances = useMemo(() => {
-    return expenses
-      .filter(e =>
-        (e.category === "advance" || e.category === "salary_advance") &&
-        (e.date || "").startsWith(currentMonthStr)
-      )
-      .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
-  }, [expenses, currentMonthStr]);
-
-  const totalMonthlySalariesPaid = useMemo(() => {
-    return salaries
-      .filter(s => (s.month || "").startsWith(currentMonthStr) && s.status !== "bonus")
-      .reduce((sum, s) => sum + (Number(s.amount) || 0), 0);
-  }, [salaries, currentMonthStr]);
-
-  const totalRemainingPayable = Math.max(0, totalBaseSalaries - totalMonthlyAdvances - totalMonthlySalariesPaid);
-
-  const myEmployeeStats = useMemo(() => {
-    if (!currentEmployee) return null;
-    return getEmployeeSalaryStats(currentEmployee.id, currentMonthStr, true);
-  }, [currentEmployee, currentMonthStr, employees, shoppings, salaries, expenses]);
-
-  // Dialog States: Employee Account
-  const [addEmpOpen, setAddEmpOpen] = useState(false);
-  const [editingEmp, setEditingEmp] = useState<Employee | null>(null);
-  const [empName, setEmpName] = useState("");
-  const [empPhone, setEmpPhone] = useState("");
-  const [empEmail, setEmpEmail] = useState("");
-  const [empDesignation, setEmpDesignation] = useState("Sales Staff");
-  const [empSalary, setEmpSalary] = useState("");
-  const [empAdvanceLimit, setEmpAdvanceLimit] = useState("");
-  const [empStatus, setEmpStatus] = useState<"active" | "inactive">("active");
-  const [empPassword, setEmpPassword] = useState("1234");
-  const [empPin, setEmpPin] = useState("1234");
-  const [empPermissions, setEmpPermissions] = useState({
-    can_sales: true,
-    can_customers: true,
-    can_returns: true,
-    can_products: false,
-    can_expenses: false,
-    can_reports: false,
-    can_delete: false,
-    can_discount: false,
-  });
-
-  // Dialog States: Salary
-  const [addSalaryOpen, setAddSalaryOpen] = useState(false);
-  const [salEmpId, setSalEmpId] = useState("");
-  const [salMonth, setSalMonth] = useState(new Date().toISOString().slice(0, 7));
-  const [salAmount, setSalAmount] = useState("");
-  const [salMethod, setSalMethod] = useState("cash");
-  const [salNote, setSalNote] = useState("");
-  const [deductShopFromSalary, setDeductShopFromSalary] = useState(true);
-
-  // Dialog States: Give Bonus
-  const [addBonusOpen, setAddBonusOpen] = useState(false);
-  const [bonusEmpId, setBonusEmpId] = useState("");
-  const [bonusAmount, setBonusAmount] = useState("");
-  const [bonusMethod, setBonusMethod] = useState("cash");
-  const [bonusDate, setBonusDate] = useState(new Date().toISOString().slice(0, 10));
-  const [bonusNote, setBonusNote] = useState("");
-
-  // Dialog States: Expense
-  const [addExpOpen, setAddExpOpen] = useState(false);
-  const [expEmpId, setExpEmpId] = useState("");
-  const [expCat, setExpCat] = useState("food");
-  const [expAmount, setExpAmount] = useState("");
-  const [expMethod, setExpMethod] = useState("cash");
-  const [expDate, setExpDate] = useState(new Date().toISOString().slice(0, 10));
-  const [expNote, setExpNote] = useState("");
-
-  // Dialog States: Shopping
-  const [addShopOpen, setAddShopOpen] = useState(false);
-  const [shopEmpId, setShopEmpId] = useState("");
-  const [shopStatus, setShopStatus] = useState<"deduct_from_salary" | "paid_cash" | "gift">("deduct_from_salary");
-  const [shopItems, setShopItems] = useState<{ product_id: string; product_name: string; qty: number; unit_price: number; total: number }[]>([]);
-  const [shopProdSearch, setShopProdSearch] = useState("");
-  const [shopNote, setShopNote] = useState("");
-  const [printSlipItem, setPrintSlipItem] = useState<EmployeeShopping | null>(null);
-
-  // Dialog States: Collect Store Debt (কর্মচারীর দোকান পাওনা আদায়)
-  const [collectDebtOpen, setCollectDebtOpen] = useState(false);
-  const [debtEmpId, setDebtEmpId] = useState("");
-  const [debtAmount, setDebtAmount] = useState("");
-  const [debtMethod, setDebtMethod] = useState("cash");
-  const [debtDate, setDebtDate] = useState(new Date().toISOString().slice(0, 10));
-  const [debtNote, setDebtNote] = useState("");
-
-  // Dialog States: Manual Adjustment (সমন্বয়: ওভারটাইম / ইনসেন্টিভ / জরিমানা)
-  const [addAdjustmentOpen, setAddAdjustmentOpen] = useState(false);
-  const [adjEmpId, setAdjEmpId] = useState("");
-  const [adjType, setAdjType] = useState<"adjustment_add" | "adjustment_deduct">("adjustment_add");
-  const [adjAmount, setAdjAmount] = useState("");
-  const [adjDate, setAdjDate] = useState(new Date().toISOString().slice(0, 10));
-  const [adjNote, setAdjNote] = useState("");
-
-  const [busy, setBusy] = useState(false);
+  // Current Month String (YYYY-MM)
+  const currentMonthStr = useMemo(() => new Date().toISOString().slice(0, 7), []);
 
   const activeEmpSession = useMemo(() => {
     if (typeof window === "undefined") return null;
@@ -242,108 +139,6 @@ export default function EmployeesPage() {
       created_at: new Date().toISOString(),
     } as any : null);
   }, [employees, user, activeEmpSession, isEmployeeRole]);
-
-  const [shopFilter, setShopFilter] = useState<"all" | "my">(isEmployeeRole ? "my" : "all");
-
-  const [customItemOpen, setCustomItemOpen] = useState(false);
-  const [customItemName, setCustomItemName] = useState("");
-  const [customItemPrice, setCustomItemPrice] = useState("");
-
-  const handleOpenAddShop = () => {
-    if (currentEmployee) {
-      setShopEmpId(currentEmployee.id);
-    } else if (employees.length > 0 && !shopEmpId) {
-      setShopEmpId(employees[0].id);
-    }
-    setShopItems([]);
-    setShopNote("");
-    setCustomItemName("");
-    setCustomItemPrice("");
-    setCustomItemOpen(false);
-    setAddShopOpen(true);
-  };
-
-  const handleAddProductToShop = (p: Product) => {
-    const defaultPrice = Number(
-      p.sell_price ??
-      (p as any).selling_price ??
-      (p as any).price ??
-      (p as any).unit_price ??
-      p.buy_price ??
-      0
-    );
-    const existingIdx = shopItems.findIndex(i => i.product_id === p.id);
-    let newItems = [...shopItems];
-    if (existingIdx >= 0) {
-      newItems[existingIdx].qty += 1;
-      newItems[existingIdx].total = newItems[existingIdx].qty * newItems[existingIdx].unit_price;
-    } else {
-      newItems.push({
-        product_id: p.id,
-        product_name: p.name,
-        qty: 1,
-        unit_price: defaultPrice,
-        total: defaultPrice,
-      });
-    }
-    setShopItems(newItems);
-    setShopProdSearch("");
-  };
-
-  const handleUpdateShopItemPrice = (index: number, newPriceVal: string) => {
-    const parsed = parseFloat(newPriceVal);
-    const unit_price = isNaN(parsed) || parsed < 0 ? 0 : parsed;
-    setShopItems(prev => {
-      const copy = [...prev];
-      if (copy[index]) {
-        copy[index] = {
-          ...copy[index],
-          unit_price,
-          total: copy[index].qty * unit_price,
-        };
-      }
-      return copy;
-    });
-  };
-
-  const handleUpdateShopItemQty = (index: number, delta: number) => {
-    setShopItems(prev => {
-      const copy = [...prev];
-      if (copy[index]) {
-        const newQty = Math.max(1, copy[index].qty + delta);
-        copy[index] = {
-          ...copy[index],
-          qty: newQty,
-          total: newQty * copy[index].unit_price,
-        };
-      }
-      return copy;
-    });
-  };
-
-  const handleAddCustomShopItem = () => {
-    if (!customItemName.trim()) {
-      toast.error(lang === "bn" ? "পণ্যের নাম লিখুন" : "Enter product name");
-      return;
-    }
-    const pr = parseFloat(customItemPrice) || 0;
-    setShopItems(prev => [
-      ...prev,
-      {
-        product_id: "custom_" + Date.now(),
-        product_name: customItemName.trim(),
-        qty: 1,
-        unit_price: pr,
-        total: pr,
-      },
-    ]);
-    setCustomItemName("");
-    setCustomItemPrice("");
-    setCustomItemOpen(false);
-  };
-
-  // Helper to compute salary, spends, owner-given money, bonus & remaining salary for any employee in a given month
-  const currentMonthStr = useMemo(() => new Date().toISOString().slice(0, 7), []);
 
   const availableCycles = useMemo(() => {
     const months = new Set<string>();
@@ -489,6 +284,211 @@ export default function EmployeesPage() {
       owesStore,
       netBalance,
     };
+  };
+
+  const activeEmployeesCount = useMemo(() => employees.filter(e => e.status === "active").length, [employees]);
+
+  const totalBaseSalaries = useMemo(() => {
+    return employees
+      .filter(e => e.status === "active")
+      .reduce((sum, e) => sum + (Number(e.base_salary) || 0), 0);
+  }, [employees]);
+
+  const totalMonthlyAdvances = useMemo(() => {
+    return expenses
+      .filter(e =>
+        (e.category === "advance" || e.category === "salary_advance") &&
+        (e.date || "").startsWith(currentMonthStr)
+      )
+      .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+  }, [expenses, currentMonthStr]);
+
+  const totalMonthlySalariesPaid = useMemo(() => {
+    return salaries
+      .filter(s => (s.month || "").startsWith(currentMonthStr) && s.status !== "bonus")
+      .reduce((sum, s) => sum + (Number(s.amount) || 0), 0);
+  }, [salaries, currentMonthStr]);
+
+  const totalRemainingPayable = Math.max(0, totalBaseSalaries - totalMonthlyAdvances - totalMonthlySalariesPaid);
+
+  const myEmployeeStats = useMemo(() => {
+    if (!currentEmployee) return null;
+    return getEmployeeSalaryStats(currentEmployee.id, currentMonthStr, true);
+  }, [currentEmployee, currentMonthStr, employees, shoppings, salaries, expenses]);
+
+  // Dialog States: Employee Account
+  const [addEmpOpen, setAddEmpOpen] = useState(false);
+  const [editingEmp, setEditingEmp] = useState<Employee | null>(null);
+  const [empName, setEmpName] = useState("");
+  const [empPhone, setEmpPhone] = useState("");
+  const [empEmail, setEmpEmail] = useState("");
+  const [empDesignation, setEmpDesignation] = useState("Sales Staff");
+  const [empSalary, setEmpSalary] = useState("");
+  const [empAdvanceLimit, setEmpAdvanceLimit] = useState("");
+  const [empStatus, setEmpStatus] = useState<"active" | "inactive">("active");
+  const [empPassword, setEmpPassword] = useState("1234");
+  const [empPin, setEmpPin] = useState("1234");
+  const [empPermissions, setEmpPermissions] = useState({
+    can_sales: true,
+    can_customers: true,
+    can_returns: true,
+    can_products: false,
+    can_expenses: false,
+    can_reports: false,
+    can_delete: false,
+    can_discount: false,
+  });
+
+  // Dialog States: Salary
+  const [addSalaryOpen, setAddSalaryOpen] = useState(false);
+  const [salEmpId, setSalEmpId] = useState("");
+  const [salMonth, setSalMonth] = useState(new Date().toISOString().slice(0, 7));
+  const [salAmount, setSalAmount] = useState("");
+  const [salMethod, setSalMethod] = useState("cash");
+  const [salNote, setSalNote] = useState("");
+  const [deductShopFromSalary, setDeductShopFromSalary] = useState(true);
+
+  // Dialog States: Give Bonus
+  const [addBonusOpen, setAddBonusOpen] = useState(false);
+  const [bonusEmpId, setBonusEmpId] = useState("");
+  const [bonusAmount, setBonusAmount] = useState("");
+  const [bonusMethod, setBonusMethod] = useState("cash");
+  const [bonusDate, setBonusDate] = useState(new Date().toISOString().slice(0, 10));
+  const [bonusNote, setBonusNote] = useState("");
+
+  // Dialog States: Expense
+  const [addExpOpen, setAddExpOpen] = useState(false);
+  const [expEmpId, setExpEmpId] = useState("");
+  const [expCat, setExpCat] = useState("food");
+  const [expAmount, setExpAmount] = useState("");
+  const [expMethod, setExpMethod] = useState("cash");
+  const [expDate, setExpDate] = useState(new Date().toISOString().slice(0, 10));
+  const [expNote, setExpNote] = useState("");
+
+  // Dialog States: Shopping
+  const [addShopOpen, setAddShopOpen] = useState(false);
+  const [shopEmpId, setShopEmpId] = useState("");
+  const [shopStatus, setShopStatus] = useState<"deduct_from_salary" | "paid_cash" | "gift">("deduct_from_salary");
+  const [shopItems, setShopItems] = useState<{ product_id: string; product_name: string; qty: number; unit_price: number; total: number }[]>([]);
+  const [shopProdSearch, setShopProdSearch] = useState("");
+  const [shopNote, setShopNote] = useState("");
+  const [printSlipItem, setPrintSlipItem] = useState<EmployeeShopping | null>(null);
+
+  // Dialog States: Collect Store Debt (কর্মচারীর দোকান পাওনা আদায়)
+  const [collectDebtOpen, setCollectDebtOpen] = useState(false);
+  const [debtEmpId, setDebtEmpId] = useState("");
+  const [debtAmount, setDebtAmount] = useState("");
+  const [debtMethod, setDebtMethod] = useState("cash");
+  const [debtDate, setDebtDate] = useState(new Date().toISOString().slice(0, 10));
+  const [debtNote, setDebtNote] = useState("");
+
+  // Dialog States: Manual Adjustment (সমন্বয়: ওভারটাইম / ইনসেন্টিভ / জরিমানা)
+  const [addAdjustmentOpen, setAddAdjustmentOpen] = useState(false);
+  const [adjEmpId, setAdjEmpId] = useState("");
+  const [adjType, setAdjType] = useState<"adjustment_add" | "adjustment_deduct">("adjustment_add");
+  const [adjAmount, setAdjAmount] = useState("");
+  const [adjDate, setAdjDate] = useState(new Date().toISOString().slice(0, 10));
+  const [adjNote, setAdjNote] = useState("");
+
+  const [busy, setBusy] = useState(false);
+
+  const [shopFilter, setShopFilter] = useState<"all" | "my">(isEmployeeRole ? "my" : "all");
+
+  const [customItemOpen, setCustomItemOpen] = useState(false);
+  const [customItemName, setCustomItemName] = useState("");
+  const [customItemPrice, setCustomItemPrice] = useState("");
+
+  const handleOpenAddShop = () => {
+    if (currentEmployee) {
+      setShopEmpId(currentEmployee.id);
+    } else if (employees.length > 0 && !shopEmpId) {
+      setShopEmpId(employees[0].id);
+    }
+    setShopItems([]);
+    setShopNote("");
+    setCustomItemName("");
+    setCustomItemPrice("");
+    setCustomItemOpen(false);
+    setAddShopOpen(true);
+  };
+
+  const handleAddProductToShop = (p: Product) => {
+    const defaultPrice = Number(
+      p.sell_price ??
+      (p as any).selling_price ??
+      (p as any).price ??
+      (p as any).unit_price ??
+      p.buy_price ??
+      0
+    );
+    const existingIdx = shopItems.findIndex(i => i.product_id === p.id);
+    let newItems = [...shopItems];
+    if (existingIdx >= 0) {
+      newItems[existingIdx].qty += 1;
+      newItems[existingIdx].total = newItems[existingIdx].qty * newItems[existingIdx].unit_price;
+    } else {
+      newItems.push({
+        product_id: p.id,
+        product_name: p.name,
+        qty: 1,
+        unit_price: defaultPrice,
+        total: defaultPrice,
+      });
+    }
+    setShopItems(newItems);
+    setShopProdSearch("");
+  };
+
+  const handleUpdateShopItemPrice = (index: number, newPriceVal: string) => {
+    const parsed = parseFloat(newPriceVal);
+    const unit_price = isNaN(parsed) || parsed < 0 ? 0 : parsed;
+    setShopItems(prev => {
+      const copy = [...prev];
+      if (copy[index]) {
+        copy[index] = {
+          ...copy[index],
+          unit_price,
+          total: copy[index].qty * unit_price,
+        };
+      }
+      return copy;
+    });
+  };
+
+  const handleUpdateShopItemQty = (index: number, delta: number) => {
+    setShopItems(prev => {
+      const copy = [...prev];
+      if (copy[index]) {
+        const newQty = Math.max(1, copy[index].qty + delta);
+        copy[index] = {
+          ...copy[index],
+          qty: newQty,
+          total: newQty * copy[index].unit_price,
+        };
+      }
+      return copy;
+    });
+  };
+
+  const handleAddCustomShopItem = () => {
+    if (!customItemName.trim()) {
+      toast.error(lang === "bn" ? "পণ্যের নাম লিখুন" : "Enter product name");
+      return;
+    }
+    const pr = parseFloat(customItemPrice) || 0;
+    setShopItems(prev => [
+      ...prev,
+      {
+        product_id: "custom_" + Date.now(),
+        product_name: customItemName.trim(),
+        qty: 1,
+        unit_price: pr,
+        total: pr,
+      },
+    ]);
+    setCustomItemName("");
+    setCustomItemPrice("");
+    setCustomItemOpen(false);
   };
 
   // Shoppings with deduct_from_salary for selected salary employee

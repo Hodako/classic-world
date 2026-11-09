@@ -24,8 +24,10 @@ export function PinLockModal() {
   const checkLockState = useCallback(() => {
     if (typeof window === "undefined") return;
 
-    // PIN protection is active by default (unless explicitly turned off)
-    const enabled = localStorage.getItem("app_pin_code_enabled") !== "false";
+    // Only show PIN lock if the owner has explicitly set and enabled a PIN
+    const storedPin = (localStorage.getItem("app_pin_code_val") || "").trim();
+    const isExplicitlyEnabled = localStorage.getItem("app_pin_code_enabled") === "true";
+    const enabled = isExplicitlyEnabled && storedPin.length >= 4;
 
     if (enabled) {
       const unlocked = sessionStorage.getItem("app_pin_unlocked") === "true";
@@ -87,6 +89,12 @@ export function PinLockModal() {
     const handleStorageChange = () => checkLockState();
     window.addEventListener("storage", handleStorageChange);
     const handleLockEvent = () => {
+      const storedPin = (localStorage.getItem("app_pin_code_val") || "").trim();
+      const isExplicitlyEnabled = localStorage.getItem("app_pin_code_enabled") === "true";
+      if (!isExplicitlyEnabled || storedPin.length < 4) {
+        toast.info(lang === "bn" ? "প্রথমে সেটিংস বা মেনু থেকে পিন কোড সেট করুন।" : "Please set a PIN code in settings or menu first.");
+        return;
+      }
       sessionStorage.removeItem("app_pin_unlocked");
       setIsLocked(true);
     };
@@ -101,7 +109,9 @@ export function PinLockModal() {
       if (idleTimer) clearTimeout(idleTimer);
       if (timeoutMin > 0) {
         idleTimer = setTimeout(() => {
-          const enabled = localStorage.getItem("app_pin_code_enabled") !== "false";
+          const storedPin = (localStorage.getItem("app_pin_code_val") || "").trim();
+          const isExplicitlyEnabled = localStorage.getItem("app_pin_code_enabled") === "true";
+          const enabled = isExplicitlyEnabled && storedPin.length >= 4;
           if (enabled) {
             sessionStorage.removeItem("app_pin_unlocked");
             setIsLocked(true);

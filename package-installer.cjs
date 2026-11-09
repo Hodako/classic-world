@@ -71,11 +71,6 @@ if (fs.existsSync(zipPath)) fs.unlinkSync(zipPath);
 console.log(`[Packager] Creating portable zip: ${zipName}...`);
 execSync(`7z a -tzip -mx=5 "${zipPath}" "${softwareDir}\\*" -x!*.zip`, { stdio: "inherit" });
 
-if (fs.existsSync(publicDir)) {
-  fs.copyFileSync(setupExePath, path.join(publicDir, setupExeName));
-  fs.copyFileSync(zipPath, path.join(publicDir, zipName));
-}
-
 // Copy to downloads/ for file server & tunnel
 const downloadsDir = path.resolve(__dirname, "..", "downloads");
 if (fs.existsSync(downloadsDir)) {
@@ -83,6 +78,8 @@ if (fs.existsSync(downloadsDir)) {
   fs.copyFileSync(setupExePath, path.join(downloadsDir, "ClassicWorld-POS.exe"));
   fs.copyFileSync(zipPath, path.join(downloadsDir, zipName));
   console.log(`[Packager] Copied to ${downloadsDir}`);
+  // Clean up software directory copy of zip to save disk space
+  if (fs.existsSync(zipPath)) fs.unlinkSync(zipPath);
 }
 
 console.log(`[Packager] SUCCESS! Single-file installer ready at:`);

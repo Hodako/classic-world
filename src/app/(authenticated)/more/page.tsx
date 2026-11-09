@@ -2497,7 +2497,7 @@ export default function MorePage() {
   const [empPermissions, setEmpPermissions] = useState<PermissionSet>(DEFAULT_EMPLOYEE_PERMISSIONS);
   const [empSaving, setEmpSaving] = useState(false);
   const [newEmpPassword, setNewEmpPassword] = useState("");
-  const [addEmpMode, setAddEmpMode] = useState<"invite" | "manual">("invite");
+  const [addEmpMode, setAddEmpMode] = useState<"invite" | "manual">("manual");
   const [employeeTab, setEmployeeTab] = useState<"active" | "invitations">("active");
 
   const employeesQuery = useQuery({
@@ -2521,7 +2521,7 @@ export default function MorePage() {
     setEmpUsername("");
     setEmpPhone("");
     setEmpPassword("");
-    setAddEmpMode("invite");
+    setAddEmpMode("manual");
     setEmpDesignation(lang === "bn" ? "বিক্রয় কর্মী" : "Sales Staff");
     setEmpPermissions({
       dashboard: true,

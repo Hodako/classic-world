@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Lock, Crown, User, Check, ArrowRight, KeyRound } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Lock, Crown, User, Check, ArrowRight, KeyRound, Users, ShieldAlert } from "lucide-react";
 import { useT } from "@/lib/i18n";
 import { toast } from "sonner";
 import { playTapSound, playErrorSound, playSaleSuccessSound } from "@/lib/audio";
@@ -114,15 +115,25 @@ export function ModeSwitcherDialog({ open, onOpenChange }: ModeSwitcherDialogPro
     }
   };
 
+  const selectedEmployee = useMemo(() => {
+    return employees.find(e => e.id === selectedEmpId) || employees[0] || null;
+  }, [employees, selectedEmpId]);
+
   const handleVerifyEmployeePin = (pinToTest: string) => {
-    let targetEmployee = employees.find(e => e.id === selectedEmpId);
-    if (!targetEmployee || String(targetEmployee.pin || targetEmployee.plain_password || targetEmployee.password || "").trim() !== pinToTest.trim()) {
-      targetEmployee = employees.find(e => String(e.pin || e.plain_password || e.password || "").trim() === pinToTest.trim());
+    if (!selectedEmployee) {
+      toast.error(lang === "bn" ? "প্রথমে কর্মচারী নির্বাচন করুন!" : "Please select an employee first!");
+      return;
     }
 
-    const isMatch = Boolean(targetEmployee && String(targetEmployee.pin || targetEmployee.plain_password || targetEmployee.password || "").trim() === pinToTest.trim());
+    const cleanInput = pinToTest.trim();
+    const correctPin = String(
+      selectedEmployee.pin ||
+      selectedEmployee.plain_password ||
+      selectedEmployee.password ||
+      "1234"
+    ).trim();
 
-    if (isMatch && targetEmployee) {
+    if (cleanInput === correctPin) {
       playSaleSuccessSound();
       sessionStorage.setItem("app_pin_unlocked", "true");
       try {
@@ -138,7 +149,8 @@ export function ModeSwitcherDialog({ open, onOpenChange }: ModeSwitcherDialogPro
           localStorage.setItem("cw_owner_backup_token", curToken);
         }
       } catch (_) {}
-      const empData = targetEmployee;
+
+      const empData = selectedEmployee;
       localStorage.setItem("cw_active_employee_session", JSON.stringify(empData));
       localStorage.setItem("cw_active_session_role", "employee");
       localStorage.setItem("user", JSON.stringify({ ...empData, role: "employee" }));
@@ -159,9 +171,9 @@ export function ModeSwitcherDialog({ open, onOpenChange }: ModeSwitcherDialogPro
       setTimeout(() => setErrorShake(false), 500);
       setPinInput("");
       toast.error(
-        employees.length === 0
-          ? (lang === "bn" ? "দোকানে কোনো কর্মচারী অ্যাকাউন্ট যোগ করা নেই!" : "No employee accounts found! Please add staff first.")
-          : (lang === "bn" ? "ভুল কর্মচারী পিন কোড!" : "Incorrect Employee PIN code!")
+        lang === "bn"
+          ? `'${selectedEmployee.name || selectedEmployee.full_name || "কর্মচারী"}' এর পিন কোড সঠিক নয়!`
+          : `Incorrect PIN for ${selectedEmployee.name || selectedEmployee.full_name || "Staff"}!`
       );
     }
   };
@@ -192,8 +204,8 @@ export function ModeSwitcherDialog({ open, onOpenChange }: ModeSwitcherDialogPro
           </DialogTitle>
           <DialogDescription className="text-xs text-muted-foreground">
             {lang === "bn"
-              ? "মালিক বা কর্মচারীর ৪ সংখ্যার সিকিউরিটি পিন দিয়ে মোড পরিবর্তন করুন"
-              : "Enter Owner PIN or Employee PIN to switch access role"}
+              ? "মালিক বা কর্মচারীর সিকিউরিটি পিন দিয়ে সরাসরি মোড পরিবর্তন করুন"
+              : "Enter Owner PIN or individual Employee PIN to switch access role"}
           </DialogDescription>
         </DialogHeader>
 
@@ -255,15 +267,88 @@ export function ModeSwitcherDialog({ open, onOpenChange }: ModeSwitcherDialogPro
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4 pt-1">
+          {/* Employee Selection List (if switching to Employee Mode) */}
+          {activeTab === "employee" && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-[11px] font-bold text-muted-foreground uppercase tracking-wider">
+                <span className="flex items-center gap-1.5">
+                  <Users className="size-3.5 text-amber-500" />
+                  <span>{lang === "bn" ? "কর্মচারী নির্বাচন করুন:" : "Select Employee to Switch:"}</span>
+                </span>
+                <span className="text-[10px] lowercase font-normal">{employees.length} {lang === "bn" ? "জন কর্মী" : "staff"}</span>
+              </div>
+
+              {employees.length === 0 ? (
+                <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-center space-y-1">
+                  <ShieldAlert className="size-5 text-amber-500 mx-auto" />
+                  <p className="text-xs font-bold text-amber-700 dark:text-amber-300">
+                    {lang === "bn" ? "কোনো কর্মচারী যুক্ত নেই" : "No Employee Accounts Found"}
+                  </p>
+                  <p className="text-[11px] text-muted-foreground">
+                    {lang === "bn" ? "সেটিংস বা এমপ্লয়ি পেজ থেকে আগে কর্মচারী যুক্ত করুন।" : "Please add employees in Settings or Employee page first."}
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-1.5 max-h-[160px] overflow-y-auto pr-1">
+                  {employees.map((emp) => {
+                    const isSelected = emp.id === (selectedEmployee?.id || emp.id);
+                    const empName = emp.name || emp.full_name || "Employee";
+                    return (
+                      <button
+                        key={emp.id}
+                        type="button"
+                        onClick={() => {
+                          playTapSound();
+                          setSelectedEmpId(emp.id);
+                          setPinInput("");
+                        }}
+                        className={`w-full p-2.5 rounded-2xl border text-left flex items-center justify-between transition-all cursor-pointer ${
+                          isSelected
+                            ? "bg-amber-500/15 border-amber-500/50 shadow-2xs"
+                            : "bg-muted/30 border-border/60 hover:bg-muted/60"
+                        }`}
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <div className={`size-8 rounded-xl flex items-center justify-center font-bold text-xs shrink-0 ${
+                            isSelected ? "bg-amber-500 text-white" : "bg-muted text-muted-foreground"
+                          }`}>
+                            {empName.slice(0, 2).toUpperCase()}
+                          </div>
+                          <div className="min-w-0">
+                            <p className="font-bold text-xs truncate text-foreground">{empName}</p>
+                            <p className="text-[10px] text-muted-foreground truncate">{emp.designation || "Staff"}</p>
+                          </div>
+                        </div>
+                        {isSelected ? (
+                          <div className="flex items-center gap-1.5">
+                            <Badge variant="outline" className="bg-amber-500/20 text-amber-700 dark:text-amber-300 border-amber-500/40 text-[10px] px-2 py-0.5 font-bold">
+                              {lang === "bn" ? "নির্বাচিত ✓" : "Selected ✓"}
+                            </Badge>
+                          </div>
+                        ) : (
+                          <span className="text-[10px] text-muted-foreground">লগইন করুন →</span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* PIN Input field */}
           <div className="space-y-1.5">
             <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider flex items-center justify-between">
-              <span>{activeTab === "owner" ? (lang === "bn" ? "মালিক সিকিউরিটি পিন দিন" : "Enter Owner PIN") : (lang === "bn" ? "কর্মচারী সিকিউরিটি পিন দিন" : "Enter Employee PIN")}</span>
+              <span>
+                {activeTab === "owner"
+                  ? (lang === "bn" ? "মালিক সিকিউরিটি পিন দিন" : "Enter Owner PIN")
+                  : (lang === "bn" ? `'${selectedEmployee?.name || selectedEmployee?.full_name || "কর্মচারী"}' এর পিন কোড দিন` : `Enter PIN for ${selectedEmployee?.name || selectedEmployee?.full_name || "Staff"}`)}
+              </span>
             </label>
             <div className={`relative ${errorShake ? "animate-shake" : ""}`}>
               <Input
                 type="password"
-                maxLength={6}
+                maxLength={9}
                 autoFocus
                 placeholder="******"
                 value={pinInput}
@@ -273,12 +358,17 @@ export function ModeSwitcherDialog({ open, onOpenChange }: ModeSwitcherDialogPro
                   if (val.length >= 4) {
                     if (activeTab === "owner") {
                       const oPin = (localStorage.getItem("app_pin_code_val") || "1234").trim();
-                      if (val === oPin || val.length === oPin.length) {
+                      if (val === oPin) {
                         handleVerifyOwnerPin(val);
                       }
-                    } else {
-                      const match = employees.find(emp => String(emp.pin || emp.plain_password || emp.password || "").trim() === val);
-                      if (match) {
+                    } else if (selectedEmployee) {
+                      const correctPin = String(
+                        selectedEmployee.pin ||
+                        selectedEmployee.plain_password ||
+                        selectedEmployee.password ||
+                        "1234"
+                      ).trim();
+                      if (val === correctPin) {
                         handleVerifyEmployeePin(val);
                       }
                     }

@@ -31,7 +31,10 @@ import {
   deleteTransferKeyFn,
   getEmployeesFn,
   updateEmployeeFn,
+  createEmployeeFn,
+  deleteEmployeeFn,
 } from "@/lib/rpc";
+import { OwnerEmployeeDeviceLink } from "@/components/employee-device-link";
 import Link from "next/link";
 import {
   Trash2,
@@ -524,6 +527,103 @@ export default function SettingsPage() {
   const [newEmpPin, setNewEmpPin] = useState("");
   const [showNewEmpPin, setShowNewEmpPin] = useState(false);
   const [savingEmpPin, setSavingEmpPin] = useState(false);
+
+  // Staff Modal Management State (Add & Edit Settings)
+  const [addStaffDialogOpen, setAddStaffDialogOpen] = useState(false);
+  const [editStaffDialogOpen, setEditStaffDialogOpen] = useState(false);
+  const [staffEditingEmp, setStaffEditingEmp] = useState<any | null>(null);
+  const [staffFormName, setStaffFormName] = useState("");
+  const [staffFormPhone, setStaffFormPhone] = useState("");
+  const [staffFormDesignation, setStaffFormDesignation] = useState("Sales Staff");
+  const [staffFormSalary, setStaffFormSalary] = useState("");
+  const [staffFormAdvanceLimit, setStaffFormAdvanceLimit] = useState("");
+  const [staffFormPin, setStaffFormPin] = useState("1234");
+  const [staffFormSaving, setStaffFormSaving] = useState(false);
+
+  const handleOpenAddStaff = () => {
+    setStaffFormName("");
+    setStaffFormPhone("");
+    setStaffFormDesignation("Sales Staff");
+    setStaffFormSalary("");
+    setStaffFormAdvanceLimit("");
+    setStaffFormPin("1234");
+    setAddStaffDialogOpen(true);
+  };
+
+  const handleOpenEditStaff = (emp: any) => {
+    setStaffEditingEmp(emp);
+    setStaffFormName(emp.name || emp.full_name || "");
+    setStaffFormPhone(emp.phone || "");
+    setStaffFormDesignation(emp.designation || "Sales Staff");
+    setStaffFormSalary(String(emp.base_salary || emp.monthly_salary || ""));
+    setStaffFormAdvanceLimit(String(emp.advance_limit || ""));
+    setStaffFormPin(String(emp.pin || emp.plain_password || emp.password || "1234"));
+    setEditStaffDialogOpen(true);
+  };
+
+  const handleSaveStaff = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!staffFormName.trim()) {
+      toast.error(lang === "bn" ? "কর্মচারীর নাম আবশ্যক" : "Employee name is required");
+      return;
+    }
+    const cleanPin = staffFormPin.trim() || "1234";
+    if (!/^\d{4,9}$/.test(cleanPin)) {
+      toast.error(lang === "bn" ? "পিন কোড ৪ থেকে ৯ সংখ্যার হতে হবে" : "PIN must be 4 to 9 digits");
+      return;
+    }
+
+    setStaffFormSaving(true);
+    try {
+      const salNum = parseFloat(staffFormSalary) || 0;
+      const advNum = staffFormAdvanceLimit ? parseFloat(staffFormAdvanceLimit) : salNum;
+
+      if (staffEditingEmp) {
+        await updateEmployeeFn({
+          data: {
+            id: staffEditingEmp.id,
+            name: staffFormName.trim(),
+            phone: staffFormPhone.trim() || null,
+            designation: staffFormDesignation.trim(),
+            base_salary: salNum,
+            monthly_salary: salNum,
+            advance_limit: advNum,
+            pin: cleanPin,
+            plain_password: cleanPin,
+            password: cleanPin,
+            status: staffEditingEmp.status || "active",
+          },
+        });
+        toast.success(lang === "bn" ? "কর্মচারী তথ্য আপডেট হয়েছে!" : "Employee settings updated successfully!");
+        setEditStaffDialogOpen(false);
+      } else {
+        await createEmployeeFn({
+          data: {
+            name: staffFormName.trim(),
+            phone: staffFormPhone.trim() || null,
+            designation: staffFormDesignation.trim(),
+            base_salary: salNum,
+            monthly_salary: salNum,
+            advance_limit: advNum,
+            pin: cleanPin,
+            plain_password: cleanPin,
+            password: cleanPin,
+            status: "active",
+          },
+        });
+        toast.success(lang === "bn" ? "নতুন কর্মচারী সফলভাবে যুক্ত হয়েছে!" : "New employee added successfully!");
+        setAddStaffDialogOpen(false);
+      }
+
+      employeesListQuery.refetch();
+      qc.invalidateQueries({ queryKey: ["employees"] });
+      qc.invalidateQueries({ queryKey: ["business-settings"] });
+    } catch (err: any) {
+      toast.error(err.message || "Failed to save employee");
+    } finally {
+      setStaffFormSaving(false);
+    }
+  };
 
   const employeesListQuery = useQuery({
     queryKey: ["employees"],
@@ -2320,236 +2420,210 @@ export default function SettingsPage() {
             </div>
           )}
 
-          {/* ── TAB 4: EMPLOYEE INVITATIONS & STAFF ACCESS ──────────────────── */}
+          {/* ── TAB 4: EMPLOYEE SETUP & DEVICE PAIRING (NO EMAIL INVITATION) ── */}
           {settingsTab === "staff" && (
             <div className="space-y-6">
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-                {/* Send Employee Invitation Form */}
-                <Card className="lg:col-span-6 p-5 sm:p-6 rounded-3xl bg-card border-border/80 shadow-xs space-y-5">
-                  <div className="flex items-center justify-between border-b border-border/60 pb-3">
-                    <div className="flex items-center gap-2.5 text-primary">
-                      <div className="p-2 rounded-xl bg-primary/10 border border-primary/20">
-                        <UserPlus className="size-5" />
-                      </div>
-                      <div>
-                        <h2 className="text-base font-bold text-foreground">
-                          {lang === "bn" ? "নতুন কর্মচারী আমন্ত্রণ" : "Invite Employee by Email"}
-                        </h2>
-                        <p className="text-xs text-muted-foreground">
-                          {lang === "bn"
-                            ? "কর্মচারীর ইমেইল দিয়ে আমন্ত্রণ পাঠান। তিনি লগইন করলেই একাউন্টে নোটিফিকেশন পাবেন।"
-                            : "Enter staff email. When they log in or create an account, they get a joining popup."}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-
-                  <form onSubmit={handleSendStaffInvitation} className="space-y-3.5">
-                    <div className="space-y-1.5">
-                      <Label className="text-xs font-semibold">Employee Email Address *</Label>
-                      <Input
-                        type="email"
-                        required
-                        value={inviteEmail}
-                        onChange={e => setInviteEmail(e.target.value)}
-                        placeholder="employee@gmail.com"
-                        className="h-10 rounded-xl text-xs"
-                      />
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <div className="space-y-1.5">
-                        <Label className="text-xs font-semibold">Full Name (Optional)</Label>
-                        <Input
-                          value={inviteName}
-                          onChange={e => setInviteName(e.target.value)}
-                          placeholder="e.g. Shakil Ahmed"
-                          className="h-10 rounded-xl text-xs"
-                        />
-                      </div>
-                      <div className="space-y-1.5">
-                        <Label className="text-xs font-semibold">Role / Designation</Label>
-                        <select
-                          value={inviteDesignation}
-                          onChange={e => setInviteDesignation(e.target.value)}
-                          className="w-full h-10 rounded-xl border border-input bg-input px-3 text-xs"
-                        >
-                          <option value="Sales Staff">Sales Staff</option>
-                          <option value="Cashier">Cashier</option>
-                          <option value="Store Manager">Store Manager</option>
-                          <option value="Inventory Officer">Inventory Officer</option>
-                        </select>
-                      </div>
-                    </div>
-
-                    <Button
-                      type="submit"
-                      disabled={inviteSending || !inviteEmail.trim()}
-                      className="w-full h-10 rounded-xl bg-primary text-primary-foreground font-bold text-xs gap-2 shadow-sm mt-2"
-                    >
-                      {inviteSending ? (
-                        <>
-                          <RefreshCw className="size-3.5 animate-spin" />
-                          <span>Sending Invitation...</span>
-                        </>
-                      ) : (
-                        <>
-                          <Mail className="size-3.5" />
-                          <span>{lang === "bn" ? "আমন্ত্রণ পাঠান" : "Send Staff Invitation"}</span>
-                        </>
-                      )}
-                    </Button>
-                  </form>
-                </Card>
-
-                {/* Pending Email Invitations */}
-                <Card className="lg:col-span-6 p-5 sm:p-6 rounded-3xl bg-card border-border/80 shadow-xs space-y-4">
-                  <div className="flex items-center justify-between border-b border-border/60 pb-3">
-                    <div className="flex items-center gap-2">
-                      <Clock className="size-4 text-amber-500" />
-                      <h3 className="font-bold text-sm text-foreground">
-                        {lang === "bn" ? "অপেক্ষারত আমন্ত্রণসমূহ" : "Pending Email Invitations"}
-                      </h3>
-                    </div>
-                    <Badge variant="outline" className="bg-amber-500/10 text-amber-600 border-amber-500/30 text-xs">
-                      {pendingInvites.length} Pending
-                    </Badge>
-                  </div>
-
-                  {pendingInvites.length > 0 ? (
-                    <div className="space-y-2.5 max-h-[260px] overflow-y-auto pr-1">
-                      {pendingInvites.map((inv: any) => (
-                        <div
-                          key={inv.id}
-                          className="flex items-center justify-between p-3 rounded-2xl bg-muted/40 border border-border/80 text-xs"
-                        >
-                          <div className="space-y-0.5 min-w-0 pr-2">
-                            <p className="font-bold text-foreground truncate">{inv.employee_email}</p>
-                            <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
-                              <span>{inv.designation || "Staff"}</span>
-                              {inv.created_at && <span>• {new Date(inv.created_at).toLocaleDateString()}</span>}
-                            </div>
-                          </div>
-
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleCancelInvitation(inv.id)}
-                            className="h-8 px-2.5 rounded-xl text-destructive hover:bg-destructive/10 text-xs font-semibold shrink-0"
-                          >
-                            Revoke
-                          </Button>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="text-center py-8 space-y-1.5 border border-dashed border-border/80 rounded-2xl">
-                      <Mail className="size-6 text-muted-foreground mx-auto opacity-50" />
-                      <p className="text-xs text-muted-foreground">No pending invitations.</p>
-                    </div>
-                  )}
-                </Card>
-              </div>
-
-              {/* Active Staff Members Table */}
+              {/* Active Staff Members Card */}
               <Card className="p-5 sm:p-6 rounded-3xl bg-card border-border/80 shadow-xs space-y-4">
-                <div className="flex items-center justify-between border-b border-border/60 pb-3">
-                  <div className="flex items-center gap-2.5 text-primary">
-                    <Users className="size-5" />
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-border/60 pb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="size-10 rounded-2xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20 flex items-center justify-center shrink-0">
+                      <Users className="size-5" />
+                    </div>
                     <div>
-                      <h3 className="font-bold text-sm text-foreground">
-                        {lang === "bn" ? "সক্রিয় কর্মচারীবৃন্দ" : "Active Staff Members"}
-                      </h3>
-                      <p className="text-xs text-muted-foreground">Employees with access to this shop</p>
+                      <div className="flex items-center gap-2">
+                        <h2 className="font-bold text-base sm:text-lg text-foreground">
+                          {lang === "bn" ? "দোকানের কর্মচারীবৃন্দ ও এক্সেস সেটআপ" : "Store Staff & Device Access Setup"}
+                        </h2>
+                        <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/30 text-xs font-bold">
+                          {((employeesListQuery.data && employeesListQuery.data.length > 0) ? employeesListQuery.data : activeEmployees).length} {lang === "bn" ? "জন কর্মী" : "Staff"}
+                        </Badge>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {lang === "bn"
+                          ? "কর্মচারী যুক্ত করুন, টার্মিনাল লিংক করার কোড তৈরি করুন এবং বেতন ও পিন সেটিংস পরিবর্তন করুন।"
+                          : "Manage employee accounts, generate pairing codes for linking devices, and edit staff salaries and PINs."}
+                      </p>
                     </div>
                   </div>
-                  <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/30 text-xs">
-                    {activeEmployees.length} Active Staff
-                  </Badge>
+
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Button
+                      type="button"
+                      onClick={handleOpenAddStaff}
+                      size="sm"
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold h-9 rounded-xl px-3.5 text-xs gap-1.5 shadow-sm cursor-pointer"
+                    >
+                      <UserPlus className="size-3.5" />
+                      <span>{lang === "bn" ? "নতুন কর্মচারী যোগ করুন" : "Add New Employee"}</span>
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        employeesListQuery.refetch();
+                        qc.invalidateQueries({ queryKey: ["employees"] });
+                        toast.info(lang === "bn" ? "কর্মচারী তালিকা রিফ্রেশ হয়েছে" : "Staff list refreshed");
+                      }}
+                      className="h-9 px-3 rounded-xl text-xs font-semibold gap-1.5 border-border/80 cursor-pointer"
+                    >
+                      <RefreshCw className={`size-3.5 ${employeesListQuery.isFetching ? "animate-spin" : ""}`} />
+                      <span>{lang === "bn" ? "রিফ্রেশ" : "Refresh"}</span>
+                    </Button>
+                  </div>
                 </div>
 
-                {activeEmployees.length > 0 ? (
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                      {activeEmployees.map((emp: any) => (
-                        <div
-                          key={emp.id}
-                          className="p-3.5 rounded-2xl bg-muted/40 border border-border/80 flex flex-col justify-between gap-3 text-xs"
+                {/* Helper notice */}
+                <div className="rounded-2xl bg-emerald-500/5 border border-emerald-500/20 p-3.5 text-xs text-emerald-800 dark:text-emerald-300 flex items-start gap-2.5">
+                  <Smartphone className="size-4 shrink-0 text-emerald-600 dark:text-emerald-400 mt-0.5" />
+                  <div className="space-y-0.5 leading-relaxed">
+                    <p className="font-bold text-foreground">
+                      {lang === "bn" ? "ডিভাইস লিংক ও পিন লগইন সিস্টেম:" : "Device Pairing & Direct PIN System:"}
+                    </p>
+                    <p className="text-[11px] text-muted-foreground">
+                      {lang === "bn"
+                        ? "কর্মচারীদের আলাদা কোনো ইমেইলের প্রয়োজন নেই। 'ডিভাইস লিংক' বাটনে ক্লিক করে কোড দিয়ে কর্মচারীর মোবাইল বা কম্পিউটার যুক্ত করুন অথবা তার ব্যক্তিগত পিন কোড দিয়ে সরাসরি লগইন করান।"
+                        : "Employees do not need an email account. Click 'Link Device' to generate pairing codes for cashier terminals/phones, or employees can sign in directly using their personal PIN."}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Employees Grid */}
+                {(() => {
+                  const staffList = (employeesListQuery.data && employeesListQuery.data.length > 0) ? employeesListQuery.data : activeEmployees;
+                  if (staffList.length === 0) {
+                    return (
+                      <div className="text-center py-12 space-y-2 border border-dashed border-border/80 rounded-2xl bg-muted/20">
+                        <Users className="size-9 mx-auto text-muted-foreground/50" />
+                        <p className="text-sm font-bold text-foreground">
+                          {lang === "bn" ? "এখনো কোনো কর্মচারী যুক্ত করা হয়নি" : "No Staff Members Added Yet"}
+                        </p>
+                        <p className="text-xs text-muted-foreground max-w-sm mx-auto">
+                          {lang === "bn"
+                            ? "উপরের 'নতুন কর্মচারী যোগ করুন' বাটনে ক্লিক করে সরাসরি কর্মচারীর নাম, পদবি, বেতন ও পিন সেট করুন।"
+                            : "Click 'Add New Employee' above to register staff with designated salary and PIN."}
+                        </p>
+                        <Button
+                          type="button"
+                          onClick={handleOpenAddStaff}
+                          size="sm"
+                          className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs mt-2"
                         >
-                          <div className="space-y-1 min-w-0">
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                              <span className="font-bold text-foreground truncate">
-                                {emp.full_name || emp.email.split("@")[0]}
-                              </span>
-                              <Badge variant="outline" className="text-[10px] bg-emerald-500/10 text-emerald-600 border-emerald-500/30 px-1.5 py-0 h-4">
-                                Active
-                              </Badge>
-                              {emp.permissions?.danger_zone && (
-                                <Badge variant="outline" className="text-[10px] bg-red-500/10 text-red-600 border-red-500/30 px-1.5 py-0 h-4 font-bold">
-                                  Danger Zone
-                                </Badge>
-                              )}
-                            </div>
-                            <div className="flex items-center justify-between gap-2 pt-1">
-                              <p className="text-[11px] text-muted-foreground truncate">{emp.email}</p>
-                              <div className="flex items-center gap-1 text-[11px] font-mono font-bold text-amber-700 dark:text-amber-300 bg-amber-500/10 px-2 py-0.5 rounded-lg border border-amber-500/20 shrink-0">
-                                <KeyRound className="size-3 text-amber-500" />
-                                <span>{lang === "bn" ? "পিন:" : "PIN:"} {emp.pin || emp.plain_password || emp.password || "1234"}</span>
+                          <UserPlus className="size-3.5 mr-1.5" />
+                          <span>{lang === "bn" ? "প্রথম কর্মচারী যোগ করুন" : "Add First Employee"}</span>
+                        </Button>
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5 pt-1">
+                      {staffList.map((emp: any) => {
+                        const empName = emp.name || emp.full_name || "Employee";
+                        const currentPin = emp.pin || emp.plain_password || emp.password || "1234";
+                        const baseSal = Number(emp.base_salary || emp.monthly_salary) || 0;
+                        const advLimit = emp.advance_limit !== undefined && emp.advance_limit !== null
+                          ? Number(emp.advance_limit)
+                          : baseSal;
+
+                        return (
+                          <div
+                            key={emp.id}
+                            className="p-4 rounded-2xl bg-muted/40 border border-border/80 hover:border-border transition-all flex flex-col justify-between gap-3 text-xs shadow-2xs"
+                          >
+                            <div className="space-y-2 min-w-0">
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="flex items-center gap-2.5 min-w-0">
+                                  <div className="size-9 rounded-xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20 flex items-center justify-center font-bold text-xs shrink-0">
+                                    {empName.slice(0, 2).toUpperCase()}
+                                  </div>
+                                  <div className="min-w-0">
+                                    <p className="font-bold text-foreground text-sm truncate">{empName}</p>
+                                    <div className="flex items-center gap-1.5 pt-0.5 flex-wrap">
+                                      <Badge variant="secondary" className="text-[10px] font-normal py-0 px-1.5 h-4">
+                                        {emp.designation || "Staff"}
+                                      </Badge>
+                                      {emp.phone && (
+                                        <span className="text-[10px] text-muted-foreground">{emp.phone}</span>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+
+                                <div className="flex items-center gap-1 text-[11px] font-mono font-bold text-amber-700 dark:text-amber-300 bg-amber-500/10 px-2 py-0.5 rounded-lg border border-amber-500/20 shrink-0">
+                                  <KeyRound className="size-3 text-amber-500" />
+                                  <span>PIN: {currentPin}</span>
+                                </div>
+                              </div>
+
+                              {/* Salary & Advance Details */}
+                              <div className="grid grid-cols-2 gap-2 pt-1 border-t border-border/40 text-[11px]">
+                                <div className="rounded-xl bg-background/60 p-2 border border-border/50">
+                                  <span className="text-[10px] text-muted-foreground block">{lang === "bn" ? "মূল বেতন:" : "Salary:"}</span>
+                                  <span className="font-bold text-foreground font-mono">৳{baseSal.toLocaleString()}</span>
+                                </div>
+                                <div className="rounded-xl bg-amber-500/5 p-2 border border-amber-500/20">
+                                  <span className="text-[10px] text-amber-700 dark:text-amber-400 block">{lang === "bn" ? "অগ্রিম সীমা:" : "Adv. Limit:"}</span>
+                                  <span className="font-bold text-amber-700 dark:text-amber-300 font-mono">৳{advLimit.toLocaleString()}</span>
+                                </div>
                               </div>
                             </div>
-                          </div>
 
-                          <div className="flex items-center justify-between gap-2 pt-2 border-t border-border/50">
-                            <div className="flex items-center gap-1.5 flex-wrap">
+                            {/* Actions bar */}
+                            <div className="flex items-center justify-between gap-1.5 pt-2 border-t border-border/50 flex-wrap">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                {/* Device Pairing Link Code Generator */}
+                                <OwnerEmployeeDeviceLink
+                                  employeeId={emp.id}
+                                  employeeName={empName}
+                                  employeePin={currentPin}
+                                />
+
+                                {/* Edit Staff Settings Button */}
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => handleOpenEditStaff(emp)}
+                                  className="h-8 px-2.5 rounded-xl border-border hover:bg-muted text-xs font-semibold gap-1 cursor-pointer"
+                                  title={lang === "bn" ? "কর্মচারী সেটিংস পরিবর্তন" : "Edit Staff Settings"}
+                                >
+                                  <Pencil className="size-3 text-primary" />
+                                  <span>{lang === "bn" ? "সেটিংস" : "Edit"}</span>
+                                </Button>
+
+                                {/* Permissions Button */}
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => openPermissionsModal(emp)}
+                                  className="h-8 px-2 rounded-xl border-border hover:bg-muted text-xs font-semibold gap-1 cursor-pointer"
+                                  title="Manage Access & Permissions"
+                                >
+                                  <Shield className="size-3 text-muted-foreground" />
+                                  <span className="hidden sm:inline">{lang === "bn" ? "পারমিশন" : "Perms"}</span>
+                                </Button>
+                              </div>
+
                               <Button
                                 type="button"
-                                variant="outline"
+                                variant="ghost"
                                 size="sm"
-                                onClick={() => {
-                                  setSelectedEmpForPin(emp);
-                                  setNewEmpPin(emp.pin || emp.plain_password || emp.password || "");
-                                }}
-                                className="h-8 px-2.5 rounded-xl border-amber-500/30 text-amber-700 dark:text-amber-300 hover:bg-amber-500/10 text-xs font-semibold gap-1.5 cursor-pointer"
-                                title="Change Employee PIN"
+                                onClick={() => handleRemoveEmployee(emp.id)}
+                                className="h-8 px-2 text-destructive hover:bg-destructive/10 rounded-xl shrink-0 cursor-pointer"
+                                title="Remove Staff Access"
                               >
-                                <KeyRound className="size-3.5 text-amber-500" />
-                                <span>{lang === "bn" ? "পিন পরিবর্তন" : "Change PIN"}</span>
-                              </Button>
-
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                onClick={() => openPermissionsModal(emp)}
-                                className="h-8 px-2.5 rounded-xl border-primary/30 hover:bg-primary/10 text-primary text-xs font-semibold gap-1.5 cursor-pointer"
-                                title="Manage Access & Permissions"
-                              >
-                                <Shield className="size-3.5" />
-                                <span>{lang === "bn" ? "পারমিশন" : "Permissions"}</span>
+                                <Trash2 className="size-3.5" />
                               </Button>
                             </div>
-
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleRemoveEmployee(emp.id)}
-                              className="h-8 px-2 text-destructive hover:bg-destructive/10 rounded-xl shrink-0 cursor-pointer"
-                              title="Remove Staff Access"
-                            >
-                              <Trash2 className="size-3.5" />
-                            </Button>
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
-                ) : (
-                  <div className="text-center py-8 space-y-1.5 border border-dashed border-border/80 rounded-2xl">
-                    <Users className="size-7 text-muted-foreground mx-auto opacity-50" />
-                    <p className="text-xs text-muted-foreground">No active employees joined yet.</p>
-                    <p className="text-[11px] text-muted-foreground">Send an invitation above to add your team members.</p>
-                  </div>
-                )}
+                  );
+                })()}
               </Card>
             </div>
           )}
@@ -3985,6 +4059,156 @@ export default function SettingsPage() {
                   <>
                     <Check className="size-3.5" />
                     <span>{lang === "bn" ? "পিন সংরক্ষণ করুন" : "Save PIN"}</span>
+                  </>
+                )}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Add / Edit Staff Modal Dialog ── */}
+      <Dialog
+        open={addStaffDialogOpen || editStaffDialogOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            setAddStaffDialogOpen(false);
+            setEditStaffDialogOpen(false);
+            setStaffEditingEmp(null);
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md rounded-3xl p-6 bg-card border-border shadow-2xl">
+          <DialogHeader className="space-y-1.5 pb-2 border-b border-border/60">
+            <div className="size-11 rounded-2xl bg-emerald-500/10 border border-emerald-500/25 flex items-center justify-center text-emerald-600 mb-1">
+              <UserPlus className="size-5" />
+            </div>
+            <DialogTitle className="text-base sm:text-lg font-bold">
+              {staffEditingEmp
+                ? (lang === "bn" ? "কর্মচারী তথ্য ও সেটিংস পরিবর্তন" : "Edit Staff Settings")
+                : (lang === "bn" ? "নতুন কর্মচারী যোগ করুন" : "Add New Employee")}
+            </DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground">
+              {lang === "bn"
+                ? "কর্মচারীর নাম, পদবি, মাসিক বেতন ও সিকিউরিটি পিন সেট করুন।"
+                : "Configure employee designation, monthly base salary, advance limit, and PIN."}
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleSaveStaff} className="space-y-3.5 pt-2">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">
+                {lang === "bn" ? "কর্মচারীর পুরো নাম *" : "Full Name *"}
+              </Label>
+              <Input
+                required
+                value={staffFormName}
+                onChange={(e) => setStaffFormName(e.target.value)}
+                placeholder="e.g. Parvez Ahmed"
+                className="h-10 rounded-xl text-xs"
+              />
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold">
+                  {lang === "bn" ? "পদবি / রোল" : "Designation"}
+                </Label>
+                <Input
+                  value={staffFormDesignation}
+                  onChange={(e) => setStaffFormDesignation(e.target.value)}
+                  placeholder="Sales Staff, Cashier"
+                  className="h-10 rounded-xl text-xs"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold">
+                  {lang === "bn" ? "মোবাইল নম্বর (ঐচ্ছিক)" : "Phone (Optional)"}
+                </Label>
+                <Input
+                  value={staffFormPhone}
+                  onChange={(e) => setStaffFormPhone(e.target.value)}
+                  placeholder="017xxxxxxxx"
+                  className="h-10 rounded-xl text-xs font-mono"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold">
+                  {lang === "bn" ? "মাসিক মূল বেতন (৳)" : "Monthly Salary (৳)"}
+                </Label>
+                <Input
+                  type="number"
+                  value={staffFormSalary}
+                  onChange={(e) => setStaffFormSalary(e.target.value)}
+                  placeholder="15000"
+                  className="h-10 rounded-xl text-xs font-mono"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold">
+                  {lang === "bn" ? "অগ্রিম তোলার সীমা (৳)" : "Advance Limit (৳)"}
+                </Label>
+                <Input
+                  type="number"
+                  value={staffFormAdvanceLimit}
+                  onChange={(e) => setStaffFormAdvanceLimit(e.target.value)}
+                  placeholder="Leave empty for salary"
+                  className="h-10 rounded-xl text-xs font-mono"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <Label className="text-xs font-semibold flex items-center gap-1.5">
+                  <KeyRound className="size-3.5 text-amber-500" />
+                  <span>{lang === "bn" ? "লগইন পিন কোড (৪-৯ সংখ্যা) *" : "Login PIN (4-9 digits) *"}</span>
+                </Label>
+                <span className="text-[10px] text-muted-foreground">{lang === "bn" ? "ডিফল্ট: 1234" : "Default: 1234"}</span>
+              </div>
+              <Input
+                type="text"
+                maxLength={9}
+                required
+                value={staffFormPin}
+                onChange={(e) => setStaffFormPin(e.target.value.replace(/[^0-9]/g, ""))}
+                placeholder="1234"
+                className="h-11 rounded-xl text-base font-mono tracking-widest text-center font-bold"
+              />
+            </div>
+
+            <DialogFooter className="gap-2 sm:gap-0 pt-3 border-t border-border/50">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setAddStaffDialogOpen(false);
+                  setEditStaffDialogOpen(false);
+                  setStaffEditingEmp(null);
+                }}
+                className="rounded-xl text-xs"
+              >
+                {lang === "bn" ? "বাতিল" : "Cancel"}
+              </Button>
+              <Button
+                type="submit"
+                disabled={staffFormSaving || !staffFormName.trim()}
+                className="rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs gap-1.5 shadow-xs"
+              >
+                {staffFormSaving ? (
+                  <>
+                    <RefreshCw className="size-3.5 animate-spin" />
+                    <span>{lang === "bn" ? "সংরক্ষণ হচ্ছে..." : "Saving..."}</span>
+                  </>
+                ) : (
+                  <>
+                    <Check className="size-3.5" />
+                    <span>{lang === "bn" ? "সংরক্ষণ করুন" : "Save Employee"}</span>
                   </>
                 )}
               </Button>

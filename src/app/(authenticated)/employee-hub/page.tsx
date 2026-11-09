@@ -285,8 +285,19 @@ export default function EmployeeHubPage() {
         </div>
       </div>
 
-      {/* ── Employee Salary & Advance Balance Cards ── */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+      {/* ── Employee Personal KPI (কর্মচারী ব্যক্তিগত কেপিআই) ── */}
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-bold flex items-center gap-2 text-foreground">
+            <Users className="size-4 text-indigo-600" />
+            <span>{lang === "bn" ? "কর্মচারী ব্যক্তিগত কেপিআই" : "Employee Personal KPI"}</span>
+          </h2>
+          <Badge variant="outline" className="text-[10px] bg-indigo-500/10 text-indigo-600 border-indigo-500/20 font-bold">
+            {activeEmployee?.designation || "Staff"} · {activeEmployee?.name || user?.full_name || "Employee"}
+          </Badge>
+        </div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
         <Card className="p-3.5 rounded-2xl border-indigo-500/20 bg-indigo-500/5 relative overflow-hidden">
           <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
             <span className="font-semibold">{lang === "bn" ? "কর্মচারী" : "Staff"}</span>
@@ -354,6 +365,7 @@ export default function EmployeeHubPage() {
             <span className="text-teal-600 font-bold">ক্যাশ: {fmtMoney(currentCashBalance)}</span>
           </div>
         </Card>
+      </div>
       </div>
 
       {/* ── Security / Permission Notice Strip ── */}

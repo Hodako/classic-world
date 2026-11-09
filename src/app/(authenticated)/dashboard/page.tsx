@@ -497,6 +497,49 @@ export default function Dashboard() {
 
   const currentMonthStr = useMemo(() => new Date().toISOString().slice(0, 7), []);
 
+
+  const mySalaryCalc = useMemo(() => {
+    if (!currentEmployeeProfile?.id) return null;
+    return calculateEmployeeSalaryWithRollover(
+      currentEmployeeProfile,
+      employeeExpenses.data || [],
+      employeeSalaries.data || [],
+      [],
+      currentMonthStr
+    );
+  }, [currentEmployeeProfile, employeeExpenses.data, employeeSalaries.data, currentMonthStr]);
+
+  const myAdvancesThisMonth = useMemo(() => {
+    if (mySalaryCalc) return mySalaryCalc.thisMonthAdvances;
+    if (!currentEmployeeProfile?.id) return 0;
+    const list = employeeExpenses.data || [];
+    return list
+      .filter(e => {
+        const isAdv = e.category === "advance" || e.category === "salary_advance" || (e as any).type === "advance";
+        if (!isAdv) return false;
+        const d = e.date || (e.created_at ? e.created_at.slice(0, 10) : "");
+        return d.startsWith(currentMonthStr) && e.employee_id === currentEmployeeProfile.id;
+      })
+      .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+  }, [employeeExpenses.data, currentEmployeeProfile, currentMonthStr, mySalaryCalc]);
+
+  const myBaseSalary = Number(currentEmployeeProfile?.monthly_salary || currentEmployeeProfile?.base_salary) || 0;
+  const myAdvanceLimit = currentEmployeeProfile?.advance_limit !== undefined && currentEmployeeProfile?.advance_limit !== null
+    ? Number(currentEmployeeProfile.advance_limit)
+    : myBaseSalary;
+  const myRemainingLimit = mySalaryCalc?.remainingAdvanceLimit ?? Math.max(0, myAdvanceLimit - myAdvancesThisMonth);
+  const myRemainingSalary = mySalaryCalc?.remainingSalary ?? Math.max(0, myBaseSalary - myAdvancesThisMonth);
+
+  const totalStaffAdvances = useMemo(() => {
+    const list = employeeExpenses.data || [];
+    return list.reduce((sum: number, it: any) => sum + (Number(it.amount) || 0), 0);
+  }, [employeeExpenses.data]);
+  const allSales      = sales.data ?? [];
+  const allExpenses   = expenses.data ?? [];
+  const allWithdrawals = withdrawals.data ?? [];
+  const allCashbox    = cashbox.data ?? [];
+  const allParties    = parties.data ?? [];
+
   // Individual employee KPI metrics for owner
   const employeeKpis = useMemo(() => {
     const now = new Date();
@@ -561,48 +604,6 @@ export default function Dashboard() {
       };
     });
   }, [allEmployees, allSales, employeeExpenses.data, employeeSalaries.data, lang]);
-
-  const mySalaryCalc = useMemo(() => {
-    if (!currentEmployeeProfile?.id) return null;
-    return calculateEmployeeSalaryWithRollover(
-      currentEmployeeProfile,
-      employeeExpenses.data || [],
-      employeeSalaries.data || [],
-      [],
-      currentMonthStr
-    );
-  }, [currentEmployeeProfile, employeeExpenses.data, employeeSalaries.data, currentMonthStr]);
-
-  const myAdvancesThisMonth = useMemo(() => {
-    if (mySalaryCalc) return mySalaryCalc.thisMonthAdvances;
-    if (!currentEmployeeProfile?.id) return 0;
-    const list = employeeExpenses.data || [];
-    return list
-      .filter(e => {
-        const isAdv = e.category === "advance" || e.category === "salary_advance" || (e as any).type === "advance";
-        if (!isAdv) return false;
-        const d = e.date || (e.created_at ? e.created_at.slice(0, 10) : "");
-        return d.startsWith(currentMonthStr) && e.employee_id === currentEmployeeProfile.id;
-      })
-      .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
-  }, [employeeExpenses.data, currentEmployeeProfile, currentMonthStr, mySalaryCalc]);
-
-  const myBaseSalary = Number(currentEmployeeProfile?.monthly_salary || currentEmployeeProfile?.base_salary) || 0;
-  const myAdvanceLimit = currentEmployeeProfile?.advance_limit !== undefined && currentEmployeeProfile?.advance_limit !== null
-    ? Number(currentEmployeeProfile.advance_limit)
-    : myBaseSalary;
-  const myRemainingLimit = mySalaryCalc?.remainingAdvanceLimit ?? Math.max(0, myAdvanceLimit - myAdvancesThisMonth);
-  const myRemainingSalary = mySalaryCalc?.remainingSalary ?? Math.max(0, myBaseSalary - myAdvancesThisMonth);
-
-  const totalStaffAdvances = useMemo(() => {
-    const list = employeeExpenses.data || [];
-    return list.reduce((sum: number, it: any) => sum + (Number(it.amount) || 0), 0);
-  }, [employeeExpenses.data]);
-  const allSales      = sales.data ?? [];
-  const allExpenses   = expenses.data ?? [];
-  const allWithdrawals = withdrawals.data ?? [];
-  const allCashbox    = cashbox.data ?? [];
-  const allParties    = parties.data ?? [];
 
   const getPartyOutstanding = (partyId: string) => {
     const saleDues = allSales.filter(s => s.party_id === partyId && !s.returned).reduce((sum, s) => sum + (Number(s.due_amount) || 0), 0);

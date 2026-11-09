@@ -55,7 +55,16 @@ export default function EmployeeHubPage() {
   const { user } = useAuth();
   const qc = useQueryClient();
 
-  const isOwner = user?.role === "owner" || user?.role === "admin" || user?.role === "superadmin";
+  const activeEmpSession = useMemo(() => {
+    if (typeof window === "undefined") return null;
+    try {
+      return JSON.parse(localStorage.getItem("cw_active_employee_session") || "null");
+    } catch {
+      return null;
+    }
+  }, []);
+  const isEmployeeRole = user?.role === "employee" || Boolean(activeEmpSession);
+  const isOwner = (user?.role === "owner" || user?.role === "admin" || user?.role === "superadmin") && !activeEmpSession;
   const currentEmpId = (user as any)?.employee_id || user?.id;
 
   const employeesQuery = useCachedQuery(["employees"], getEmployees);
@@ -75,6 +84,17 @@ export default function EmployeeHubPage() {
   });
 
   const activeEmployee = useMemo(() => {
+    if (activeEmpSession) {
+      const match = allEmployees.find(e => e.id === activeEmpSession.id || (e.name && e.name.toLowerCase() === activeEmpSession.name?.toLowerCase()));
+      if (match) return match;
+      return {
+        id: activeEmpSession.id,
+        name: activeEmpSession.name || "Employee",
+        monthly_salary: activeEmpSession.base_salary || 0,
+        base_salary: activeEmpSession.base_salary || 0,
+        advance_limit: activeEmpSession.advance_limit || activeEmpSession.base_salary || 0,
+      } as any;
+    }
     if (!isOwner) {
       return (
         allEmployees.find(e => e.id === currentEmpId || (e as any).user_id === user?.id || e.email === user?.email) ||
@@ -86,7 +106,7 @@ export default function EmployeeHubPage() {
       );
     }
     return allEmployees.find(e => e.id === selectedEmpId) || allEmployees[0] || null;
-  }, [allEmployees, isOwner, currentEmpId, selectedEmpId, user]);
+  }, [allEmployees, isOwner, activeEmpSession, currentEmpId, selectedEmpId, user]);
 
   // Current Month String (YYYY-MM)
   const currentMonth = useMemo(() => new Date().toISOString().slice(0, 7), []);
@@ -99,12 +119,17 @@ export default function EmployeeHubPage() {
         e.category === "salary_advance" ||
         (e as any).type === "advance";
       if (!isAdvance) return false;
+      if (!isOwner) {
+        const empId = activeEmployee?.id;
+        const empName = activeEmployee?.name?.trim().toLowerCase();
+        return (empId && e.employee_id === empId) || (empName && e.employee_name?.trim().toLowerCase() === empName);
+      }
       if (activeEmployee?.id) {
         return e.employee_id === activeEmployee.id;
       }
       return true;
     });
-  }, [allExpenses, activeEmployee]);
+  }, [allExpenses, activeEmployee, isOwner]);
 
   // Taken money this current month
   const thisMonthTaken = useMemo(() => {

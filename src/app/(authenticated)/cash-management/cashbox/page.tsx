@@ -72,6 +72,8 @@ export default function CashboxDetailsPage() {
   const [page, setPage] = useState(1);
   const pageSize = 12;
 
+  const isEmployee = user?.role === "employee" || (typeof window !== "undefined" && Boolean(localStorage.getItem("cw_active_employee_session")));
+
   const entries = cashbox.data ?? [];
   const balance = cashbox.isLoading ? null : cashboxBalance(entries);
 
@@ -145,6 +147,11 @@ export default function CashboxDetailsPage() {
   }
 
   async function handleDelete(entry: CashboxEntry) {
+    const isEmployee = user?.role === "employee" || (typeof window !== "undefined" && Boolean(localStorage.getItem("cw_active_employee_session")));
+    if (isEmployee) {
+      toast.error(lang === "bn" ? "কর্মচারীরা কোনো রেকর্ড মুছতে পারবেন না।" : "Employees cannot delete records.");
+      return;
+    }
     setDeleteTarget(entry);
     setDeleteConfirmOpen(true);
   }
@@ -403,15 +410,17 @@ export default function CashboxDetailsPage() {
                     >
                       <Pencil className="size-3.5 text-muted-foreground hover:text-foreground" />
                     </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="size-7 hover:bg-destructive/10 rounded-full"
-                      onClick={() => handleDelete(e)}
-                      title={t("delete")}
-                    >
-                      <Trash2 className="size-3.5 text-destructive" />
-                    </Button>
+                    {!isEmployee && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="size-7 hover:bg-destructive/10 rounded-full"
+                        onClick={() => handleDelete(e)}
+                        title={t("delete")}
+                      >
+                        <Trash2 className="size-3.5 text-destructive" />
+                      </Button>
+                    )}
                   </div>
                 )}
               </div>

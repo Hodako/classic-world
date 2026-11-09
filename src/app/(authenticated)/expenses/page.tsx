@@ -29,6 +29,7 @@ import { setCachedData, refreshQueries } from "@/lib/optimistic-cache";
 import { ConfirmDeleteDialog } from "@/components/confirm-delete-dialog";
 import { PaginationBar, paginate } from "@/components/ui/pagination-bar";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { useAuth } from "@/hooks/use-auth";
 
 interface ExpenseCategoryItem {
   id: string;
@@ -73,6 +74,9 @@ function formatExpenseNote(note: string | null | undefined, lang: "bn" | "en") {
 }
 
 export default function ExpensesPage() {
+  const { user } = useAuth();
+  const activeEmpSession = typeof window !== "undefined" ? JSON.parse(localStorage.getItem("cw_active_employee_session") || "null") : null;
+  const isEmployee = user?.role === "employee" || Boolean(activeEmpSession);
   const { lang, t } = useT();
   const isMobile = useIsMobile();
   const qc = useQueryClient();
@@ -234,6 +238,10 @@ export default function ExpensesPage() {
   const { items: pagedExpenses, totalPages, safePage } = paginate(filteredExpenses, page, pageSize);
 
   async function performDelete() {
+    if (isEmployee) {
+      toast.error(lang === "bn" ? "কর্মচারীরা কোনো রেকর্ড মুছতে পারবেন না।" : "Employees cannot delete records.");
+      return;
+    }
     if (!expenseToDelete) return;
     setDeleteBusy(true);
     setCachedData<Expense[]>(qc, ["expenses"], old => (old ?? []).filter(e => e.id !== expenseToDelete.id));
@@ -709,6 +717,7 @@ export default function ExpensesPage() {
                   <div className="font-bold text-sm font-serif text-destructive">
                     −{fmtMoney(e.amount)}
                   </div>
+                  {!isEmployee && (
                   <Button
                     size="sm"
                     variant="ghost"
@@ -718,6 +727,7 @@ export default function ExpensesPage() {
                   >
                     <Trash2 className="size-3.5" />
                   </Button>
+                  )}
                 </div>
               </div>
             );

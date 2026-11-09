@@ -361,7 +361,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     "/cash-management",
     "/expenses",
     "/employee-hub",
-    "/employees",
   ]);
 
   const employeeNavItems: NavItem[] = [
@@ -389,7 +388,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       { to: "/expenses", labelKey: "expenses" as const, icon: Receipt, customLabel: lang === "bn" ? "খরচ সমূহ" : "Expenses" },
     ] : []),
     { to: "/employee-hub", labelKey: "employees", icon: Users, customLabel: lang === "bn" ? "এমপ্লয়ি হাব / বেতন" : "Employee Hub" },
-    { to: "/employees", labelKey: "employees", icon: Users, customLabel: lang === "bn" ? "স্টাফ প্রোফাইল" : "Staff Profile" },
     ...(perms?.somiti ? [
       { to: "/somiti", labelKey: "somiti" as const, icon: PiggyBank, customLabel: lang === "bn" ? "সমিতি ও সঞ্চয়" : "Samity Savings" },
     ] : []),

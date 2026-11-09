@@ -27,8 +27,20 @@ if (fs.existsSync(oldDistDir)) {
   fs.rmSync(oldDistDir, { recursive: true, force: true });
 }
 if (fs.existsSync(outputDir)) {
-  console.log("[Electron Packager] Removing old software directory for clean rebuild...");
-  fs.rmSync(outputDir, { recursive: true, force: true });
+  console.log("[Electron Packager] Cleaning old software directory for clean rebuild...");
+  try {
+    const items = fs.readdirSync(outputDir);
+    for (const item of items) {
+      const p = path.join(outputDir, item);
+      try {
+        fs.rmSync(p, { recursive: true, force: true });
+      } catch (rmErr) {
+        console.warn(`[Electron Packager] Notice: could not remove ${item}:`, rmErr.message);
+      }
+    }
+  } catch (e) {
+    console.warn("[Electron Packager] Notice: could not list items in software:", e.message);
+  }
 }
 
 // 1. Create fresh output directory

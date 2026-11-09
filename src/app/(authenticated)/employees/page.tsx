@@ -1,7 +1,7 @@
 "use client";
 
 import { useQueryClient } from "@tanstack/react-query";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import {
   Users,
   UserPlus,
@@ -124,6 +124,12 @@ export default function EmployeesPage() {
   }, []);
 
   const isEmployeeRole = user?.role === "employee" || Boolean(activeEmpSession);
+
+  useEffect(() => {
+    if (isEmployeeRole) {
+      router.replace("/employee-hub");
+    }
+  }, [isEmployeeRole, router]);
 
   // Identify currently logged-in employee
   const currentEmployee = useMemo(() => {
@@ -872,6 +878,10 @@ export default function EmployeesPage() {
     } finally {
       setBusy(false);
     }
+  }
+
+  if (isEmployeeRole) {
+    return null;
   }
 
   return (

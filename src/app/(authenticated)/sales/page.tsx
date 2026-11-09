@@ -1179,6 +1179,10 @@ function SalesTab({
   }
 
   function handleDeleteClick(id: string) {
+    if (isEmployeeRole) {
+      toast.error(lang === "bn" ? "কর্মচারীরা কোনো রেকর্ড মুছতে পারবেন না।" : "Employees cannot delete records.");
+      return;
+    }
     setSaleToDelete(id);
   }
 
@@ -1609,15 +1613,17 @@ function SalesTab({
                         <span>{lang === "bn" ? "এডিট" : "Edit"}</span>
                       </Button>
                     )}
-                    <Button
-                      onClick={(e) => { e.stopPropagation(); handleDeleteClick(s.items[0].id); }}
-                      variant="outline"
-                      size="sm"
-                      className="h-7 px-2.5 text-xs font-bold text-rose-600 hover:bg-rose-500/10 hover:text-rose-700 gap-1 rounded-lg border-[0.5px] border-rose-500/30"
-                    >
-                      <Trash2 className="size-3.5" />
-                      <span>{lang === "bn" ? "ডিলিট" : "Delete"}</span>
-                    </Button>
+                    {!isEmployeeRole && (
+                      <Button
+                        onClick={(e) => { e.stopPropagation(); handleDeleteClick(s.items[0].id); }}
+                        variant="outline"
+                        size="sm"
+                        className="h-7 px-2.5 text-xs font-bold text-rose-600 hover:bg-rose-500/10 hover:text-rose-700 gap-1 rounded-lg border-[0.5px] border-rose-500/30"
+                      >
+                        <Trash2 className="size-3.5" />
+                        <span>{lang === "bn" ? "ডিলিট" : "Delete"}</span>
+                      </Button>
+                    )}
                   </div>
                 </div>
               </div>

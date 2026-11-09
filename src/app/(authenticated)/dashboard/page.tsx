@@ -427,7 +427,6 @@ const DEFAULT_KPI_ORDER = [
   "purchases",
   "due",
   "cashbox",
-  "employee_hub",
   "expense",
   "profit",
   "loss",
@@ -439,7 +438,6 @@ const DEFAULT_HIDDEN_KPIS = [
   "total_sales",
   "cash_sale",
   "credit_sale",
-  "employee_hub",
   "bkash_bank",
   "online_sell",
   "owner_wallet",
@@ -1760,32 +1758,7 @@ export default function Dashboard() {
           />
         );
       case "employee_hub":
-        return (
-          <KPICard
-            key="employee_hub"
-            label={lang === "bn" ? (isEmployeeRole ? "কর্মচারী ব্যক্তিগত কেপিআই" : "এমপ্লয়ি হাব / অগ্রিম") : (isEmployeeRole ? "Employee Personal KPI" : "Employee Hub")}
-            value={fmtMoney(isEmployeeRole ? myRemainingSalary : totalStaffAdvances)}
-            sub={
-              isHidden && !isRevealed
-                ? (lang === "bn" ? "ট্যাপ করে দেখুন" : "Tap to reveal")
-                : isEmployeeRole
-                  ? (lang === "bn" ? `অবশিষ্ট সুযোগ: ৳${fmtMoney(myRemainingLimit)} →` : `Available Limit: ৳${fmtMoney(myRemainingLimit)} →`)
-                  : (lang === "bn" ? "টাকা উত্তোলন ও বেতন রেকর্ড →" : "Take money & salary logs →")
-            }
-            imageUrl="/icons/users_icon.png"
-            icon={Users}
-            color="bg-indigo-600"
-            isDesktop={true}
-            hotkey={hotkey}
-            className="h-full cursor-pointer"
-            align={kpiConfig.align as any}
-            size={kpiConfig.size as any}
-            {...privacyProps}
-            onClick={(e) => handlePrivacyKpiClick(e, "employee_hub", undefined, () => {
-              router.push("/employee-hub");
-            })}
-          />
-        );
+        return <div key="employee_hub" className="hidden" />;
       case "online_sell":
         return (
           <KPICard
@@ -2391,53 +2364,6 @@ const renderWidget = (widgetId: string) => {
 
         return (
           <div key="kpis" className="space-y-6 col-span-3">
-            {isEmployeeRole && (
-              <div className="bg-gradient-to-r from-indigo-950/20 via-purple-950/20 to-indigo-950/20 border border-indigo-500/25 rounded-2xl p-4 sm:p-5 shadow-sm space-y-3">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                  <div className="flex items-center gap-3">
-                    <div className="size-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-bold shadow-md">
-                      <Users className="size-5" />
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <h2 className="text-base font-black text-foreground">{currentEmployeeProfile?.name || user?.full_name}</h2>
-                        <span className="px-2 py-0.5 rounded-full bg-indigo-600/15 text-indigo-700 dark:text-indigo-300 text-[10px] font-bold">
-                          {lang === "bn" ? "কর্মচারী ব্যক্তিগত কেপিআই" : "Employee Personal KPI"}
-                        </span>
-                      </div>
-                      <p className="text-xs text-muted-foreground">
-                        {lang === "bn" ? "আপনার মাসিক বেতন, টাকা তোলার সর্বোচ্চ সীমা ও অবশিষ্ট সুযোগ" : "Your personal monthly salary, withdrawal limit & available advance"}
-                      </p>
-                    </div>
-                  </div>
-                  <Link href="/employee-hub">
-                    <Button size="sm" className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl gap-2 font-bold shadow-sm">
-                      <Banknote className="size-4" />
-                      <span>{lang === "bn" ? "টাকা উত্তোলন করুন (অগ্রিম)" : "Take Advance"}</span>
-                    </Button>
-                  </Link>
-                </div>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-1">
-                  <div className="p-3 rounded-xl bg-card border border-border/80">
-                    <div className="text-[11px] font-semibold text-muted-foreground">{lang === "bn" ? "মাসিক বেতন" : "Monthly Salary"}</div>
-                    <div className="text-base sm:text-lg font-black text-foreground mt-0.5">{fmtMoney(myBaseSalary)}</div>
-                  </div>
-                  <div className="p-3 rounded-xl bg-card border border-amber-500/30 bg-amber-500/5">
-                    <div className="text-[11px] font-semibold text-amber-700 dark:text-amber-400">{lang === "bn" ? "উত্তোলনের মোট সীমা" : "Advance Limit"}</div>
-                    <div className="text-base sm:text-lg font-black text-amber-600 dark:text-amber-400 mt-0.5">{fmtMoney(myAdvanceLimit)}</div>
-                  </div>
-                  <div className="p-3 rounded-xl bg-card border border-rose-500/30 bg-rose-500/5">
-                    <div className="text-[11px] font-semibold text-rose-700 dark:text-rose-400">{lang === "bn" ? "এই মাসে নিয়েছেন" : "Taken This Month"}</div>
-                    <div className="text-base sm:text-lg font-black text-rose-600 dark:text-rose-400 mt-0.5">{fmtMoney(myAdvancesThisMonth)}</div>
-                  </div>
-                  <div className="p-3 rounded-xl bg-card border border-purple-500/30 bg-purple-500/5">
-                    <div className="text-[11px] font-semibold text-purple-700 dark:text-purple-400">{lang === "bn" ? "এখন তুলতে পারবেন" : "Available to Take"}</div>
-                    <div className="text-base sm:text-lg font-black text-purple-600 dark:text-purple-400 mt-0.5">{fmtMoney(myRemainingLimit)}</div>
-                  </div>
-                </div>
-              </div>
-            )}
-
             <div className={`grid gap-4 ${gridClass}`}>
               {normalizeKpiOrder(kpiConfig.order).map((key, idx) => renderKpiCard(key, idx))}
             </div>

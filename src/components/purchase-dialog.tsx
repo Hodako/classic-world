@@ -35,7 +35,11 @@ export function PurchaseDialog({
 
   const [lines, setLines] = useState<PurchaseLine[]>([]);
   const [partyId, setPartyId] = useState("");
-  const [paymentType, setPaymentType] = useState<"cash" | "credit">("cash");
+  const [paymentType, setPaymentType] = useState<"cash" | "credit" | "online" | "split">("cash");
+  const [splitCash, setSplitCash] = useState("");
+  const [splitOnline, setSplitOnline] = useState("");
+  const [splitCredit, setSplitCredit] = useState("");
+  const [onlineProvider, setOnlineProvider] = useState("bKash");
   const [busy, setBusy] = useState(false);
   // Quick Add New Product State
   const [quickProductOpen, setQuickProductOpen] = useState(false);
@@ -135,8 +139,8 @@ export function PurchaseDialog({
     e.preventDefault();
     const valid = lines.filter(l => l.productId && Number(l.qty) > 0);
     if (valid.length === 0) return toast.error(t("select_product"));
-    if (paymentType === "credit" && !partyId) {
-      return toast.error(lang === "bn" ? "ক্রেডিট ক্রয়ের জন্য সাপ্লায়ার নির্বাচন করা বাধ্যতামূলক" : "Supplier is required for credit purchases");
+    if ((paymentType === "credit" || (paymentType === "split" && (Number(splitCredit) || 0) > 0)) && !partyId) {
+      return toast.error(lang === "bn" ? "বাকি / ক্রেডিট ক্রয়ের জন্য সাপ্লায়ার নির্বাচন করা বাধ্যতামূলক" : "Supplier is required for credit purchases");
     }
     setBusy(true);
     try {
@@ -156,6 +160,10 @@ export function PurchaseDialog({
               total: qty * unit_cost,
               party_id: partyId || null,
               payment_type: paymentType,
+              split_cash: paymentType === "split" ? (Number(splitCash) || 0) : undefined,
+              split_online: paymentType === "split" ? (Number(splitOnline) || 0) : undefined,
+              split_credit: paymentType === "split" ? (Number(splitCredit) || 0) : undefined,
+              online_provider: paymentType !== "cash" ? onlineProvider : undefined,
             },
           });
         })
@@ -248,14 +256,111 @@ export function PurchaseDialog({
               <Label className="text-[10px] text-muted-foreground">{lang === "bn" ? "পেমেন্ট মাধ্যম" : "Payment Type"}</Label>
               <select
                 value={paymentType}
-                onChange={e => setPaymentType(e.target.value as any)}
-                className="w-full h-8 rounded border border-border bg-background px-2 text-xs font-sans"
+                onChange={e => {
+                  const val = e.target.value as any;
+                  setPaymentType(val);
+                  if (val === "split") {
+                    setSplitCash(String(grandTotal));
+                    setSplitOnline("0");
+                    setSplitCredit("0");
+                  }
+                }}
+                className="w-full h-8 rounded border border-border bg-background px-2 text-xs font-sans font-medium"
               >
-                <option value="cash">{lang === "bn" ? "ক্যাশ" : "Cash"}</option>
-                <option value="credit">{lang === "bn" ? "বকেয়া" : "Credit"}</option>
+                <option value="cash">{lang === "bn" ? "💵 নগদ (Cash)" : "Cash"}</option>
+                <option value="online">{lang === "bn" ? "🌐 অনলাইন / ব্যাংক" : "Online / Bank"}</option>
+                <option value="credit">{lang === "bn" ? "📋 বাকি (Credit)" : "Credit"}</option>
+                <option value="split">{lang === "bn" ? "⚡ স্প্লিট পেমেন্ট (Split)" : "Split Payment"}</option>
               </select>
             </div>
           </div>
+
+          {paymentType === "online" && (
+            <div className="space-y-1 p-2.5 rounded-lg border border-primary/20 bg-primary/5">
+              <Label className="text-[11px] font-semibold text-primary">{lang === "bn" ? "অনলাইন মাধ্যম" : "Online Method"}</Label>
+              <select
+                value={onlineProvider}
+                onChange={e => setOnlineProvider(e.target.value)}
+                className="w-full h-8 rounded border border-border bg-background px-2 text-xs"
+              >
+                <option value="bKash">bKash (বিকাশ)</option>
+                <option value="Nagad">Nagad (নগদ)</option>
+                <option value="Rocket">Rocket (রকেট)</option>
+                <option value="Bank">Bank Transfer (ব্যাংক)</option>
+                <option value="Upay">Upay (উপায়)</option>
+              </select>
+            </div>
+          )}
+
+          {paymentType === "split" && (
+            <div className="space-y-2 p-3 rounded-xl border border-primary/30 bg-primary/5">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold text-primary">{lang === "bn" ? "⚡ স্প্লিট পেমেন্ট ব্রেকডাউন" : "⚡ Split Breakdown"}</span>
+                <span className="text-[10px] text-muted-foreground">{lang === "bn" ? "মোট খরচ:" : "Total:"} {fmtMoney(grandTotal)}</span>
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                <div className="space-y-1">
+                  <Label className="text-[10px] text-muted-foreground">{lang === "bn" ? "💵 নগদ টাকা" : "Cash"}</Label>
+                  <Input
+                    type="number"
+                    inputMode="decimal"
+                    className="h-8 text-xs font-mono"
+                    placeholder="0"
+                    value={splitCash}
+                    onChange={e => {
+                      const v = e.target.value;
+                      setSplitCash(v);
+                      const c = Number(v) || 0;
+                      const o = Number(splitOnline) || 0;
+                      setSplitCredit(String(Math.max(0, grandTotal - c - o)));
+                    }}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-[10px] text-muted-foreground">{lang === "bn" ? "🌐 অনলাইন / ব্যাংক" : "Online"}</Label>
+                  <Input
+                    type="number"
+                    inputMode="decimal"
+                    className="h-8 text-xs font-mono"
+                    placeholder="0"
+                    value={splitOnline}
+                    onChange={e => {
+                      const v = e.target.value;
+                      setSplitOnline(v);
+                      const o = Number(v) || 0;
+                      const c = Number(splitCash) || 0;
+                      setSplitCredit(String(Math.max(0, grandTotal - c - o)));
+                    }}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-[10px] text-muted-foreground">{lang === "bn" ? "📋 বাকি / ক্রেডিট" : "Credit Due"}</Label>
+                  <Input
+                    type="number"
+                    inputMode="decimal"
+                    className="h-8 text-xs font-mono font-bold text-amber-500"
+                    placeholder="0"
+                    value={splitCredit}
+                    onChange={e => setSplitCredit(e.target.value)}
+                  />
+                </div>
+              </div>
+              <div className="space-y-1 pt-1">
+                <Label className="text-[10px] text-muted-foreground">{lang === "bn" ? "অনলাইন পেমেন্ট মাধ্যম" : "Online Provider"}</Label>
+                <select
+                  value={onlineProvider}
+                  onChange={e => setOnlineProvider(e.target.value)}
+                  className="w-full h-7.5 rounded border border-border bg-background px-2 text-xs"
+                >
+                  <option value="bKash">bKash (বিকাশ)</option>
+                  <option value="Nagad">Nagad (নগদ)</option>
+                  <option value="Rocket">Rocket (রকেট)</option>
+                  <option value="Bank">Bank Transfer (ব্যাংক)</option>
+                  <option value="Upay">Upay (উপায়)</option>
+                </select>
+              </div>
+            </div>
+          )}
 
           <div className="flex items-center justify-between text-sm border-t border-border pt-3">
             <span className="text-muted-foreground font-medium">{t("total")}</span>

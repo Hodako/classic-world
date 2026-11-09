@@ -742,23 +742,44 @@ export async function deletePartyPayableFn(input: { data: { id: string } }) {
   return { success: true };
 }
 
-export async function createPayableSettlementFn(input: { data: { party_id: string; amount: number; note?: string | null } }) {
+export async function createPayableSettlementFn(input: { data: { party_id: string; amount: number; payment_type?: string; split_cash?: number; split_online?: number; split_credit?: number; online_provider?: string; note?: string | null } }) {
   const { data = {} }: any = input ?? {};
   const session = await requireSession();
   const db = await getDb();
   const id = crypto.randomUUID();
-  const doc = { _id: id, owner_id: session.ownerId, party_id: data.party_id, amount: data.amount, note: data.note || null, created_at: new Date().toISOString() };
+  const amount = Number(data.amount) || 0;
+  const paymentType = data.payment_type || (data.split_cash !== undefined || data.split_online !== undefined ? "split" : (data.method || "cash"));
+  const splitCash = Number(data.split_cash) || 0;
+  const splitOnline = Number(data.split_online || data.split_bank) || 0;
+  const splitCredit = Number(data.split_credit || data.split_due) || 0;
+
+  const doc = {
+    _id: id,
+    owner_id: session.ownerId,
+    party_id: data.party_id,
+    amount: amount,
+    payment_type: paymentType,
+    split_cash: splitCash > 0 ? splitCash : undefined,
+    split_online: splitOnline > 0 ? splitOnline : undefined,
+    split_credit: splitCredit > 0 ? splitCredit : undefined,
+    online_provider: data.online_provider || undefined,
+    note: data.note || null,
+    created_at: new Date().toISOString(),
+  };
   await db.collection("party_payable_settlements").insertOne(doc as any);
 
-  // Also insert cashbox entry when paying a party
-  const party = await db.collection("parties").findOne({ _id: data.party_id as any, owner_id: session.ownerId });
-  const partyName = party ? (party.name || "Party") : "Party";
-  await insertCashboxEntry(db, session.ownerId, {
-    kind: "withdraw",
-    amount: data.amount,
-    note: data.note || `Paid to ${partyName} (Payable Settlement)`,
-    ref_id: id,
-  });
+  // Insert cashbox entry only for the cash portion when paying a party
+  const cashAmount = paymentType === "cash" ? amount : (paymentType === "split" ? splitCash : 0);
+  if (cashAmount > 0) {
+    const party = await db.collection("parties").findOne({ _id: data.party_id as any, owner_id: session.ownerId });
+    const partyName = party ? (party.name || "Party") : "Party";
+    await insertCashboxEntry(db, session.ownerId, {
+      kind: "withdraw",
+      amount: cashAmount,
+      note: data.note || `Paid to ${partyName} (Payable Settlement - ${paymentType.toUpperCase()})`,
+      ref_id: id,
+    });
+  }
 
   return { ...doc, id };
 }

@@ -748,34 +748,81 @@ function CollectDialog({ partyId, open, onOpenChange }: { partyId: string; open:
 }
 
 function PayPartyDialog({ partyId, open, onOpenChange }: { partyId: string; open: boolean; onOpenChange: (v: boolean) => void }) {
-  const { t } = useT();
+  const { lang, t } = useT();
   const qc = useQueryClient();
+  const [payMethod, setPayMethod] = useState<"cash" | "online" | "split">("cash");
+  const [onlineProvider, setOnlineProvider] = useState<string>("bKash");
   const [amount, setAmount] = useState("");
+  const [splitCash, setSplitCash] = useState("");
+  const [splitOnline, setSplitOnline] = useState("");
+  const [splitCredit, setSplitCredit] = useState("");
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    if (!open) { setAmount(""); setNote(""); }
+    if (!open) {
+      setAmount("");
+      setSplitCash("");
+      setSplitOnline("");
+      setSplitCredit("");
+      setNote("");
+      setPayMethod("cash");
+    }
   }, [open]);
+
+  // Compute effective amount paid
+  const cashNum = Number(splitCash) || 0;
+  const onlineNum = Number(splitOnline) || 0;
+  const creditNum = Number(splitCredit) || 0;
+  const effectiveTotal = payMethod === "split" ? cashNum + onlineNum : (Number(amount) || 0);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    const amt = Number(amount) || 0;
-    if (amt <= 0) return;
+    if (effectiveTotal <= 0 && creditNum <= 0) {
+      toast.error(lang === "bn" ? "সঠিক টাকার পরিমাণ দিন" : "Please enter a valid amount");
+      return;
+    }
+
     const tempId = `temp-${Date.now()}`;
-    const entry: PartyLedger = { id: tempId, party_id: partyId, amount: amt, note: note || null, created_at: new Date().toISOString() };
+    let finalNote = note.trim();
+    if (payMethod === "split") {
+      const splitDetail = `[স্প্লিট: নগদ ৳${cashNum} + ${onlineProvider} ৳${onlineNum}${creditNum > 0 ? ` + বাকী ৳${creditNum}` : ""}]`;
+      finalNote = finalNote ? `${finalNote} ${splitDetail}` : splitDetail;
+    } else if (payMethod === "online") {
+      const onlineDetail = `[অনলাইন / ${onlineProvider}: ৳${effectiveTotal}]`;
+      finalNote = finalNote ? `${finalNote} ${onlineDetail}` : onlineDetail;
+    }
+
+    const entry: PartyLedger = {
+      id: tempId,
+      party_id: partyId,
+      amount: effectiveTotal,
+      note: finalNote || null,
+      created_at: new Date().toISOString(),
+    };
 
     setCachedData<PartyLedger[]>(qc, ["party-settlements", partyId], old => [entry, ...(old ?? [])]);
     onOpenChange(false);
-    toast.success(t("save"));
+    toast.success(lang === "bn" ? "পেমেন্ট সফলভাবে সংরক্ষিত হয়েছে!" : t("save"));
 
     setBusy(true);
     try {
-      const saved = await createPayableSettlementFn({ data: { party_id: partyId, amount: amt, note: note || null } });
+      const saved = await createPayableSettlementFn({
+        data: {
+          party_id: partyId,
+          amount: effectiveTotal,
+          payment_type: payMethod,
+          split_cash: payMethod === "split" ? cashNum : undefined,
+          split_online: payMethod === "split" ? onlineNum : undefined,
+          split_credit: payMethod === "split" ? creditNum : undefined,
+          online_provider: payMethod !== "cash" ? onlineProvider : undefined,
+          note: finalNote || null,
+        },
+      });
       setCachedData<PartyLedger[]>(qc, ["party-settlements", partyId], old =>
         (old ?? []).map(s => (s.id === tempId ? { ...saved, id: saved.id } : s)),
       );
-      await refreshQueries(qc, ["party-settlements", partyId], ["cashbox"]);
+      await refreshQueries(qc, ["party-settlements", partyId], ["cashbox"], ["parties"]);
     } catch (err: unknown) {
       setCachedData<PartyLedger[]>(qc, ["party-settlements", partyId], old => (old ?? []).filter(s => s.id !== tempId));
       toast.error(err instanceof Error ? err.message : String(err));
@@ -786,14 +833,174 @@ function PayPartyDialog({ partyId, open, onOpenChange }: { partyId: string; open
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
-        <DialogHeader><DialogTitle>{t("pay_party")}</DialogTitle></DialogHeader>
-        <form onSubmit={submit} className="space-y-3">
-          <div className="space-y-1"><Label className="text-xs text-muted-foreground">{t("amount")}</Label><Input required type="number" step="any" inputMode="decimal" pattern="[0-9.]*" value={amount} onChange={e => setAmount(e.target.value)} /></div>
-          <div className="space-y-1"><Label className="text-xs text-muted-foreground">{t("note")}</Label><Input value={note} onChange={e => setNote(e.target.value)} /></div>
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>{t("cancel")}</Button>
-            <Button type="submit" disabled={busy}>{busy ? "…" : t("save")}</Button>
+      <DialogContent className="max-w-md font-balooda">
+        <DialogHeader>
+          <DialogTitle className="text-base sm:text-lg font-bold font-charukola">
+            {lang === "bn" ? "পার্টনার / সাপ্লায়ারকে পেমেন্ট পরিশোধ" : t("pay_party")}
+          </DialogTitle>
+        </DialogHeader>
+        <form onSubmit={submit} className="space-y-3.5">
+          {/* Payment Method Selector */}
+          <div className="space-y-1">
+            <Label className="text-xs font-bold text-foreground">
+              {lang === "bn" ? "পরিশোধের মাধ্যম (Payment Method)" : "Payment Method"}
+            </Label>
+            <div className="grid grid-cols-3 gap-1.5 p-1 bg-muted rounded-xl">
+              <Button
+                type="button"
+                size="sm"
+                variant={payMethod === "cash" ? "default" : "ghost"}
+                onClick={() => setPayMethod("cash")}
+                className="h-8 text-xs font-bold rounded-lg cursor-pointer"
+              >
+                {lang === "bn" ? "💵 নগদ (Cash)" : "Cash"}
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant={payMethod === "online" ? "default" : "ghost"}
+                onClick={() => setPayMethod("online")}
+                className="h-8 text-xs font-bold rounded-lg cursor-pointer"
+              >
+                {lang === "bn" ? "🌐 অনলাইন / ব্যাংক" : "Online / Bank"}
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant={payMethod === "split" ? "default" : "ghost"}
+                onClick={() => setPayMethod("split")}
+                className="h-8 text-xs font-bold rounded-lg cursor-pointer"
+              >
+                {lang === "bn" ? "⚡ স্প্লিট পেমেন্ট" : "Split Pay"}
+              </Button>
+            </div>
+          </div>
+
+          {/* Online Provider Selection */}
+          {payMethod !== "cash" && (
+            <div className="space-y-1">
+              <Label className="text-xs font-bold text-muted-foreground">
+                {lang === "bn" ? "অনলাইন / ব্যাংক মাধ্যম নির্বাচন করুন" : "Online Provider"}
+              </Label>
+              <div className="flex gap-2">
+                {["bKash", "Nagad", "Bank Transfer", "Card"].map((provider) => (
+                  <button
+                    key={provider}
+                    type="button"
+                    onClick={() => setOnlineProvider(provider)}
+                    className={`px-2.5 py-1 text-xs font-bold rounded-lg border transition-all cursor-pointer ${
+                      onlineProvider === provider
+                        ? "bg-primary text-primary-foreground border-primary shadow-xs"
+                        : "bg-muted text-muted-foreground border-border hover:bg-muted/80"
+                    }`}
+                  >
+                    {provider}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Standard Single Payment Input */}
+          {payMethod !== "split" ? (
+            <div className="space-y-1">
+              <Label className="text-xs font-bold text-foreground">
+                {payMethod === "cash"
+                  ? (lang === "bn" ? "পরিশোধের নগদ পরিমাণ (৳)" : "Cash Amount (৳)")
+                  : (lang === "bn" ? `অনলাইন পরিশোধের পরিমাণ (${onlineProvider}) (৳)` : "Online Amount (৳)")}
+              </Label>
+              <Input
+                required
+                type="number"
+                step="any"
+                inputMode="decimal"
+                pattern="[0-9.]*"
+                value={amount}
+                onChange={e => setAmount(e.target.value)}
+                placeholder="0"
+                className="h-9 font-mono font-bold text-base"
+              />
+              <p className="text-[11px] text-muted-foreground">
+                {payMethod === "cash"
+                  ? (lang === "bn" ? "✓ ক্যাশবক্স থেকে টাকা স্বয়ংক্রিয়ভাবে মাইনাস হবে।" : "Will be deducted from Cashbox.")
+                  : (lang === "bn" ? "✓ অনলাইন পরিশোধে ক্যাশবক্সের ব্যালেন্স অক্ষত থাকবে।" : "Will not affect Cashbox.")}
+              </p>
+            </div>
+          ) : (
+            /* Split Payment Dual Inputs */
+            <div className="space-y-2.5 p-3 rounded-xl bg-purple-500/10 border border-purple-500/20">
+              <div className="flex items-center justify-between text-xs font-bold text-purple-900 dark:text-purple-200">
+                <span>{lang === "bn" ? "কিছু নগদ + কিছু অনলাইন/বাকি হিসাব" : "Split Breakdown"}</span>
+                <span className="font-mono text-sm bg-purple-500/20 px-2 py-0.5 rounded-md">
+                  {lang === "bn" ? "মোট পরিশোধ:" : "Total Paid:"} ৳{effectiveTotal}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <Label className="text-[11px] font-bold text-foreground">
+                    {lang === "bn" ? "💵 নগদ অংশ (৳)" : "Cash Part (৳)"}
+                  </Label>
+                  <Input
+                    type="number"
+                    step="any"
+                    value={splitCash}
+                    onChange={e => setSplitCash(e.target.value)}
+                    placeholder="নগদ টাকা"
+                    className="h-8.5 font-mono font-bold text-xs bg-background"
+                  />
+                  <span className="text-[10px] text-muted-foreground block">{lang === "bn" ? "ক্যাশবক্স থেকে কমবে" : "From Cashbox"}</span>
+                </div>
+
+                <div className="space-y-1">
+                  <Label className="text-[11px] font-bold text-foreground">
+                    {lang === "bn" ? `🌐 ${onlineProvider} অংশ (৳)` : `${onlineProvider} (৳)`}
+                  </Label>
+                  <Input
+                    type="number"
+                    step="any"
+                    value={splitOnline}
+                    onChange={e => setSplitOnline(e.target.value)}
+                    placeholder="অনলাইন টাকা"
+                    className="h-8.5 font-mono font-bold text-xs bg-background"
+                  />
+                  <span className="text-[10px] text-muted-foreground block">{lang === "bn" ? "ব্যাংক/অনলাইন পে" : "Online paid"}</span>
+                </div>
+              </div>
+
+              <div className="space-y-1 pt-1 border-t border-purple-500/20">
+                <Label className="text-[11px] font-bold text-muted-foreground">
+                  {lang === "bn" ? "📝 অবশিষ্ট বাকি রাখা ক্রেডিট (ঐচ্ছিক)" : "Remaining Due/Credit (Optional)"}
+                </Label>
+                <Input
+                  type="number"
+                  step="any"
+                  value={splitCredit}
+                  onChange={e => setSplitCredit(e.target.value)}
+                  placeholder="0"
+                  className="h-8 font-mono text-xs bg-background"
+                />
+              </div>
+            </div>
+          )}
+
+          <div className="space-y-1">
+            <Label className="text-xs text-muted-foreground">{lang === "bn" ? "মন্তব্য / বিবরণ" : t("note")}</Label>
+            <Input
+              value={note}
+              onChange={e => setNote(e.target.value)}
+              placeholder={lang === "bn" ? "যেমন: চালান নং ১২৩ পরিশোধ" : "e.g. Invoice #123 settlement"}
+              className="h-8.5 text-xs"
+            />
+          </div>
+
+          <DialogFooter className="pt-2">
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} className="h-8.5 text-xs cursor-pointer">
+              {t("cancel")}
+            </Button>
+            <Button type="submit" disabled={busy || effectiveTotal <= 0} className="h-8.5 text-xs font-bold cursor-pointer bg-primary text-primary-foreground shadow-xs">
+              {busy ? "…" : (lang === "bn" ? "পরিশোধ নিশ্চিত করুন" : t("save"))}
+            </Button>
           </DialogFooter>
         </form>
       </DialogContent>

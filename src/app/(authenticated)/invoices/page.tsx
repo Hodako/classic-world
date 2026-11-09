@@ -527,18 +527,18 @@ export default function InvoicePage() {
       }
     }
 
+    const hw = getPosHardwareSettings();
     try {
       await printPwaInvoice({
         businessName,
         userEmail: biz?.emails || user?.business_emails || userEmail,
         shopAddress: biz?.address || user?.business_address || "",
         shopPhoneNumbers: biz?.phone_numbers || user?.business_phone_numbers || "",
-        pageSize: biz?.invoice_page_size || user?.invoice_page_size || "80mm",
-        pageWidth: biz?.invoice_page_width || user?.invoice_page_width || "",
-        pageHeight: biz?.invoice_page_height || user?.invoice_page_height || "",
-        invoiceFontSize: biz?.invoice_font_size || user?.invoice_font_size || "16px",
-        invoiceScale: biz?.invoice_scale || user?.invoice_scale || "100%",
-        invoiceLineSpacing: biz?.invoice_line_spacing || user?.invoice_line_spacing || "3px",
+        pageSize: hw.paperWidthMm >= 180 ? "A4" : `${hw.paperWidthMm}mm`,
+        pageWidth: `${hw.paperWidthMm}mm`,
+        pageHeight: hw.paperHeightMm !== "auto" ? `${hw.paperHeightMm}mm` : "",
+        invoiceFontSize: `${hw.fontSizePt}pt`,
+        invoiceScale: `${hw.printScale}%`,
         tagline,
         invoiceNo,
         invoiceDate,
@@ -555,7 +555,7 @@ export default function InvoicePage() {
         paymentStatus,
         colorTheme,
         terms: biz?.invoice_terms || "",
-      });
+      }, hw);
       toast.success(lang === "bn" ? "ইনভয়েস প্রিন্ট প্রস্তুত হচ্ছে!" : "Opening invoice print view!");
     } catch (err: any) {
       toast.error(lang === "bn" ? "প্রিন্ট সমস্যা: " + (err?.message || "") : "Failed to open print: " + (err?.message || ""));

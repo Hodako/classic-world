@@ -72,8 +72,8 @@ export function buildInvoiceHtml(data: PrintInvoiceParams, settingsOverride?: Pa
   const hw = { ...getPosHardwareSettings(), ...(settingsOverride || {}) };
   const vis = { ...DEFAULT_VISIBILITY_SETTINGS, ...(hw.visibility || {}) };
 
-  const isExplicitA4 = String(data.pageSize || "").toLowerCase() === "a4" && !settingsOverride?.paperWidthMm && hw.paperWidthMm === 80;
-  const widthMm = isExplicitA4 ? 210 : (Number(hw.paperWidthMm) || (data.pageSize === "58mm" ? 58 : 80));
+  const isA4 = hw.paperWidthMm >= 180 || (String(data.pageSize || "").toLowerCase() === "a4" && !hw.paperWidthMm);
+  const widthMm = isA4 ? 210 : (Number(hw.paperWidthMm) || (data.pageSize === "58mm" ? 58 : 80));
 
   const printableWidthMm = getPrintableWidthMm(widthMm);
   // Reflow larger text inside the same physical head width.
@@ -95,31 +95,9 @@ export function buildInvoiceHtml(data: PrintInvoiceParams, settingsOverride?: Pa
   const userBasePt = Number(hw.fontSizePt) || 6.5;
   const userTitlePt = Number(hw.titleFontSizePt) || 8.8;
 
-  // Respect user font adjustments while preventing physical roll overflow when fitToWidth is enabled
-  const maxSafeBasePt =
-    widthMm <= 25 ? 5.2 :
-    widthMm <= 50 ? 6.2 :
-    widthMm <= 58 ? 6.8 :
-    widthMm <= 72 ? 7.5 :
-    widthMm < 148 ? 8.5 :
-    11.0;
-
-  const maxSafeTitlePt =
-    widthMm <= 25 ? 6.5 :
-    widthMm <= 50 ? 7.8 :
-    widthMm <= 58 ? 8.8 :
-    widthMm <= 72 ? 10.0 :
-    widthMm < 148 ? 12.0 :
-    15.0;
-
-  const baseFontPt = hw.fitToWidth !== false ? Math.min(userBasePt, maxSafeBasePt) : userBasePt;
-  const rawTitlePt = hw.fitToWidth !== false ? Math.min(userTitlePt, maxSafeTitlePt) : userTitlePt;
+  const baseFontPt = userBasePt;
   const shopNameRaw = String(hw.customHeaderTitle || data.businessName || "CLASSIC WORLD");
-  const longestTitleWord = Math.max(1, ...shopNameRaw.split(/\s+/).map((w) => w.length));
-  const autoTitleCapPt = hw.fitToWidth !== false
-    ? Math.max(baseFontPt + 1, Math.floor((contentWidthMm / (longestTitleWord * 0.62)) * (72 / 25.4) * 10) / 10)
-    : rawTitlePt;
-  const titleFontPt = Math.min(rawTitlePt, autoTitleCapPt);
+  const titleFontPt = userTitlePt;
   const smallFontPt = Math.max(4.5, Number((baseFontPt - 1.0).toFixed(1)));
   const largeFontPt = Number((baseFontPt + 1.0).toFixed(1));
 
@@ -493,8 +471,8 @@ export async function printPwaInvoice(data: PrintInvoiceParams, settingsOverride
   const hw = { ...getPosHardwareSettings(), ...(settingsOverride || {}) };
   const html = buildInvoiceHtml(data, hw);
 
-  const isExplicitA4 = String(data.pageSize || "").toLowerCase() === "a4" && !settingsOverride?.paperWidthMm && hw.paperWidthMm === 80;
-  const widthMm = isExplicitA4 ? 210 : (Number(hw.paperWidthMm) || (data.pageSize === "58mm" ? 58 : 80));
+  const isA4 = hw.paperWidthMm >= 180 || (String(data.pageSize || "").toLowerCase() === "a4" && !hw.paperWidthMm);
+  const widthMm = isA4 ? 210 : (Number(hw.paperWidthMm) || (data.pageSize === "58mm" ? 58 : 80));
   const resolvedSize = widthMm >= 180 ? "a4" : `${widthMm}mm`;
 
   const topMm = hw.marginTopMm ?? 0;

@@ -31,6 +31,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { PartyReturnDialog } from "@/components/party-return-dialog";
 import { PaginationBar, paginate } from "@/components/ui/pagination-bar";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { useAuth } from "@/hooks/use-auth";
 
 export default function CustomerDetail() {
   const searchParams = useSearchParams();
@@ -39,6 +40,8 @@ export default function CustomerDetail() {
   const router = useRouter();
   const qc = useQueryClient();
   const isMobile = useIsMobile();
+  const { user } = useAuth();
+  const isEmployee = user?.role === "employee" || (typeof window !== "undefined" && Boolean(localStorage.getItem("cw_active_employee_session")));
 
   const partyQuery = useCachedQuery(["customer", id], () => getCustomer(id));
   const sales = useCachedQuery(["party-detail", "sales", id], () => getSalesForParty(id));
@@ -227,9 +230,11 @@ export default function CustomerDetail() {
           <Button size="sm" variant="outline" onClick={() => setEditOpen(true)} className="h-8 text-xs cursor-pointer">
             <Pencil className="size-3.5 mr-1" />{lang === "bn" ? "এডিট" : "Edit"}
           </Button>
-          <Button size="sm" variant="destructive" className="h-8 text-xs beveled-button cursor-pointer" onClick={() => setCustomerToDelete(customer)}>
-            <Trash2 className="size-3.5 mr-1" />{lang === "bn" ? "মুছুন" : "Delete"}
-          </Button>
+          {!isEmployee && (
+            <Button size="sm" variant="destructive" className="h-8 text-xs beveled-button cursor-pointer" onClick={() => setCustomerToDelete(customer)}>
+              <Trash2 className="size-3.5 mr-1" />{lang === "bn" ? "মুছুন" : "Delete"}
+            </Button>
+          )}
         </div>
       </div>
 
@@ -432,7 +437,7 @@ export default function CustomerDetail() {
                 <div className={`text-sm font-bold font-serif shrink-0 ${e.amount < 0 ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400"}`}>
                   {e.amount < 0 ? "−" : "+"}{fmtMoney(Math.abs(e.amount))}
                 </div>
-                {e.deletable && (
+                {e.deletable && !isEmployee && (
                   <Button
                     size="sm"
                     variant="ghost"

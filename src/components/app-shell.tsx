@@ -68,7 +68,9 @@ const desktopNavGroups: NavGroup[] = [
       { to: "/dashboard", labelKey: "home", icon: CustomHomeIcon, perm: "dashboard" },
       { to: "/sales", labelKey: "sales", icon: ShoppingBag, perm: "sales" },
       { to: "/sales/today", labelKey: "sales", icon: TrendingUp, perm: "sales", customLabel: "Today's Sale" },
+      { to: "/online-sells", labelKey: "online_sell", icon: DollarSign, perm: "sales", customLabel: "অনলাইন বিক্রি" },
       { to: "/products", labelKey: "products", icon: Package, perm: "products" },
+      { to: "/customers", labelKey: "customers", icon: Users, perm: "parties", customLabel: "কাস্টমার ও বাকী" },
       { to: "/invoices", labelKey: "invoice_generator", icon: FileText, perm: "sales" },
       { to: "/labels", labelKey: "label_printer", icon: Barcode, perm: "products" },
       { to: "/printer-settings", labelKey: "settings", icon: Printer, perm: "sales", customLabel: "Printer Settings" },
@@ -108,9 +110,9 @@ const desktopNavGroups: NavGroup[] = [
 
 const mobileNav: NavItem[] = [
   { to: "/dashboard", labelKey: "home", icon: CustomHomeIcon, perm: "dashboard" },
-  { to: "/products", labelKey: "products", icon: Package, perm: "products" },
   { to: "/sales", labelKey: "sales", icon: ShoppingBag, perm: "sales" },
-  { to: "/customers", labelKey: "customers", icon: Users, perm: "parties" },
+  { to: "/products", labelKey: "products", icon: Package, perm: "products" },
+  { to: "/customers", labelKey: "customers", icon: Users, customLabel: "কাস্টমার" },
   { to: "/more", labelKey: "more", icon: MoreHorizontal },
 ];
 
@@ -346,7 +348,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const EMPLOYEE_DEFAULT_HIDDEN = new Set([
     "/trackback", "/profits", "/losses", "/reports", "/ai-audits",
     "/purchase-reports", "/somiti", "/parties",
-    "/dues", "/customers", "/bank", "/owners-wallet", "/settings",
+    "/bank", "/owners-wallet", "/settings",
   ]);
 
   // Core employee pages that must always remain accessible to staff in the sidebar
@@ -354,7 +356,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     "/dashboard",
     "/sales",
     "/sales/today",
+    "/online-sells",
     "/products",
+    "/customers",
+    "/customers/detail",
+    "/dues",
     "/invoices",
     "/labels",
     "/printer-settings",
@@ -368,10 +374,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     ...(perms?.sales !== false ? [
       { to: "/sales", labelKey: "sales" as const, icon: ShoppingBag, customLabel: lang === "bn" ? "বিক্রি (POS)" : "Sales (POS)" },
       { to: "/sales/today", labelKey: "sales" as const, icon: TrendingUp, customLabel: lang === "bn" ? "আজকের বিক্রি" : "Today's Sale" },
+      { to: "/online-sells", labelKey: "online_sell" as const, icon: DollarSign, customLabel: lang === "bn" ? "অনলাইন বিক্রি" : "Online Sales" },
     ] : []),
     ...(perms?.products !== false ? [
       { to: "/products", labelKey: "products" as const, icon: Package, customLabel: lang === "bn" ? "পণ্য তালিকা" : "Products" },
     ] : []),
+    { to: "/customers", labelKey: "customers" as const, icon: Users, customLabel: lang === "bn" ? "কাস্টমার ও বাকী" : "Customers & Dues" },
     ...(perms?.sales !== false ? [
       { to: "/invoices", labelKey: "invoice_generator" as const, icon: FileText, customLabel: lang === "bn" ? "চালান / ইনভয়েস" : "Invoices" },
     ] : []),
@@ -412,6 +420,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         { to: "/dashboard", labelKey: "home" as const, icon: CustomHomeIcon },
         { to: "/sales", labelKey: "sales" as const, icon: ShoppingBag },
         { to: "/products", labelKey: "products" as const, icon: Package },
+        { to: "/customers", labelKey: "customers" as const, icon: Users, customLabel: lang === "bn" ? "কাস্টমার" : "Customers" },
         { to: "/employee-hub", labelKey: "employees" as const, icon: Users, customLabel: "Hub" },
         { to: "/more", labelKey: "more" as const, icon: MoreHorizontal },
       ]

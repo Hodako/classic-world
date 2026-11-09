@@ -18,7 +18,11 @@ export function PermissionGuard({ children }: { children: ReactNode }) {
   const EMPLOYEE_CORE_ROUTES = [
     "/dashboard",
     "/sales",
+    "/sales/today",
+    "/online-sells",
     "/products",
+    "/customers",
+    "/dues",
     "/invoices",
     "/labels",
     "/printer-settings",
@@ -28,7 +32,7 @@ export function PermissionGuard({ children }: { children: ReactNode }) {
     "/employees",
   ];
   const isCoreEmployeeRoute = isEmployee && EMPLOYEE_CORE_ROUTES.some(p => pathname === p || pathname.startsWith(p + "/"));
-  const allowed = !user || isCoreEmployeeRoute || ( (!required || canAccess(perms ?? undefined, required)) && (!isEmployee || (!pathname.startsWith("/somiti") && !pathname.startsWith("/parties") && !pathname.startsWith("/customers") && !pathname.startsWith("/dues") && !pathname.startsWith("/settings"))) );
+  const allowed = !user || isCoreEmployeeRoute || ( (!required || canAccess(perms ?? undefined, required)) && (!isEmployee || (!pathname.startsWith("/somiti") && !pathname.startsWith("/parties") && !pathname.startsWith("/settings"))) );
 
   useEffect(() => {
     if (!allowed) {

@@ -276,13 +276,14 @@ async function createWindow() {
               const raw = localStorage.getItem("classicworld_pos_hardware_v1") || localStorage.getItem("dreamfashion_pos_hardware_v1") || "{}";
               const parsed = JSON.parse(raw);
               const widthMm = Number(parsed.paperWidthMm) || (parsed.paperSize === "58mm" ? 58 : parsed.paperSize === "a4" ? 210 : 80);
+              const isA4 = widthMm >= 180 || parsed.paperSize === "a4";
               const heightMm = parsed.paperHeightMm !== undefined && parsed.paperHeightMm !== "auto" && Number(parsed.paperHeightMm) > 0 ? Number(parsed.paperHeightMm) : "auto";
               return {
                 printerName: parsed.devicePrinterName || "",
                 silent: parsed.automatePrinting !== false,
                 copies: Number(parsed.copies) || 1,
                 scaleFactor: Number(parsed.printScale) || 100,
-                pageSize: parsed.paperSize === "a4" ? "a4" : (widthMm + "mm"),
+                pageSize: isA4 ? "a4" : (widthMm + "mm"),
                 paperWidthMm: widthMm,
                 paperHeightMm: heightMm,
                 margins: {
@@ -833,14 +834,14 @@ async function performSilentPrint(html, printerName, options = {}) {
         silent: useSilent,
         printBackground: true,
         copies,
-        scaleFactor: 100,
+        scaleFactor: scaleFactor,
         landscape: false,
         margins: {
-          marginType: "none",
-          top: 0,
-          bottom: 0,
-          left: 0,
-          right: 0,
+          marginType: topMm > 0 || bottomMm > 0 || leftMm > 0 || rightMm > 0 ? "custom" : "none",
+          top: topMm,
+          bottom: bottomMm,
+          left: leftMm,
+          right: rightMm,
         },
         headerFooter: false,
       };

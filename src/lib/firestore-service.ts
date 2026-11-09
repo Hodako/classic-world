@@ -818,6 +818,10 @@ export async function fsCreatePurchase(data: any) {
   const unitCost = Number(data.unit_cost) || 0;
   const total = Number(data.total) || (qty * unitCost);
   const createdAtTs = toFirestoreTimestamp(data.created_at);
+  const paymentType = data.payment_type || "cash";
+  const splitCash = Number(data.split_cash) || 0;
+  const splitOnline = Number(data.split_online || data.split_bank) || 0;
+  const splitCredit = Number(data.split_credit) || 0;
 
   const purchaseDoc = cleanFirestoreData({
     product_id: data.product_id || null,
@@ -826,7 +830,11 @@ export async function fsCreatePurchase(data: any) {
     unit_cost: unitCost,
     total,
     note: data.note || null,
-    payment_type: data.payment_type || "cash",
+    payment_type: paymentType,
+    split_cash: splitCash > 0 ? splitCash : undefined,
+    split_online: splitOnline > 0 ? splitOnline : undefined,
+    split_credit: splitCredit > 0 ? splitCredit : undefined,
+    online_provider: data.online_provider || undefined,
     party_id: data.party_id || null,
     created_at: createdAtTs,
   });
@@ -852,20 +860,21 @@ export async function fsCreatePurchase(data: any) {
     }
   }
 
-  // 2. Cashbox expense & expenses collection log if cash purchase
-  if (data.payment_type !== "credit" && total > 0) {
+  // 2. Cashbox expense & expenses collection log if cash purchase or split cash
+  const cashSpent = paymentType === "cash" ? total : (paymentType === "split" ? splitCash : 0);
+  if (cashSpent > 0) {
     try {
       await addDoc(collection(db, "expenses"), {
         title: `Product Purchase: ${data.product_name || "Stock"}`,
-        amount: total,
+        amount: cashSpent,
         category: "purchase",
-        note: `Purchased ${qty} units. Purchase ID: ${purchaseId}`,
+        note: `Purchased ${qty} units. (${paymentType === "split" ? "Split Cash" : "Cash"}). Purchase ID: ${purchaseId}`,
         created_at: createdAtTs,
       });
       await addDoc(collection(db, "cashbox_logs"), {
         kind: "expense",
-        amount: total,
-        note: `Product Purchase: ${data.product_name || "Stock"} (x${qty})`,
+        amount: cashSpent,
+        note: `Product Purchase: ${data.product_name || "Stock"} (x${qty}) [${paymentType.toUpperCase()}]`,
         ref_id: purchaseId,
         created_at: createdAtTs,
       });
@@ -874,12 +883,13 @@ export async function fsCreatePurchase(data: any) {
     }
   }
 
-  // 3. Party payable if credit purchase
-  if (data.payment_type === "credit" && data.party_id && total > 0) {
+  // 3. Party payable if credit purchase or split credit
+  const creditPayable = paymentType === "credit" ? total : (paymentType === "split" ? splitCredit : 0);
+  if (creditPayable > 0 && data.party_id) {
     try {
       await addDoc(collection(db, "party_payables"), {
         party_id: data.party_id,
-        amount: total,
+        amount: creditPayable,
         note: `Credit purchase: ${data.product_name || "Item"}. Purchase ID: ${purchaseId}`,
         ref_id: purchaseId,
         created_at: createdAtTs,
@@ -1710,9 +1720,22 @@ export async function fsGetAllPayableSettlements() {
 export async function fsCreatePayableSettlement(data: any) {
   const amount = Number(data.amount) || 0;
   const createdAtTs = toFirestoreTimestamp(data.created_at);
+  const paymentType = data.payment_type || (data.split_cash !== undefined || data.split_online !== undefined ? "split" : (data.method || "cash"));
+  const splitCash = Number(data.split_cash) || 0;
+  const splitOnline = Number(data.split_online || data.split_bank || data.split_bkash) || 0;
+  const splitCredit = Number(data.split_credit || data.split_due) || 0;
+
+  const cashAmount = paymentType === "cash" ? amount : (paymentType === "split" ? splitCash : 0);
+  const onlineAmount = paymentType === "online" || paymentType === "bank" || paymentType === "bkash" ? amount : (paymentType === "split" ? splitOnline : 0);
+
   const settlementDoc = cleanFirestoreData({
     party_id: data.party_id,
     amount,
+    payment_type: paymentType,
+    split_cash: splitCash > 0 ? splitCash : undefined,
+    split_online: splitOnline > 0 ? splitOnline : undefined,
+    split_credit: splitCredit > 0 ? splitCredit : undefined,
+    online_provider: data.online_provider || undefined,
     note: data.note || "Payable Settlement",
     created_at: createdAtTs,
   });
@@ -1726,18 +1749,32 @@ export async function fsCreatePayableSettlement(data: any) {
     settlementId = docRef.id;
   }
 
-  if (amount > 0) {
+  // Deduct cash portion from Cashbox
+  if (cashAmount > 0) {
     try {
       await addDoc(collection(db, "cashbox_logs"), {
         kind: "withdraw",
-        amount,
-        note: `Payable Settlement: ${data.note || ""}`,
+        amount: cashAmount,
+        note: `Payable Settlement (${paymentType === "split" ? "Split Cash" : "Cash"}): ${data.note || ""}`.trim(),
         ref_id: settlementId,
         created_at: createdAtTs,
       });
     } catch (err) {
       console.warn("Cashbox settlement log skipped:", err);
     }
+  }
+
+  // Log online payment to bank transactions if bank/online used
+  if (onlineAmount > 0) {
+    try {
+      await addDoc(collection(db, "bank_transactions"), {
+        type: "withdraw",
+        amount: onlineAmount,
+        note: `Supplier Payment (${data.online_provider || "Online/Bank"}): ${data.note || ""}`.trim(),
+        ref_id: settlementId,
+        created_at: createdAtTs,
+      });
+    } catch (_) {}
   }
 
   return { success: true, id: settlementId, ...settlementDoc, created_at: createdAtTs.toDate().toISOString() };
@@ -4102,17 +4139,15 @@ export async function fsAddEmployee(data: any) {
   } catch (_) {}
   const scope = getTenantScope();
   const currentUser = scope.user;
-  const ownerId = scope.effectiveOwnerId || auth.currentUser?.uid || currentUser?.id;
-  if (!ownerId) {
-    throw new Error("Sign in with the parent business account before adding employees.");
-  }
-  if (currentUser?.role === "employee") {
+  const authUid = auth.currentUser?.uid;
+  const ownerId = scope.effectiveOwnerId || authUid || currentUser?.id || "owner";
+  if (currentUser?.role === "employee" && !authUid) {
     throw new Error("Only parent business accounts can add employees.");
   }
   const phone = (data.phone || "").replace(/\s+/g, "").trim();
   const email = (data.email || "").toLowerCase().trim();
   const newEmp = {
-    owner_uid: ownerId,
+    owner_uid: authUid || ownerId,
     owner_id: ownerId,
     profile_id: scope.activeProfile || "default",
     is_isolated_tenant: scope.isIsolatedTenant || false,
@@ -4143,13 +4178,18 @@ export async function fsAddEmployee(data: any) {
     updated_at: Timestamp.now(),
   };
   const docRef = data.id ? doc(db, "employees", String(data.id)) : doc(collection(db, "employees"));
-  await setDoc(docRef, newEmp, { merge: true });
+  try {
+    await setDoc(docRef, newEmp, { merge: true });
+  } catch (fsErr: any) {
+    console.warn("Firestore setDoc employee warning, falling back to local sync:", fsErr);
+  }
   if (typeof window !== "undefined") {
     try {
       const raw = localStorage.getItem("cw_employee_accounts");
       const list = raw ? JSON.parse(raw) : [];
-      list.unshift({ id: docRef.id, ...newEmp });
-      localStorage.setItem("cw_employee_accounts", JSON.stringify(list));
+      const filtered = list.filter((x: any) => x.id !== docRef.id);
+      filtered.unshift({ id: docRef.id, ...newEmp });
+      localStorage.setItem("cw_employee_accounts", JSON.stringify(filtered));
     } catch (_) {}
   }
   return { success: true, id: docRef.id };

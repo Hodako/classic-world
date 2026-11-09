@@ -144,7 +144,8 @@ function groupSales(sales: Sale[]): GroupedSale[] {
       const splitCash = Number((s as any).split_cash) || 0;
       const splitBkash = Number((s as any).split_bkash) || 0;
       const splitBank = Number((s as any).split_bank) || 0;
-      const isSplitNonCart = s.type === "split" || (s.type as string) === "partial" || (splitCash > 0 || splitBkash > 0 || splitBank > 0);
+      const isOnlineSale = s.type === "online" || Boolean((s as any).courier_name) || Boolean((s as any).courier_status);
+      const isSplitNonCart = !isOnlineSale && (s.type === "split" || (s.type as string) === "partial" || (splitCash > 0 || splitBkash > 0 || splitBank > 0));
 
       grouped.push({
         id: s.id,
@@ -156,7 +157,7 @@ function groupSales(sales: Sale[]): GroupedSale[] {
         profit: profit,
         due_amount: Number(s.due_amount) || 0,
         paid_amount: Number(s.paid_amount) || 0,
-        type: isSplitNonCart ? "split" : (s.type || "cash"),
+        type: isOnlineSale ? "online" : (isSplitNonCart ? "split" : (s.type || "cash")),
         split_cash: splitCash > 0 ? splitCash : undefined,
         split_bkash: splitBkash > 0 ? splitBkash : undefined,
         split_bank: splitBank > 0 ? splitBank : undefined,
@@ -202,8 +203,9 @@ function groupSales(sales: Sale[]): GroupedSale[] {
     const paymentStatus = isAnyAccepted ? "accepted" : (firstItem as any).payment_status;
 
     const names = items.map(x => `${x.product_name} (×${x.qty})`).join(", ");
-    const isSplitGroup = (totalSplitCash > 0 || totalSplitBkash > 0 || totalSplitBank > 0) ||
-      items.some(x => x.type === "split" || (x.type as string) === "partial");
+    const isOnlineGroup = items.some(x => x.type === "online" || Boolean((x as any).courier_name) || Boolean((x as any).courier_status));
+    const isSplitGroup = !isOnlineGroup && ((totalSplitCash > 0 || totalSplitBkash > 0 || totalSplitBank > 0) ||
+      items.some(x => x.type === "split" || (x.type as string) === "partial"));
 
     grouped.push({
       id: firstItem.id,
@@ -215,14 +217,14 @@ function groupSales(sales: Sale[]): GroupedSale[] {
       profit: totalProfit,
       due_amount: totalDue,
       paid_amount: totalPaid,
-      type: isSplitGroup ? "split" : (firstItem.type || "cash"),
+      type: isOnlineGroup ? "online" : (isSplitGroup ? "split" : (firstItem.type || "cash")),
       split_cash: totalSplitCash > 0 ? totalSplitCash : undefined,
       split_bkash: totalSplitBkash > 0 ? totalSplitBkash : undefined,
       split_bank: totalSplitBank > 0 ? totalSplitBank : undefined,
       payment_status: paymentStatus,
       payment_accepted: isAnyAccepted,
-      courier_status: (firstItem as any).courier_status || (firstItem.type === "online" ? "pending" : null),
-      courier_name: (firstItem as any).courier_name || (firstItem.type === "online" ? "Courier" : null),
+      courier_status: (firstItem as any).courier_status || (isOnlineGroup ? "pending" : null),
+      courier_name: (firstItem as any).courier_name || (isOnlineGroup ? "Courier" : null),
       tracking_code: (firstItem as any).tracking_code || null,
       returned: (firstItem as any).returned || false,
       created_at: firstItem.created_at,
@@ -324,6 +326,17 @@ export default function SalesPage() {
     return groupSales(rawSales);
   }, [rawSales]);
 
+  const onlineCount = useMemo(() => {
+    return allSalesGrouped.filter(s => s.type === "online" || Boolean(s.courier_name)).length;
+  }, [allSalesGrouped]);
+
+  const courierPendingCount = useMemo(() => {
+    return allSalesGrouped.filter(s => 
+      (s.type === "online" || Boolean(s.courier_name)) && 
+      s.courier_status !== "collected" && s.courier_status !== "delivered" && s.courier_status !== "cancelled" && !s.returned
+    ).length;
+  }, [allSalesGrouped]);
+
   // Date Filtering Logic
   const inDateRange = (dateInput: any) => {
     if (!dateInput) return false;
@@ -373,10 +386,18 @@ export default function SalesPage() {
 
     return allSalesGrouped.filter(s => {
       // 1. Date filter
-      if (!inDateRange(s.created_at)) return false;
+      const isOnline = s.type === "online" || Boolean(s.courier_name);
+      const isPending = isOnline && 
+        s.courier_status !== "collected" && s.courier_status !== "delivered" && s.courier_status !== "cancelled" && !s.returned;
+
+      if (activeTab === "courier_pending") {
+        if (!isPending) return false;
+      } else {
+        if (!inDateRange(s.created_at)) return false;
+      }
 
       // 2. Tab / Payment Method Filter
-      if (activeTab !== "all") {
+      if (activeTab !== "all" && activeTab !== "courier_pending") {
         if (activeTab === "cash" && s.type !== "cash" && !(s.type === "split" && (Number(s.split_cash) > 0))) return false;
         if (activeTab === "bkash") {
           const isBkashDirect = s.type === "bkash";
@@ -387,8 +408,7 @@ export default function SalesPage() {
         if (activeTab === "bank" && s.type !== "bank" && !(s.type === "split" && (Number(s.split_bank) > 0))) return false;
         if (activeTab === "partial" && !isPartialOrSplitSale(s)) return false;
         if (activeTab === "credit" && s.type !== "credit" && s.due_amount <= 0) return false;
-        if (activeTab === "courier_pending" && (s.type !== "online" || s.courier_status === "collected" || s.courier_status === "cancelled" || s.returned)) return false;
-        if (activeTab === "online" && s.type !== "online") return false;
+        if (activeTab === "online" && !isOnline) return false;
       }
 
       // 3. Category Filter
@@ -925,26 +945,101 @@ export default function SalesPage() {
       </div>
 
       <Tabs value={activeTab} onValueChange={v => { setActiveTab(v); setPage(1); }}>
-        {/* Mobile Category Dropdown Selector */}
-        <div className="sm:hidden flex items-center justify-between gap-2 p-2 bg-card rounded-xl border-[0.5px] border-black/75 dark:border-white/30 shadow-2xs font-balooda">
-          <span className="text-xs font-bold text-muted-foreground whitespace-nowrap pl-1">
-            {lang === "bn" ? "বিক্রয় ফিল্টার:" : "Sales Filter:"}
-          </span>
-          <select
-            value={activeTab}
-            onChange={(e) => { setActiveTab(e.target.value); setPage(1); }}
-            className="flex-1 h-8.5 rounded-lg border-[0.5px] border-black/60 dark:border-white/30 bg-background px-2.5 text-xs font-bold font-balooda text-foreground shadow-xs cursor-pointer focus:ring-1 focus:ring-primary"
+        {/* Mobile Horizontal Filter Pill Bar */}
+        <div className="sm:hidden flex items-center gap-1.5 overflow-x-auto pb-1.5 pt-0.5 no-scrollbar font-balooda">
+          <Button
+            type="button"
+            size="sm"
+            variant={activeTab === "all" ? "default" : "outline"}
+            className="h-8 px-3 rounded-full text-xs font-bold shrink-0 cursor-pointer"
+            onClick={() => { setActiveTab("all"); setPage(1); }}
           >
-            <option value="all">{lang === "bn" ? "সব বিক্রি" : "All Sales"}</option>
-            <option value="cash">{lang === "bn" ? "নগদ" : "Cash"}</option>
-            <option value="bkash">{lang === "bn" ? "বিকাশ (আংশিক ও পেন্ডিং সহ)" : "bKash (Inc. Partial & Due)"}</option>
-            <option value="bank">{lang === "bn" ? "ব্যাংক" : "Bank"}</option>
-            <option value="partial">{lang === "bn" ? "স্প্লিট" : "Split"}</option>
-            <option value="credit">{lang === "bn" ? "বাকী" : "Credit"}</option>
-            <option value="courier_pending">{lang === "bn" ? "⏳ কুরিয়ার পেন্ডিং" : "⏳ Pending Courier"}</option>
-            <option value="online">{lang === "bn" ? "অনলাইন সব" : "All Online"}</option>
-          </select>
+            {lang === "bn" ? "সব বিক্রি" : "All"} ({allSalesGrouped.length})
+          </Button>
+
+          <Button
+            type="button"
+            size="sm"
+            variant={activeTab === "courier_pending" ? "default" : "outline"}
+            className={`h-8 px-3 rounded-full text-xs font-bold shrink-0 cursor-pointer ${
+              courierPendingCount > 0 ? "border-amber-500 bg-amber-500/15 text-amber-800 dark:text-amber-200 font-extrabold ring-1 ring-amber-500/40" : ""
+            }`}
+            onClick={() => { setActiveTab("courier_pending"); setPage(1); }}
+          >
+            ⏳ {lang === "bn" ? "কুরিয়ার পেন্ডিং" : "Courier Pending"}
+            {courierPendingCount > 0 && (
+              <span className="ml-1.5 px-1.5 py-0.2 bg-amber-500 text-white rounded-full text-[10px]">
+                {courierPendingCount}
+              </span>
+            )}
+          </Button>
+
+          <Button
+            type="button"
+            size="sm"
+            variant={activeTab === "online" ? "default" : "outline"}
+            className="h-8 px-3 rounded-full text-xs font-bold shrink-0 text-sky-600 dark:text-sky-400 cursor-pointer"
+            onClick={() => { setActiveTab("online"); setPage(1); }}
+          >
+            🚚 {lang === "bn" ? "অনলাইন সব" : "All Online"} ({onlineCount})
+          </Button>
+
+          <Button
+            type="button"
+            size="sm"
+            variant={activeTab === "cash" ? "default" : "outline"}
+            className="h-8 px-3 rounded-full text-xs font-bold shrink-0 cursor-pointer"
+            onClick={() => { setActiveTab("cash"); setPage(1); }}
+          >
+            💵 {lang === "bn" ? "নগদ" : "Cash"}
+          </Button>
+
+          <Button
+            type="button"
+            size="sm"
+            variant={activeTab === "bkash" ? "default" : "outline"}
+            className="h-8 px-3 rounded-full text-xs font-bold shrink-0 text-[#E2136E] cursor-pointer"
+            onClick={() => { setActiveTab("bkash"); setPage(1); }}
+          >
+            বিকাশ
+          </Button>
+
+          <Button
+            type="button"
+            size="sm"
+            variant={activeTab === "partial" ? "default" : "outline"}
+            className="h-8 px-3 rounded-full text-xs font-bold shrink-0 text-purple-600 cursor-pointer"
+            onClick={() => { setActiveTab("partial"); setPage(1); }}
+          >
+            ⚡ {lang === "bn" ? "স্প্লিট" : "Split"}
+          </Button>
+
+          <Button
+            type="button"
+            size="sm"
+            variant={activeTab === "credit" ? "default" : "outline"}
+            className="h-8 px-3 rounded-full text-xs font-bold shrink-0 text-amber-600 cursor-pointer"
+            onClick={() => { setActiveTab("credit"); setPage(1); }}
+          >
+            📋 {lang === "bn" ? "বাকী" : "Credit"}
+          </Button>
         </div>
+
+        {/* Courier Pending Alert Banner for Mobile & Desktop */}
+        {courierPendingCount > 0 && activeTab !== "courier_pending" && (
+          <div 
+            onClick={() => { setActiveTab("courier_pending"); setPage(1); }}
+            className="my-2 p-2.5 sm:p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-between text-xs font-bold text-amber-800 dark:text-amber-200 cursor-pointer hover:bg-amber-500/15 transition-all shadow-xs"
+          >
+            <div className="flex items-center gap-2">
+              <span className="flex size-2 rounded-full bg-amber-500 animate-ping" />
+              <span>🚚 {lang === "bn" ? `${courierPendingCount} টি অনলাইন/কুরিয়ার অর্ডার ডেলিভারি বা টাকা আদায়ের অপেক্ষায় রয়েছে!` : `${courierPendingCount} online/courier orders pending collection!`}</span>
+            </div>
+            <span className="text-[11px] underline font-extrabold text-amber-700 dark:text-amber-300 shrink-0">
+              {lang === "bn" ? "দেখুন ➔" : "View ➔"}
+            </span>
+          </div>
+        )}
 
         {/* Desktop Tabs List */}
         <TabsList className="hidden sm:grid sm:grid-cols-8 w-full text-xs font-bold font-balooda p-1 bg-muted/80 rounded-xl gap-1">

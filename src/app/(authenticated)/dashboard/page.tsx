@@ -432,6 +432,7 @@ const DEFAULT_KPI_ORDER = [
   "loss",
   "owner_wallet",
   "somiti",
+  "employee_hub",
 ];
 
 const DEFAULT_HIDDEN_KPIS = [
@@ -449,6 +450,7 @@ const DEFAULT_HIDDEN_KPIS = [
   "due",
   "cashbox",
   "somiti",
+  "employee_hub",
 ];
 
 // ── main dashboard ────────────────────────────────────────────────────────
@@ -2032,6 +2034,46 @@ export default function Dashboard() {
             onClick={(e) => handlePrivacyKpiClick(e, "somiti", "/somiti")}
           />
         ) : <div key="somiti" className="hidden" />;
+      case "employee_hub":
+        const staffAdvancesThisMonth = (employeeExpenses.data || [])
+          .filter(e => {
+            const isAdv = e.category === "advance" || e.category === "salary_advance" || (e as any).type === "advance";
+            if (!isAdv) return false;
+            const d = e.date || (e.created_at ? e.created_at.slice(0, 7) : "");
+            return d.startsWith(currentMonthStr);
+          })
+          .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+
+        const displayedEmployeeHubVal = isEmployeeRole
+          ? (myAdvancesThisMonth || 0)
+          : staffAdvancesThisMonth;
+
+        const employeeHubSub = isHidden && !isRevealed
+          ? (lang === "bn" ? "ট্যাপ করে দেখুন" : "Tap to reveal")
+          : isEmployeeRole
+          ? (lang === "bn" ? `অবশিষ্ট বেতন: ${fmtMoney(mySalaryCalc?.remainingSalary || 0)}` : `Remaining: ${fmtMoney(mySalaryCalc?.remainingSalary || 0)}`)
+          : (lang === "bn" ? `মোট কর্মী: ${allEmployees.length} জন • চলতি মাসে অগ্রিম` : `Staff: ${allEmployees.length} • Month's advance`);
+
+        return (
+          <KPICard
+            key="employee_hub"
+            label={isEmployeeRole ? (lang === "bn" ? "আমার অগ্রিম উত্তোলন" : "My Advances") : (lang === "bn" ? "এমপ্লয়ি হাব (স্টাফ অগ্রিম)" : "Employee Hub")}
+            value={fmtMoney(displayedEmployeeHubVal)}
+            sub={employeeHubSub}
+            imageUrl="/icons/staff_icon.png"
+            icon={Users}
+            color="bg-indigo-600"
+            trendUp={true}
+            trend={isEmployeeRole ? (lang === "bn" ? "চলতি মাস" : "This Month") : (lang === "bn" ? "স্টাফ অগ্রিম" : "Staff Advance")}
+            isDesktop={true}
+            hotkey={hotkey}
+            className="h-full cursor-pointer"
+            align={kpiConfig.align as any}
+            size={kpiConfig.size as any}
+            {...privacyProps}
+            onClick={(e) => handlePrivacyKpiClick(e, "employee_hub", "/employee-hub")}
+          />
+        );
       default:
         return null;
     }

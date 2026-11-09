@@ -24,7 +24,7 @@ import {
   sendPasswordResetEmail,
   updateProfile,
 } from "firebase/auth";
-import { KeyRound, Mail, CheckCircle2, RefreshCw, UserCheck, Shield, Lock, User, ArrowRight, Eye, EyeOff, Smartphone, Sparkles, Store, Image as ImageIcon, HelpCircle } from "lucide-react";
+import { KeyRound, Mail, CheckCircle2, RefreshCw, UserCheck, Shield, ShieldCheck, Lock, User, ArrowRight, Eye, EyeOff, Smartphone, Sparkles, Store, Image as ImageIcon, HelpCircle } from "lucide-react";
 
 export default function AuthPage() {
   const { user, loading, login } = useAuth();

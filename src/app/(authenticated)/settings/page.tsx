@@ -539,6 +539,14 @@ export default function SettingsPage() {
   const [staffFormAdvanceLimit, setStaffFormAdvanceLimit] = useState("");
   const [staffFormPin, setStaffFormPin] = useState("1234");
   const [staffFormSaving, setStaffFormSaving] = useState(false);
+  const [staffPermSales, setStaffPermSales] = useState(true);
+  const [staffPermProducts, setStaffPermProducts] = useState(true);
+  const [staffPermCashbox, setStaffPermCashbox] = useState(true);
+  const [staffPermExpenses, setStaffPermExpenses] = useState(true);
+  const [staffPermSomiti, setStaffPermSomiti] = useState(false);
+  const [staffPermProfitLoss, setStaffPermProfitLoss] = useState(false);
+  const [staffPermPurchases, setStaffPermPurchases] = useState(false);
+  const [staffPermParties, setStaffPermParties] = useState(false);
 
   const handleOpenAddStaff = () => {
     setStaffFormName("");
@@ -547,6 +555,14 @@ export default function SettingsPage() {
     setStaffFormSalary("");
     setStaffFormAdvanceLimit("");
     setStaffFormPin("1234");
+    setStaffPermSales(true);
+    setStaffPermProducts(true);
+    setStaffPermCashbox(true);
+    setStaffPermExpenses(true);
+    setStaffPermSomiti(false);
+    setStaffPermProfitLoss(false);
+    setStaffPermPurchases(false);
+    setStaffPermParties(false);
     setAddStaffDialogOpen(true);
   };
 
@@ -558,6 +574,15 @@ export default function SettingsPage() {
     setStaffFormSalary(String(emp.base_salary || emp.monthly_salary || ""));
     setStaffFormAdvanceLimit(String(emp.advance_limit || ""));
     setStaffFormPin(String(emp.pin || emp.plain_password || emp.password || "1234"));
+    const p = emp.permissions || {};
+    setStaffPermSales(p.sales !== false);
+    setStaffPermProducts(p.products !== false);
+    setStaffPermCashbox(p.cashbox !== false);
+    setStaffPermExpenses(p.expenses !== false);
+    setStaffPermSomiti(Boolean(p.somiti));
+    setStaffPermProfitLoss(Boolean(p.profit_loss));
+    setStaffPermPurchases(Boolean(p.purchases));
+    setStaffPermParties(Boolean(p.parties));
     setEditStaffDialogOpen(true);
   };
 
@@ -578,6 +603,17 @@ export default function SettingsPage() {
       const salNum = parseFloat(staffFormSalary) || 0;
       const advNum = staffFormAdvanceLimit ? parseFloat(staffFormAdvanceLimit) : salNum;
 
+      const permissionsObj = {
+        sales: staffPermSales,
+        products: staffPermProducts,
+        cashbox: staffPermCashbox,
+        expenses: staffPermExpenses,
+        somiti: staffPermSomiti,
+        profit_loss: staffPermProfitLoss,
+        purchases: staffPermPurchases,
+        parties: staffPermParties,
+      };
+
       if (staffEditingEmp) {
         await updateEmployeeFn({
           data: {
@@ -592,9 +628,40 @@ export default function SettingsPage() {
             plain_password: cleanPin,
             password: cleanPin,
             status: staffEditingEmp.status || "active",
+            permissions: permissionsObj,
           },
         });
-        toast.success(lang === "bn" ? "কর্মচারী তথ্য আপডেট হয়েছে!" : "Employee settings updated successfully!");
+        try {
+          const { fsUpdateEmployee } = await import("@/lib/firestore-service");
+          await fsUpdateEmployee(staffEditingEmp.id, {
+            name: staffFormName.trim(),
+            designation: staffFormDesignation.trim(),
+            base_salary: salNum,
+            monthly_salary: salNum,
+            advance_limit: advNum,
+            pin: cleanPin,
+            permissions: permissionsObj,
+          });
+        } catch (_) {}
+
+        if (typeof window !== "undefined") {
+          try {
+            const raw = localStorage.getItem("cw_active_employee_session");
+            if (raw) {
+              const parsed = JSON.parse(raw);
+              if (parsed.id === staffEditingEmp.id) {
+                parsed.permissions = permissionsObj;
+                parsed.advance_limit = advNum;
+                parsed.base_salary = salNum;
+                parsed.name = staffFormName.trim();
+                localStorage.setItem("cw_active_employee_session", JSON.stringify(parsed));
+                window.dispatchEvent(new Event("storage"));
+              }
+            }
+          } catch (_) {}
+        }
+
+        toast.success(lang === "bn" ? "কর্মচারী তথ্য ও পারমিশন আপডেট হয়েছে!" : "Employee settings and permissions updated successfully!");
         setEditStaffDialogOpen(false);
       } else {
         await createEmployeeFn({
@@ -609,6 +676,7 @@ export default function SettingsPage() {
             plain_password: cleanPin,
             password: cleanPin,
             status: "active",
+            permissions: permissionsObj,
           },
         });
         toast.success(lang === "bn" ? "নতুন কর্মচারী সফলভাবে যুক্ত হয়েছে!" : "New employee added successfully!");
@@ -4180,6 +4248,70 @@ export default function SettingsPage() {
                 placeholder="1234"
                 className="h-11 rounded-xl text-base font-mono tracking-widest text-center font-bold"
               />
+            </div>
+
+            {/* KPI & Access Permissions */}
+            <div className="space-y-2 pt-2 border-t border-border/60">
+              <div className="flex items-center justify-between">
+                <Label className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                  <ShieldCheck className="size-3.5 text-indigo-600" />
+                  <span>{lang === "bn" ? "কেপিআই ও এক্সেস পারমিশন নিয়ন্ত্রণ" : "KPI & Access Permissions"}</span>
+                </Label>
+                <span className="text-[10px] text-muted-foreground">{lang === "bn" ? "মালিকের নিয়ন্ত্রণ" : "Owner controlled"}</span>
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                {lang === "bn"
+                  ? "যেসব কেপিআই বা মেনু কর্মচারীর জন্য অন রাখবেন তা নির্বাচন করুন।"
+                  : "Toggle which KPI cards and sidebar menus this staff member can access."}
+              </p>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                <div className="flex items-center justify-between p-2 rounded-xl bg-muted/40 border border-border/60">
+                  <span className="text-xs font-medium">{lang === "bn" ? "বিক্রি ও পিওএস (POS)" : "Sales (POS)"}</span>
+                  <Switch checked={staffPermSales} onCheckedChange={setStaffPermSales} />
+                </div>
+
+                <div className="flex items-center justify-between p-2 rounded-xl bg-muted/40 border border-border/60">
+                  <span className="text-xs font-medium">{lang === "bn" ? "পণ্য তালিকা ও স্টক" : "Products Stock"}</span>
+                  <Switch checked={staffPermProducts} onCheckedChange={setStaffPermProducts} />
+                </div>
+
+                <div className="flex items-center justify-between p-2 rounded-xl bg-muted/40 border border-border/60">
+                  <span className="text-xs font-medium">{lang === "bn" ? "ক্যাশ বক্স ব্যালেন্স" : "Cash Box Live"}</span>
+                  <Switch checked={staffPermCashbox} onCheckedChange={setStaffPermCashbox} />
+                </div>
+
+                <div className="flex items-center justify-between p-2 rounded-xl bg-muted/40 border border-border/60">
+                  <span className="text-xs font-medium">{lang === "bn" ? "দোকানের খরচ সমূহ" : "Store Expenses"}</span>
+                  <Switch checked={staffPermExpenses} onCheckedChange={setStaffPermExpenses} />
+                </div>
+
+                <div className="flex items-center justify-between p-2 rounded-xl bg-muted/40 border border-border/60">
+                  <div>
+                    <span className="text-xs font-medium block">{lang === "bn" ? "সমিতি ও সঞ্চয় কেপিআই" : "Samity KPI"}</span>
+                    <span className="text-[9px] text-muted-foreground">{lang === "bn" ? "ডিফল্ট: অফ" : "Default: Off"}</span>
+                  </div>
+                  <Switch checked={staffPermSomiti} onCheckedChange={setStaffPermSomiti} />
+                </div>
+
+                <div className="flex items-center justify-between p-2 rounded-xl bg-muted/40 border border-border/60">
+                  <div>
+                    <span className="text-xs font-medium block">{lang === "bn" ? "লাভ-লোকসান কেপিআই" : "Profit & Loss KPI"}</span>
+                    <span className="text-[9px] text-muted-foreground">{lang === "bn" ? "ডিফল্ট: অফ" : "Default: Off"}</span>
+                  </div>
+                  <Switch checked={staffPermProfitLoss} onCheckedChange={setStaffPermProfitLoss} />
+                </div>
+
+                <div className="flex items-center justify-between p-2 rounded-xl bg-muted/40 border border-border/60">
+                  <span className="text-xs font-medium">{lang === "bn" ? "পণ্য ক্রয় (BUY)" : "Purchases (BUY)"}</span>
+                  <Switch checked={staffPermPurchases} onCheckedChange={setStaffPermPurchases} />
+                </div>
+
+                <div className="flex items-center justify-between p-2 rounded-xl bg-muted/40 border border-border/60">
+                  <span className="text-xs font-medium">{lang === "bn" ? "কাস্টমার বাকি" : "Customer Dues"}</span>
+                  <Switch checked={staffPermParties} onCheckedChange={setStaffPermParties} />
+                </div>
+              </div>
             </div>
 
             <DialogFooter className="gap-2 sm:gap-0 pt-3 border-t border-border/50">

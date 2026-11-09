@@ -36,9 +36,12 @@ import {
   Scale,
   Banknote,
   Sparkles,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
+import { calculateEmployeeSalaryWithRollover } from "@/lib/salary-utils";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useCachedQuery } from "@/hooks/use-cached-query";
 import {
@@ -96,6 +99,8 @@ export default function EmployeesPage() {
       : "accounts"
   );
   const [search, setSearch] = useState("");
+  const router = useRouter();
+  const [personalKpiRevealed, setPersonalKpiRevealed] = useState(false);
 
   // Queries
   const { data: employees = [], isLoading: empLoading } = useCachedQuery(["employees"], getEmployees);
@@ -317,6 +322,17 @@ export default function EmployeesPage() {
     if (!currentEmployee) return null;
     return getEmployeeSalaryStats(currentEmployee.id, currentMonthStr, true);
   }, [currentEmployee, currentMonthStr, employees, shoppings, salaries, expenses]);
+
+  const myRolloverCalc = useMemo(() => {
+    if (!currentEmployee) return null;
+    return calculateEmployeeSalaryWithRollover(
+      currentEmployee,
+      expenses,
+      salaries,
+      shoppings,
+      currentMonthStr
+    );
+  }, [currentEmployee, expenses, salaries, shoppings, currentMonthStr]);
 
   // Dialog States: Employee Account
   const [addEmpOpen, setAddEmpOpen] = useState(false);
@@ -1121,117 +1137,41 @@ export default function EmployeesPage() {
           <p className="text-xs sm:text-base font-bold font-charukola text-indigo-600">{fmtMoney(totalMonthlySalariesPaid)}</p>
           <span className="text-[9px] sm:text-[10px] text-muted-foreground block">{salaries.length} {lang === "bn" ? "টি রসিদ" : "Vouchers"}</span>
         </Card>
-      </div>
 
-      {/* Employee Personal KPI Cards (placed at the LAST of other KPIs in employee page) */}
-      {isEmployeeRole && (
-        <div className="space-y-2 pt-1 border-t border-border/40">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-foreground flex items-center gap-1.5">
-              <Users className="size-3.5 text-primary" />
-              {lang === "bn" ? `কর্মচারী ব্যক্তিগত কেপিআই (${currentEmployee?.name || user?.full_name || "Employee"})` : `Employee Personal KPI (${currentEmployee?.name || user?.full_name || "Employee"})`}
-            </span>
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] text-muted-foreground">
-                {lang === "bn" ? `উত্তোলনের সীমা: ৳${fmtMoney(currentEmployee?.advance_limit ?? currentEmployee?.base_salary ?? 0)}` : `Advance Limit: ৳${fmtMoney(currentEmployee?.advance_limit ?? currentEmployee?.base_salary ?? 0)}`}
+        {/* Small standard KPI card for "কর্মচারী ব্যক্তিগত কেপিআই" placed at the LAST of other KPIs with hidden amount & link to dedicated page */}
+        {isEmployeeRole && (
+          <Card
+            onClick={() => router.push("/employee-hub")}
+            className="p-2 sm:p-3 rounded-xl sm:rounded-2xl bg-card border-indigo-500/40 hover:border-indigo-500 space-y-0.5 sm:space-y-1 shadow-2xs cursor-pointer transition-all group relative overflow-hidden"
+          >
+            <div className="flex items-center justify-between text-muted-foreground">
+              <span className="text-[10px] sm:text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 flex items-center gap-1 truncate">
+                <Users className="size-3 sm:size-3.5 text-indigo-600 shrink-0" />
+                <span className="truncate">{lang === "bn" ? "কর্মচারী ব্যক্তিগত কেপিআই" : "Personal Staff KPI"}</span>
               </span>
-              <Badge variant="outline" className="text-[10px] bg-primary/10 text-primary border-primary/20">
-                {currentEmployee?.designation || "Staff"}
-              </Badge>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setPersonalKpiRevealed(!personalKpiRevealed);
+                }}
+                className="text-muted-foreground hover:text-foreground p-0.5 rounded cursor-pointer shrink-0"
+                title={personalKpiRevealed ? "Hide" : "Reveal"}
+              >
+                {personalKpiRevealed ? <EyeOff className="size-3" /> : <Eye className="size-3" />}
+              </button>
             </div>
-          </div>
-
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 sm:gap-3">
-            <Card className="p-2.5 sm:p-3 rounded-xl sm:rounded-2xl bg-card border-border/80 space-y-1 shadow-2xs">
-              <div className="flex items-center justify-between text-muted-foreground">
-                <span className="text-[10px] sm:text-[11px] font-semibold">{lang === "bn" ? "মূল বেতন" : "Base Salary"}</span>
-                <DollarSign className="size-3.5 text-primary" />
-              </div>
-              <p className="text-xs sm:text-base font-bold font-charukola text-foreground">
-                ৳{fmtMoney(currentEmployee?.base_salary || 0)}
-              </p>
-              <span className="text-[9px] text-muted-foreground block">{lang === "bn" ? "মাসিক চুক্তি" : "Per Month"}</span>
-            </Card>
-
-            <Card className="p-2.5 sm:p-3 rounded-xl sm:rounded-2xl bg-card border-amber-500/20 bg-amber-500/5 space-y-1 shadow-2xs">
-              <div className="flex items-center justify-between text-muted-foreground">
-                <span className="text-[10px] sm:text-[11px] font-semibold">{lang === "bn" ? "অগ্রিম সীমা" : "Advance Limit"}</span>
-                <Banknote className="size-3.5 text-amber-500" />
-              </div>
-              <p className="text-xs sm:text-base font-bold font-charukola text-amber-600 dark:text-amber-400">
-                ৳{fmtMoney(currentEmployee?.advance_limit ?? currentEmployee?.base_salary ?? 0)}
-              </p>
-              <span className="text-[9px] text-muted-foreground block">{lang === "bn" ? "সর্বোচ্চ বরাদ্দ" : "Max Limit"}</span>
-            </Card>
-
-            <Card className="p-2.5 sm:p-3 rounded-xl sm:rounded-2xl bg-card border-border/80 space-y-1 shadow-2xs">
-              <div className="flex items-center justify-between text-muted-foreground">
-                <span className="text-[10px] sm:text-[11px] font-semibold">{lang === "bn" ? "চলতি মাসে নেওয়া" : "Advance Taken"}</span>
-                <TrendingDown className="size-3.5 text-orange-500" />
-              </div>
-              <p className="text-xs sm:text-base font-bold font-charukola text-orange-600">
-                ৳{fmtMoney(myEmployeeStats?.advancesInMonth || 0)}
-              </p>
-              <span className="text-[9px] text-orange-600/80 block">{lang === "bn" ? "বেতন থেকে কর্তনযোগ্য" : "Deductible"}</span>
-            </Card>
-
-            <Card className="p-2.5 sm:p-3 rounded-xl sm:rounded-2xl bg-card border-border/80 space-y-1 shadow-2xs">
-              <div className="flex items-center justify-between text-muted-foreground">
-                <span className="text-[10px] sm:text-[11px] font-semibold">{lang === "bn" ? "অবশিষ্ট সুযোগ" : "Available Quota"}</span>
-                <Sparkles className="size-3.5 text-purple-600" />
-              </div>
-              <p className="text-xs sm:text-base font-bold font-charukola text-purple-600">
-                ৳{fmtMoney(Math.max(0, (Number(currentEmployee?.advance_limit ?? currentEmployee?.base_salary ?? 0)) - (myEmployeeStats?.advancesInMonth || 0)))}
-              </p>
-              <span className="text-[9px] text-purple-600/80 block">{lang === "bn" ? "এখন তুলতে পারবেন" : "Can withdraw"}</span>
-            </Card>
-
-            <Card className="p-2.5 sm:p-3 rounded-xl sm:rounded-2xl bg-card border-border/80 space-y-1 shadow-2xs">
-              <div className="flex items-center justify-between text-muted-foreground">
-                <span className="text-[10px] sm:text-[11px] font-semibold">{lang === "bn" ? "অবশিষ্ট বেতন" : "Remaining"}</span>
-                <Wallet className="size-3.5 text-emerald-600" />
-              </div>
-              <p className="text-xs sm:text-base font-bold font-charukola text-emerald-600">
-                ৳{fmtMoney(myEmployeeStats?.remaining || (Number(currentEmployee?.base_salary || 0) - (myEmployeeStats?.advancesInMonth || 0)))}
-              </p>
-              <span className="text-[9px] text-emerald-600/80 block">{lang === "bn" ? "প্রদেয় বাকি আছে" : "Payable"}</span>
-            </Card>
-
-            <Card className="p-2.5 sm:p-3 rounded-xl sm:rounded-2xl bg-card border-border/80 space-y-1 shadow-2xs">
-              <div className="flex items-center justify-between text-muted-foreground">
-                <span className="text-[10px] sm:text-[11px] font-semibold">{lang === "bn" ? "ক্যাশবক্স" : "Cashbox Live"}</span>
-                <Banknote className="size-3.5 text-blue-600" />
-              </div>
-              <p className="text-xs sm:text-base font-bold font-charukola text-blue-600">
-                ৳{fmtMoney(liveCashBalance)}
-              </p>
-              <span className="text-[9px] text-muted-foreground block">{lang === "bn" ? "দোকানের নগদ ক্যাশ" : "Live In-Store"}</span>
-            </Card>
-
-            <Card className="p-2.5 sm:p-3 rounded-xl sm:rounded-2xl bg-card border-border/80 space-y-1 shadow-2xs">
-              <div className="flex items-center justify-between text-muted-foreground">
-                <span className="text-[10px] sm:text-[11px] font-semibold">{lang === "bn" ? "পোশাক কেনাকাটা" : "Shopping Draw"}</span>
-                <Shirt className="size-3.5 text-pink-600" />
-              </div>
-              <p className="text-xs sm:text-base font-bold font-charukola text-pink-600">
-                ৳{fmtMoney(myEmployeeStats?.shopDed || 0)}
-              </p>
-              <span className="text-[9px] text-muted-foreground block">{lang === "bn" ? "বকেয়া পোশাক" : "Shopping Due"}</span>
-            </Card>
-
-            <Card className="p-2.5 sm:p-3 rounded-xl sm:rounded-2xl bg-card border-border/80 space-y-1 shadow-2xs">
-              <div className="flex items-center justify-between text-muted-foreground">
-                <span className="text-[10px] sm:text-[11px] font-semibold">{lang === "bn" ? "বোনাস প্রাপ্তি" : "Bonus"}</span>
-                <Sparkles className="size-3.5 text-amber-500" />
-              </div>
-              <p className="text-xs sm:text-base font-bold font-charukola text-amber-600">
-                ৳{fmtMoney(myEmployeeStats?.totalBonus || 0)}
-              </p>
-              <span className="text-[9px] text-muted-foreground block">{lang === "bn" ? "চলতি মাসে" : "This Month"}</span>
-            </Card>
-          </div>
-        </div>
-      )}
+            <p className="text-xs sm:text-base font-bold font-charukola text-indigo-600">
+              {personalKpiRevealed ? `৳${fmtMoney(myRolloverCalc?.remainingSalary ?? myEmployeeStats?.remaining ?? 0)}` : "••••••"}
+            </p>
+            <span className="text-[9px] sm:text-[10px] text-muted-foreground block truncate group-hover:text-indigo-600">
+              {personalKpiRevealed
+                ? (lang === "bn" ? `অবশিষ্ট সীমা: ৳${fmtMoney(myRolloverCalc?.remainingAdvanceLimit ?? (Number(currentEmployee?.advance_limit ?? currentEmployee?.base_salary ?? 0) - (myEmployeeStats?.advancesInMonth || 0)))}` : `Available: ৳${fmtMoney(myRolloverCalc?.remainingAdvanceLimit ?? 0)}`)
+                : (lang === "bn" ? "ট্যাপ করে বিস্তারিত হাব দেখুন →" : "Tap to open personal hub →")}
+            </span>
+          </Card>
+        )}
+      </div>
 
       {/* Main Tabs Navigation */}
       <Tabs value={activeTab} onValueChange={v => setActiveTab(v as any)} className="space-y-3">

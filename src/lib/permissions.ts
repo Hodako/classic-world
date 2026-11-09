@@ -6,6 +6,8 @@ export type PermissionSet = {
   purchases: boolean;
   expenses: boolean;
   cashbox: boolean;
+  somiti: boolean;
+  profit_loss: boolean;
   settings: boolean;
   reports: boolean;
   danger_zone: boolean;
@@ -19,6 +21,8 @@ export const OWNER_PERMISSIONS: PermissionSet = {
   purchases: true,
   expenses: true,
   cashbox: true,
+  somiti: true,
+  profit_loss: true,
   settings: true,
   reports: true,
   danger_zone: true,
@@ -32,6 +36,8 @@ export const DEFAULT_EMPLOYEE_PERMISSIONS: PermissionSet = {
   purchases: false,
   expenses: true,
   cashbox: true,
+  somiti: false, // Hidden by default, owner must grant permission
+  profit_loss: false, // Hidden by default, owner must grant permission
   settings: false,
   reports: false,
   danger_zone: false,
@@ -66,6 +72,16 @@ export function resolvePermissions(role: string, permissions?: any): PermissionS
   else if (has("can_cashbox")) base.cashbox = Boolean(permissions.can_cashbox);
   else base.cashbox = true;
 
+  // Somiti: default false for staff unless owner explicitly granted it
+  if (has("somiti")) base.somiti = Boolean(permissions.somiti);
+  else if (has("can_somiti")) base.somiti = Boolean(permissions.can_somiti);
+  else base.somiti = false;
+
+  // Profit / Loss: default false for staff unless owner explicitly granted it
+  if (has("profit_loss")) base.profit_loss = Boolean(permissions.profit_loss);
+  else if (has("can_profit_loss")) base.profit_loss = Boolean(permissions.can_profit_loss);
+  else base.profit_loss = false;
+
   if (has("parties")) base.parties = Boolean(permissions.parties);
   else if (has("can_customers")) base.parties = Boolean(permissions.can_customers);
 
@@ -92,7 +108,9 @@ export const ROUTE_PERMISSIONS: { prefix: string; perm: keyof PermissionSet }[] 
   { prefix: "/expenses", perm: "expenses" },
   { prefix: "/trackback", perm: "reports" },
   { prefix: "/cash-management", perm: "cashbox" },
-  { prefix: "/somiti", perm: "expenses" },
+  { prefix: "/somiti", perm: "somiti" },
+  { prefix: "/profits", perm: "profit_loss" },
+  { prefix: "/losses", perm: "profit_loss" },
   { prefix: "/settings", perm: "settings" },
   { prefix: "/employees", perm: "sales" },
   { prefix: "/employee-hub", perm: "sales" },

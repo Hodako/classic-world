@@ -29,6 +29,7 @@ import {
 import { useCachedQuery } from "@/hooks/use-cached-query";
 import { useCashboxQuery } from "@/hooks/use-cashbox-query";
 import { cashboxBalance } from "@/lib/cashbox-utils";
+import { calculateEmployeeSalaryWithRollover } from "@/lib/salary-utils";
 import {
   getEmployees,
   getEmployeeExpenses,
@@ -115,12 +116,27 @@ export default function EmployeeHubPage() {
       .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
   }, [employeeAdvances, currentMonth]);
 
+  const salariesQuery = useCachedQuery(["employee_salaries"], getEmployeeSalaries);
+  const allSalaries = salariesQuery.data ?? [];
+
+  const salaryRollover = useMemo(() => {
+    if (!activeEmployee) return null;
+    return calculateEmployeeSalaryWithRollover(
+      activeEmployee,
+      allExpenses,
+      allSalaries,
+      [],
+      currentMonth
+    );
+  }, [activeEmployee, allExpenses, allSalaries, currentMonth]);
+
   const baseSalary = Number(activeEmployee?.monthly_salary || activeEmployee?.base_salary) || 0;
   const advanceLimit = activeEmployee?.advance_limit !== undefined && activeEmployee?.advance_limit !== null
     ? Number(activeEmployee.advance_limit)
     : baseSalary;
-  const remainingLimit = Math.max(0, advanceLimit - thisMonthTaken);
-  const remainingSalary = Math.max(0, baseSalary - thisMonthTaken);
+  const carriedForward = salaryRollover?.carriedForwardBalance ?? 0;
+  const remainingLimit = salaryRollover?.remainingAdvanceLimit ?? Math.max(0, advanceLimit - thisMonthTaken);
+  const remainingSalary = salaryRollover?.remainingSalary ?? Math.max(0, baseSalary - thisMonthTaken);
 
   // Form states for taking money
   const [takeMoneyOpen, setTakeMoneyOpen] = useState(false);
@@ -361,7 +377,13 @@ export default function EmployeeHubPage() {
             {fmtMoney(remainingSalary)}
           </div>
           <div className="text-[10px] text-muted-foreground mt-0.5 flex items-center justify-between">
-            <span>{lang === "bn" ? "মাস শেষে প্রাপ্য" : "Month end"}</span>
+            <span>
+              {carriedForward !== 0
+                ? (carriedForward > 0
+                  ? (lang === "bn" ? `পূর্বের বাকি +৳${fmtMoney(carriedForward)} যোগ` : `+৳${fmtMoney(carriedForward)} from last month`)
+                  : (lang === "bn" ? `পূর্বের ঋণ -৳${fmtMoney(Math.abs(carriedForward))} কর্তন` : `-৳${fmtMoney(Math.abs(carriedForward))} last debt`))
+                : (lang === "bn" ? "মাস শেষে প্রাপ্য" : "Month end")}
+            </span>
             <span className="text-teal-600 font-bold">ক্যাশ: {fmtMoney(currentCashBalance)}</span>
           </div>
         </Card>

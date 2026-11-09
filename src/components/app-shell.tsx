@@ -87,7 +87,7 @@ const desktopNavGroups: NavGroup[] = [
       { to: "/purchases", labelKey: "new_purchase", icon: ShoppingCart, perm: "purchases" },
       { to: "/bank", labelKey: "bank_management", icon: Landmark, perm: "expenses" },
       { to: "/owners-wallet", labelKey: "owner_expense", icon: Wallet, perm: "expenses" },
-      { to: "/somiti", labelKey: "somiti", icon: PiggyBank, perm: "expenses" },
+      { to: "/somiti", labelKey: "somiti", icon: PiggyBank, perm: "somiti" },
       { to: "/online-sells", labelKey: "online_sell", icon: DollarSign, perm: "sales" },
     ],
   },
@@ -96,8 +96,8 @@ const desktopNavGroups: NavGroup[] = [
     items: [
       { to: "/reports", labelKey: "reports_generator", icon: FileText, perm: "reports" },
       { to: "/product-analytics", labelKey: "product_analytics" as any, icon: BarChart3, perm: "reports" },
-      { to: "/profits", labelKey: "profit", icon: TrendingUp, perm: "reports" },
-      { to: "/losses", labelKey: "losses", icon: TrendingDown, perm: "reports" },
+      { to: "/profits", labelKey: "profit", icon: TrendingUp, perm: "profit_loss" },
+      { to: "/losses", labelKey: "losses", icon: TrendingDown, perm: "profit_loss" },
       { to: "/trackback", labelKey: "trackback", icon: BarChart3, perm: "reports" },
       { to: "/purchase-reports", labelKey: "products_buy", icon: ShoppingCart, perm: "reports" },
       { to: "/ai-audits", labelKey: "ai_audits", icon: Sparkles, perm: "reports" },
@@ -366,16 +366,33 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   const employeeNavItems: NavItem[] = [
     { to: "/dashboard", labelKey: "home", icon: CustomHomeIcon, customLabel: lang === "bn" ? "ড্যাশবোর্ড" : "Dashboard" },
-    { to: "/sales", labelKey: "sales", icon: ShoppingBag, customLabel: lang === "bn" ? "বিক্রি (POS)" : "Sales (POS)" },
-    { to: "/sales/today", labelKey: "sales", icon: TrendingUp, customLabel: lang === "bn" ? "আজকের বিক্রি" : "Today's Sale" },
-    { to: "/products", labelKey: "products", icon: Package, customLabel: lang === "bn" ? "পণ্য তালিকা" : "Products" },
-    { to: "/invoices", labelKey: "invoice_generator", icon: FileText, customLabel: lang === "bn" ? "চালান / ইনভয়েস" : "Invoices" },
-    { to: "/labels", labelKey: "label_printer", icon: Barcode, customLabel: lang === "bn" ? "বারকোড স্টিকার" : "Label Printer" },
-    { to: "/printer-settings", labelKey: "settings", icon: Printer, customLabel: lang === "bn" ? "প্রিন্টার সেটিংস" : "Printer Settings" },
-    { to: "/cash-management", labelKey: "cash_management", icon: Banknote, customLabel: lang === "bn" ? "ক্যাশ বক্স" : "Cash Box" },
-    { to: "/expenses", labelKey: "expenses", icon: Receipt, customLabel: lang === "bn" ? "খরচ সমূহ" : "Expenses" },
+    ...(perms?.sales !== false ? [
+      { to: "/sales", labelKey: "sales" as const, icon: ShoppingBag, customLabel: lang === "bn" ? "বিক্রি (POS)" : "Sales (POS)" },
+      { to: "/sales/today", labelKey: "sales" as const, icon: TrendingUp, customLabel: lang === "bn" ? "আজকের বিক্রি" : "Today's Sale" },
+    ] : []),
+    ...(perms?.products !== false ? [
+      { to: "/products", labelKey: "products" as const, icon: Package, customLabel: lang === "bn" ? "পণ্য তালিকা" : "Products" },
+    ] : []),
+    ...(perms?.sales !== false ? [
+      { to: "/invoices", labelKey: "invoice_generator" as const, icon: FileText, customLabel: lang === "bn" ? "চালান / ইনভয়েস" : "Invoices" },
+    ] : []),
+    ...(perms?.products !== false ? [
+      { to: "/labels", labelKey: "label_printer" as const, icon: Barcode, customLabel: lang === "bn" ? "বারকোড স্টিকার" : "Label Printer" },
+    ] : []),
+    ...(perms?.sales !== false ? [
+      { to: "/printer-settings", labelKey: "settings" as const, icon: Printer, customLabel: lang === "bn" ? "প্রিন্টার সেটিংস" : "Printer Settings" },
+    ] : []),
+    ...(perms?.cashbox !== false ? [
+      { to: "/cash-management", labelKey: "cash_management" as const, icon: Banknote, customLabel: lang === "bn" ? "ক্যাশ বক্স" : "Cash Box" },
+    ] : []),
+    ...(perms?.expenses !== false ? [
+      { to: "/expenses", labelKey: "expenses" as const, icon: Receipt, customLabel: lang === "bn" ? "খরচ সমূহ" : "Expenses" },
+    ] : []),
     { to: "/employee-hub", labelKey: "employees", icon: Users, customLabel: lang === "bn" ? "এমপ্লয়ি হাব / বেতন" : "Employee Hub" },
     { to: "/employees", labelKey: "employees", icon: Users, customLabel: lang === "bn" ? "স্টাফ প্রোফাইল" : "Staff Profile" },
+    ...(perms?.somiti ? [
+      { to: "/somiti", labelKey: "somiti" as const, icon: PiggyBank, customLabel: lang === "bn" ? "সমিতি ও সঞ্চয়" : "Samity Savings" },
+    ] : []),
   ];
 
   const sidebarGroups: NavGroup[] = isEmployee

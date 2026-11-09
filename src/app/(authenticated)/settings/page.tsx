@@ -58,6 +58,7 @@ import {
   Mail,
   UserPlus,
   Shield,
+  ShieldCheck,
   Clock,
   CheckCircle,
   GripVertical,

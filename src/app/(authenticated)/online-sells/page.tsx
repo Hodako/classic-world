@@ -36,6 +36,8 @@ export default function OnlineSellsPage() {
   const { lang, t } = useT();
   const qc = useQueryClient();
   const { user } = useAuth();
+  const isEmployeeRole = user?.role === "employee" || (typeof window !== "undefined" && Boolean(localStorage.getItem("cw_active_employee_session")));
+  const isEmployee = isEmployeeRole;
   const { data = [] } = useCachedQuery(["sales"], getSales);
 
   const [open, setOpen] = useState(false);

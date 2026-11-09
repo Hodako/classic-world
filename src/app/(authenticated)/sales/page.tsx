@@ -245,6 +245,9 @@ function groupSales(sales: Sale[]): GroupedSale[] {
 
 export default function SalesPage() {
   const { lang, t } = useT();
+  const { user } = useAuth();
+  const isEmployeeRole = user?.role === "employee" || (typeof window !== "undefined" && Boolean(localStorage.getItem("cw_active_employee_session")));
+  const isEmployee = isEmployeeRole;
   const isMobile = useIsMobile();
   const qc = useQueryClient();
   const { data: rawSales = [] } = useCachedQuery(["sales"], getSales);
@@ -1077,6 +1080,9 @@ function SalesTab({
 }) {
   const { lang, t } = useT();
   const qc = useQueryClient();
+  const { user } = useAuth();
+  const isEmployeeRole = user?.role === "employee" || (typeof window !== "undefined" && Boolean(localStorage.getItem("cw_active_employee_session")));
+  const isEmployee = isEmployeeRole;
   const { items: paged, totalPages, safePage } = paginate(items, page, pageSize);
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
   const [actionBusyId, setActionBusyId] = useState<string | null>(null);
@@ -1186,7 +1192,6 @@ function SalesTab({
     setSaleToDelete(id);
   }
 
-  const { user } = useAuth();
   const { data: bizData } = useQuery({ queryKey: ["business-settings"], queryFn: getBusinessSettingsFn });
   const biz = bizData?.business;
 
@@ -1657,6 +1662,9 @@ function ReturnDialog({
 }) {
   const { lang, t } = useT();
   const qc = useQueryClient();
+  const { user } = useAuth();
+  const isEmployeeRole = user?.role === "employee" || (typeof window !== "undefined" && Boolean(localStorage.getItem("cw_active_employee_session")));
+  const isEmployee = isEmployeeRole;
   const [returnQty, setReturnQty] = useState("1");
   const [busy, setBusy] = useState(false);
 

@@ -364,20 +364,33 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     "/employees",
   ]);
 
-  const sidebarGroups = desktopNavGroups.map(group => ({
-    ...group,
-    items: group.items.filter(item => {
-      if (isEmployee) {
-        if (EMPLOYEE_ALWAYS_ALLOWED.has(item.to)) return true;
-        if (EMPLOYEE_DEFAULT_HIDDEN.has(item.to)) return false;
-        if (allowedPages && Array.isArray(allowedPages) && allowedPages.length > 0) {
-          return allowedPages.includes(item.to);
-        }
-        return false;
-      }
-      return !item.perm || Boolean(perms?.[item.perm]);
-    })
-  })).filter(group => group.items.length > 0);
+  const employeeNavItems: NavItem[] = [
+    { to: "/dashboard", labelKey: "home", icon: CustomHomeIcon, customLabel: lang === "bn" ? "ড্যাশবোর্ড" : "Dashboard" },
+    { to: "/sales", labelKey: "sales", icon: ShoppingBag, customLabel: lang === "bn" ? "বিক্রি (POS)" : "Sales (POS)" },
+    { to: "/sales/today", labelKey: "sales", icon: TrendingUp, customLabel: lang === "bn" ? "আজকের বিক্রি" : "Today's Sale" },
+    { to: "/products", labelKey: "products", icon: Package, customLabel: lang === "bn" ? "পণ্য তালিকা" : "Products" },
+    { to: "/invoices", labelKey: "invoice_generator", icon: FileText, customLabel: lang === "bn" ? "চালান / ইনভয়েস" : "Invoices" },
+    { to: "/labels", labelKey: "label_printer", icon: Barcode, customLabel: lang === "bn" ? "বারকোড স্টিকার" : "Label Printer" },
+    { to: "/printer-settings", labelKey: "settings", icon: Printer, customLabel: lang === "bn" ? "প্রিন্টার সেটিংস" : "Printer Settings" },
+    { to: "/cash-management", labelKey: "cash_management", icon: Banknote, customLabel: lang === "bn" ? "ক্যাশ বক্স" : "Cash Box" },
+    { to: "/expenses", labelKey: "expenses", icon: Receipt, customLabel: lang === "bn" ? "খরচ সমূহ" : "Expenses" },
+    { to: "/employee-hub", labelKey: "employees", icon: Users, customLabel: lang === "bn" ? "এমপ্লয়ি হাব / বেতন" : "Employee Hub" },
+    { to: "/employees", labelKey: "employees", icon: Users, customLabel: lang === "bn" ? "স্টাফ প্রোফাইল" : "Staff Profile" },
+  ];
+
+  const sidebarGroups: NavGroup[] = isEmployee
+    ? [
+        {
+          labelKey: "navigation",
+          items: employeeNavItems,
+        },
+      ]
+    : desktopNavGroups
+        .map(group => ({
+          ...group,
+          items: group.items.filter(item => !item.perm || Boolean(perms?.[item.perm])),
+        }))
+        .filter(group => group.items.length > 0);
 
   const bottomNav = isEmployee
     ? [

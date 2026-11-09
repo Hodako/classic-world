@@ -59,6 +59,106 @@ function checkUrlReady(targetUrl, timeoutMs = 1500) {
   });
 }
 
+// Built-in lightweight local static POS server for standalone offline & instant execution
+let localStaticServer = null;
+
+function findBundledOutDir() {
+  const candidates = [
+    path.join(__dirname, "..", "out"),
+    path.join(__dirname, "out"),
+    path.join(__dirname, "..", "..", "out"),
+  ];
+  for (const dir of candidates) {
+    if (fs.existsSync(dir) && fs.existsSync(path.join(dir, "index.html"))) {
+      return dir;
+    }
+  }
+  return null;
+}
+
+function startLocalStaticServer(port = LOCAL_PORT) {
+  return new Promise((resolve) => {
+    const outDir = findBundledOutDir();
+    if (!outDir) {
+      console.log("[Windows POS] No bundled out/ directory found for local static server.");
+      return resolve(null);
+    }
+
+    const mimeMap = {
+      ".html": "text/html; charset=utf-8",
+      ".js": "text/javascript; charset=utf-8",
+      ".mjs": "text/javascript; charset=utf-8",
+      ".css": "text/css; charset=utf-8",
+      ".json": "application/json; charset=utf-8",
+      ".png": "image/png",
+      ".jpg": "image/jpeg",
+      ".jpeg": "image/jpeg",
+      ".svg": "image/svg+xml",
+      ".ico": "image/x-icon",
+      ".webp": "image/webp",
+      ".woff2": "font/woff2",
+      ".woff": "font/woff",
+      ".ttf": "font/ttf",
+      ".txt": "text/plain; charset=utf-8",
+      ".wasm": "application/wasm",
+    };
+
+    const server = http.createServer((req, res) => {
+      try {
+        const rawUrl = req.url || "/";
+        let pathname = decodeURIComponent(rawUrl.split("?")[0]);
+        if (pathname === "/") pathname = "/index.html";
+
+        const safePath = path.normalize(pathname).replace(/^(\.\.[\/\\])+/, "");
+        let filePath = path.join(outDir, safePath);
+
+        // Clean URLs: /dashboard -> /dashboard.html, /sales/today -> /sales/today.html
+        if (!fs.existsSync(filePath) && fs.existsSync(filePath + ".html")) {
+          filePath = filePath + ".html";
+        } else if (fs.existsSync(filePath) && fs.statSync(filePath).isDirectory()) {
+          filePath = path.join(filePath, "index.html");
+        }
+
+        // SPA fallback
+        if (!fs.existsSync(filePath)) {
+          filePath = path.join(outDir, "index.html");
+        }
+
+        const ext = path.extname(filePath).toLowerCase();
+        const contentType = mimeMap[ext] || "application/octet-stream";
+
+        res.setHeader("Access-Control-Allow-Origin", "*");
+        res.setHeader("Cache-Control", "no-cache");
+        res.setHeader("Content-Type", contentType);
+
+        const stream = fs.createReadStream(filePath);
+        stream.on("error", () => {
+          res.writeHead(404);
+          res.end("Not Found");
+        });
+        stream.pipe(res);
+      } catch (err) {
+        res.writeHead(500);
+        res.end("Server Error");
+      }
+    });
+
+    server.on("error", (err) => {
+      if (err.code === "EADDRINUSE") {
+        console.log(`[Windows POS] Local port ${port} already active.`);
+      } else {
+        console.warn(`[Windows POS] Local static server warning:`, err.message);
+      }
+      resolve(server);
+    });
+
+    server.listen(port, "127.0.0.1", () => {
+      console.log(`[Windows POS] Local Standalone POS Engine active on http://127.0.0.1:${port} (Serving: ${outDir})`);
+      resolve(server);
+    });
+  });
+}
+
 // Start Next.js server locally if not already running
 async function ensureLocalServerRunning() {
   const isRunning = await checkUrlReady(LOCAL_URL, 800);
@@ -67,6 +167,14 @@ async function ensureLocalServerRunning() {
     return;
   }
 
+  // 1. Try launching bundled static server first
+  localStaticServer = await startLocalStaticServer(LOCAL_PORT);
+  const staticReady = await checkUrlReady(LOCAL_URL, 600);
+  if (staticReady) {
+    return;
+  }
+
+  // 2. Fall back to local server.js if present
   const rootDir = findProjectRootWithServer();
   if (!fs.existsSync(path.join(rootDir, "server.js"))) {
     console.log(`[Windows POS] No local server.js found, using Cloud (${CLOUD_URL})`);
@@ -254,29 +362,35 @@ async function createWindow() {
       .catch(() => {});
   });
 
-  // Connect to production cloud URL (https://classicworld-pos.web.app) by default
-  const preferLocal = process.env.POS_PREFER_LOCAL === "1";
-  let targetUrl = CLOUD_URL;
-
-  if (preferLocal) {
-    const isLocalReady = await checkUrlReady(LOCAL_URL, 1000);
-    if (isLocalReady) {
-      targetUrl = LOCAL_URL;
-    }
-  }
+  // Connect to local standalone engine first (zero latency + 100% matches latest build with offline support)
+  const forceCloud = process.env.POS_FORCE_CLOUD === "1";
+  await ensureLocalServerRunning();
+  const isLocalReady = await checkUrlReady(LOCAL_URL, 1200);
+  let targetUrl = !forceCloud && isLocalReady ? LOCAL_URL : CLOUD_URL;
 
   console.log(`[Windows POS] Connecting to POS Terminal at: ${targetUrl}...`);
   mainWindow.loadURL(targetUrl).catch(async (err) => {
     console.warn(`[Windows POS] Direct load failed for ${targetUrl}:`, err);
-    const isLocalReady = await checkUrlReady(LOCAL_URL, 1000);
-    if (isLocalReady) {
-      console.log(`[Windows POS] Fallback to local server (${LOCAL_URL})...`);
-      mainWindow.loadURL(LOCAL_URL).catch(() => {
-        mainWindow.loadFile(path.join(__dirname, "error.html"));
-      });
+    if (targetUrl !== LOCAL_URL) {
+      const retryLocal = await checkUrlReady(LOCAL_URL, 1000);
+      if (retryLocal) {
+        console.log(`[Windows POS] Fallback to local server (${LOCAL_URL})...`);
+        mainWindow.loadURL(LOCAL_URL).catch(() => {
+          mainWindow.loadFile(path.join(__dirname, "error.html"));
+        });
+        return;
+      }
     } else {
-      mainWindow.loadFile(path.join(__dirname, "error.html"));
+      const retryCloud = await checkUrlReady(CLOUD_URL, 1500);
+      if (retryCloud) {
+        console.log(`[Windows POS] Fallback to cloud server (${CLOUD_URL})...`);
+        mainWindow.loadURL(CLOUD_URL).catch(() => {
+          mainWindow.loadFile(path.join(__dirname, "error.html"));
+        });
+        return;
+      }
     }
+    mainWindow.loadFile(path.join(__dirname, "error.html"));
   });
 
   // Handle load failures gracefully (e.g. WiFi disconnected during load)
@@ -812,9 +926,12 @@ ipcMain.handle("pos:open-cash-drawer", async (event, { printerName } = {}) => {
   return await openWindowsCashDrawer(printerName);
 });
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   // Start local bridge on port 9123 so even external browsers (Chrome/Edge) get 1-click silent print & Windows printer preferences!
   startBridgeServer((html, printerName, options) => performSilentPrint(html, printerName, options));
+
+  // Pre-initialize local static POS server for instant window load
+  await ensureLocalServerRunning();
   createWindow();
 
   app.on("activate", () => {
@@ -825,6 +942,11 @@ app.whenReady().then(() => {
 });
 
 app.on("window-all-closed", () => {
+  if (localStaticServer) {
+    try {
+      localStaticServer.close();
+    } catch (_) {}
+  }
   if (serverProcess) {
     try {
       serverProcess.kill();

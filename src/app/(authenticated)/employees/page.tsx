@@ -1150,8 +1150,8 @@ export default function EmployeesPage() {
           <span className="text-[9px] sm:text-[10px] text-muted-foreground block">{salaries.length} {lang === "bn" ? "টি রসিদ" : "Vouchers"}</span>
         </Card>
 
-        {/* Small standard KPI card for "কর্মচারী ব্যক্তিগত কেপিআই" placed at the LAST of other KPIs with hidden amount & link to dedicated page */}
-        {isEmployeeRole && (
+        {/* Dedicated Employee KPI Card for Store Overview (Available for both owner and staff) */}
+        {isEmployeeRole ? (
           <Card
             onClick={() => router.push("/employee-hub")}
             className="p-2 sm:p-3 rounded-xl sm:rounded-2xl bg-card border-indigo-500/40 hover:border-indigo-500 space-y-0.5 sm:space-y-1 shadow-2xs cursor-pointer transition-all group relative overflow-hidden"
@@ -1180,6 +1180,37 @@ export default function EmployeesPage() {
               {personalKpiRevealed
                 ? (lang === "bn" ? `অবশিষ্ট সীমা: ৳${fmtMoney(myRolloverCalc?.remainingAdvanceLimit ?? (Number(currentEmployee?.advance_limit ?? currentEmployee?.base_salary ?? 0) - (myEmployeeStats?.advancesInMonth || 0)))}` : `Available: ৳${fmtMoney(myRolloverCalc?.remainingAdvanceLimit ?? 0)}`)
                 : (lang === "bn" ? "ট্যাপ করে বিস্তারিত হাব দেখুন →" : "Tap to open personal hub →")}
+            </span>
+          </Card>
+        ) : (
+          <Card
+            onClick={() => router.push("/employee-hub")}
+            className="p-2 sm:p-3 rounded-xl sm:rounded-2xl bg-gradient-to-br from-indigo-500/10 via-background to-indigo-500/5 border-indigo-500/40 hover:border-indigo-500 space-y-0.5 sm:space-y-1 shadow-2xs cursor-pointer transition-all group relative overflow-hidden"
+          >
+            <div className="flex items-center justify-between text-muted-foreground">
+              <span className="text-[10px] sm:text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 flex items-center gap-1 truncate">
+                <Users className="size-3 sm:size-3.5 text-indigo-600 shrink-0" />
+                <span className="truncate">{lang === "bn" ? "এমপ্লয়ি হাব ও কেপিআই" : "Employee Hub & KPI"}</span>
+              </span>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setPersonalKpiRevealed(!personalKpiRevealed);
+                }}
+                className="text-muted-foreground hover:text-foreground p-0.5 rounded cursor-pointer shrink-0"
+                title={personalKpiRevealed ? "Hide" : "Reveal"}
+              >
+                {personalKpiRevealed ? <EyeOff className="size-3" /> : <Eye className="size-3" />}
+              </button>
+            </div>
+            <p className="text-xs sm:text-base font-bold font-charukola text-indigo-600">
+              {personalKpiRevealed ? `৳${fmtMoney(totalMonthlyAdvances)}` : "••••••"}
+            </p>
+            <span className="text-[9px] sm:text-[10px] text-muted-foreground block truncate group-hover:text-indigo-600">
+              {personalKpiRevealed
+                ? (lang === "bn" ? `কর্মী: ${activeEmployeesCount} জন • চলতি মাসে অগ্রিম` : `Staff: ${activeEmployeesCount} active • Advances`)
+                : (lang === "bn" ? "ট্যাপ করে কর্মী হাব দেখুন →" : "Tap for Employee Hub →")}
             </span>
           </Card>
         )}
@@ -1240,6 +1271,10 @@ export default function EmployeesPage() {
               <div className="divide-y divide-border/60">
                 {filteredEmployees.map(e => {
                   const empStats = getEmployeeSalaryStats(e.id, currentMonthStr, true);
+                  const todayStr = new Date().toISOString().slice(0, 10);
+                  const empSales = (sales || []).filter((s: any) => s.employee_id === e.id || s.created_by === e.id || (s.employee_name && s.employee_name.toLowerCase().trim() === (e.name || '').toLowerCase().trim()));
+                  const empTodaySales = empSales.filter((s: any) => (s.created_at || '').slice(0, 10) === todayStr).reduce((sum: number, s: any) => sum + (Number(s.sell_price) || 0), 0);
+                  const empMonthSales = empSales.filter((s: any) => (s.created_at || '').slice(0, 7) === currentMonthStr).reduce((sum: number, s: any) => sum + (Number(s.sell_price) || 0), 0);
                   return (
                     <div key={e.id} className="p-3 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-muted/30 transition-colors">
                       <div className="flex items-center gap-3 min-w-0">
@@ -1295,6 +1330,26 @@ export default function EmployeesPage() {
                                 🎁 {lang === "bn" ? "বোনাস:" : "Bonus:"} {fmtMoney(empStats.totalBonus)}
                               </span>
                             )}
+                          </div>
+
+                          {/* Dedicated Employee KPI Mini-Dashboard */}
+                          <div className="mt-2.5 grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 border-t border-border/50 text-[11px] font-balooda">
+                            <div className="bg-emerald-500/10 border border-emerald-500/25 rounded-xl p-2 flex flex-col justify-between shadow-2xs">
+                              <span className="text-[10px] text-emerald-700 dark:text-emerald-400 font-medium">{lang === "bn" ? "আজকের বিক্রি" : "Today's Sales"}</span>
+                              <span className="font-extrabold text-emerald-600 font-mono text-xs mt-0.5">৳{fmtMoney(empTodaySales)}</span>
+                            </div>
+                            <div className="bg-blue-500/10 border border-blue-500/25 rounded-xl p-2 flex flex-col justify-between shadow-2xs">
+                              <span className="text-[10px] text-blue-700 dark:text-blue-400 font-medium">{lang === "bn" ? "চলতি মাসের বিক্রি" : "Monthly Sales"}</span>
+                              <span className="font-extrabold text-blue-600 font-mono text-xs mt-0.5">৳{fmtMoney(empMonthSales)}</span>
+                            </div>
+                            <div className="bg-orange-500/10 border border-orange-500/25 rounded-xl p-2 flex flex-col justify-between shadow-2xs">
+                              <span className="text-[10px] text-orange-700 dark:text-orange-400 font-medium">{lang === "bn" ? "উত্তোলিত অগ্রিম" : "Advances Taken"}</span>
+                              <span className="font-extrabold text-orange-600 font-mono text-xs mt-0.5">৳{fmtMoney(empStats.totalMonthlyAdvances)}</span>
+                            </div>
+                            <div className="bg-indigo-500/10 border border-indigo-500/25 rounded-xl p-2 flex flex-col justify-between shadow-2xs">
+                              <span className="text-[10px] text-indigo-700 dark:text-indigo-400 font-medium">{lang === "bn" ? "অবশিষ্ট বেতন" : "Remaining Due"}</span>
+                              <span className="font-extrabold text-indigo-600 font-mono text-xs mt-0.5">৳{fmtMoney(empStats.remaining)}</span>
+                            </div>
                           </div>
                         </div>
                       </div>

@@ -81,7 +81,8 @@ export function getTenantScope() {
   const isLegacyRoot =
     Boolean(user.email && user.email.toLowerCase() === "classicworld@gmail.com") ||
     user.id === "classic-world-default" ||
-    user.is_legacy_root === true;
+    user.is_legacy_root === true ||
+    (user.role === "employee" && (!user.is_isolated_tenant || user.business_id === "classic-world-default" || !user.owner_id || user.owner_id === "classic-world-default"));
 
   // EVERY business account is strictly isolated! Only legacy classicworld@gmail.com has legacy data.
   const isIsolatedTenant = !isLegacyRoot;
@@ -127,11 +128,33 @@ export function getBusinessDocIdForScope(
 export function belongsToCurrentTenant(docData: any, _colName?: string): boolean {
   const scope = getTenantScope();
   // NEVER show private tenant data if not logged in or scope is missing!
-  if (!scope.user || !scope.rootOwnerId) return false;
+  if (!scope.user) return false;
 
   const docOwner = docData?.owner_id || docData?.owner_uid || null;
   const docBusiness = docData?.business_id || null;
   const docProfile = docData?.profile_id || "default";
+
+  // Dedicated handling for employees to access store products, sales, and expenses
+  if (scope.user.role === "employee") {
+    if (docOwner === scope.user.id || docData?.employee_id === scope.user.id || docData?.created_by === scope.user.id) {
+      return true;
+    }
+    if (scope.user.is_isolated_tenant && scope.user.owner_id && scope.user.owner_id !== "classic-world-default") {
+      return (
+        docOwner === scope.user.owner_id ||
+        (Boolean(scope.user.business_id) && docBusiness === scope.user.business_id)
+      );
+    }
+    // Main / default Classic World shop employee
+    if (!docOwner || docOwner === "classic-world-default" || !docData?.is_isolated_tenant) {
+      if (docBusiness && docBusiness.startsWith("biz_") && docBusiness !== scope.user.business_id) return false;
+      return true;
+    }
+    if (scope.user.owner_id && (docOwner === scope.user.owner_id || docOwner === scope.rootOwnerId)) {
+      return true;
+    }
+    return false;
+  }
 
   // 1. Branch / secondary profile isolation (e.g. "Branch 2" or "prof_xxx"):
   if (scope.activeProfile !== "default") {
@@ -184,9 +207,14 @@ function withTenantScope<T extends Record<string, any>>(data: T): T {
     scope.user.business_id ||
     (scope.isIsolatedTenant ? `biz_${scope.rootOwnerId}` : "classic-world-default");
 
+  const effectiveOwner =
+    scope.user.role === "employee"
+      ? (scope.user.owner_id || scope.user.owner_uid || (scope.isIsolatedTenant ? scope.rootOwnerId : "classic-world-default"))
+      : (scope.effectiveOwnerId || scope.rootOwnerId);
+
   const enriched: Record<string, any> = {
     ...data,
-    owner_id: data.owner_id || scope.effectiveOwnerId || scope.rootOwnerId,
+    owner_id: data.owner_id || effectiveOwner,
     business_id: businessId,
     profile_id: data.profile_id || scope.activeProfile || "default",
     is_isolated_tenant: scope.isIsolatedTenant,
@@ -4758,13 +4786,15 @@ export async function fsEmployeeLogin(data: { username?: string; identifier?: st
         matchedEmp.business_id !== "classic-world-default" &&
         matchedEmp.business_id !== "classic-world-settings")
   );
-  const empOwnerId = matchedEmp.owner_id || matchedEmp.owner_uid || undefined;
+  const empOwnerId = matchedEmp.owner_id || matchedEmp.owner_uid || (empIsIsolated ? undefined : "classic-world-default");
 
   const employeeUser = {
     id: matchedEmp.id,
     employee_id: matchedEmp.id,
     owner_id: empOwnerId,
+    owner_uid: empOwnerId,
     is_isolated_tenant: empIsIsolated,
+    is_legacy_root: !empIsIsolated,
     email: matchedEmp.email || (matchedEmp.phone ? `${matchedEmp.phone}@classicworld.com` : `emp_${matchedEmp.id}@classicworld.com`),
     phone: matchedEmp.phone || undefined,
     full_name: matchedEmp.name || matchedEmp.full_name || ident || "Shop Staff",

@@ -821,11 +821,19 @@ export default function Dashboard() {
   const normalizeKpiOrder = (order?: string[]) => {
     const defaultList = [...DEFAULT_KPI_ORDER];
     if (!order || !Array.isArray(order) || order.length === 0) return defaultList;
-    const list = order
+    let list = order
       .filter(k => k !== "credit_sale")
       .map(k => (k === "bkash_bank" ? "employee_hub" : k === "owners_wallet" ? "owner_wallet" : k));
     for (const key of defaultList) {
       if (!list.includes(key)) list.push(key);
+    }
+    // Place employee_hub KPI right beside somiti KPI
+    list = list.filter(k => k !== "employee_hub");
+    const somitiIdx = list.indexOf("somiti");
+    if (somitiIdx !== -1) {
+      list.splice(somitiIdx + 1, 0, "employee_hub");
+    } else {
+      list.push("employee_hub");
     }
     return list.filter(k => defaultList.includes(k));
   };
@@ -1825,8 +1833,6 @@ export default function Dashboard() {
             })}
           />
         );
-      case "employee_hub":
-        return <div key="employee_hub" className="hidden" />;
       case "online_sell":
         return (
           <KPICard

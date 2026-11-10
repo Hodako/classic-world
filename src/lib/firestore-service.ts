@@ -4503,10 +4503,14 @@ export async function fsCreateEmployeeExpense(data: any) {
     } else if (!isAdjustment) {
       try {
         await addDoc(collection(db, "expenses"), {
+          owner_id: ownerId,
+          owner_uid: ownerId,
+          profile_id: scope.activeProfile || "default",
+          business_id: currentUser?.business_id || ownerId,
           title,
           amount,
-          category: category === "advance" || category === "salary_advance" ? "salary_advance" : "employee_expense",
-          note: `Employee Expense ID: ${docRef.id}`,
+          category: category === "advance" || category === "salary_advance" ? "salary_advance" : (category === "bonus" || category === "gift" ? "employee_gift" : "employee_expense"),
+          note: `Employee Expense ID: ${docRef.id}${category === "bonus" || category === "gift" ? " (মালিক প্রদত্ত উপহার/বোনাস)" : ""}`,
           created_at: ts,
         });
       } catch (_) {}
@@ -4623,6 +4627,23 @@ export async function fsCreateEmployeeShopping(data: any) {
         amount: totalAmount,
         note: `[কর্মচারী কেনাকাটা নগদ আদায়] ${empName}: ${note || "পোশাক বিক্রয়"}`,
         ref_id: docRef.id,
+        created_at: ts,
+      });
+    } catch (_) {}
+  }
+
+  // 4. If owner gave as a gift, count it as a shop expense!
+  if (paymentStatus === "gift" && totalAmount > 0) {
+    try {
+      await addDoc(collection(db, "expenses"), {
+        owner_id: ownerId,
+        owner_uid: ownerId,
+        profile_id: scope.activeProfile || "default",
+        business_id: currentUser?.business_id || ownerId,
+        title: `[কর্মচারী উপহার/গিফট] ${empName}: ${note || "পোশাক উপহার"}`,
+        amount: totalAmount,
+        category: "employee_gift",
+        note: `Employee Gift / Shopping ID: ${docRef.id} (মালিকের উপহার হিসেবে দোকানের খরচ)`,
         created_at: ts,
       });
     } catch (_) {}

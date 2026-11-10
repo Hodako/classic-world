@@ -13,7 +13,7 @@ import { useT } from "@/lib/i18n";
 import { fmtMoney } from "@/lib/format";
 import { toast } from "sonner";
 import { createPurchaseFn, createProductFn } from "@/lib/rpc";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2, Banknote, CreditCard, Globe, Split } from "lucide-react";
 
 type PurchaseLine = { productId: string; qty: string; unitCost: string; sellPrice: string };
 
@@ -239,39 +239,83 @@ export function PurchaseDialog({
             <Plus className="size-3.5 mr-1" />{t("add_product")}
           </Button>
 
-          {/* Supplier & Payment Type Selection */}
-          <div className="grid grid-cols-2 gap-3 border-t border-border/50 pt-3">
+          {/* Supplier & Payment Type Selection in ONE ROW */}
+          <div className="space-y-2 border-t border-border/50 pt-3">
             <div className="space-y-1">
-              <Label className="text-[10px] text-muted-foreground">{lang === "bn" ? "সাপ্লায়ার / পার্টি" : t("party")}</Label>
+              <Label className="text-xs font-semibold text-muted-foreground">{lang === "bn" ? "সাপ্লায়ার / পার্টি নির্বাচন" : t("party")}</Label>
               <select
                 value={partyId}
                 onChange={e => setPartyId(e.target.value)}
-                className="w-full h-8 rounded border border-border bg-background px-2 text-xs font-sans"
+                className="w-full h-8.5 rounded-xl border border-border bg-background px-2.5 text-xs font-sans font-medium"
               >
                 <option value="">{lang === "bn" ? "— সাপ্লায়ার বা পার্টি নির্বাচন করুন —" : "— Select Supplier —"}</option>
                 {parties.filter(p => (p as any).type !== "customer" && !(p as any).is_customer).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
             </div>
-            <div className="space-y-1">
-              <Label className="text-[10px] text-muted-foreground">{lang === "bn" ? "পেমেন্ট মাধ্যম" : "Payment Type"}</Label>
-              <select
-                value={paymentType}
-                onChange={e => {
-                  const val = e.target.value as any;
-                  setPaymentType(val);
-                  if (val === "split") {
+
+            {/* Payment Method Selector in ONE ROW like the new sell widget */}
+            <div className="space-y-1.5 pt-1">
+              <Label className="text-xs font-semibold text-muted-foreground">
+                {lang === "bn" ? "পেমেন্ট মাধ্যম (Payment Method)" : "Payment Method"}
+              </Label>
+              <div className="grid grid-cols-4 gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setPaymentType("cash")}
+                  className={`flex items-center justify-center gap-1.5 py-2 px-2 rounded-xl border text-xs font-semibold transition-all cursor-pointer ${
+                    paymentType === "cash"
+                      ? "bg-emerald-500/15 border-emerald-500 text-emerald-700 dark:text-emerald-300 shadow-xs ring-1 ring-emerald-500/30 font-bold"
+                      : "border-border bg-card text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+                  }`}
+                >
+                  <Banknote className="size-3.5 text-emerald-600 dark:text-emerald-400" />
+                  <span>{lang === "bn" ? "নগদ" : "Cash"}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setPaymentType("credit")}
+                  className={`flex items-center justify-center gap-1.5 py-2 px-2 rounded-xl border text-xs font-semibold transition-all cursor-pointer ${
+                    paymentType === "credit"
+                      ? "bg-amber-500/15 border-amber-500 text-amber-700 dark:text-amber-300 shadow-xs ring-1 ring-amber-500/30 font-bold"
+                      : "border-border bg-card text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+                  }`}
+                >
+                  <CreditCard className="size-3.5 text-amber-600 dark:text-amber-400" />
+                  <span>{lang === "bn" ? "বাকি" : "Credit"}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setPaymentType("online")}
+                  className={`flex items-center justify-center gap-1.5 py-2 px-2 rounded-xl border text-xs font-semibold transition-all cursor-pointer ${
+                    paymentType === "online"
+                      ? "bg-blue-500/15 border-blue-500 text-blue-700 dark:text-blue-300 shadow-xs ring-1 ring-blue-500/30 font-bold"
+                      : "border-border bg-card text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+                  }`}
+                >
+                  <Globe className="size-3.5 text-blue-600 dark:text-blue-400" />
+                  <span>{lang === "bn" ? "অনলাইন" : "Online"}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPaymentType("split");
                     setSplitCash(String(grandTotal));
                     setSplitOnline("0");
                     setSplitCredit("0");
-                  }
-                }}
-                className="w-full h-8 rounded border border-border bg-background px-2 text-xs font-sans font-medium"
-              >
-                <option value="cash">{lang === "bn" ? "💵 নগদ (Cash)" : "Cash"}</option>
-                <option value="online">{lang === "bn" ? "🌐 অনলাইন / ব্যাংক" : "Online / Bank"}</option>
-                <option value="credit">{lang === "bn" ? "📋 বাকি (Credit)" : "Credit"}</option>
-                <option value="split">{lang === "bn" ? "⚡ স্প্লিট পেমেন্ট (Split)" : "Split Payment"}</option>
-              </select>
+                  }}
+                  className={`flex items-center justify-center gap-1.5 py-2 px-2 rounded-xl border text-xs font-semibold transition-all cursor-pointer ${
+                    paymentType === "split"
+                      ? "bg-purple-500/15 border-purple-500 text-purple-700 dark:text-purple-300 shadow-xs ring-1 ring-purple-500/30 font-bold"
+                      : "border-border bg-card text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+                  }`}
+                >
+                  <Split className="size-3.5 text-purple-600 dark:text-purple-400" />
+                  <span>{lang === "bn" ? "স্প্লিট" : "Split"}</span>
+                </button>
+              </div>
             </div>
           </div>
 

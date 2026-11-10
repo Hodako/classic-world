@@ -3,7 +3,7 @@
 
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import { ArrowLeft, ArrowDownToLine, Trash2, Pencil, Plus, Download, Printer, Loader2, FileSpreadsheet, ChevronDown } from "lucide-react";
+import { ArrowLeft, ArrowDownToLine, Trash2, Pencil, Plus, Download, Printer, Loader2, FileSpreadsheet, ChevronDown, Banknote, CreditCard, Globe, Split } from "lucide-react";
 import {
   getPaymentsForParty, getSalesForParty, getParty, getPurchases,
   getPartyReceivables, getPartyPayables, getPayableSettlements,
@@ -750,7 +750,7 @@ function CollectDialog({ partyId, open, onOpenChange }: { partyId: string; open:
 function PayPartyDialog({ partyId, open, onOpenChange }: { partyId: string; open: boolean; onOpenChange: (v: boolean) => void }) {
   const { lang, t } = useT();
   const qc = useQueryClient();
-  const [payMethod, setPayMethod] = useState<"cash" | "online" | "split">("cash");
+  const [payMethod, setPayMethod] = useState<"cash" | "credit" | "online" | "split">("cash");
   const [onlineProvider, setOnlineProvider] = useState<string>("bKash");
   const [amount, setAmount] = useState("");
   const [splitCash, setSplitCash] = useState("");
@@ -788,6 +788,9 @@ function PayPartyDialog({ partyId, open, onOpenChange }: { partyId: string; open
     if (payMethod === "split") {
       const splitDetail = `[স্প্লিট: নগদ ৳${cashNum} + ${onlineProvider} ৳${onlineNum}${creditNum > 0 ? ` + বাকী ৳${creditNum}` : ""}]`;
       finalNote = finalNote ? `${finalNote} ${splitDetail}` : splitDetail;
+    } else if (payMethod === "credit") {
+      const creditDetail = `[বাকী / ক্রেডিট সমন্বয়: ৳${effectiveTotal}]`;
+      finalNote = finalNote ? `${finalNote} ${creditDetail}` : creditDetail;
     } else if (payMethod === "online") {
       const onlineDetail = `[অনলাইন / ${onlineProvider}: ৳${effectiveTotal}]`;
       finalNote = finalNote ? `${finalNote} ${onlineDetail}` : onlineDetail;
@@ -840,39 +843,63 @@ function PayPartyDialog({ partyId, open, onOpenChange }: { partyId: string; open
           </DialogTitle>
         </DialogHeader>
         <form onSubmit={submit} className="space-y-3.5">
-          {/* Payment Method Selector */}
-          <div className="space-y-1">
+          {/* Payment Method Selector in ONE ROW like new sell widget */}
+          <div className="space-y-1.5">
             <Label className="text-xs font-bold text-foreground">
               {lang === "bn" ? "পরিশোধের মাধ্যম (Payment Method)" : "Payment Method"}
             </Label>
-            <div className="grid grid-cols-3 gap-1.5 p-1 bg-muted rounded-xl">
-              <Button
+            <div className="grid grid-cols-4 gap-1.5">
+              <button
                 type="button"
-                size="sm"
-                variant={payMethod === "cash" ? "default" : "ghost"}
                 onClick={() => setPayMethod("cash")}
-                className="h-8 text-xs font-bold rounded-lg cursor-pointer"
+                className={`flex items-center justify-center gap-1.5 py-2 px-2 rounded-xl border text-xs font-semibold transition-all cursor-pointer ${
+                  payMethod === "cash"
+                    ? "bg-emerald-500/15 border-emerald-500 text-emerald-700 dark:text-emerald-300 shadow-xs ring-1 ring-emerald-500/30 font-bold"
+                    : "border-border bg-card text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+                }`}
               >
-                {lang === "bn" ? "💵 নগদ (Cash)" : "Cash"}
-              </Button>
-              <Button
+                <Banknote className="size-3.5 text-emerald-600 dark:text-emerald-400" />
+                <span>{lang === "bn" ? "নগদ" : "Cash"}</span>
+              </button>
+
+              <button
                 type="button"
-                size="sm"
-                variant={payMethod === "online" ? "default" : "ghost"}
+                onClick={() => setPayMethod("credit")}
+                className={`flex items-center justify-center gap-1.5 py-2 px-2 rounded-xl border text-xs font-semibold transition-all cursor-pointer ${
+                  payMethod === "credit"
+                    ? "bg-amber-500/15 border-amber-500 text-amber-700 dark:text-amber-300 shadow-xs ring-1 ring-amber-500/30 font-bold"
+                    : "border-border bg-card text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+                }`}
+              >
+                <CreditCard className="size-3.5 text-amber-600 dark:text-amber-400" />
+                <span>{lang === "bn" ? "বাকি" : "Credit"}</span>
+              </button>
+
+              <button
+                type="button"
                 onClick={() => setPayMethod("online")}
-                className="h-8 text-xs font-bold rounded-lg cursor-pointer"
+                className={`flex items-center justify-center gap-1.5 py-2 px-2 rounded-xl border text-xs font-semibold transition-all cursor-pointer ${
+                  payMethod === "online"
+                    ? "bg-blue-500/15 border-blue-500 text-blue-700 dark:text-blue-300 shadow-xs ring-1 ring-blue-500/30 font-bold"
+                    : "border-border bg-card text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+                }`}
               >
-                {lang === "bn" ? "🌐 অনলাইন / ব্যাংক" : "Online / Bank"}
-              </Button>
-              <Button
+                <Globe className="size-3.5 text-blue-600 dark:text-blue-400" />
+                <span>{lang === "bn" ? "অনলাইন" : "Online"}</span>
+              </button>
+
+              <button
                 type="button"
-                size="sm"
-                variant={payMethod === "split" ? "default" : "ghost"}
                 onClick={() => setPayMethod("split")}
-                className="h-8 text-xs font-bold rounded-lg cursor-pointer"
+                className={`flex items-center justify-center gap-1.5 py-2 px-2 rounded-xl border text-xs font-semibold transition-all cursor-pointer ${
+                  payMethod === "split"
+                    ? "bg-purple-500/15 border-purple-500 text-purple-700 dark:text-purple-300 shadow-xs ring-1 ring-purple-500/30 font-bold"
+                    : "border-border bg-card text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+                }`}
               >
-                {lang === "bn" ? "⚡ স্প্লিট পেমেন্ট" : "Split Pay"}
-              </Button>
+                <Split className="size-3.5 text-purple-600 dark:text-purple-400" />
+                <span>{lang === "bn" ? "স্প্লিট" : "Split"}</span>
+              </button>
             </div>
           </div>
 
